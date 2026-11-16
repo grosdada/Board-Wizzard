@@ -14,8 +14,10 @@ from PIL import Image, ImageDraw
 
 from . import settings
 
-AXES = ["face", "3/4 face droite", "profil droit", "3/4 dos droite", "dos", "3/4 dos gauche", "profil gauche",
-        "3/4 face gauche"]
+# Axes dans l'ordre ou l'orbite H3 les parcourt (mesure sur les rendus : apres « face », le sujet regarde vers la
+# gauche de l'image). Gauche / droite = cote de l'ecran vers lequel le sujet regarde.
+AXES = ["face", "3/4 face gauche", "profil gauche", "3/4 dos gauche", "dos", "3/4 dos droite", "profil droit",
+        "3/4 face droite"]
 
 
 def _ffmpeg(*args):

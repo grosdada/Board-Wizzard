@@ -1,9 +1,10 @@
 // Aplatit une case (fond + calques + flou de profondeur) dans un canvas : image envoyee a « Integrate » et a l'orbite
-// de case. Les bulles n'y sont pas : elles restent par-dessus.
+// de case. Les bulles n'y sont pas : elles restent par-dessus. sharp : sans le flou de profondeur (le modele travaille
+// mieux sur une image nette ; le flou reste un reglage d'affichage).
 import { loadImage } from "./api.js";
 import { sprite, placement, layerBox, depthOf, blurOf, background } from "./model.js";
 
-export async function flattenPanel(app, g, longSide = 1344) {
+export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   const pg = app.page(), pan = pg.panels[g.id] || {}, bb = g.bbox;
   const k = longSide / Math.max(bb.w, bb.h);
   const cv = document.createElement("canvas");
@@ -25,7 +26,7 @@ export async function flattenPanel(app, g, longSide = 1344) {
   const bg = background(pan, app.bank, app.project.id);
   if (bg) {
     const pl = placement(local, bg.w || 16, bg.h || 9, pan.view);
-    draw(await loadImage(bg.url), pl.x, pl.y, pl.w, pl.h, blurOf(pan, 1, bb));
+    draw(await loadImage(bg.url), pl.x, pl.y, pl.w, pl.h, sharp ? 0 : blurOf(pan, 1, bb));
   }
   const layers = pan.layers || [];
   for (let i = 0; i < layers.length; i++) {
@@ -33,7 +34,7 @@ export async function flattenPanel(app, g, longSide = 1344) {
     if (!sp) continue;
     const im = await loadImage(sp.url);
     const box = layerBox(local, l, { w: im.naturalWidth, h: im.naturalHeight });
-    draw(im, box.x, box.y, box.w, box.h, blurOf(pan, depthOf(pan, i), bb), l.flip);
+    draw(im, box.x, box.y, box.w, box.h, sharp ? 0 : blurOf(pan, depthOf(pan, i), bb), l.flip);
   }
   return new Promise((ok) => cv.toBlob(ok, "image/png"));
 }

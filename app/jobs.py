@@ -21,6 +21,8 @@ from . import comfy, poses, settings, sprites, store
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i",
         "panel_integrate": "edit", "panel_orbit": "orbit"}
 POLL = 3.0
+# priorite : 0 = case en cours de travail (Integrate, orbite de case), 1 = banque a la main, 2 = remplissage en lot
+PRIO = {"panel_integrate": 0, "panel_orbit": 0}
 
 
 class Cancelled(Exception):
@@ -122,11 +124,11 @@ def run_item_orbit(job, prov):
             rgb, mat = prov.orbit(d / v["ref"], length, _seed(job, attempt), poses.orbit_subject(it["kind"], it["name"]),
                                   mp, not decor, tmp)
             job["progress"] = "découpe des images"
-            rel = "v/%s/f%d" % (p["variant"], attempt)
+            rel = "v/%s/o%d_%d" % (p["variant"], int(time.time()), attempt)
             info = sprites.build_orbit(rgb, mat, d / rel, fill=it.get("style") == "dessin")
             info.update({"dir": rel, "seed": _seed(job, attempt), "length": length})
             # orbite ratee : camera presque immobile, volet noir, ou sujet perdu par le detourage
-            bad = info["motion"] < 0.6 or info["dark"] > 0.08 or (not decor and info["cover"] < 0.02)
+            bad = info["motion"] < 0.3 or info["dark"] > 0.08 or (not decor and info["cover"] < 0.02)
             if best is None or (not bad) or info["motion"] > best["motion"]:
                 if best:
                     shutil.rmtree(d / best["dir"], ignore_errors=True)
@@ -159,16 +161,17 @@ def run_item_pose(job, prov):
         box = {}
 
         def apply(x):
-            vid = p.get("variant") or store.variant_id(x, p.get("pose") or label)
+            same = [k for k, v in x["variants"].items() if p.get("pose") and v.get("pose") == p["pose"]]
+            vid = p.get("variant") or (same[0] if same else store.variant_id(x, p.get("pose") or label))
             box["vid"] = vid
-            x["variants"][vid] = {"label": label, "pose": p.get("pose", ""), "ref": "v/%s/ref.png" % vid, "cut": None,
-                                  "orbit": None}
+            x["variants"].setdefault(vid, {"label": label, "pose": p.get("pose", ""), "ref": "v/%s/ref.png" % vid,
+                                           "cut": None, "orbit": None})
         store.mutate_item(it["id"], apply)
         vid = box["vid"]
         sprites.normalize(png, d / ("v/%s/ref.png" % vid))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    follow = {"target": job["target"], "_fal_key": job.get("_fal_key")}
+    follow = {"target": job["target"], "_fal_key": job.get("_fal_key"), "prio": job.get("prio", 1)}
     if it["kind"] != "decor":
         SCHEDULER.add("item_cut", {"item": it["id"], "variant": vid}, "Détourage · %s · %s" % (it["name"], label), **follow)
     if p.get("orbit", True):
@@ -194,13 +197,16 @@ def run_item_new(job, prov):
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     job["result"] = {"item": it["id"]}
-    prepare(it["id"], orbit=p.get("orbit", True), target=job["target"], fal_key=job.get("_fal_key"))
+    job["params"]["item"] = it["id"]
+    prepare(it["id"], orbit=p.get("orbit", True), target=job["target"], fal_key=job.get("_fal_key"), prio=job.get("prio", 1))
 
 
 def run_panel_integrate(job, prov):
     p = job["params"]
     d = store.project_dir(p["project"])
     prompt = p.get("prompt") or poses.INTEGRATE.get(p.get("style", "photo"), poses.INTEGRATE["photo"])
+    if p.get("extra"):
+        prompt += " " + p["extra"].strip()
     tmp = _tmp()
     try:
         png = prov.edit([d / p["flat"]], prompt, _seed(job), tmp)
@@ -259,10 +265,10 @@ def add_item(kind, name, image_path, style="photo", tags=None, facing="face", fo
     return store.mutate_item(it["id"], apply)
 
 
-def prepare(item_id, orbit=True, pose_keys=(), target="auto", fal_key=None):
+def prepare(item_id, orbit=True, pose_keys=(), target="auto", fal_key=None, prio=1):
     """Met en file ce qu'il faut pour qu'un element soit utilisable : detourage, orbite de base, poses demandees."""
     it = store.load_item(item_id)
-    follow = {"target": target, "_fal_key": fal_key}
+    follow = {"target": target, "_fal_key": fal_key, "prio": prio}
     made = []
     base = it["variants"]["base"]
     if it["kind"] != "decor" and not base.get("cut") and not SCHEDULER.pending("item_cut", item=item_id, variant="base"):
@@ -355,14 +361,15 @@ class Scheduler:
         return any(self.worker_caps(w["url"], 120).get(cap) for w in settings.workers())
 
     # ---- file
-    def add(self, kind, params, title, target="auto", _fal_key=None):
+    def add(self, kind, params, title, target="auto", _fal_key=None, prio=None):
         if target not in ("local", "fal", "auto"):
             target = "auto"
         if target == "auto":
             target = settings.load()["render"].get("target", "auto")
         job = {"id": uuid.uuid4().hex[:10], "kind": kind, "params": params, "title": title, "target": target,
                "status": "queued", "worker": "", "created": time.time(), "started": 0, "finished": 0, "error": "",
-               "progress": "", "attempts": 0, "_fal_key": _fal_key}
+               "progress": "", "attempts": 0, "_fal_key": _fal_key,
+               "prio": PRIO.get(kind, 1) if prio is None else int(prio)}
         with self.wake:
             self.jobs.append(job)
             if len(self.jobs) > 3000:
@@ -406,7 +413,7 @@ class Scheduler:
 
     def _take(self, mode, worker):
         """Plus ancienne tache en attente que ce fil peut prendre."""
-        for j in self.jobs:
+        for j in sorted(self.jobs, key=lambda x: (x.get("prio", 2), x["created"])):
             if j["status"] != "queued" or worker["name"] in j.get("_avoid", ()):
                 continue
             cap = CAPS[j["kind"]]

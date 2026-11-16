@@ -74,7 +74,7 @@ def pose_prompt(kind, key, style="photo", custom=""):
                        "position and framing, the same %s." % (desc, look))
     return label, ("Change the pose of the character: %s. Keep exactly the same character, same face, same hair, "
                    "same clothes and colours, same %s. Full body visible from head to feet, same camera angle and "
-                   "distance, same plain background." % (desc, look))
+                   "distance, same background." % (desc, look))
 
 
 def orbit_subject(kind, name):
@@ -85,9 +85,11 @@ def orbit_subject(kind, name):
 
 INTEGRATE = {
     "photo": ("Turn this rough collage into one coherent photograph. Keep every character and object exactly where "
-              "it is, same pose, same size, same framing. Unify the lighting and colour, add the contact shadows on "
+              "it is, same pose, same size, same framing. Keep every face, hairstyle and costume exactly as it is. Unify "
+              "the lighting and colour, add the contact shadows on "
               "the ground and between the elements, match grain and sharpness, blend the cut-out edges."),
     "dessin": ("Redraw this rough collage as one coherent storyboard drawing in a single consistent line style. Keep "
-               "every character and object exactly where it is, same pose, same size, same framing. Unify the line "
+               "every character and object exactly where it is, same pose, same size, same framing, same faces and "
+               "costumes. Unify the line "
                "weight and the shading, add simple cast shadows."),
 }

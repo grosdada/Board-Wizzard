@@ -65,6 +65,8 @@ def save(patch):
             raw = {}
         if (patch.get("fal") or {}).get("key", "").startswith("••"):     # cle masquee renvoyee telle quelle
             patch["fal"].pop("key")
+        if (patch.get("server") or {}).get("password", "").startswith("••"):
+            patch["server"].pop("password")
         raw = _merge(raw, patch)
         if "workers" in patch:
             raw["workers"] = patch["workers"]
@@ -101,5 +103,7 @@ def public():
     s = load()
     key = s["fal"].get("key") or ""
     s["fal"]["key"] = ("••••" + key[-4:]) if key else ""
+    if s["server"].get("password"):
+        s["server"]["password"] = "••••"
     s["data"] = str(DATA)
     return s

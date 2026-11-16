@@ -45,7 +45,7 @@ def main():
             continue
         q = urllib.parse.urlencode({"kind": m["kind"], "name": m["name"], "style": m.get("style", "photo"),
                                     "facing": m.get("facing", "face"), "file": "seed.png", "orbit": "1",
-                                    "folder": m.get("folder", "")})
+                                    "folder": m.get("folder", ""), "low": "1"})
         try:
             it = call("POST", "bank?" + q, raw=open(m["file"], "rb").read())
         except Exception as exc:                                  # noqa: BLE001
@@ -61,7 +61,7 @@ def main():
             continue
         if isinstance(want, str):
             want = [p["key"] for p in catalogue.get(m["kind"], []) if p["tier"] <= TIERS[want]]
-        r = call("POST", "bank/%s/prepare" % iid, {"orbit": True, "poses": want})
+        r = call("POST", "bank/%s/prepare" % iid, {"orbit": True, "poses": want, "low": True})
         print("  poses", m["name"], len(r["jobs"]))
 
 

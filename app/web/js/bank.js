@@ -178,13 +178,14 @@ export class Bank {
     });
     stage.addEventListener("pointerup", () => { drag = null; });
 
-    const build = () => {
+    const build = (light) => {
       const item = it();
       if (!item) return;
       const v = variantOf(item, vid) || item.variants.base;
       if (!item.variants[vid]) vid = "base";
       if (v.orbit) preload(item, vid);
       // en-tete : nom, rendu, axe de l'image de depart
+      if (!light) {
       head.textContent = "";
       const nameIn = h("input", { type: "text", value: item.name, on: { change: async (e) => { await put("bank/" + id, { name: e.target.value }); this.reload(); } } });
       const styleIn = h("select", { on: { change: async (e) => { await put("bank/" + id, { style: e.target.value }); this.reload(); } } },
@@ -192,6 +193,7 @@ export class Bank {
       const fold = this.folderInput(item.folder);
       fold.querySelector("input").addEventListener("change", async (e) => { await put("bank/" + id, { folder: e.target.value.trim() }); this.reload(); });
       head.append(h("label.row", "Nom", nameIn), h("label.row", "Dossier", fold), h("label.row", "Rendu", styleIn));
+      }
       // reperes d'axes
       snapBar.textContent = "";
       if (v.orbit) {
@@ -211,7 +213,7 @@ export class Bank {
       for (const [k, vv] of Object.entries(item.variants)) {
         const busy = app.jobsFor(id, k);
         variants.append(h("div.var" + (k === vid ? ".on" : ""), { draggable: true, title: vv.label + " : cliquer pour voir, glisser dans une case",
-          on: { click: () => { vid = k; frame = 0; build(); },
+          on: { click: () => { vid = k; frame = 0; build(true); },
                 dragstart: (e) => { e.dataTransfer.setData("application/x-bw-item", JSON.stringify({ id, v: k })); } } },
           h("img", { src: this.thumb(item, k), draggable: false, loading: "lazy" }), h("div.var-name", vv.label),
           h("div.card-meta", vv.orbit ? h("span.b.ok", "↻") : h("span.b", "fixe"), busy ? h("span.b.busy", "⏳") : null)));
@@ -225,11 +227,14 @@ export class Bank {
         h("button.mini.danger", { on: { click: async () => { if (!confirm(`Retirer « ${item.name} » de la banque ? (il part à la corbeille du dossier de données)`)) return;
           await del("bank/" + id); m.close(); this.openId = null; this.reload(); } } }, "Retirer de la banque"));
       // catalogue de poses
-      poseBox.textContent = "";
       const cat = app.info.poses[item.kind] || [];
-      if (cat.length) {
+      if (light) {                       // seulement les poses devenues disponibles
         const have = new Set(Object.values(item.variants).map((x) => x.pose));
-        const boxes = cat.map((p) => ({ p, el: h("input", { type: "checkbox", disabled: have.has(p.key), checked: have.has(p.key) }) }));
+        poseBox.querySelectorAll("input[data-pose]").forEach((el) => { if (have.has(el.dataset.pose)) { el.checked = el.disabled = true; el.parentElement.classList.add("done"); } });
+      } else if (cat.length) {
+        poseBox.textContent = "";
+        const have = new Set(Object.values(item.variants).map((x) => x.pose));
+        const boxes = cat.map((p) => ({ p, el: h("input", { type: "checkbox", "data-pose": p.key, disabled: have.has(p.key), checked: have.has(p.key) }) }));
         const custom = h("input", { type: "text", placeholder: item.kind === "decor" ? "Autre ambiance (en anglais de préférence)…" : "Autre pose : « leaning on a wall, smoking »…" });
         const orbit = h("input", { type: "checkbox", checked: true });
         poseBox.append(h("h4", item.kind === "decor" ? "Ambiances à générer" : "Poses à générer"),
@@ -252,7 +257,7 @@ export class Bank {
     const body = h("div.item", left, h("div.item-right", head, h("h4", "Variantes"), variants, poseBox));
     const m = modal("Fiche", body, [{ label: "Fermer", click: () => { this.openId = null; } }]);
     m.box.classList.add("wide");
-    this.refreshItem = () => { if (document.body.contains(body)) build(); else { this.openId = null; } };
+    this.refreshItem = () => { if (document.body.contains(body)) build(true); else { this.openId = null; } };
     build();
   }
 }

@@ -223,7 +223,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------------------------------------------------------------- API
     def job_opts(self, data):
-        return {"target": (data or {}).get("target") or "auto", "_fal_key": self.headers.get("X-Fal-Key") or None}
+        return {"target": (data or {}).get("target") or "auto", "_fal_key": self.headers.get("X-Fal-Key") or None,
+                "prio": 2 if (data or {}).get("low") else None}
 
     def api(self, method, seg, q, data, body):
         head = seg[0]
@@ -299,7 +300,7 @@ class Handler(BaseHTTPRequestHandler):
         it = store.load_item(iid)
         if act == "prepare":
             made = jobs.prepare(iid, orbit=d.get("orbit", True), pose_keys=d.get("poses") or [], target=opts["target"],
-                                fal_key=opts["_fal_key"])
+                                fal_key=opts["_fal_key"], prio=2 if d.get("low") else 1)
             for c in d.get("custom") or []:
                 if (c or "").strip():
                     made.append(S.add("item_pose", {"item": iid, "pose": "", "custom": c.strip(),
@@ -329,7 +330,8 @@ class Handler(BaseHTTPRequestHandler):
         raise ApiError("route inconnue", 404)
 
     def _follow(self, q):
-        return {"target": q.get("target", "auto"), "fal_key": self.headers.get("X-Fal-Key") or None}
+        return {"target": q.get("target", "auto"), "fal_key": self.headers.get("X-Fal-Key") or None,
+                "prio": 2 if q.get("low") else 1}
 
     def api_projects(self, method, seg, q, data, body):
         S = jobs.SCHEDULER
@@ -373,11 +375,14 @@ class Handler(BaseHTTPRequestHandler):
             (pdir / rel).write_bytes(body)
             return self.send_json({"file": rel})
         if act == "integrate" and method == "POST":
+            store.safe(pdir, d["flat"])
             jid = S.add("panel_integrate", {"project": pid, "panel": d["panel"], "flat": d["flat"],
-                                            "style": d.get("style", "photo"), "prompt": d.get("prompt", "")},
+                                            "style": d.get("style", "photo"), "prompt": d.get("prompt", ""),
+                                            "extra": d.get("extra", "")},
                         "Integrate · case %s" % d["panel"], **self.job_opts(d))
             return self.send_json({"job": jid})
         if act == "orbit" and method == "POST":
+            store.safe(pdir, d["flat"])
             jid = S.add("panel_orbit", {"project": pid, "panel": d["panel"], "flat": d["flat"]},
                         "Orbite de la case %s" % d["panel"], **self.job_opts(d))
             return self.send_json({"job": jid})

@@ -34,6 +34,7 @@ class App {
     this.undo = []; this.redo = [];
     this.jobs = [];
     this.pageIndex = 0;
+    try { this.pending = JSON.parse(localStorage.getItem("bw.pending") || "{}"); } catch (e) { this.pending = {}; }
   }
 
   async start() {
@@ -240,8 +241,8 @@ class App {
 
   // ---------------------------------------------------------------- depot dans une case
   dropItem(pid, itemId, vid, rel) {
-    const item = this.bank.get(itemId), pan = this.page().panels[pid] || (this.page().panels[pid] = {});
-    if (!item) return;
+    const item = this.bank.get(itemId), pan = this.findPanel(pid);
+    if (!item || !pan) return;
     if (item.kind === "decor") {
       pan.bg = { item: itemId, v: vid, f: 0 }; pan.view = { zoom: 1, ox: 0, oy: 0 }; pan.show = "layers";
       this.select({ panel: pid });
@@ -260,6 +261,41 @@ class App {
       pan.bg = { file: r.file, w: r.w, h: r.h }; pan.view = { zoom: 1, ox: 0, oy: 0 }; pan.show = "layers";
       this.commit("drop"); this.select({ panel: pid }); this.editor.render(); this.refreshInspector();
     } catch (e) { toast("Image refusée : " + e.message, "error"); }
+  }
+
+  // generation depuis une case : « genere-moi un marteau » ; l'element entre en banque et se pose ici des qu'il existe
+  generateHere(pid, rel) {
+    const prompt = h("textarea", { rows: 3, placeholder: "Un marteau de charpentier usé, manche en bois…" });
+    const kind = h("select", [["asset", "Objet / véhicule"], ["character", "Personnage"], ["decor", "Décor (devient le fond)"]].map(([v, t]) => h("option", { value: v }, t)));
+    const style = h("select", [["photo", "Photoréaliste"], ["dessin", "Dessin"], ["3d", "3D"]].map(([v, t]) => h("option", { value: v, selected: v === this.guessStyle(this.findPanel(pid) || {}) }, t)));
+    const orbit = h("input", { type: "checkbox", checked: true });
+    modal("Générer dans cette case", h("div.form", h("label.col", "Quoi ?", prompt), h("label.row", "Type", kind), h("label.row", "Rendu", style),
+      h("label.row.check", orbit, "Avec son orbite 360° (pivotable ensuite)"),
+      h("p.muted", "L'élément est ajouté à la banque : il resservira. Il se pose dans la case dès que son image existe (≈ 1 min), puis devient pivotable.")),
+      [{ label: "Annuler" }, { label: "Générer", primary: true, click: async () => {
+        const text = prompt.value.trim();
+        if (!text) { toast("Décris ce qu'il faut générer.", "error"); return false; }
+        const f = this.bankUI.folder;
+        const r = await post("bank/generate", { kind: kind.value, name: text.slice(0, 36), prompt: text, style: style.value, orbit: orbit.checked,
+                                                folder: f && f !== "·" ? f : "", target: target() });
+        this.pending[r.job] = { project: this.project.id, pid, rel };
+        localStorage.setItem("bw.pending", JSON.stringify(this.pending));
+        toast("Génération lancée : l'élément se posera dans la case."); this.pollSoon();
+      } }]);
+    setTimeout(() => prompt.focus(), 30);
+  }
+  findPanel(pid) { for (const pg of this.project.pages) if (pg.panels[pid] || leaves(pg.layout).includes(pid)) return pg.panels[pid] || (pg.panels[pid] = {}); return null; }
+  settlePending() {
+    let changed = false;
+    for (const [jid, d] of Object.entries(this.pending)) {
+      const j = this.jobs.find((x) => x.id === jid);
+      if (j && (j.status === "queued" || j.status === "running")) continue;
+      delete this.pending[jid]; changed = true;
+      const item = j && j.result && this.bank.get(j.result.item);
+      if (!item || d.project !== this.project.id || !this.findPanel(d.pid)) continue;
+      this.dropItem(d.pid, item.id, "base", d.rel);
+    }
+    if (changed) localStorage.setItem("bw.pending", JSON.stringify(this.pending));
   }
 
   // ---------------------------------------------------------------- calques
@@ -315,6 +351,7 @@ class App {
     const pan = this.curPanel(), items = [{ head: "Bulle" }];
     const rel = { x: (pt.x - g.bbox.x0) / g.bbox.w, y: (pt.y - g.bbox.y0) / g.bbox.h };
     for (const [t, [label]] of Object.entries(BUB)) items.push({ label, click: () => this.addBubble(t, rel), half: true });
+    items.push({ head: "Banque" }, { label: "✨ Générer un élément ici…", click: () => this.generateHere(pid, rel) });
     items.push({ head: "Case" }, { label: "Integrate (image unifiée)", click: () => this.integrate() },
       { label: "Orbite de la case", click: () => this.panelOrbit() });
     if (pan.integrated || pan.orbit) {
@@ -362,12 +399,12 @@ class App {
     const blob = await flattenPanel(this, g);
     return (await upload(`projects/${this.project.id}/flat/${g.id}`, blob)).file;
   }
-  async integrate(style, prompt) {
+  async integrate(style, extra) {
     const pan = this.curPanel(); if (!pan) return toast("Choisis d'abord une case.");
     if (!pan.bg && !(pan.layers || []).length) return toast("La case est vide.");
     try {
       const flat = await this.flat();
-      await post(`projects/${this.project.id}/integrate`, { panel: this.sel.panel, flat, style: style || pan.style || this.guessStyle(pan), prompt: prompt || "", target: target() });
+      await post(`projects/${this.project.id}/integrate`, { panel: this.sel.panel, flat, style: style || pan.style || this.guessStyle(pan), extra: extra || "", target: target() });
       toast("Integrate lancé : l'image unifiée remplacera les calques (ils restent disponibles)."); this.pollSoon();
     } catch (e) { toast("Integrate impossible : " + e.message, "error"); }
   }
@@ -446,7 +483,7 @@ class App {
     style.addEventListener("change", () => { pan.style = style.value; this.commitSoon("style"); });
     const extra = h("input", { type: "text", placeholder: "Consigne en plus (facultatif) : « night, rain »…" });
     box.append(h("h4", "Image finale"), h("label.row", "Rendu", style), extra,
-      h("div.row", h("button.primary", { title: "Une seule image, lumière et ombres unifiées", on: { click: () => this.integrate(style.value, extra.value.trim() ? defaultIntegrate(style.value) + " " + extra.value.trim() : "") } }, "✦ Integrate"),
+      h("div.row", h("button.primary", { title: "Une seule image, lumière et ombres unifiées", on: { click: () => this.integrate(style.value, extra.value.trim()) } }, "✦ Integrate"),
         h("button", { title: "Orbite 360° de toute la case", on: { click: () => this.panelOrbit() } }, "↻ Orbite de la case")));
     if (pan.integrated || pan.orbit) {
       const modes = [["layers", "Calques"]]; if (pan.integrated) modes.push(["integrated", "Intégrée"]); if (pan.orbit) modes.push(["orbit", "Orbite"]);
@@ -487,6 +524,7 @@ class App {
       this.el.jobsBtn.classList.toggle("busy", active > 0);
       if (before !== act.map((j) => j.id).join() || doneBefore !== jobs.filter((j) => j.status === "done").length) {
         await this.bankUI.reload();
+        this.settlePending();
         if (this.project) { try { this.absorb(await get("projects/" + this.project.id)); } catch (e) { /* storyboard supprime */ } }
         this.editor.render(); this.refreshInspector();
       }

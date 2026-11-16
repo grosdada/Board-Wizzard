@@ -1,7 +1,8 @@
 // Ce que l'editeur et l'aplatissement partagent : images d'un element de banque, axes d'une orbite, placements.
 
-export const AXES = ["face", "3/4 face droite", "profil droit", "3/4 dos droite", "dos", "3/4 dos gauche", "profil gauche",
-                     "3/4 face gauche"];
+// dans l'ordre ou l'orbite les parcourt ; gauche / droite = cote de l'ecran vers lequel le sujet regarde (comme sprites.py)
+export const AXES = ["face", "3/4 face gauche", "profil gauche", "3/4 dos gauche", "dos", "3/4 dos droite", "profil droit",
+                     "3/4 face droite"];
 export const pad3 = (n) => String(n).padStart(3, "0");
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const uid = () => Math.random().toString(36).slice(2, 8);
