@@ -84,10 +84,12 @@ def orbit_subject(kind, name):
 
 
 INTEGRATE = {
-    "photo": ("Turn this rough collage into one coherent photograph. Keep every character and object exactly where "
-              "it is, same pose, same size, same framing. Keep every face, hairstyle and costume exactly as it is. Unify "
-              "the lighting and colour, add the contact shadows on "
-              "the ground and between the elements, match grain and sharpness, blend the cut-out edges."),
+    # consigne retenue apres essais : « contact shadows » seul donnait des ombres noires decoupees
+    "photo": ("Make this collage look like one single real photograph taken in this place. Keep every person and object "
+              "exactly where it is, same pose, same size, same framing, same faces, hairstyles and costumes. Relight the "
+              "people so they match the light of the place, with the same colour temperature, contrast and film grain "
+              "as the background. Add only soft, faint, realistic contact shadows on the ground under their feet. "
+              "Blend the cut-out edges."),
     "dessin": ("Redraw this rough collage as one coherent storyboard drawing in a single consistent line style. Keep "
                "every character and object exactly where it is, same pose, same size, same framing, same faces and "
                "costumes. Unify the line "

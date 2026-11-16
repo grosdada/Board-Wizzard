@@ -246,6 +246,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(S.public(bool(q.get("active"))))
             if len(seg) == 2 and seg[1] == "clear":
                 S.clear()
+            elif len(seg) == 2 and seg[1] == "pause":
+                S.paused = bool((data or {}).get("on", True))
+                return self.send_json({"paused": S.paused})
             elif len(seg) == 2 and seg[1] == "cancel-all":
                 S.cancel_all()
             elif len(seg) == 3 and seg[2] == "cancel":

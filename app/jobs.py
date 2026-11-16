@@ -117,7 +117,7 @@ def run_item_orbit(job, prov):
     length = int(p.get("length") or r["orbit_length"])
     mp = float(p.get("megapixels") or (0.8 if decor else r["megapixels"]))
     best = None
-    for attempt in range(3):
+    for attempt in range(2):
         tmp = _tmp()
         try:
             job["progress"] = "orbite, essai %d" % (attempt + 1)
@@ -127,8 +127,11 @@ def run_item_orbit(job, prov):
             rel = "v/%s/o%d_%d" % (p["variant"], int(time.time()), attempt)
             info = sprites.build_orbit(rgb, mat, d / rel, fill=it.get("style") == "dessin")
             info.update({"dir": rel, "seed": _seed(job, attempt), "length": length})
-            # orbite ratee : camera presque immobile, volet noir, ou sujet perdu par le detourage
-            bad = info["motion"] < 0.3 or info["dark"] > 0.08 or (not decor and info["cover"] < 0.02)
+            # orbite ratee : volet noir, sujet perdu par le detourage, ou camera presque immobile. Le mouvement est
+            # rapporte a la place du sujet dans l'image : un petit objet qui tourne bouge peu de pixels.
+            rel_motion = info["motion"] / (1.0 if decor else max(info["cover"], 0.03))
+            bad = info["dark"] > 0.08 or (not decor and info["cover"] < 0.012) or rel_motion < (0.25 if decor else 0.6)
+            _orbit_log(it, p["variant"], attempt, info, rel_motion, bad)
             if best is None or (not bad) or info["motion"] > best["motion"]:
                 if best:
                     shutil.rmtree(d / best["dir"], ignore_errors=True)
@@ -148,6 +151,16 @@ def run_item_orbit(job, prov):
         if old and old != best["dir"]:
             shutil.rmtree(d / old, ignore_errors=True)
     store.mutate_item(it["id"], apply)
+
+
+def _orbit_log(it, vid, attempt, info, rel_motion, bad):
+    try:
+        with open(settings.DATA / "orbits.log", "a", encoding="utf-8") as f:
+            f.write("%s %s/%s essai %d mouvement %.2f (relatif %.2f) noir %.2f sujet %.3f %s\n" % (
+                time.strftime("%d/%m %H:%M"), it["id"], vid, attempt + 1, info["motion"], rel_motion, info["dark"],
+                info["cover"], "RATEE" if bad else "ok"))
+    except OSError:
+        pass
 
 
 def run_item_pose(job, prov):
@@ -294,6 +307,7 @@ class Scheduler:
         self.threads = {}
         self.caps = {}            # url -> (instant, preflight)
         self.started = False
+        self.paused = False          # ne prend plus de tache (pour finir celles en cours avant un redemarrage)
 
     # ---- persistance
     def _file(self):
@@ -413,6 +427,8 @@ class Scheduler:
 
     def _take(self, mode, worker):
         """Plus ancienne tache en attente que ce fil peut prendre."""
+        if self.paused:
+            return None
         for j in sorted(self.jobs, key=lambda x: (x.get("prio", 2), x["created"])):
             if j["status"] != "queued" or worker["name"] in j.get("_avoid", ()):
                 continue

@@ -26,10 +26,11 @@ def sheet(item, vid, orbit, th=260):
         im = Image.open(f).convert("RGBA")
         im = im.resize((max(1, round(im.width * th / im.height)), th))
         ims.append(im)
-    w = max(i.width for i in ims)
+    w = th                                     # cellule carree : toutes les planches ont la meme taille
+    ims = [i if i.width <= w else i.resize((w, max(1, round(i.height * w / i.width)))) for i in ims]
     out = Image.new("RGBA", (w * 8, th), (70, 120, 190, 255))
     for k, im in enumerate(ims):
-        out.alpha_composite(im, (k * w + (w - im.width) // 2, 0))
+        out.alpha_composite(im, (k * w + (w - im.width) // 2, th - im.height))
     return out.convert("RGB")
 
 
