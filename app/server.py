@@ -45,7 +45,7 @@ def merge_project(new, old):
                 continue
             known = set(pan.get("integrations") or [])
             fresh = [f for f in srv.get("integrations") or [] if f not in known]
-            if fresh:
+            if fresh and stale:                 # a jour, l'interface a le droit de les retirer (« Vider la case »)
                 pan["integrations"] = (pan.get("integrations") or []) + fresh
                 pan["integrated"], pan["show"] = srv.get("integrated"), srv.get("show")
             if stale and (srv.get("orbit") or {}).get("dir") != (pan.get("orbit") or {}).get("dir") and srv.get("orbit"):
@@ -313,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
         if act == "orbit":
             vid = d.get("variant", "base")
             params = {"item": iid, "variant": vid}
-            for k in ("seed", "length", "megapixels"):
+            for k in ("seed", "length", "megapixels", "studio"):
                 if d.get(k):
                     params[k] = d[k]
             return self.send_json({"job": S.add("item_orbit", params, "Orbite · %s · %s" % (

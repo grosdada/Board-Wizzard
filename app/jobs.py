@@ -121,7 +121,11 @@ def run_item_orbit(job, prov):
         tmp = _tmp()
         try:
             job["progress"] = "orbite, essai %d" % (attempt + 1)
-            rgb, mat = prov.orbit(d / v["ref"], length, _seed(job, attempt), poses.orbit_subject(it["kind"], it["name"]),
+            start = d / v["ref"]
+            if (attempt or p.get("studio")) and not decor and v.get("cut"):   # 2e essai : sujet seul sur fond de studio
+                start = sprites.studio(d / v["cut"], tmp / "studio.png")
+                job["progress"] = "orbite sur fond de studio"
+            rgb, mat = prov.orbit(start, length, _seed(job, attempt), poses.orbit_subject(it["kind"], it["name"]),
                                   mp, not decor, tmp)
             job["progress"] = "découpe des images"
             rel = "v/%s/o%d_%d" % (p["variant"], int(time.time()), attempt)
@@ -130,9 +134,11 @@ def run_item_orbit(job, prov):
             # orbite ratee : volet noir, sujet perdu par le detourage, ou camera presque immobile. Le mouvement est
             # rapporte a la place du sujet dans l'image : un petit objet qui tourne bouge peu de pixels.
             rel_motion = info["motion"] / (1.0 if decor else max(info["cover"], 0.03))
-            bad = info["dark"] > 0.08 or (not decor and info["cover"] < 0.012) or rel_motion < (0.25 if decor else 0.6)
+            bad = (info["dark"] > 0.08 or info.get("lost", 0) > 0.06 or (not decor and info["cover"] < 0.012)
+                   or rel_motion < (0.25 if decor else 0.6))
+            info["bad"] = bad
             _orbit_log(it, p["variant"], attempt, info, rel_motion, bad)
-            if best is None or (not bad) or info["motion"] > best["motion"]:
+            if best is None or (not bad) or info.get("lost", 0) + info["dark"] < best.get("lost", 0) + best["dark"]:
                 if best:
                     shutil.rmtree(d / best["dir"], ignore_errors=True)
                 best = info
