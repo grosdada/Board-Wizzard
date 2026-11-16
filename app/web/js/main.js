@@ -210,7 +210,12 @@ class App {
         Object.assign(page, { format: f.id, width: f.w, height: f.h }); this.commit("format"); this.refresh(); } } },
         FORMATS.map((f) => h("option", { value: f.id, selected: f.id === page.format }, f.label)))),
       num("Gouttière", "gutter", 0, 200), num("Marge", "margin", 0, 400), num("Trait", "strokeWidth", 0, 40),
-      col("Fond de page", "bg"), col("Fond des cases", "fill"), col("Couleur du trait", "stroke"));
+      col("Fond de page", "bg"), col("Fond des cases", "fill"), col("Couleur du trait", "stroke"),
+      h("h3", "Toute la page"),
+      h("div.row", h("button.mini", { title: "Chaque case composée devient un dessin homogène", on: { click: () => this.integratePage("dessin") } }, "✦ Tout en dessin"),
+        h("button.mini", { title: "Chaque case composée devient une photo unifiée", on: { click: () => this.integratePage("photo") } }, "✦ Tout en photo")),
+      h("div.row", h("button.mini", { on: { click: () => this.showAll("layers") } }, "Voir les calques"),
+        h("button.mini", { on: { click: () => this.showAll("integrated") } }, "Voir les intégrées")));
   }
 
   applyLayout(make) {
@@ -364,6 +369,10 @@ class App {
     items.push({ label: "Vider la case", danger: true, click: () => { this.page().panels[pid] = {}; this.commit("clear"); this.editor.render(); this.refreshInspector(); } });
     menu(e, items);
   }
+  showAll(mode) {
+    for (const pan of Object.values(this.page().panels)) { if (mode === "layers" || pan.integrated) pan.show = mode; }
+    this.commit("show"); this.editor.render(); this.refreshInspector();
+  }
   setShow(mode) { this.curPanel().show = mode; this.commit("show"); this.editor.render(); this.refreshInspector(); }
 
   // ---------------------------------------------------------------- bulles
@@ -394,8 +403,8 @@ class App {
   }
 
   // ---------------------------------------------------------------- Integrate et orbite de case
-  async flat() {
-    const g = this.geo(this.sel.panel);
+  async flat(pid) {
+    const g = this.geo(pid || this.sel.panel);
     const blob = await flattenPanel(this, g);
     return (await upload(`projects/${this.project.id}/flat/${g.id}`, blob)).file;
   }
@@ -407,6 +416,20 @@ class App {
       await post(`projects/${this.project.id}/integrate`, { panel: this.sel.panel, flat, style: style || pan.style || this.guessStyle(pan), extra: extra || "", target: target() });
       toast("Integrate lancé : l'image unifiée remplacera les calques (ils restent disponibles)."); this.pollSoon();
     } catch (e) { toast("Integrate impossible : " + e.message, "error"); }
+  }
+  // toute la page d'un coup : chaque case composee part a Integrate (les cases deja integrees sont refaites)
+  async integratePage(style) {
+    const pg = this.page(), todo = this.editor.geom.panels.filter((g) => { const p = pg.panels[g.id] || {}; return p.bg || (p.layers || []).length; });
+    if (!todo.length) return toast("Aucune case composée sur cette page.");
+    if (!confirm(`Lancer Integrate (${style === "dessin" ? "dessin" : "photoréaliste"}) sur ${todo.length} case(s) ?`)) return;
+    let n = 0;
+    for (const g of todo) {
+      try {
+        const flat = await this.flat(g.id);
+        await post(`projects/${this.project.id}/integrate`, { panel: g.id, flat, style, target: target() }); n++;
+      } catch (e) { toast(`Case ${g.order} : ${e.message}`, "error"); }
+    }
+    toast(`${n} Integrate lancé(s).`); this.pollSoon();
   }
   async panelOrbit() {
     const pan = this.curPanel(); if (!pan) return toast("Choisis d'abord une case.");
