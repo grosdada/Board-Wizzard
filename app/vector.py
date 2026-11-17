@@ -43,7 +43,20 @@ def _paths(mask, origin=(0, 0), holes=True):
     return "".join(out)
 
 
-def frame(src):
+def _hollow(ink):
+    """Aplats noirs (la peau d'un mannequin : tete, cou, mains) vides en ne gardant que leur contour : ils deviennent
+    des formes blanches au trait, comme le reste du dessin."""
+    k = 7 * UP + 1                                                # plus large qu'un trait : il ne reste que le coeur des aplats
+    core = cv2.erode(ink, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    if not core.any():
+        return ink
+    blob = cv2.dilate(core, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k + 2, k + 2))) & ink      # l'aplat entier
+    ring = 3 * UP + 1                                             # epaisseur du contour garde
+    inner = cv2.erode(blob, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ring, ring)))
+    return (ink & (1 - inner)).astype(np.uint8)
+
+
+def frame(src, hollow=False):
     """(largeur, hauteur, trace de la silhouette, trace de l'encre) d'une image detouree."""
     im = np.asarray(Image.open(src).convert("RGBA"))
     h, w = im.shape[:2]
@@ -54,6 +67,8 @@ def frame(src):
         return w, h, "M0 0H%dV%dH0Z" % (w, h), _paths(ink), []
     solid = cv2.GaussianBlur(big[..., 3], (0, 0), 1.2) > 128
     ink = ((grey < 175) & solid).astype(np.uint8)
+    if hollow:
+        ink = _hollow(ink)
     # silhouette : arrondie (le rebouchage des dessins laisse de petites marches), mais jamais plus petite que l'encre
     soft = cv2.GaussianBlur(big[..., 3], (0, 0), 2.0 * UP) > 128
     body = (soft | (cv2.dilate(ink, np.ones((3, 3), np.uint8)) > 0)).astype(np.uint8)
@@ -95,14 +110,14 @@ def _parts(body, ink):
     return out
 
 
-def orbit(folder, n):
+def orbit(folder, n, hollow=False):
     """Trace les n images d'une orbite (000.webp...). Renvoie True si vec.json est ecrit."""
     if cv2 is None:
         return False
     folder = Path(folder)
     frames, w, h = [], 0, 0
     for i in range(n):
-        w, h, body, ink, parts = frame(folder / ("%03d.webp" % i))
+        w, h, body, ink, parts = frame(folder / ("%03d.webp" % i), hollow)
         frames.append({"body": body, "ink": ink, "parts": parts} if parts else {"body": body, "ink": ink})
     (folder / "vec.json").write_text(json.dumps({"w": w, "h": h, "frames": frames}, separators=(",", ":")), encoding="utf-8")
     return True

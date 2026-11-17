@@ -16,7 +16,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from . import comfy, poses, settings, sprites, store, vector
+from . import comfy, poses, settings, sprites, store, vector, headtrack
 
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i", "item_sheet": "edit",
         "panel_integrate": "edit", "panel_orbit": "orbit"}
@@ -183,7 +183,12 @@ def run_item_orbit(job, prov):
             if it.get("style") == "dessin":                        # dessin (decor compris) : l'orbite est aussi convertie en traces
                 try:
                     job["progress"] = "conversion en tracés"
-                    info["vec"] = vector.orbit(d / rel, info["n"])
+                    mannequin = "mannequin" in (it.get("tags") or [])
+                    if mannequin:                                  # corps sans visage : on suit sa tete pleine, image par image
+                        job["progress"] = "suivi de la tête"
+                        info["head"] = headtrack.orbit(d / rel, info["n"])["ok"]
+                        job["progress"] = "conversion en tracés"
+                    info["vec"] = vector.orbit(d / rel, info["n"], hollow=mannequin)
                     info["vt"] = int(time.time())
                 except Exception:                                  # noqa: BLE001 : les images suffisent a afficher
                     info["vec"] = False
