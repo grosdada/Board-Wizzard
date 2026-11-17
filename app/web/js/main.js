@@ -619,6 +619,7 @@ class App {
         if (gs.on) box.append(fold("gs", "Réglages de l'ombre portée", range("Force", gs.a ?? 0.35, 0.05, 0.9, 0.01, (x) => putg("a", x), "cast"),
           range("Largeur", gs.w ?? 0.8, 0.2, 2.5, 0.01, (x) => putg("w", x), "cast")));
       }
+      box.append(range("Inclinaison", l.rz || 0, -180, 180, 1, (x) => { l.rz = x; }, "rz"));
       box.append(rs, rpx, rpy,
         range("Profondeur", depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"),
         h("div.row", h("button.mini" + (l.flip ? ".on" : ""), { on: { click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); this.refreshInspector(); } } }, "⇋ Miroir"),

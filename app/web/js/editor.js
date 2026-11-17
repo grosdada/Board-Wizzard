@@ -141,7 +141,7 @@ export class Editor {
           if (vf) {                                          // dessin en traces : net a tout zoom, trait reglable
             const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc;
             const col = bodyFill(l), st = inkStroke(l.lw, col), tag = { "data-layer": l.id, "data-panel": g.id };
-            const gv = s("g", Object.assign({ class: "layer vlayer", transform: (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1) ` : "") + `translate(${tx} ${ty}) scale(${sc})`,
+            const gv = s("g", Object.assign({ class: "layer vlayer", transform: (l.rz ? `rotate(${l.rz} ${box.cx} ${box.y + box.h / 2}) ` : "") + (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1) ` : "") + `translate(${tx} ${ty}) scale(${sc})`,
                                               filter: this.blur(defs, blurOf(pan, depthOf(pan, i), bb)) }, tag));
             const cid = "vc-" + g.id + "-" + l.id, clip = s("clipPath", { id: cid });
             clip.append(s("path", { d: vf.body }));
@@ -173,7 +173,7 @@ export class Editor {
           }
           const im = this.image("l:" + g.id + ":" + l.id, sp.url, {
             x: box.x, y: box.y, width: box.w, height: box.h, preserveAspectRatio: "xMidYMax meet", "data-layer": l.id,
-            "data-panel": g.id, transform: l.flip ? `translate(${2 * box.cx} 0) scale(-1 1)` : null,
+            "data-panel": g.id, transform: ((l.rz ? `rotate(${l.rz} ${box.cx} ${box.y + box.h / 2}) ` : "") + (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1)` : "")) || null,
             filter: this.blur(defs, blurOf(pan, depthOf(pan, i), bb)), class: "layer" });
           grp.append(im);
           if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };

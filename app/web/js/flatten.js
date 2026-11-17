@@ -17,9 +17,10 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   ctx.fillStyle = pg.page.fill || "#ffffff";
   ctx.fillRect(0, 0, cv.width, cv.height);
   ctx.imageSmoothingQuality = "high";
-  const draw = (im, x, y, w, h, blur, flip) => {
+  const draw = (im, x, y, w, h, blur, flip, rz) => {
     ctx.save();
     ctx.filter = blur > 0.4 ? `blur(${(blur * kx).toFixed(2)}px)` : "none";
+    if (rz) { const cx = (x + w / 2) * kx, cy = (y + h / 2) * ky; ctx.translate(cx, cy); ctx.rotate(rz * Math.PI / 180); ctx.translate(-cx, -cy); }
     if (flip) { ctx.translate((x + w / 2) * 2 * kx, 0); ctx.scale(-1, 1); }
     ctx.drawImage(im, x * kx, y * ky, w * kx, h * ky);
     ctx.restore();
@@ -64,6 +65,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       ctx.save();
       ctx.filter = blur > 0.4 ? `blur(${(blur * kx).toFixed(2)}px)` : "none";
       ctx.scale(kx, ky);
+      if (l.rz) { ctx.translate(box.x + box.w / 2, box.y + box.h / 2); ctx.rotate(l.rz * Math.PI / 180); ctx.translate(-(box.x + box.w / 2), -(box.y + box.h / 2)); }
       if (l.flip) { ctx.translate(2 * (box.x + box.w / 2), 0); ctx.scale(-1, 1); }
       ctx.translate(tx, ty); ctx.scale(sc, sc);
       ctx.fillStyle = col; ctx.fill(body);
@@ -88,7 +90,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     const im = await loadImage(sp.url);
     const box = layerBox(local, l, { w: im.naturalWidth, h: im.naturalHeight });
     cast(l, box);
-    draw(im, box.x, box.y, box.w, box.h, sharp ? 0 : blurOf(pan, depthOf(pan, i), bb), l.flip);
+    draw(im, box.x, box.y, box.w, box.h, sharp ? 0 : blurOf(pan, depthOf(pan, i), bb), l.flip, l.rz);
   }
   return new Promise((ok) => cv.toBlob(ok, "image/png"));
 }

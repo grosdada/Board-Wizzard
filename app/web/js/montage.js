@@ -1,6 +1,7 @@
 // Mode montage d'une case (maquette) : une visionneuse, une timeline avec une piste par element et une piste camera,
 // des poses cles. panel.anim = { dur (secondes), tracks: { cam: [cles], <id du calque>: [cles] } }.
-//   cle d'un calque : { t, x, y, s, f (image de l'orbite), v (pose), lw (trait), shg, shw, sha (ombre : gris, largeur,
+//   (rz : rotation de l'element dans le plan de l'image, en degres, autour de son centre : il penche, il bascule)
+//   cle d'un calque : { t, x, y, s, rz, f (image de l'orbite), v (pose), lw (trait), shg, shw, sha (ombre : gris, largeur,
 //                       angle), e (interpolation pour arriver sur cette cle : doux | lin | fixe) }
 //   cle de camera   : { t, cx, cy (centre du cadre, fraction de la case), z (zoom), rot (degres),
 //                       e }
@@ -23,7 +24,7 @@ export const perspOf = (d, dz) => { const den = d + CAM_BACK - (dz || 0); return
 // doux : depart et arrivee amortis · lin : vitesse reguliere · fixe : pas d'intermediaire, on saute a la cle (paliers)
 export const EASES = { doux: "En douceur", lin: "Régulière", fixe: "Fixe (par paliers, sans intermédiaire)" };
 const ease = (u, e) => (e === "fixe" ? 0 : e === "lin" ? u : u * u * (3 - 2 * u));
-const NUM = ["x", "y", "s", "cx", "cy", "z", "rot", "dz", "fo", "bl", "lw", "shg", "shw", "sha"];
+const NUM = ["x", "y", "s", "rz", "cx", "cy", "z", "rot", "dz", "fo", "bl", "lw", "shg", "shw", "sha"];
 // mouvements de camera prets : [nom, depart, arrivee]
 export const MOVES = {
   "trav-d": ["Travelling vers la droite", { cx: 0.38, z: 1.35 }, { cx: 0.62, z: 1.35 }],
@@ -72,7 +73,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   const keysOf = (id) => (anim.tracks || {})[id] || [];
   // orientation du personnage a cette image de l'orbite, en radians (0 = de face) : la bouche tourne avec lui
   const angleOf = (l, v, f) => { const it = itemOf(l), vv = it && variantOf(it, v || l.v); return vv && vv.orbit && vv.orbit.n ? frameToAngle(vv.orbit, f || 0) * Math.PI / 180 : 0; };
-  const baseOf = (l) => { const sh = l.sh || {}; return { x: l.x, y: l.y, s: l.s, f: l.f || 0, v: l.v, lw: l.lw || 0, shg: sh.g ?? 0.72, shw: sh.w ?? 5, sha: sh.a ?? 135 }; };
+  const baseOf = (l) => { const sh = l.sh || {}; return { x: l.x, y: l.y, s: l.s, rz: l.rz || 0, f: l.f || 0, v: l.v, lw: l.lw || 0, shg: sh.g ?? 0.72, shw: sh.w ?? 5, sha: sh.a ?? 135 }; };
   const stateOf = (l, t) => { const k = keysOf(l.id), b = baseOf(l), v0 = valueAt(k, b, t, 0); return valueAt(k, b, t, nOf(l, v0.v)); };
   const camAt = (t) => {
     const d = pan.dof || {}, c = valueAt(keysOf("cam"), CAM0, t, 0);
@@ -122,7 +123,9 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const box = layerBox(bb, Object.assign({}, l, s, { x: c.cx + (s.x - c.cx) * kp + (c.cx - 0.5) * par, y: c.cy + (s.y - c.cy) * kp + (c.cy - 0.5) * par, s: s.s * kp }), sp), vf = vecFrame(sp, again);
       const flip = l.flip ? `translate(${f1(2 * box.cx)} 0) scale(-1 1) ` : "";
       const gsd = groundShadow(l, box);                    // ombre portee : sous l'element
+      const rz = s.rz || 0;                 // ce qui suit (dessin, bouche, cadre, poignees) tourne autour du centre
       if (gsd) o += `<ellipse cx="${f1(gsd.cx)}" cy="${f1(gsd.cy)}" rx="${f1(gsd.rx)}" ry="${f1(gsd.ry)}" fill="#000" opacity="${f3(gsd.a)}" style="pointer-events:none"${blur(depthOf(pan, li), gsd.blur)}/>`;
+      const o1 = o.length;
       if (vf) {
         const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), st = inkStroke(s.lw, col);
         const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h, col);
@@ -141,11 +144,12 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
           const k = 2.4 / c.z;
           o += `<g class="mt-move" data-layer="${l.id}" data-move="1" transform="translate(${f1(box.cx)} ${f1(box.y + box.h / 2)}) scale(${f3(k)})"><circle r="15" data-layer="${l.id}"/><path d="M-9 0H9M0 -9V9M-9 0l3.5 -3.5M-9 0l3.5 3.5M9 0l-3.5 -3.5M9 0l-3.5 3.5M0 -9l-3.5 3.5M0 -9l3.5 3.5M0 9l-3.5 -3.5M0 9l3.5 -3.5"/></g>`;
         }
-        if (nOf(l, s.v)) {                                 // il a une orbite : une pastille ↻ a glisser pour le faire tourner
-          const k = 2.4 / c.z, r = 15 * k, ry = Math.max(r + 2, box.y - r - 4);   // au-dessus de la tete, sans sortir de la case
-          o += `<g class="mt-rot" data-layer="${l.id}" transform="translate(${f1(box.cx)} ${f1(ry)}) scale(${f3(k)})"><circle r="15" data-layer="${l.id}"/><path d="M-7 -3A8 8 0 1 1 -5 6M-7 -3L-11 -8M-7 -3L-1 -4" data-layer="${l.id}"/></g>`;
+        {                                                  // pastille ↻ au-dessus : la glisser fait pencher l'element (rotation dans le plan, comme une forme dessinee)
+          const k = 2.4 / c.z, r = 15 * k, ry = box.y - r - 4;
+          o += `<line x1="${f1(box.cx)}" y1="${f1(box.y)}" x2="${f1(box.cx)}" y2="${f1(ry + r)}" class="mt-sel"/><g class="mt-rot" data-layer="${l.id}" data-rot="1" transform="translate(${f1(box.cx)} ${f1(ry)}) scale(${f3(k)})"><circle r="15" data-layer="${l.id}" data-rot="1"/><path d="M-7 -3A8 8 0 1 1 -5 6M-7 -3L-11 -8M-7 -3L-1 -4" data-layer="${l.id}"/></g>`;
         }
       }
+      if (rz) o = o.slice(0, o1) + `<g transform="rotate(${f1(rz)} ${f1(box.cx)} ${f1(box.y + box.h / 2)})">` + o.slice(o1) + "</g>";
     };
     // formes du decor et elements, du plus loin au plus pres ; a profondeur egale, les formes passent derriere
     const order = [];
@@ -181,7 +185,7 @@ export function openMontage(app, pid) {
   const itemOf = scene.itemOf, nOf = scene.nOf;
   const keysOf = (id) => anim.tracks[id] || [];
   const stateOf = (l) => scene.stateOf(l, t);
-  const KEYED = ["x", "y", "s", "f", "v", "lw", "shg", "shw", "sha"];
+  const KEYED = ["x", "y", "s", "rz", "f", "v", "lw", "shg", "shw", "sha"];
   const camAt = () => scene.camAt(t);
   const CAMS = { cam: "Caméra", fo: "Mise au point", bl: "Flou" };      // pistes de la camera ; fo et bl : profondeur de champ
 
@@ -310,7 +314,8 @@ export function openMontage(app, pid) {
         anim.parallax ? h("label.row.range", "Force", h("input", { type: "range", min: 0, max: 3, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "");
     } else {
       const it = itemOf(l), n = nOf(l, cur().v);
-      side.append(range("Position ↔", "x", -1, 2, 0.005), range("Position ↕", "y", -1, 3, 0.005), range("Taille", "s", 0.05, 6, 0.01));
+      side.append(range("Position ↔", "x", -1, 2, 0.005), range("Position ↕", "y", -1, 3, 0.005), range("Taille", "s", 0.05, 6, 0.01),
+        range("Inclinaison", "rz", -180, 180, 1, (x) => Math.round(x) + "°"));
       if (n) side.append(range("Axe (rotation)", "f", 0, n - 1, 1, (x) => Math.round(x * 360 / n) + "°"));
       {
         const inp = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: depthNow(l), on: { input: (e) => { setDepth(l, +e.target.value); paint(); lanes(); syncProps(); } } }), out = h("output", depthNow(l).toFixed(2));
@@ -349,7 +354,7 @@ export function openMontage(app, pid) {
         Object.entries(it.variants).map(([k, vv]) => h("option", { value: k, selected: k === cur().v }, (vv.orbit ? "↻ " : "▫ ") + vv.label)))));
     }
     keyBar();
-    side.append(h("label.row.check", { title: "Dans l'image, sur un élément : glisser = le faire tourner (orbite) ; glisser la croix ✥ au milieu = le déplacer (ou Maj + glisser) ; molette = taille ; clic droit = son menu (pose, axe, ordre, ombres…). Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));
+    side.append(h("label.row.check", { title: "Dans l'image, sur un élément : glisser = le faire tourner (orbite) ; glisser la croix ✥ au milieu = le déplacer (ou Maj + glisser) ; glisser la pastille ↻ au-dessus = le pencher (Maj : crans de 15°) ; molette = taille ; clic droit = son menu (pose, axe, ordre, ombres…). Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));
     syncProps = () => rows.forEach((f) => f());
   }
   // boutons de cle : juste au-dessus de la timeline
@@ -748,6 +753,11 @@ export function openMontage(app, pid) {
     const p = ptOf(e), c = camAt();
     if (e.button === 2) { vdrag = null; paint(); lanes(); props(); return; }       // clic droit : on choisit, le menu s'ouvre (contextmenu)
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+    if (id && e.target.closest("[data-rot]")) {            // pastille ↻ : rotation dans le plan, autour du centre de l'element
+      const s = stateOf(layerOf(id)), box = svg.querySelector(".mt-move") || svg.querySelector(".mt-sel"), r = box.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      vdrag = { id, p, s, rot: true, cx, cy, a0: Math.atan2(e.clientY - cy, e.clientX - cx), rz0: s.rz || 0 };
+    } else
     if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: !depthView && e.button === 0 && !e.shiftKey && !e.target.closest("[data-move]") && nOf(layerOf(id), s.v) > 0, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
     else if (shp && depthView) vdrag = { id: sel, shape: shp, p, d: shp.d ?? 1, p0: shp.p.map((q) => q.slice()) };   // carte d'une forme : en profondeur, et de gauche a droite
     else vdrag = { id: "cam", p, c };                      // dans le vide (ou sur une forme du decor, dans l'image) : on deplace le cadre de la camera
@@ -761,6 +771,12 @@ export function openMontage(app, pid) {
       vdrag.shape.d = f3(clamp(vdrag.d - dy / (DY0 - DY1), 0, 1));
       vdrag.shape.p = vdrag.p0.map(([x, y]) => [+(x + dx).toFixed(4), y]);
       paint(); syncProps(); return;
+    }
+    if (vdrag.rot) {                                        // Maj : par crans de 15 degres
+      let rz = vdrag.rz0 + (Math.atan2(e.clientY - vdrag.cy, e.clientX - vdrag.cx) - vdrag.a0) * 180 / Math.PI;
+      rz = ((rz + 180) % 360 + 360) % 360 - 180;
+      if (e.shiftKey) rz = Math.round(rz / 15) * 15;
+      change(vdrag.id, { rz: +rz.toFixed(1) }); return;
     }
     if (depthView && vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx + dx), dz: f3(camDz(camD(vdrag.c.dz || 0) - dy / (DY0 - DY1))) });   // gauche / droite : le cadre ; haut / bas : la camera avance ou recule
     else if (depthView && !vdrag.turn) { setDepth(layerOf(vdrag.id), vdrag.d - dy / (DY0 - DY1)); change(vdrag.id, { x: f3(vdrag.s.x + dx) }); }
