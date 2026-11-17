@@ -138,10 +138,23 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const cur = Object.assign({}, DEF);
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", `0 0 ${W} ${f1(H)}`); svg.setAttribute("class", "draw-stage");
+  svg.setAttribute("class", "draw-stage");
   const art = document.createElementNS(NS, "g"), over = document.createElementNS(NS, "g");
-  const back = document.createElementNS(NS, "g");
-  back.innerHTML = `<rect width="${W}" height="${f1(H)}" fill="#ffffff"/>` + (backdrop ? `<image href="${backdrop}" width="${W}" height="${f1(H)}" preserveAspectRatio="xMidYMid slice" opacity="0.35"/>` : "");
+  const back = document.createElementNS(NS, "g"), guide = document.createElementNS(NS, "g");
+  guide.setAttribute("style", "pointer-events:none");
+  // zone de dessin : la case, plus ce qu'on ajoute autour (draw.ext = { l, r, t, b }, en largeurs et hauteurs de case)
+  // pour un long travelling. Les formes gardent leurs coordonnees de case : hors de 0..1, elles sont hors cadre.
+  const ext = Object.assign({ l: 0, r: 0, t: 0, b: 0 }, draw && draw.ext);
+  const zone = () => {
+    const x0 = -ext.l * W, y0 = -ext.t * H, ww = W * (1 + ext.l + ext.r), hh = H * (1 + ext.t + ext.b), big = ext.l + ext.r + ext.t + ext.b > 0;
+    svg.setAttribute("viewBox", `${f1(x0)} ${f1(y0)} ${f1(ww)} ${f1(hh)}`);
+    back.innerHTML = `<rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(ww)}" height="${f1(hh)}" fill="${big ? "#ebe8e0" : "#ffffff"}"/><rect width="${W}" height="${f1(H)}" fill="#ffffff"/>` +
+      (backdrop ? `<image href="${backdrop}" width="${W}" height="${f1(H)}" preserveAspectRatio="xMidYMid slice" opacity="0.35"/>` : "");
+    const k = ww / W;                                       // le cadre de la case reste lisible quand on dezoome
+    guide.innerHTML = big ? `<rect width="${W}" height="${f1(H)}" fill="none" stroke="#e2603a" stroke-width="${f1(2.5 * k)}" stroke-dasharray="${f1(12 * k)} ${f1(8 * k)}"/>` +
+      `<text x="${f1(6 * k)}" y="${f1(-6 * k)}" font-size="${f1(15 * k)}" fill="#e2603a">la case</text>` : "";
+  };
+  zone();
   // fantome : les personnages de la case par-dessus le dessin, en transparence, pour dessiner autour d'eux
   const ghost = document.createElementNS(NS, "g");
   ghost.setAttribute("style", "pointer-events:none");
@@ -154,7 +167,22 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const ghostBar = ghosts.length ? h("div.row.draw-ghost", { title: "Montre les personnages de la case par-dessus le dessin, pour s'en servir de repère. Ils ne font pas partie du fond." },
     h("label.row.check", h("input", { type: "checkbox", checked: gs.on, on: { change: (e) => { gs.on = e.target.checked; ghostSync(); } } }), "👻 Personnages en fantôme"),
     h("label.row.range", "Opacité", h("input", { type: "range", min: 0.05, max: 1, step: 0.01, value: gs.a, on: { input: (e) => { gs.a = +e.target.value; gOut.textContent = Math.round(gs.a * 100) + " %"; ghostSync(); } } }), gOut)) : "";
-  svg.append(back, art, ghost, over);
+  svg.append(back, art, ghost, guide, over);
+  // agrandir la zone : un demi-format de case a chaque clic, de chaque cote
+  const grow = (side, d) => { ext[side] = Math.max(0, Math.min(6, +(ext[side] + d).toFixed(2))); zone(); paint(); extInfo(); };
+  const fit = () => {                                     // recadrer : juste ce qu'il faut pour contenir les formes
+    let x0 = 0, x1 = 1, y0 = 0, y1 = 1;
+    for (const sh of shapes) for (const [x, y] of sh.p) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    const up = (v) => Math.ceil(Math.max(0, v) * 4 - 1e-6) / 4;
+    Object.assign(ext, { l: up(-x0), r: up(x1 - 1), t: up(-y0), b: up(y1 - 1) }); zone(); paint(); extInfo();
+  };
+  const extOut = h("span.muted", "");
+  const extInfo = () => { extOut.textContent = ext.l + ext.r + ext.t + ext.b > 0 ? `${(1 + ext.l + ext.r).toFixed(1)} × ${(1 + ext.t + ext.b).toFixed(1)} cases` : "taille de la case"; };
+  extInfo();
+  const gb = (label, side, title) => h("button.mini", { type: "button", title, on: { click: (e) => grow(side, e.shiftKey ? -0.5 : 0.5) } }, label);
+  const extBar = h("div.row.draw-ext", { title: "Agrandit la zone de dessin au-delà de la case, pour un long travelling : ce qui est hors du cadre orange n'apparaît que quand la caméra du montage s'y déplace. Maj + clic réduit." },
+    h("span", "Zone de dessin ⓘ"), gb("◀＋", "l", "Ajouter à gauche (Maj : retirer)"), gb("＋▶", "r", "Ajouter à droite (Maj : retirer)"), gb("▲＋", "t", "Ajouter en haut (Maj : retirer)"), gb("＋▼", "b", "Ajouter en bas (Maj : retirer)"),
+    h("button.mini", { type: "button", title: "Réduit la zone à la case et aux formes déjà dessinées", on: { click: fit } }, "Recadrer"), extOut);
   const side = h("div.draw-side"), bar = h("div.draw-tools");
   const target = () => (sel ? shapes.find((s) => s.id === sel) : null);
   const val = (k) => { const t = target(); return t && t[k] !== undefined ? t[k] : cur[k]; };
@@ -241,7 +269,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       drop("Primitives", PRIMS, prim), drop("Tracés", PATHS, path),
       h("button.mini.danger", { type: "button", title: "Retirer toutes les formes", on: { click: () => { if (shapes.length && confirm("Effacer tout le dessin de ce fond ?")) { building = null; shapes.length = 0; sel = null; paint(); props(); } } } }, "Tout effacer"));
   }
-  const at = (e) => { const r = svg.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+  const at = (e) => { const r = svg.getBoundingClientRect(); return [-ext.l + (e.clientX - r.left) / r.width * (1 + ext.l + ext.r), -ext.t + (e.clientY - r.top) / r.height * (1 + ext.t + ext.b)]; };
   const centerOf = (t) => { const b = boxOf(t, H); return [b.cx / W, b.cy / H]; };
   // pointeur ramene dans le repere de la forme (avant sa rotation)
   const local = (t, p, c) => { if (!t.r) return p; const q = rotPt([p[0] * W, p[1] * H], [c[0] * W, c[1] * H], -t.r); return [q[0] / W, q[1] / H]; };
@@ -314,9 +342,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   document.addEventListener("click", away);
   const done = () => { document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
   tools(); props(); paint();
-  const m = modal(title || "Dessiner le fond", h("div.draw-editor", h("div.draw-main", bar, ghostBar, h("div.draw-frame", svg)), side),
+  const m = modal(title || "Dessiner le fond", h("div.draw-editor", h("div.draw-main", bar, ghostBar, extBar, h("div.draw-frame", svg)), side),
     [{ label: "Annuler", click: done },
-     { label: "Enregistrer le fond", primary: true, click: () => { finish(true); done(); onSave({ shapes }); toast("Fond dessiné enregistré."); } }]);
+     { label: "Enregistrer le fond", primary: true, click: () => { finish(true); done(); onSave(ext.l + ext.r + ext.t + ext.b > 0 ? { shapes, ext } : { shapes }); toast("Fond dessiné enregistré."); } }]);
   m.box.classList.add("modal-wide");
   hist.watch(m.box);
   return m;

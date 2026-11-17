@@ -10,7 +10,7 @@
 import { h, modal, toast, history, upload, get, post, put } from "./api.js";
 import { MOUTHS, SETS, MODES, SIMPLE, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, frameToAngle, angleToFrame, bodyFill, wiggleFilter } from "./model.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, wiggleFilter } from "./model.js";
 import { drawSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
@@ -137,6 +137,10 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l))}</g>`;   // lip sync : la bouche qui parle
       if (sel === l.id) {
         o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
+        { // croix au milieu : la glisser deplace l'element (comme dans les cases) ; partout ailleurs sur lui, glisser le fait tourner
+          const k = 2.4 / c.z;
+          o += `<g class="mt-move" data-layer="${l.id}" data-move="1" transform="translate(${f1(box.cx)} ${f1(box.y + box.h / 2)}) scale(${f3(k)})"><circle r="15" data-layer="${l.id}"/><path d="M-9 0H9M0 -9V9M-9 0l3.5 -3.5M-9 0l3.5 3.5M9 0l-3.5 -3.5M9 0l-3.5 3.5M0 -9l-3.5 3.5M0 -9l3.5 3.5M0 9l-3.5 -3.5M0 9l3.5 -3.5"/></g>`;
+        }
         if (nOf(l, s.v)) {                                 // il a une orbite : une pastille ↻ a glisser pour le faire tourner
           const k = 2.4 / c.z, r = 15 * k, ry = Math.max(r + 2, box.y - r - 4);   // au-dessus de la tete, sans sortir de la case
           o += `<g class="mt-rot" data-layer="${l.id}" transform="translate(${f1(box.cx)} ${f1(ry)}) scale(${f3(k)})"><circle r="15" data-layer="${l.id}"/><path d="M-7 -3A8 8 0 1 1 -5 6M-7 -3L-11 -8M-7 -3L-1 -4" data-layer="${l.id}"/></g>`;
@@ -338,20 +342,14 @@ export function openMontage(app, pid) {
         const box = h("div.fold-in", bo("Intensité", "a", 0.3, 8, 0.1, 2, (x) => (+x).toFixed(1)), bo("Rapidité", "v", 1, 24, 1, 8, (x) => Math.round(x) + " /s"));
         if (at) at.after(box); else side.append(box);
       }
-      const move = (d) => { const i = pan.layers.indexOf(l), j = d === "top" ? pan.layers.length - 1 : d === "bottom" ? 0 : i + d; if (j < 0 || j >= pan.layers.length || j === i) return;
-        const has = pan.layers.some((x) => x.d != null);       // profondeurs reglees : elles restent rangees dans l'ordre
-        if (has) fixDepths();
-        const ds = pan.layers.map((x) => x.d).sort((a, b) => b - a);
-        pan.layers.splice(i, 1); pan.layers.splice(j, 0, l);
-        if (has) pan.layers.forEach((x, q) => { x.d = ds[q]; });
-        paint(); lanes(); props(); };
+      const move = (d) => reorder(l, d);
       side.append(h("h4", "Ordre"), h("div.row.wrap", h("button.mini", { on: { click: () => move(1) } }, "Avancer"), h("button.mini", { on: { click: () => move(-1) } }, "Reculer"),
         h("button.mini", { on: { click: () => move("top") } }, "Premier plan"), h("button.mini", { on: { click: () => move("bottom") } }, "Arrière-plan")));
       if (it && Object.keys(it.variants).length > 1) side.append(h("label.row", "Pose", h("select", { on: { change: (e) => { const vv = variantOf(it, e.target.value); preload(it, e.target.value); change(sel, { v: e.target.value, f: vv && vv.orbit ? Math.min(cur().f, vv.orbit.n - 1) : 0 }); props(); } } },
         Object.entries(it.variants).map(([k, vv]) => h("option", { value: k, selected: k === cur().v }, (vv.orbit ? "↻ " : "▫ ") + vv.label)))));
     }
     keyBar();
-    side.append(h("label.row.check", { title: "Dans l'image, sur un élément : clic gauche + glisser = le faire tourner (orbite), clic droit + glisser = le déplacer (ou Maj + clic gauche), molette = taille. Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));
+    side.append(h("label.row.check", { title: "Dans l'image, sur un élément : glisser = le faire tourner (orbite) ; glisser la croix ✥ au milieu = le déplacer (ou Maj + glisser) ; molette = taille ; clic droit = son menu (pose, axe, ordre, ombres…). Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));
     syncProps = () => rows.forEach((f) => f());
   }
   // boutons de cle : juste au-dessus de la timeline
@@ -377,6 +375,69 @@ export function openMontage(app, pid) {
     if (to == null) return toast(ts.length ? (dir > 0 ? "Pas de clé après." : "Pas de clé avant.") : "Aucune clé posée.");
     picked.clear(); selKey = own.find((k) => k.t === to) || null;
     seek(to, true);
+  }
+  function reorder(l, d) {                                 // avancer, reculer, premier plan, arriere-plan
+    const i = pan.layers.indexOf(l), j = d === "top" ? pan.layers.length - 1 : d === "bottom" ? 0 : i + d;
+    if (j < 0 || j >= pan.layers.length || j === i) return;
+    const has = pan.layers.some((x) => x.d != null);       // profondeurs reglees : elles restent rangees dans l'ordre
+    if (has) fixDepths();
+    const ds = pan.layers.map((x) => x.d).sort((a, b) => b - a);
+    pan.layers.splice(i, 1); pan.layers.splice(j, 0, l);
+    if (has) pan.layers.forEach((x, q) => { x.d = ds[q]; });
+    paint(); lanes(); props();
+  }
+  // menu du clic droit dans l'image : a peu pres celui des cases (pose, axe, ordre, ombres…), plus les cles
+  function ctxMenu(e, items) {
+    document.querySelector(".mt-menu")?.remove();
+    const box = h("div.menu.mt-menu");
+    for (const it of items) {
+      if (!it) continue;
+      if (it.head) { box.append(h("div.mhead", it.head)); continue; }
+      if (it.note) { box.append(h("div.mnote", it.note)); continue; }
+      box.append(h("button" + (it.half ? ".half" : "") + (it.checked ? ".on" : "") + (it.danger ? ".danger" : ""), { on: { click: () => { box.remove(); it.click(); } } }, it.checked ? "✓ " : "", it.label));
+    }
+    document.body.append(box);
+    const r = box.getBoundingClientRect();
+    box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px";
+    box.style.top = Math.max(4, Math.min(e.clientY, innerHeight - r.height - 6)) + "px";
+    const close = (ev) => { if (!box.contains(ev.target)) { box.remove(); document.removeEventListener("pointerdown", close, true); } };
+    setTimeout(() => document.addEventListener("pointerdown", close, true), 0);
+  }
+  function layerMenu(e, l) {
+    const it = itemOf(l), st = stateOf(l), vv = it && variantOf(it, st.v), items = [{ head: it ? it.name : "Élément" }];
+    items.push({ label: "◆ Poser une clé ici", click: () => { setKey(l.id, {}); paint(); lanes(); props(); } });
+    if (it && Object.keys(it.variants).length > 1) {
+      items.push({ head: "Pose" });
+      for (const [k, v] of Object.entries(it.variants)) items.push({ label: (v.orbit ? "↻ " : "▫ ") + v.label, checked: k === st.v, click: () => { preload(it, k); change(l.id, { v: k, f: v.orbit ? Math.min(st.f, v.orbit.n - 1) : 0 }); props(); } });
+      items.push({ note: "↻ orbite prête · ▫ image fixe" });
+    }
+    if (vv && vv.orbit && vv.orbit.n) {
+      const curAx = AXES[Math.round(frameToAngle(vv.orbit, st.f) / 45) % 8];
+      items.push({ head: "Axe" });
+      AXES.forEach((ax, i) => items.push({ label: ax, half: true, checked: ax === curAx, click: () => change(l.id, { f: angleToFrame(vv.orbit, i * 45) }) }));
+    }
+    items.push({ head: "Ordre" },
+      { label: "Avancer", half: true, click: () => reorder(l, 1) }, { label: "Reculer", half: true, click: () => reorder(l, -1) },
+      { label: "Premier plan", half: true, click: () => reorder(l, "top") }, { label: "Arrière-plan", half: true, click: () => reorder(l, "bottom") },
+      { head: "Élément" },
+      { label: "Retourner (miroir)", checked: !!l.flip, click: () => { l.flip = !l.flip; paint(); } });
+    if (sprite(it, st.v, st.f)?.vec) items.push({ label: "Ombre", checked: !!(l.sh && l.sh.on), click: () => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: !(l.sh && l.sh.on) }); paint(); props(); } },
+      { label: "Animer le tremblé", checked: !!(l.boil && l.boil.on), click: () => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: !(l.boil && l.boil.on) }); paint(); props(); } });
+    items.push({ label: "Ombre portée", checked: !!(l.gs && l.gs.on), click: () => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { on: !(l.gs && l.gs.on) }); paint(); props(); } },
+      { label: "Bouche dessinée", checked: !!(l.lip && l.lip.on), click: () => { l.lip = Object.assign({ off: 0, bg: true }, l.lip, { on: !(l.lip && l.lip.on) }); paint(); props(); } },
+      l.lip && l.lip.on ? { label: "✛ Placer la bouche à la main", click: () => { placing = l.id; svg.style.cursor = "crosshair"; props(); } } : null,
+      { head: "Clés" },
+      keysOf(l.id).length ? { label: "Vider sa piste", danger: true, click: () => { delete anim.tracks[l.id]; selKey = null; paint(); lanes(); props(); } } : { note: "Aucune clé sur cet élément" });
+    ctxMenu(e, items);
+  }
+  function camMenu(e) {
+    const items = [{ head: "Caméra" }, { label: "◆ Poser une clé ici", click: () => { setKey("cam", {}); sel = "cam"; paint(); lanes(); props(); } }, { head: "Mouvements prêts" }];
+    for (const [k, [name]] of Object.entries(MOVES)) items.push({ label: name, click: () => applyMove(k) });
+    items.push({ head: "Plan" },
+      { label: "Flou de profondeur", checked: !!dof.on, click: () => { dof.on = !dof.on; paint(); lanes(); props(); } },
+      { label: "Parallaxe automatique", checked: !!anim.parallax, click: () => { anim.parallax = !anim.parallax; paint(); props(); } },
+      { label: depthView ? "🖼 Voir l'image" : "⬒ Vue de dessus (profondeur)", click: () => depthBtn.click() });
+    ctxMenu(e, items);
   }
   function keyMenu(e, id, k) {                              // clic droit sur une cle : son interpolation
     e.preventDefault();
@@ -678,8 +739,9 @@ export function openMontage(app, pid) {
     const shId = id ? null : (e.target.closest("[data-shape]") || {}).dataset?.shape, shp = shId ? shapeOf("s:" + shId) : null;
     sel = id || (shp ? "s:" + shId : "cam"); selKey = null;
     const p = ptOf(e), c = camAt();
+    if (e.button === 2) { vdrag = null; paint(); lanes(); props(); return; }       // clic droit : on choisit, le menu s'ouvre (contextmenu)
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
-    if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: !depthView && e.button === 0 && !e.shiftKey && nOf(layerOf(id), s.v) > 0, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
+    if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: !depthView && e.button === 0 && !e.shiftKey && !e.target.closest("[data-move]") && nOf(layerOf(id), s.v) > 0, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
     else if (shp && depthView) vdrag = { id: sel, shape: shp, p, d: shp.d ?? 1 };   // carte d'une forme : elle ne glisse qu'en profondeur
     else vdrag = { id: "cam", p, c };                      // dans le vide (ou sur une forme du decor, dans l'image) : on deplace le cadre de la camera
     paint(); lanes(); props();
@@ -695,7 +757,11 @@ export function openMontage(app, pid) {
     else change(vdrag.id, { x: f3(vdrag.s.x + dx / vdrag.z), y: f3(vdrag.s.y + dy / vdrag.z) });
   });
   svg.addEventListener("pointerup", () => { vdrag = null; });
-  svg.addEventListener("contextmenu", (e) => e.preventDefault());       // le clic droit sert a deplacer un element
+  svg.addEventListener("contextmenu", (e) => {                           // clic droit : le menu de l'element, ou celui de la camera
+    e.preventDefault();
+    const l = layerOf(sel);
+    if (l) layerMenu(e, l); else camMenu(e);
+  });
   svg.addEventListener("wheel", (e) => {
     e.preventDefault();
     const k = Math.exp(-e.deltaY * 0.0015);

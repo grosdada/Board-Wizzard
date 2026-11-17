@@ -346,3 +346,10 @@ details.fold > summary:hover { opacity: 1; }
 .mt-stage [data-layer] { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='-13 -13 26 26'%3E%3Ccircle r='11' fill='%23fff' stroke='%23111' stroke-width='1.5'/%3E%3Cpath d='M-6 -2A6.5 6.5 0 1 1 -4 5M-6 -2L-9.5 -6M-6 -2L-1 -3' fill='none' stroke='%23111' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") 13 13, ew-resize; }
 .mt-rot circle { fill: #e2603a; stroke: #fff; stroke-width: 2; }
 .mt-rot path { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+.draw-ext { gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
+
+/* montage : croix de deplacement au milieu de l'element choisi */
+.mt-stage .mt-move, .mt-stage .mt-move * { cursor: move; }
+.mt-move circle { fill: #fff; stroke: #111; stroke-width: 2; fill-opacity: 0.92; }
+.mt-move path { fill: none; stroke: #111; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
