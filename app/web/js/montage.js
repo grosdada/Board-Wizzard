@@ -338,7 +338,8 @@ export function openMontage(app, pid) {
         const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); paint(); };
         const plain = (label, k, min, max, def) => { const out = h("output", (gs[k] ?? def).toFixed(2)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.01, value: gs[k] ?? def, on: { input: (e) => { putg(k, +e.target.value); out.textContent = (+e.target.value).toFixed(2); } } }), out); };
         side.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); props(); } } }), "Ombre portée"));
-        if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée", plain("Force", "a", 0.05, 0.9, 0.35), plain("Largeur", "w", 0.2, 2.5, 0.8)));
+        if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée", plain("Opacité", "a", 0.05, 1, 0.35), h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, plain("Flou ⓘ", "b", 0, 4, 1)), plain("Largeur", "w", 0.2, 2.5, 0.8), plain("Épaisseur", "h", 0.2, 4, 1),
+          h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, plain("Décalage ↔ ⓘ", "dx", -0.6, 0.6, 0), plain("Décalage ↕", "dy", -0.6, 0.6, 0))));
       }
       side.append(voiceBox(l));
       if (l.boil && l.boil.on && sprite(it, cur().v, cur().f)?.vec) {

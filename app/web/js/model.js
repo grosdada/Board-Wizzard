@@ -145,12 +145,14 @@ export function layerBox(bb, l, sp) {
   const cx = bb.x0 + l.x * bb.w, y1 = bb.y0 + l.y * bb.h;
   return { x: cx - w / 2, y: y1 - h, w, h, cx, y1 };
 }
-/** Ombre portee : une tache sombre et floue aux pieds. l.gs = { on, a (opacite), w (largeur, en largeurs du sujet) }. */
+/** Ombre portee : une tache sombre aux pieds. l.gs = { on, a (opacite), w (largeur, en largeurs du sujet), h (epaisseur),
+ *  b (flou : 0 = bord net, 1 = doux), dx, dy (decalage, en hauteurs du sujet : pour la caler sous les pieds) }. */
 export function groundShadow(l, box) {
   const g = l.gs;
   if (!g || !g.on) return null;
-  const rx = box.w * 0.5 * (g.w ?? 0.8), ry = Math.max(1.5, rx * 0.17);
-  return { cx: box.cx ?? box.x + box.w / 2, cy: box.y + box.h - ry * 0.15, rx, ry, a: g.a ?? 0.35, blur: ry * 0.4 };
+  const rx = box.w * 0.5 * (g.w ?? 0.8), ry = Math.max(1.5, rx * 0.17 * (g.h ?? 1));
+  return { cx: (box.cx ?? box.x + box.w / 2) + (g.dx || 0) * box.h, cy: box.y + box.h - ry * 0.15 + (g.dy || 0) * box.h, rx, ry, a: g.a ?? 0.35,
+           blur: Math.min(rx, ry) * 0.4 * (g.b ?? 1) };
 }
 // profondeur 0 (premier plan) a 1 (fond) : par defaut, l'ordre d'empilement
 export function depthOf(panel, i) {
