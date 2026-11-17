@@ -142,12 +142,12 @@ class FalProvider:
         url = self.upload(image)
         if "camera-controls" in ep or "multi-angle" in ep:        # H3 Max : trajectoire en degres, duree libre
             p = {"image_url": url, "prompt_expansion_mode": "disabled", "duration": round(length / 24, 2),
-                 "resolution": "768P", "seed": int(seed) % 2147483647,
+                 "resolution": self.cfg.get("orbit_resolution") or "768P", "seed": int(seed) % 2147483647,
                  "camera_trajectory": [{"time": 0, "azimuth": 0, "elevation": 0, "distance": 1},
                                        {"time": 1, "azimuth": 360, "elevation": 0, "distance": 1}]}
         else:                                                     # H3 + LoRA 360 Orbit : 5 s minimum sur fal
             p = {"prompt": (comfy.ORBIT_PROMPT + " " + prompt).strip(), "image_url": url, "end_image_url": url,
-                 "duration": max(5, min(15, -(-int(length) // 24))), "resolution": "768P",
+                 "duration": max(5, min(15, -(-int(length) // 24))), "resolution": self.cfg.get("orbit_resolution") or "768P",
                  "prompt_expansion_mode": "disabled", "seed": int(seed) % 2147483647, "enable_safety_checker": True}
             if ep.endswith("/lora"):
                 p["loras"] = [ORBIT_LORA]

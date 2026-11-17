@@ -25,6 +25,7 @@ DEFAULTS = {
         "key": "",                       # cle du poste ; un collegue peut donner la sienne dans son navigateur
         "concurrency": 3,
         "orbit": "minimax/h3/image-to-video/lora",
+        "orbit_resolution": "768P",                    # 480P (le moins cher), 768P, 2K, 4K
         "edit": "fal-ai/qwen-image-edit-plus",
         "t2i": "fal-ai/z-image/turbo",
         "matte": "fal-ai/birefnet/v2",

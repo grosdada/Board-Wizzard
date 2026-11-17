@@ -200,3 +200,19 @@ label.row.range.off { opacity: .4; }
 .drawing svg { cursor: crosshair; } .drawing .layer, .drawing .mark { pointer-events: none; }
 .row.wrap { flex-wrap: wrap; }
 .keyrow { flex-wrap: nowrap; gap: 8px; } .keyrow > span { flex: 0 0 34%; } .keyrow > input { flex: 1; min-width: 0; }
+
+/* couleurs : pastille + petite fenetre de palette */
+.colrow { justify-content: space-between; }
+.swatch { width: 44px; height: 24px; border-radius: 6px; border: 1px solid #5a5f5f; padding: 0; box-shadow: inset 0 0 0 2px #1b1d1d; cursor: pointer; }
+.colorpop { position: fixed; z-index: 90; width: 236px; background: var(--panel); border: 1px solid #484c4c; border-radius: 10px; padding: 10px 12px 12px; box-shadow: 0 12px 34px rgba(0,0,0,.5); }
+.colorpop .cp-head { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 8px 0 5px; }
+.colorpop .cp-head:first-child { margin-top: 0; }
+.colorpop .chips { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; align-items: center; }
+.colorpop .chips .muted { grid-column: span 7; font-size: 12px; }
+.colorpop .chip { aspect-ratio: 1; border-radius: 5px; border: 1px solid rgba(255,255,255,.22); padding: 0; cursor: pointer; }
+.colorpop .chip.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+.colorpop .chip.add { background: none; color: var(--accent); border: 1px dashed var(--accent); font-size: 15px; line-height: 1; }
+.colorpop .cp-foot { display: flex; gap: 10px; margin-top: 12px; align-items: center; }
+.colorpop .cp-foot label { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.colorpop .cp-foot input[type=text] { width: 76px; font-family: ui-monospace, monospace; }
+.colorpop .cp-foot input[type=color] { width: 30px; height: 24px; padding: 0; border: 0; background: none; }

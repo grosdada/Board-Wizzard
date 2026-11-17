@@ -6,6 +6,7 @@ import { Editor } from "./editor.js";
 import { Bank, target } from "./bank.js";
 import { flattenPanel } from "./flatten.js";
 import { MARKS, MARK_COLORS, newMark } from "./marks.js";
+import { swatch } from "./colors.js";
 import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement } from "./model.js";
 
 const FORMATS = [
@@ -196,8 +197,7 @@ class App {
     const pg = this.page(), page = pg.page, left = this.el.left;
     const num = (label, key, min, max, step = 1) => h("label.row", label, h("input", { type: "number", min, max, step, value: page[key],
       on: { input: (e) => { page[key] = clamp(+e.target.value || 0, min, max); this.editor.render(); this.commitSoon("page-" + key); } } }));
-    const col = (label, key) => h("label.row", label, h("input", { type: "color", value: page[key],
-      on: { input: (e) => { page[key] = e.target.value; this.editor.render(); this.commitSoon("page-" + key); } } }));
+    const col = (label, key) => h("div.row.colrow", h("span", label), swatch(page[key], (c) => { page[key] = c; this.editor.render(); this.commitSoon("page-" + key); }));
     left.textContent = "";
     left.append(h("h3", "Découpage"),
       h("div.presets", LAYOUTS.map((p) => h("button.preset", { title: p.label, on: { click: () => this.applyLayout(p.make) } }, presetThumb(p, page)))),
@@ -567,7 +567,7 @@ class App {
     if (mk) {
       const redo = () => { this.editor.render(); this.commit("mark"); this.refreshInspector(); };
       box.append(h("h3", "Indication · " + MARKS[mk.type][0]),
-        h("label.row", "Couleur", h("select", { on: { change: (e) => { mk.color = e.target.value; redo(); } } }, Object.entries(MARK_COLORS).map(([c, n]) => h("option", { value: c, selected: (mk.color || "#111111") === c }, n)))),
+        h("div.row.colrow", h("span", "Couleur"), swatch(mk.color || "#111111", (c) => { mk.color = c; this.editor.render(true); this.commitSoon("mark"); })),
         range("Épaisseur", mk.w || 1, 0.4, 4, 0.1, (x) => { mk.w = x; }, "mark"),
         h("div.row",
           h("button.mini" + ((mk.type === "frame" ? mk.dash !== false : mk.dash) ? ".on" : ""), { on: { click: () => { mk.dash = mk.type === "frame" ? mk.dash === false : !mk.dash; redo(); } } }, "Pointillés"),
