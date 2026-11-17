@@ -117,7 +117,45 @@ export function openMontage(app, pid) {
   const camAt = () => scene.camAt(t);
 
   // ------------------------------------------------------------------------------------------ visionneuse
-  function paint() { svg.innerHTML = scene.markup(t, playing ? null : sel, paint); }
+  function paint() { svg.innerHTML = depthView ? topView() : scene.markup(t, playing ? null : sel, paint); }
+
+  // ------------------------------------------------------------------------------------------ vue de dessus (profondeur)
+  // Schema vu d'en haut : la camera en bas, le fond en haut, chaque element est une carte posee a sa profondeur.
+  // Glisser une carte : gauche / droite = sa position, haut / bas = sa profondeur (0 devant, 1 au fond).
+  let depthView = false;
+  const DY0 = 0.8, DY1 = 0.14;                             // hauteur (fraction) de la profondeur 0 et de la profondeur 1
+  const esc = (x) => String(x).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+  const depthNow = (l) => depthOf(pan, pan.layers.indexOf(l));
+  const fixDepths = () => pan.layers.forEach((l, i) => { if (l.d == null) l.d = f3(depthOf(pan, i)); });
+  function setDepth(l, d) {                                // l'ordre d'empilement suit la profondeur : le plus loin est dessine d'abord
+    fixDepths();
+    l.d = f3(clamp(d, 0, 1));
+    pan.layers.sort((a, b) => b.d - a.d);
+  }
+  function topView() {
+    const c = camAt(), yOf = (d) => H * (DY0 + (DY1 - DY0) * d), fs = Math.max(11, H * 0.03), camY = H * 0.93, camX = c.cx * W, half = 0.5 / c.z * W;
+    let o = `<rect width="${W}" height="${f1(H)}" fill="#f3f1ec"/>`;
+    o += `<polygon points="${f1(camX)},${f1(camY)} ${f1(camX - half)},${f1(yOf(1))} ${f1(camX + half)},${f1(yOf(1))}" fill="#3b82f6" fill-opacity="0.09" stroke="#3b82f6" stroke-opacity="0.5" stroke-dasharray="6 5"/>`;
+    for (const d of [0, 0.25, 0.5, 0.75, 1])
+      o += `<line x1="0" x2="${W}" y1="${f1(yOf(d))}" y2="${f1(yOf(d))}" stroke="#b9b4a8" stroke-width="1" stroke-dasharray="${d === 0 || d === 1 ? "none" : "3 6"}"/>` +
+        `<text x="6" y="${f1(yOf(d) - 4)}" font-size="${f1(fs * 0.75)}" fill="#8a8578">${d === 0 ? "Devant · 0" : d === 1 ? "Fond · 1" : d}</text>`;
+    o += `<rect x="0" y="${f1(yOf(1) - H * 0.035)}" width="${W}" height="${f1(H * 0.035)}" fill="#cfcabd"/>` +
+      `<text x="${W / 2}" y="${f1(yOf(1) - H * 0.045)}" font-size="${f1(fs * 0.8)}" fill="#8a8578" text-anchor="middle">DÉCOR</text>`;
+    const th = H * 0.03;
+    pan.layers.forEach((l, li) => {
+      const st = stateOf(l), it = itemOf(l), sp = it && sprite(it, st.v, st.f);
+      if (!sp) return;
+      const box = layerBox(bb, Object.assign({}, l, st), sp), y = yOf(depthOf(pan, li)), on = sel === l.id, ih = H * 0.11, iw = ih * sp.w / sp.h;
+      o += `<g data-layer="${l.id}" style="cursor:grab">` +
+        `<image href="${sp.url}" x="${f1(box.cx - iw / 2)}" y="${f1(y - th / 2 - ih - 2)}" width="${f1(iw)}" height="${f1(ih)}" opacity="${on ? 1 : 0.75}" data-layer="${l.id}"/>` +
+        `<rect x="${f1(box.x)}" y="${f1(y - th / 2)}" width="${f1(Math.max(box.w, 14))}" height="${f1(th)}" rx="${f1(th / 3)}" fill="${on ? "#e2603a" : "#2f2d2a"}" stroke="#fff" stroke-width="1.5" data-layer="${l.id}"/>` +
+        `<text x="${f1(box.cx)}" y="${f1(y + th / 2 + fs * 0.9)}" font-size="${f1(fs * 0.8)}" fill="${on ? "#b8431f" : "#444"}" text-anchor="middle" data-layer="${l.id}">${esc(it.name)} · ${depthOf(pan, li).toFixed(2)}</text></g>`;
+    });
+    o += `<g transform="translate(${f1(camX)} ${f1(camY)})"><rect x="${f1(-fs * 1.1)}" y="${f1(-fs * 0.5)}" width="${f1(fs * 2.2)}" height="${f1(fs * 1.3)}" rx="3" fill="${sel === "cam" ? "#3b82f6" : "#5b6472"}"/>` +
+      `<polygon points="${f1(-fs * 0.5)},${f1(-fs * 0.5)} ${f1(fs * 0.5)},${f1(-fs * 0.5)} ${f1(fs * 0.8)},${f1(-fs * 1.1)} ${f1(-fs * 0.8)},${f1(-fs * 1.1)}" fill="${sel === "cam" ? "#3b82f6" : "#5b6472"}"/>` +
+      `<text y="${f1(fs * 1.75)}" font-size="${f1(fs * 0.8)}" fill="#5b6472" text-anchor="middle">CAMÉRA</text></g>`;
+    return o + `<rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
+  }
 
   // ------------------------------------------------------------------------------------------ cles
   const near = (id) => keysOf(id).find((k) => Math.abs(k.t - t) < 0.04);
@@ -164,11 +202,16 @@ export function openMontage(app, pid) {
         h("h4", "Parallaxe"),
         h("label.row.check", h("input", { type: "checkbox", checked: !!anim.parallax, on: { change: (e) => { anim.parallax = e.target.checked; paint(); props(); } } }), "Parallaxe automatique"),
         anim.parallax ? h("label.row.range", "Force", h("input", { type: "range", min: 0, max: 1.5, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "",
-        h("p.muted", "Quand la caméra se déplace, le premier plan glisse plus vite que le fond, selon l'ordre des éléments (ou leur profondeur réglée dans la case)."));
+        h("p.muted", "Quand la caméra se déplace, le premier plan glisse plus vite que le fond, selon la profondeur des éléments : le bouton « Profondeur » sous l'image les montre vus de dessus pour les placer."));
     } else {
       const it = itemOf(l), n = nOf(l, cur().v);
       side.append(range("Position ↔", "x", -1, 2, 0.005), range("Position ↕", "y", -1, 3, 0.005), range("Taille", "s", 0.05, 6, 0.01));
       if (n) side.append(range("Axe (rotation)", "f", 0, n - 1, 1, (x) => Math.round(x * 360 / n) + "°"));
+      {
+        const inp = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: depthNow(l), on: { input: (e) => { setDepth(l, +e.target.value); paint(); lanes(); syncProps(); } } }), out = h("output", depthNow(l).toFixed(2));
+        rows.push(() => { const v = depthNow(l); if (document.activeElement !== inp) inp.value = v; out.textContent = v.toFixed(2); });
+        side.append(h("label.row.range", { title: "0 = tout devant, 1 = au fond. Sert à la parallaxe, au flou de profondeur et à l'ordre des éléments." }, "Profondeur", inp, out));
+      }
       if (sprite(it, cur().v, cur().f)?.vec) {
         side.append(range("Trait", "lw", -2, 6, 0.1, (x) => (+x).toFixed(1)));
         const sh = l.sh || {};
@@ -176,7 +219,13 @@ export function openMontage(app, pid) {
         if (sh.on) side.append(range("Gris de l'ombre", "shg", 0.2, 0.95, 0.01), range("Largeur de l'ombre", "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range("Lumière (angle)", "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
           h("label.row.range", "Formes détaillées", h("input", { type: "range", min: 0, max: 8, step: 1, value: sh.k || 0, on: { input: (e) => { l.sh.k = +e.target.value; e.target.nextSibling.textContent = e.target.value; paint(); } } }), h("output", String(sh.k || 0))));
       }
-      const move = (d) => { const i = pan.layers.indexOf(l), j = d === "top" ? pan.layers.length - 1 : d === "bottom" ? 0 : i + d; if (j < 0 || j >= pan.layers.length || j === i) return; pan.layers.splice(i, 1); pan.layers.splice(j, 0, l); paint(); lanes(); props(); };
+      const move = (d) => { const i = pan.layers.indexOf(l), j = d === "top" ? pan.layers.length - 1 : d === "bottom" ? 0 : i + d; if (j < 0 || j >= pan.layers.length || j === i) return;
+        const has = pan.layers.some((x) => x.d != null);       // profondeurs reglees : elles restent rangees dans l'ordre
+        if (has) fixDepths();
+        const ds = pan.layers.map((x) => x.d).sort((a, b) => b - a);
+        pan.layers.splice(i, 1); pan.layers.splice(j, 0, l);
+        if (has) pan.layers.forEach((x, q) => { x.d = ds[q]; });
+        paint(); lanes(); props(); };
       side.append(h("h4", "Ordre"), h("div.row.wrap", h("button.mini", { on: { click: () => move(1) } }, "Avancer"), h("button.mini", { on: { click: () => move(-1) } }, "Reculer"),
         h("button.mini", { on: { click: () => move("top") } }, "Premier plan"), h("button.mini", { on: { click: () => move("bottom") } }, "Arrière-plan")));
       if (it && Object.keys(it.variants).length > 1) side.append(h("label.row", "Pose", h("select", { on: { change: (e) => { const vv = variantOf(it, e.target.value); preload(it, e.target.value); change(sel, { v: e.target.value, f: vv && vv.orbit ? Math.min(cur().f, vv.orbit.n - 1) : 0 }); props(); } } },
@@ -184,7 +233,7 @@ export function openMontage(app, pid) {
     }
     keyBar();
     side.append(h("label.row.check", h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage"),
-      h("p.muted", "Dans l'image : glisser un élément le déplace, molette = taille, Maj + glisser = le faire tourner. Avec la clé automatique, chaque geste pose une clé à l'instant affiché."));
+      h("p.muted", "Dans l'image : glisser un élément le déplace, molette = taille, Maj + glisser = le faire tourner. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche. Avec la clé automatique, chaque geste pose une clé à l'instant affiché."));
     syncProps = () => rows.forEach((f) => f());
   }
   // boutons de cle : juste au-dessus de la timeline
@@ -278,14 +327,16 @@ export function openMontage(app, pid) {
     sel = id || "cam"; selKey = null;
     const p = ptOf(e), c = camAt();
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
-    if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: e.shiftKey, sx: e.clientX, z: c.z }; }
+    if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: e.shiftKey, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
     else vdrag = { id: "cam", p, c };                      // dans le vide : on deplace le cadre de la camera
     paint(); lanes(); props();
   });
   svg.addEventListener("pointermove", (e) => {
     if (!vdrag) return;
     const p = ptOf(e), dx = p[0] - vdrag.p[0], dy = p[1] - vdrag.p[1];
-    if (vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx - dx / vdrag.c.z), cy: f3(vdrag.c.cy - dy / vdrag.c.z) });
+    if (depthView && vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx + dx) });
+    else if (depthView && !vdrag.turn) { setDepth(layerOf(vdrag.id), vdrag.d - dy / (DY0 - DY1)); change(vdrag.id, { x: f3(vdrag.s.x + dx) }); }
+    else if (vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx - dx / vdrag.c.z), cy: f3(vdrag.c.cy - dy / vdrag.c.z) });
     else if (vdrag.turn) { const n = nOf(layerOf(vdrag.id), vdrag.s.v); if (n) change(vdrag.id, { f: (((vdrag.s.f + Math.round((e.clientX - vdrag.sx) / 6)) % n) + n) % n }); }
     else change(vdrag.id, { x: f3(vdrag.s.x + dx / vdrag.z), y: f3(vdrag.s.y + dy / vdrag.z) });
   });
@@ -320,6 +371,8 @@ export function openMontage(app, pid) {
   const dur = h("input", { type: "number", min: 0.5, max: 60, step: 0.5, value: anim.dur, title: "Durée du plan, en secondes",
     on: { change: (e) => { const d = clamp(+e.target.value || 4, 0.5, 60), k = d / anim.dur; if (confirm("Étirer aussi les clés sur la nouvelle durée ?\nAnnuler : les clés gardent leur instant.")) for (const ks of Object.values(anim.tracks)) for (const x of ks) x.t = f3(x.t * k); anim.dur = d; t = Math.min(t, d); paint(); lanes(); props(); } } });
   const fullBtn = h("button.mini", { title: "La fenêtre de montage prend tout l'écran", on: { click: () => { const on = m.box.classList.toggle("modal-full"); fullBtn.textContent = on ? "🗗 Fenêtre" : "⛶ Plein écran"; } } }, "⛶ Plein écran");
+  const depthBtn = h("button.mini", { title: "Schéma vu de dessus : chaque élément est une carte, à glisser vers le fond ou vers la caméra",
+    on: { click: () => { depthView = !depthView; depthBtn.textContent = depthView ? "🖼 Image" : "⬒ Profondeur"; depthBtn.classList.toggle("on", depthView); paint(); } } }, "⬒ Profondeur");
   const save = () => {
     done();
     const real = pg.panels[pid] || (pg.panels[pid] = {});
@@ -331,7 +384,7 @@ export function openMontage(app, pid) {
   const bar = h("div.mt-bar", h("button.mini", { title: "Revenir au début", on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn,
     h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), "En boucle"), clock,
     h("span.muted", "Maj : la tête de lecture s'aimante sur les clés"),
-    h("span.spacer"), h("label.row", "Durée (s)", dur), fullBtn);
+    h("span.spacer"), depthBtn, h("label.row", "Durée (s)", dur), fullBtn);
   paint(); lanes(); props();
   const m = modal(`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, keyBox, tl),
     [{ label: "Annuler", click: done },
