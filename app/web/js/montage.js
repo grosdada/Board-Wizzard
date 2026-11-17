@@ -7,8 +7,9 @@
 // Profondeur de champ : panel.dof = { on, focus, amount } comme dans la case. Deux pistes l'animent :
 //   tracks.fo : [{ t, fo (mise au point, 0 devant a 1 fond), e }]   ·   tracks.bl : [{ t, bl (force du flou), e }]
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
-import { h, modal, toast, history } from "./api.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow } from "./model.js";
+import { h, modal, toast, history, upload } from "./api.js";
+import { MOUTHS, mouthIcon, lipMarkup, analyse, locateMouth, cueAt } from "./lipsync.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, frameToAngle, angleToFrame } from "./model.js";
 import { drawSvg, W } from "./draw.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
@@ -60,6 +61,8 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   const itemOf = (l) => app.bank.get(l.item);
   const nOf = (l, v) => { const it = itemOf(l), vv = it && variantOf(it, v || l.v); return vv && vv.orbit ? vv.orbit.n : 0; };
   const keysOf = (id) => (anim.tracks || {})[id] || [];
+  // orientation du personnage a cette image de l'orbite, en radians (0 = de face) : la bouche tourne avec lui
+  const angleOf = (l, v, f) => { const it = itemOf(l), vv = it && variantOf(it, v || l.v); return vv && vv.orbit && vv.orbit.n ? frameToAngle(vv.orbit, f || 0) * Math.PI / 180 : 0; };
   const baseOf = (l) => { const sh = l.sh || {}; return { x: l.x, y: l.y, s: l.s, f: l.f || 0, v: l.v, lw: l.lw || 0, shg: sh.g ?? 0.72, shw: sh.w ?? 5, sha: sh.a ?? 135 }; };
   const stateOf = (l, t) => { const k = keysOf(l.id), b = baseOf(l), v0 = valueAt(k, b, t, 0); return valueAt(k, b, t, nOf(l, v0.v)); };
   const camAt = (t) => {
@@ -108,11 +111,12 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})"><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="#fff" data-layer="${l.id}"/>` +
           `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
+      if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f))}</g>`;   // lip sync : la bouche qui parle
       if (sel === l.id) o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
     });
     return o + `</g></g><defs>${Object.values(blurs).join("")}</defs><rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
   }
-  return { H, anim, markup, stateOf, camAt, nOf, itemOf, keysOf };
+  return { H, anim, markup, stateOf, camAt, nOf, itemOf, keysOf, angleOf };
 }
 
 export function openMontage(app, pid) {
@@ -209,7 +213,9 @@ export function openMontage(app, pid) {
   // ------------------------------------------------------------------------------------------ reglages (droite)
   const side = h("div.mt-side");
   let syncProps = () => {};
-  const folds = { sh: true, gs: true };                    // depliants ouverts ou fermes
+  const folds = { sh: true, gs: true, lip: true };
+  const fold = (key, label, ...rows) => h("details.fold", { open: !!folds[key], on: { toggle: (e) => { folds[key] = e.target.open; } } }, h("summary", label), ...rows);
+                    // depliants ouverts ou fermes
   function props() {
     side.textContent = "";
     const isCam = !!CAMS[sel], l = isCam ? null : layerOf(sel);
@@ -221,7 +227,6 @@ export function openMontage(app, pid) {
       rows.push(() => { const v = cur()[k]; if (document.activeElement !== inp) inp.value = v; out.textContent = fmt(v); });
       return h("label.row.range", label, inp, out);
     };
-    const fold = (key, label, ...rows) => h("details.fold", { open: !!folds[key], on: { toggle: (e) => { folds[key] = e.target.open; } } }, h("summary", label), ...rows);
     side.append(h("h4", isCam ? "🎥 Caméra" : (itemOf(l) ? itemOf(l).name : "Élément")));
     if (isCam) {
       side.append(range("Cadre ↔", "cx", -0.5, 1.5, 0.005), range("Cadre ↕", "cy", -0.5, 1.5, 0.005), range("Zoom", "z", 0.4, 5, 0.01), range("Inclinaison", "rot", -45, 45, 0.5, (x) => Math.round(x) + "°"),
@@ -256,6 +261,7 @@ export function openMontage(app, pid) {
         side.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); props(); } } }), "Ombre portée"));
         if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée", plain("Force", "a", 0.05, 0.9, 0.35), plain("Largeur", "w", 0.2, 2.5, 0.8)));
       }
+      side.append(voiceBox(l));
       const move = (d) => { const i = pan.layers.indexOf(l), j = d === "top" ? pan.layers.length - 1 : d === "bottom" ? 0 : i + d; if (j < 0 || j >= pan.layers.length || j === i) return;
         const has = pan.layers.some((x) => x.d != null);       // profondeurs reglees : elles restent rangees dans l'ordre
         if (has) fixDepths();
@@ -302,6 +308,94 @@ export function openMontage(app, pid) {
     if (!a) delete anim.tracks.cam;
     else anim.tracks.cam = [Object.assign({ t: 0 }, CAM0, a), Object.assign({ t: f3(anim.dur) }, CAM0, b)];
     sel = "cam"; selKey = null; paint(); lanes(); props();
+  }
+
+  // ------------------------------------------------------------------------------------------ voix et bouche (lip sync)
+  const players = new Map();                               // un lecteur de son par calque qui parle
+  let placing = null, rec = null;
+  const voiceUrl = (lip) => `/projects/${app.project.id}/${lip.src}`;
+  function voices(on) {                                    // pendant la lecture, chaque voix suit la tete de lecture
+    for (const l of pan.layers) {
+      const lip = l.lip;
+      if (!lip || !lip.src) continue;
+      let a = players.get(l.id);
+      if (!a || a.dataset.src !== lip.src) { if (a) a.pause(); a = new Audio(voiceUrl(lip)); a.dataset.src = lip.src; a.preload = "auto"; players.set(l.id, a); }
+      const want = t - (lip.off || 0);
+      if (!on || lip.on === false || want < 0 || want >= (lip.dur || 1e9)) { if (!a.paused) a.pause(); continue; }
+      if (a.paused) { try { a.currentTime = want; } catch (e) { /* pas encore charge */ } a.play().catch(() => {}); }
+      else if (Math.abs(a.currentTime - want) > 0.25) a.currentTime = want;
+    }
+    if (!on) for (const a of players.values()) a.pause();
+  }
+  async function setVoice(l, blob, name) {                 // un son arrive (fichier ou micro) : on le range, on l'ecoute, on pose les bouches
+    try {
+      toast("Écoute de la voix…");
+      const [r, res] = await Promise.all([upload(`projects/${app.project.id}/audio?name=${encodeURIComponent(name)}`, blob), blob.arrayBuffer().then((b) => analyse(b))]);
+      const first = !l.lip || l.lip.x == null;
+      l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { src: r.file, name, dur: res.dur, fps: res.fps, cues: res.cues });
+      if (first) await autoMouth(l, true);
+      if ((l.lip.off || 0) + res.dur > anim.dur) { anim.dur = Math.min(60, Math.ceil(((l.lip.off || 0) + res.dur) * 2) / 2); dur.value = anim.dur; }
+      hist.snap(); paint(); lanes(); props();
+      toast(`Voix posée : ${res.dur.toFixed(1)} s, ${new Set(res.cues).size} bouches différentes.`);
+    } catch (e) { toast("Voix refusée : " + e.message, "error"); }
+  }
+  async function autoMouth(l, quiet) {                     // reperage automatique sur l'image de face
+    const it = itemOf(l), st = stateOf(l), vv = it && variantOf(it, st.v);
+    const sp = it && sprite(it, st.v, vv && vv.orbit ? angleToFrame(vv.orbit, 0) : 0), found = sp && await locateMouth(sp.url);
+    l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, found || { x: 0.5, y: 0.13, s: 0.035, hw: 0.03 });
+    if (!quiet) { paint(); props(); toast(found ? "Bouche repérée sur l'image de face. Ajuste au besoin, ou place-la à la main." : "Repérage impossible sur cette image : place la bouche à la main."); }
+  }
+  function placeMouth(e) {                                 // placement a la main : un clic dans l'image, la ou est la bouche
+    const l = layerOf(placing); placing = null; svg.style.cursor = "";
+    if (!l) return;
+    const p = ptOf(e), c = camAt(), a = c.rot * Math.PI / 180, X0 = (p[0] - 0.5) * W, Y0 = (p[1] - 0.5) * H;
+    const X = (X0 * Math.cos(a) - Y0 * Math.sin(a)) / c.z + c.cx * W, Y = (X0 * Math.sin(a) + Y0 * Math.cos(a)) / c.z + c.cy * H;   // du cadre de la camera vers la case
+    const st = stateOf(l), it = itemOf(l), sp = it && sprite(it, st.v, st.f);
+    if (!sp) return;
+    const box = layerBox(bb, Object.assign({}, l, st), sp), ang = scene.angleOf(l, st.v, st.f);
+    const lip = l.lip = Object.assign({ on: true, off: 0, bg: true, s: 0.035, hw: 0.03 }, l.lip);
+    const px = l.flip ? 2 * box.cx - X : X;
+    lip.x = f3((px + Math.sin(ang) * (lip.hw ?? 0.03) * box.h - box.x) / box.w);       // ramene a la vue de face
+    lip.y = f3((Y - box.y) / box.h);
+    hist.snap(); paint(); props();
+  }
+  async function micro(l, btn) {                           // enregistrement direct au micro
+    if (rec) { rec.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }), parts = [];
+      rec = new MediaRecorder(stream);
+      rec.ondataavailable = (ev) => { if (ev.data.size) parts.push(ev.data); };
+      rec.onstop = () => { stream.getTracks().forEach((x) => x.stop()); const type = rec.mimeType || "audio/webm"; rec = null; if (btn.isConnected) { btn.textContent = "● Micro"; btn.classList.remove("danger"); }
+        if (parts.length) setVoice(l, new Blob(parts, { type }), "micro" + (type.includes("ogg") ? ".ogg" : type.includes("mp4") ? ".mp4" : ".webm")); };
+      rec.start();
+      btn.textContent = "■ Arrêter l'enregistrement"; btn.classList.add("danger");
+    } catch (e) { rec = null; toast("Micro indisponible : " + e.message, "error"); }
+  }
+  function voiceBox(l) {
+    const lip = l.lip || {}, put = (k, x) => { l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { [k]: x }); paint(); };
+    const plain = (label, k, min, max, step, def, fmt = (x) => (+x).toFixed(3)) => { const out = h("output", fmt(lip[k] ?? def));
+      return h("label.row.range", label, h("input", { type: "range", min, max, step, value: lip[k] ?? def, on: { input: (e) => { put(k, +e.target.value); out.textContent = fmt(+e.target.value); } } }), out); };
+    const file = h("input", { type: "file", accept: "audio/*,video/mp4,.webm", style: { display: "none" }, on: { change: (e) => { const f = e.target.files[0]; if (f) setVoice(l, f, f.name); e.target.value = ""; } } });
+    const micBtn = h("button.mini", { title: "Enregistre ta voix au micro ; clique encore pour arrêter", on: { click: () => micro(l, micBtn) } }, rec ? "■ Arrêter l'enregistrement" : "● Micro");
+    const rows = [h("div.row.wrap", h("button.mini", { title: "Fichier son : wav, mp3, m4a, ogg, webm", on: { click: () => file.click() } }, lip.src ? "Changer la voix…" : "Importer une voix…"), micBtn, file,
+      lip.src ? h("button.mini.danger", { title: "Retire la voix et ses bouches (la place de la bouche est gardée)", on: { click: () => { const a = players.get(l.id); if (a) a.pause(); players.delete(l.id); delete l.lip.src; delete l.lip.cues; delete l.lip.name; delete l.lip.dur; paint(); props(); } } }, "Retirer") : "")];
+    if (lip.src) rows.push(h("div.muted", { title: lip.name || "" }, `🔊 ${(lip.name || "voix").slice(0, 26)} · ${(lip.dur || 0).toFixed(1)} s`));
+    rows.push(h("label.row.check", { title: "Affiche la bouche dessinée sur le personnage" }, h("input", { type: "checkbox", checked: !!lip.on, on: { change: (e) => { put("on", e.target.checked); props(); } } }), "Bouche dessinée"));
+    if (lip.on) {
+      rows.push(h("div.row.wrap",
+        h("button.mini", { title: "Cherche la tête sur l'image de face et vise la bouche", on: { click: () => autoMouth(l) } }, "◎ Repérer la bouche"),
+        h("button.mini" + (placing === l.id ? ".on" : ""), { title: "Puis clique dans l'image, à l'endroit de la bouche", on: { click: () => { placing = placing === l.id ? null : l.id; svg.style.cursor = placing ? "crosshair" : ""; props(); } } }, placing === l.id ? "Clique sur la bouche…" : "✛ Placer à la main")),
+        plain("Taille", "s", 0.005, 0.2, 0.001, 0.035), plain("Position ↔", "x", 0, 1, 0.002, 0.5), plain("Position ↕", "y", 0, 1, 0.002, 0.13),
+        h("div", { title: "Rayon de l'axe sur lequel la bouche tourne avec l'orbite : plus il est grand, plus la bouche part sur le côté quand le personnage tourne." }, plain("Axe de la tête ⓘ", "hw", 0, 0.15, 0.001, 0.03)),
+        h("label.row.check", { title: "Une pastille blanche derrière la bouche, pour couvrir celle du dessin" }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => put("bg", e.target.checked) } }), "Cache blanc derrière"));
+      if (lip.cues) {
+        const fps = lip.fps || 12, force = (sh) => { const i = Math.floor((t - (lip.off || 0)) * fps); if (i < 0 || i >= lip.cues.length) return toast("La tête de lecture est hors de la voix."); const c = lip.cues.split(""); c[i] = sh; if (i + 1 < c.length) c[i + 1] = sh; put("cues", c.join("")); props(); };
+        rows.push(plain("Décalage (s)", "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2)),
+          h("div.muted", { title: "Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée." }, `Bouche à cet instant ⓘ : ${MOUTHS[cueAt(lip, t)]}`),
+          h("div.row.wrap.mouths", Object.keys(MOUTHS).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); b.innerHTML = mouthIcon(k); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));
+      }
+    }
+    return h("div", h("h4", { title: "Une voix importée ou enregistrée fait parler le personnage : le navigateur écoute le son et appelle la bonne bouche, sans calcul sur les machines." }, "🗣 Voix et bouche ⓘ"), fold("lip", "Réglages de la voix", ...rows));
   }
 
   // ------------------------------------------------------------------------------------------ timeline (bas)
@@ -395,6 +489,7 @@ export function openMontage(app, pid) {
   let vdrag = null;
   svg.addEventListener("pointerdown", (e) => {
     stop();
+    if (placing) { placeMouth(e); return; }
     const id = e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
     sel = id || "cam"; selKey = null;
     const p = ptOf(e), c = camAt();
@@ -426,11 +521,11 @@ export function openMontage(app, pid) {
     if (!playing) return;
     t += (now - last) / 1000; last = now;
     if (t >= anim.dur) { if (loop) t = 0; else { t = anim.dur; paint(); head(); return stop(); } }
-    paint(); head();
+    paint(); head(); voices(true);
     raf = requestAnimationFrame(tick);
   }
   function play() { if (t >= anim.dur - 0.01) t = 0; playing = true; playBtn.textContent = "⏸ Pause"; last = performance.now(); raf = requestAnimationFrame(tick); }
-  function stop() { if (!playing) return; playing = false; cancelAnimationFrame(raf); playBtn.textContent = "▶ Lecture"; paint(); lanes(); props(); }
+  function stop() { if (!playing) return; playing = false; voices(false); cancelAnimationFrame(raf); playBtn.textContent = "▶ Lecture"; paint(); lanes(); props(); }
   // Ctrl+Z / Ctrl+Y : les 5 dernieres actions (elements, cles, camera, profondeur de champ)
   const hist = history(() => ({ layers: pan.layers, anim, dof }), (st) => {
     pan.layers = st.layers;
@@ -455,7 +550,7 @@ export function openMontage(app, pid) {
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); seek(t + (e.key === "ArrowRight" ? 1 : -1) / 24, true); }
   };
   document.addEventListener("keydown", key, true);
-  const done = () => { playing = false; cancelAnimationFrame(raf); document.removeEventListener("keydown", key, true); };
+  const done = () => { playing = false; voices(false); if (rec) { try { rec.stop(); } catch (e) { /* rien */ } } cancelAnimationFrame(raf); document.removeEventListener("keydown", key, true); };
 
   const dur = h("input", { type: "number", min: 0.5, max: 60, step: 0.5, value: anim.dur, title: "Durée du plan, en secondes",
     on: { change: (e) => { const d = clamp(+e.target.value || 4, 0.5, 60), k = d / anim.dur; if (confirm("Étirer aussi les clés sur la nouvelle durée ?\nAnnuler : les clés gardent leur instant.")) for (const ks of Object.values(anim.tracks)) for (const x of ks) x.t = f3(x.t * k); anim.dur = d; t = Math.min(t, d); paint(); lanes(); props(); } } });

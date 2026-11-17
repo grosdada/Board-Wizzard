@@ -70,7 +70,19 @@ inclinaison de la caméra, avec des mouvements prêts (travellings, panoramiques
 durée réglable, plein écran. « Enregistrer et envoyer dans le deck » ajoute la case comme plan au **deck de montage**
 (menu « 🎞 Decks ▾ » en haut : les decks enregistrés, et « Nouveau deck ») : les cases animées y sont mises bout à
 bout, on les réordonne, on les raccourcit par les poignées de leurs deux bouts, on les retire, on lit le tout. Un
-storyboard peut avoir plusieurs decks (« Enregistrer sous… », « Supprimer ce deck »). C'est une maquette : pas encore de transitions, de son ni d'export vidéo.
+storyboard peut avoir plusieurs decks (« Enregistrer sous… », « Supprimer ce deck »). C'est une maquette : pas encore de transitions, de son dans le deck ni d'export vidéo.
+
+Dans le montage : vue « ⬒ Profondeur » (schéma vu de dessus pour placer les éléments entre la caméra et le décor),
+profondeur de champ avec ses pistes « Mise au point » et « Flou », lasso sur les clés (glisser dans une piste),
+Ctrl+Z / Ctrl+Y sur 5 actions.
+
+**Voix et bouche (lip sync, sans calcul sur les machines)** : élément choisi → « 🗣 Voix et bouche ». On importe un
+fichier son ou on enregistre au micro ; le navigateur écoute la voix (volume et couleur du son, 12 fois par seconde,
+`app/web/js/lipsync.js`) et appelle une des neuf bouches au trait (repos, M·B·P, A, É·I, O, OU, F·V, consonnes, L·T).
+C'est une estimation à l'oreille, pas une reconnaissance des mots : on corrige une bouche en cliquant celle qu'on veut à
+l'instant affiché. La bouche se place par « ◎ Repérer la bouche » (tête cherchée en haut de la silhouette de face) ou
+« ✛ Placer à la main » (un clic dans l'image), puis taille et position aux curseurs. Elle est accrochée à un axe qui
+tourne avec l'orbite : de trois quarts elle part sur le côté et se resserre, de dos elle disparaît.
 
 ## Rendus
 

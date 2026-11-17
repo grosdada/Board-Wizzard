@@ -383,6 +383,16 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 tmp.unlink(missing_ok=True)
             return self.send_json({"file": "assets/" + dest.name, "w": w, "h": h})
+        if act == "audio" and method == "POST":                    # voix d'un personnage (fichier importe ou micro)
+            ext = Path(q.get("name", "voix.webm")).suffix.lower()
+            if ext not in (".webm", ".wav", ".mp3", ".m4a", ".ogg", ".oga", ".aac", ".flac", ".mp4"):
+                ext = ".webm"
+            if not body or len(body) > 80 * 1024 * 1024:
+                return self.send_json({"error": "fichier son vide ou trop gros (80 Mo au plus)"}, 400)
+            dest = pdir / "assets" / ("voix_%d%s" % (time.time() * 1000, ext))
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(body)
+            return self.send_json({"file": "assets/" + dest.name})
         if act == "flat" and method == "POST":                     # la case aplatie par le navigateur (PNG)
             panel = re.sub(r"[^\w-]", "", seg[2])
             rel = "flat/%s_%d.png" % (panel, time.time())
