@@ -22,7 +22,7 @@ const OPEN = new Set(["line", "free", "polyline"]);       // sans remplissage
 const MANY = new Set(["free", "blob", "poly", "polyline"]);
 const FILLS = { none: "Aucun", white: "Blanc", black: "Noir", tone: "Gris en trame", grad: "Dégradé en trame" };
 const FORMS = { points: "Points", lignes: "Lignes", croix: "Croisillons" };
-const DEF = { stroke: "#111111", sw: 1, fill: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45 };
+const DEF = { stroke: "#111111", sw: 1, fill: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4 };   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
 
 function geom(sh, H) {
   const P = sh.p.map(([x, y]) => [x * W, y * H]);
@@ -97,6 +97,12 @@ export function drawSvg(draw, H, pre) {
     if (sh.stroke !== "none" && sh.sw > 0) one += `<path ${tag} d="${d}" fill="none" stroke="${sh.stroke}" stroke-width="${f1(sh.sw * 4)}" stroke-linecap="round" stroke-linejoin="round"/>`;
     else if (open || sh.fill === "none") one += `<path ${tag} d="${d}" fill="none" stroke="#111111" stroke-opacity="0.001" stroke-width="12"/>`;
     if (!open && sh.fill === "none") one += `<path ${tag} d="${d}" fill="#000" fill-opacity="0.001"/>`;    // attrapable a la souris
+    if (sh.hand > 0) {                                     // trait a la main : un bruit doux deplace le contour, propre a chaque forme
+      const amp = sh.hand * 3, pad = amp + sh.sw * 4 + 4, seed = [...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
+      defs += `<filter id="${id}h" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">` +
+        `<feTurbulence type="fractalNoise" baseFrequency="${(0.06 / Math.max(0.5, sh.hw)).toFixed(4)}" numOctaves="2" seed="${seed}"/><feDisplacementMap in="SourceGraphic" scale="${f1(amp)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
+      one = `<g filter="url(#${id}h)">${one}</g>`;
+    }
     body += sh.r ? `<g transform="rotate(${f1(sh.r)} ${f1(bx.cx)} ${f1(bx.cy)})">${one}</g>` : one;
   });
   return `<defs>${defs}</defs>${body}`;
@@ -177,6 +183,8 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     side.append(h("h4", t ? "Forme choisie" : "Prochaine forme"),
       pick("Trait", "stroke", { "#111111": "Noir", "#ffffff": "Blanc", none: "Aucun" }));
     if (val("stroke") !== "none") side.append(range("Épaisseur", "sw", 0.2, 12, 0.1));
+    side.append(h("h4", "Trait à la main"), range("Tremblé", "hand", 0, 10, 0.1), range("Ondulation", "hw", 0.5, 12, 0.1),
+      h("p.muted", "Tremblé à 0 : trait net. Ondulation courte = trait nerveux, longue = lignes qui flottent."));
     if (!open) {
       side.append(pick("Remplissage", "fill", FILLS));
       const fill = val("fill");
