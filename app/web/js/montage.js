@@ -3,8 +3,9 @@
 //   cle d'un calque : { t, x, y, s, f (image de l'orbite), v (pose), lw (trait), shg, shw, sha (ombre : gris, largeur,
 //                       angle), e (interpolation pour arriver sur cette cle : doux | lin | fixe) }
 //   cle de camera   : { t, cx, cy (centre du cadre, fraction de la case), z (zoom), rot (degres),
-//                       fo (mise au point, 0 devant a 1 fond), bl (force du flou), e }
-// Profondeur de champ : panel.dof = { on, focus, amount } comme dans la case ; fo et bl l'animent.
+//                       e }
+// Profondeur de champ : panel.dof = { on, focus, amount } comme dans la case. Deux pistes l'animent :
+//   tracks.fo : [{ t, fo (mise au point, 0 devant a 1 fond), e }]   ·   tracks.bl : [{ t, bl (force du flou), e }]
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { h, modal, toast } from "./api.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf } from "./model.js";
@@ -61,7 +62,12 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   const keysOf = (id) => (anim.tracks || {})[id] || [];
   const baseOf = (l) => { const sh = l.sh || {}; return { x: l.x, y: l.y, s: l.s, f: l.f || 0, v: l.v, lw: l.lw || 0, shg: sh.g ?? 0.72, shw: sh.w ?? 5, sha: sh.a ?? 135 }; };
   const stateOf = (l, t) => { const k = keysOf(l.id), b = baseOf(l), v0 = valueAt(k, b, t, 0); return valueAt(k, b, t, nOf(l, v0.v)); };
-  const camAt = (t) => { const d = pan.dof || {}; return valueAt(keysOf("cam"), Object.assign({ fo: d.focus ?? 0.3, bl: d.amount ?? 12 }, CAM0), t, 0); };
+  const camAt = (t) => {
+    const d = pan.dof || {}, c = valueAt(keysOf("cam"), CAM0, t, 0);
+    c.fo = valueAt(keysOf("fo"), { fo: c.fo ?? d.focus ?? 0.3 }, t, 0).fo;
+    c.bl = valueAt(keysOf("bl"), { bl: c.bl ?? d.amount ?? 12 }, t, 0).bl;
+    return c;
+  };
   const drawBg = pan.draw && (pan.draw.shapes || []).length ? drawSvg(pan.draw, H, pre) : "";
   /** Balisage SVG de la case a l'instant t. sel : calque a encadrer. again : rappele quand des traces finissent de charger. */
   function markup(t, sel, again) {
@@ -126,6 +132,7 @@ export function openMontage(app, pid) {
   const stateOf = (l) => scene.stateOf(l, t);
   const KEYED = ["x", "y", "s", "f", "v", "lw", "shg", "shw", "sha"];
   const camAt = () => scene.camAt(t);
+  const CAMS = { cam: "Caméra", fo: "Mise au point", bl: "Flou" };      // pistes de la camera ; fo et bl : profondeur de champ
 
   // ------------------------------------------------------------------------------------------ visionneuse
   function paint() { svg.innerHTML = depthView ? topView() : scene.markup(t, playing ? null : sel, paint); }
@@ -176,8 +183,8 @@ export function openMontage(app, pid) {
     const keys = anim.tracks[id] || (anim.tracks[id] = []);
     let k = near(id);
     if (!k) {
-      const l = layerOf(id), full = id === "cam" ? camAt() : stateOf(l);
-      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot, fo: full.fo, bl: full.bl } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
+      const l = layerOf(id), full = CAMS[id] ? camAt() : stateOf(l);
+      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot } : CAMS[id] ? { [id]: full[id] } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
       if (!keys.length && t > 0.04) keys.push(Object.assign({ t: 0 }, base));     // premiere cle posee plus loin : on garde le depart
       k = Object.assign({ t: f3(t) }, base);
       keys.push(k); keys.sort((a, b) => a.t - b.t);
@@ -187,8 +194,11 @@ export function openMontage(app, pid) {
   }
   function change(id, patch) {                             // un reglage bouge : cle automatique, ou valeur de base
     if (auto || keysOf(id).length) setKey(id, patch);
+    else if (id === "fo") dof.focus = patch.fo;
+    else if (id === "bl") dof.amount = patch.bl;
     else if (id !== "cam") Object.assign(layerOf(id), patch);
     else setKey(id, patch);
+    if (CAMS[id] && CAMS[sel] && sel !== id) { sel = id; keyBar(); }      // camera, mise au point, flou : la piste reglee devient la piste choisie
     paint(); lanes(); syncProps();
   }
 
@@ -197,12 +207,12 @@ export function openMontage(app, pid) {
   let syncProps = () => {};
   function props() {
     side.textContent = "";
-    const isCam = sel === "cam", l = isCam ? null : layerOf(sel);
+    const isCam = !!CAMS[sel], l = isCam ? null : layerOf(sel);
     if (!isCam && !l) { sel = "cam"; return props(); }
     const cur = () => (isCam ? camAt() : stateOf(l));
     const rows = [];
-    const range = (label, k, min, max, step, fmt = (x) => (+x).toFixed(2)) => {
-      const inp = h("input", { type: "range", min, max, step, value: cur()[k], on: { input: (e) => change(sel, { [k]: +e.target.value }) } }), out = h("output", fmt(cur()[k]));
+    const range = (label, k, min, max, step, fmt = (x) => (+x).toFixed(2), track = isCam ? "cam" : sel) => {
+      const inp = h("input", { type: "range", min, max, step, value: cur()[k], on: { input: (e) => change(track, { [k]: +e.target.value }) } }), out = h("output", fmt(cur()[k]));
       rows.push(() => { const v = cur()[k]; if (document.activeElement !== inp) inp.value = v; out.textContent = fmt(v); });
       return h("label.row.range", label, inp, out);
     };
@@ -211,9 +221,9 @@ export function openMontage(app, pid) {
       side.append(range("Cadre ↔", "cx", -0.5, 1.5, 0.005), range("Cadre ↕", "cy", -0.5, 1.5, 0.005), range("Zoom", "z", 0.4, 5, 0.01), range("Inclinaison", "rot", -45, 45, 0.5, (x) => Math.round(x) + "°"),
         h("h4", { title: "Un mouvement prêt pose deux clés, au début et à la fin. Tu peux ensuite les régler ou en ajouter." }, "Mouvements prêts ⓘ"),
         h("select", { on: { change: (e) => { applyMove(e.target.value); e.target.value = ""; } } }, h("option", { value: "" }, "Choisir un mouvement…"), Object.entries(MOVES).map(([k, [name]]) => h("option", { value: k }, name))),
-        h("h4", { title: "0 = tout devant, 1 = le décor. Ces deux réglages se posent en clés sur la piste Caméra : la mise au point peut passer d'un personnage à l'autre. La vue « Profondeur » montre le plan net." }, "Profondeur de champ ⓘ"),
-        h("label.row.check", h("input", { type: "checkbox", checked: !!dof.on, on: { change: (e) => { dof.on = e.target.checked; paint(); props(); } } }), "Flou de profondeur"));
-      if (dof.on) side.append(range("Mise au point", "fo", 0, 1, 0.01), range("Flou", "bl", 0, 60, 1, (x) => String(Math.round(x))));
+        h("h4", { title: "0 = tout devant, 1 = le décor. Quand le flou est coché, la mise au point et le flou ont chacun leur piste dans la timeline, avec leurs propres clés : la mise au point peut passer d'un personnage à l'autre. La vue « Profondeur » montre le plan net." }, "Profondeur de champ ⓘ"),
+        h("label.row.check", h("input", { type: "checkbox", checked: !!dof.on, on: { change: (e) => { dof.on = e.target.checked; if (!dof.on && (sel === "fo" || sel === "bl")) sel = "cam"; paint(); lanes(); props(); } } }), "Flou de profondeur"));
+      if (dof.on) side.append(range("Mise au point", "fo", 0, 1, 0.01, undefined, "fo"), range("Flou", "bl", 0, 60, 1, (x) => String(Math.round(x)), "bl"));
       side.append(
         h("h4", { title: "Quand la caméra se déplace, le premier plan glisse plus vite que le fond, selon la profondeur des éléments : le bouton « Profondeur » sous l'image les montre vus de dessus pour les placer." }, "Parallaxe ⓘ"),
         h("label.row.check", h("input", { type: "checkbox", checked: !!anim.parallax, on: { change: (e) => { anim.parallax = e.target.checked; paint(); props(); } } }), "Parallaxe automatique"),
@@ -254,7 +264,7 @@ export function openMontage(app, pid) {
   const keyBox = h("div.mt-keys");
   function keyBar() {
     keyBox.textContent = "";
-    const k = near(sel), name = sel === "cam" ? "Caméra" : (itemOf(layerOf(sel)) || {}).name || "élément";
+    const k = near(sel), name = CAMS[sel] || (itemOf(layerOf(sel)) || {}).name || "élément";
     keyBox.append(h("span.muted", name + " :"),
       h("button.mini", { title: "Enregistre les réglages de cet instant", on: { click: () => { setKey(sel, {}); paint(); lanes(); props(); } } }, "◆ Poser une clé"),
       h("button.mini.danger", { disabled: !k, title: "Retire la clé sous la tête de lecture", on: { click: () => { anim.tracks[sel] = keysOf(sel).filter((x) => x !== k); selKey = null; paint(); lanes(); props(); } } }, "Retirer cette clé"),
@@ -295,6 +305,7 @@ export function openMontage(app, pid) {
       tl.append(h("div.mt-row" + (sel === id ? ".on" : ""), h("div.mt-name", { on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, ico, " ", name, keysOf(id).length ? h("span.count", String(keysOf(id).length)) : ""), lane));
     };
     row("cam", "Caméra", "🎥");
+    if (dof.on) { row("fo", "Mise au point", "◎"); row("bl", "Flou", "◌"); }
     for (const l of [...pan.layers].reverse()) row(l.id, itemOf(l) ? itemOf(l).name : "élément", "●");
     tl.append(h("div.mt-head", { style: `left:calc(var(--mt-name) + (100% - var(--mt-name)) * ${t / anim.dur})` }));
     clock.textContent = `${t.toFixed(2)} s / ${anim.dur.toFixed(1)} s`;
