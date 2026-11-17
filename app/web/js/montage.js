@@ -290,11 +290,23 @@ export function openMontage(app, pid) {
   function keyBar() {
     keyBox.textContent = "";
     const k = near(sel), name = CAMS[sel] || (itemOf(layerOf(sel)) || {}).name || "élément";
-    keyBox.append(h("span.muted", name + " :"),
+    keyBox.append(
+      h("button.mini", { title: "Aller à la clé précédente (Alt + ←). Piste choisie ; si elle n'a pas de clé, toutes les pistes.", on: { click: () => jumpKey(-1) } }, "◀◆"),
+      h("button.mini", { title: "Aller à la clé suivante (Alt + →)", on: { click: () => jumpKey(1) } }, "◆▶"),
+      h("span.muted", name + " :"),
       h("button.mini", { title: "Enregistre les réglages de cet instant", on: { click: () => { setKey(sel, {}); paint(); lanes(); props(); } } }, "◆ Poser une clé"),
       h("button.mini.danger", { disabled: !k, title: "Retire la clé sous la tête de lecture", on: { click: () => { anim.tracks[sel] = keysOf(sel).filter((x) => x !== k); selKey = null; paint(); lanes(); props(); } } }, "Retirer cette clé"),
       h("button.mini.danger", { disabled: !keysOf(sel).length, on: { click: () => { delete anim.tracks[sel]; selKey = null; paint(); lanes(); props(); } } }, "Vider la piste"),
       k ? h("label.row", "Interpolation", h("select", { title: "Façon d'arriver sur cette clé", on: { change: (e) => { k.e = e.target.value; paint(); lanes(); } } }, Object.entries(EASES).map(([v, n]) => h("option", { value: v, selected: (k.e || "doux") === v }, n)))) : "");
+  }
+  function jumpKey(dir) {                                   // de cle en cle : celles de la piste choisie, sinon toutes
+    stop();
+    const own = keysOf(sel), all = own.length ? own : Object.values(anim.tracks).flat();
+    const ts = [...new Set(all.map((k) => k.t))].sort((a, b) => a - b);
+    const to = dir > 0 ? ts.find((x) => x > t + 0.02) : [...ts].reverse().find((x) => x < t - 0.02);
+    if (to == null) return toast(ts.length ? (dir > 0 ? "Pas de clé après." : "Pas de clé avant.") : "Aucune clé posée.");
+    picked.clear(); selKey = own.find((k) => k.t === to) || null;
+    seek(to, true);
   }
   function keyMenu(e, id, k) {                              // clic droit sur une cle : son interpolation
     e.preventDefault();
@@ -630,6 +642,7 @@ export function openMontage(app, pid) {
       picked.clear(); selKey = null; paint(); lanes(); props(); return;
     }
     if ((e.key === "Delete" || e.key === "Backspace") && selKey) { e.preventDefault(); e.stopPropagation(); anim.tracks[sel] = keysOf(sel).filter((x) => x !== selKey); selKey = null; paint(); lanes(); props(); }
+    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); e.stopPropagation(); return jumpKey(e.key === "ArrowRight" ? 1 : -1); }
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); seek(t + (e.key === "ArrowRight" ? 1 : -1) / 24, true); }
   };
   document.addEventListener("keydown", key, true);
