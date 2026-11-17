@@ -334,6 +334,25 @@ class App {
     this.commit("dup"); this.editor.render(); this.refreshInspector();
   }
 
+  // copie l'element choisi (meme pose, meme axe, meme place, meme taille) dans d'autres cases de la page
+  copyLayerTo(l) {
+    const pg = this.page(), pid = this.sel.panel, item = this.bank.get(l.item);
+    const others = this.editor.geom.panels.filter((g) => g.id !== pid).sort((x, y) => x.order - y.order);
+    if (!others.length) return toast("Il n'y a pas d'autre case sur cette page.");
+    const boxes = others.map((g) => [g, h("input", { type: "checkbox" })]);
+    const all = h("button.mini", { on: { click: (e) => { e.preventDefault(); const on = boxes.some(([, c]) => !c.checked); boxes.forEach(([, c]) => { c.checked = on; }); } } }, "Toutes / aucune");
+    modal(`Copier « ${item ? item.name : "l'élément"} » vers…`, h("div.form",
+      h("p.muted", "L'élément est ajouté dans les cases cochées avec la même pose, le même axe, la même place et la même taille. Le reste de ces cases n'est pas touché."),
+      h("div.checks", boxes.map(([g, c]) => h("label.row.check", c, `Case ${g.order}`))), h("div.row", all)),
+      [{ label: "Annuler" }, { label: "Copier", primary: true, click: () => {
+        const to = boxes.filter(([, c]) => c.checked).map(([g]) => g);
+        if (!to.length) { toast("Coche au moins une case.", "error"); return false; }
+        for (const g of to) { const pan = pg.panels[g.id] || (pg.panels[g.id] = {}); (pan.layers = pan.layers || []).push(Object.assign(clone(l), { id: uid() })); pan.show = "layers"; }
+        this.commit("copy-layer"); this.editor.render(); this.refreshInspector();
+        toast(`Élément copié vers ${to.map((g) => g.order).join(", ")}.`);
+      } }]);
+  }
+
   layerMenu(e) {
     const l = this.layer(); if (!l) return;
     const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [];
@@ -349,7 +368,8 @@ class App {
       { label: "Miroir", checked: !!l.flip, click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); } },
       { label: "Premier plan", click: () => this.order(l, "top"), half: true }, { label: "Arrière-plan", click: () => this.order(l, "bottom"), half: true },
       { label: "Avancer", click: () => this.order(l, "up"), half: true }, { label: "Reculer", click: () => this.order(l, "down"), half: true },
-      { label: "Dupliquer", click: () => this.duplicate(l), half: true }, { label: "Supprimer", click: () => this.removeLayer(l), half: true, danger: true });
+      { label: "Dupliquer", click: () => this.duplicate(l), half: true }, { label: "Supprimer", click: () => this.removeLayer(l), half: true, danger: true },
+      { label: "Copier vers une case…", click: () => this.copyLayerTo(l) });
     menu(e, items);
   }
 
@@ -545,6 +565,7 @@ class App {
         h("div.row", h("button.mini" + (l.flip ? ".on" : ""), { on: { click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); this.refreshInspector(); } } }, "⇋ Miroir"),
           h("button.mini", { on: { click: () => this.order(l, "up") } }, "Avancer"), h("button.mini", { on: { click: () => this.order(l, "down") } }, "Reculer"),
           h("button.mini", { on: { click: () => this.duplicate(l) } }, "Dupliquer"),
+          h("button.mini", { title: "Ajouter cet élément, tel qu'il est réglé, dans d'autres cases", on: { click: () => this.copyLayerTo(l) } }, "Copier vers…"),
           h("button.mini.danger", { on: { click: () => this.removeLayer(l) } }, "Supprimer")),
         h("button.mini", { on: { click: () => this.bankUI.openItem(l.item) } }, "Fiche : poses et orbites…"));
       return;
@@ -702,6 +723,8 @@ class App {
       catch (err) { toast("Le navigateur refuse l'accès au presse-papiers : clique dans le champ puis Ctrl+V.", "error"); } } } }, "Coller");
     const key = secret(s.fal.key, "clé fal du poste"), myKey = secret(localStorage.getItem("bw.falKey") || "", "ma clé fal (reste dans ce navigateur)");
     const orbit = f(s.fal.orbit), edit = f(s.fal.edit), t2i = f(s.fal.t2i);
+    const fres = h("select", [["480P", "480P · le moins cher (≈ 0,31 $ l'orbite de 5 s)"], ["768P", "768P (≈ 0,375 $)"], ["2K", "2K"], ["4K", "4K"]].map(([v, t]) => h("option", { value: v, selected: v === (s.fal.orbit_resolution || "768P") }, t)));
+    const fcon = h("input", { type: "number", min: 1, max: 20, step: 1, value: s.fal.concurrency || 3 });
     const pw = f(s.server.password || "", "vide = pas de mot de passe", "password");
     modal("Réglages", h("div.form.settings",
       h("h4", "Machines ComfyUI"),
@@ -711,6 +734,7 @@ class App {
       h("label.col", "Réglages de Workflows Q-builder (ses machines sont reprises)", qb),
       h("h4", "Calcul"), h("label.row", "Durée d'une orbite", len), h("label.row", "Où calculer par défaut", tgt),
       h("h4", "fal (cloud)"), h("div.row.keyrow", h("span", "Clé du poste"), key, paste(key)), h("div.row.keyrow", h("span", "Ma clé (ce navigateur)"), myKey, paste(myKey)),
+      h("label.row", "Résolution de l'orbite", fres), h("label.row", "Calculs fal en même temps", fcon),
       h("label.row", "Modèle orbite", orbit), h("label.row", "Modèle édition / Integrate", edit), h("label.row", "Modèle image", t2i),
       h("p.muted", "Sur fal, l'orbite H3 + LoRA dure 5 s au minimum ; « minimax/h3-max/camera-controls » accepte 3 s. Sur fal : image, détourage et orbite essayés ; édition pas encore."),
       h("h4", "Accès"), h("label.row", "Mot de passe de l'application", pw),
@@ -720,7 +744,7 @@ class App {
         const list = workers.value.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p[0])
           .map((p) => (p.length > 1 ? { name: p[0], url: p[1], enabled: true } : { name: p[0], url: p[0], enabled: true }));
         await put("settings", { workers: list, qbuilder_settings: qb.value.trim(), render: { orbit_length: +len.value, target: tgt.value },
-                                fal: { key: key.value.trim(), orbit: orbit.value.trim(), edit: edit.value.trim(), t2i: t2i.value.trim() }, server: { password: pw.value } });
+                                fal: { key: key.value.trim(), orbit_resolution: fres.value, concurrency: Math.max(1, Math.min(20, +fcon.value || 3)), orbit: orbit.value.trim(), edit: edit.value.trim(), t2i: t2i.value.trim() }, server: { password: pw.value } });
         this.info = await get("info"); toast("Réglages enregistrés."); this.pollWorkers();
       } }]);
   }
