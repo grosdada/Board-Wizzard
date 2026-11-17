@@ -143,14 +143,19 @@ export class Editor {
       svg.append(gl);
     });
     if (handles) {                                         // cadre du calque choisi : ✥ deplace, coin = taille
-      const { box } = handles, r = 13 * k;
+      const { box } = handles, r = 13 * k, bb = handles.g.bbox;
+      // poignees toujours atteignables : placees sur la partie du calque visible dans la case (gros plans compris)
+      const vx0 = Math.max(box.x, bb.x0), vx1 = Math.min(box.x + box.w, bb.x1), vy0 = Math.max(box.y, bb.y0), vy1 = Math.min(box.y + box.h, bb.y1);
+      const seen = vx1 > vx0 && vy1 > vy0;
+      const mcx = seen ? (vx0 + vx1) / 2 : clamp(box.cx, bb.x0 + r, bb.x1 - r), mcy = seen ? (vy0 + vy1) / 2 : clamp(box.y + box.h / 2, bb.y0 + r, bb.y1 - r);
+      const scx = seen ? Math.max(vx1 - r, mcx + r * 2.4) : mcx + r * 2.4, scy = seen ? Math.min(vy0 + r, mcy - r * 2.4) : mcy - r * 2.4;
       const gh = s("g", { class: "lh" });
       gh.append(s("rect", { x: box.x, y: box.y, width: box.w, height: box.h, class: "lh-box" }));
       gh.append(s("circle", { cx: box.cx, cy: box.y1, r: r * 0.5, class: "lh-foot" }));
-      const mv = s("g", { class: "lh-grip", "data-h": "move", transform: `translate(${box.cx} ${box.y - r * 1.6})` });
+      const mv = s("g", { class: "lh-grip", "data-h": "move", transform: `translate(${mcx} ${mcy})` });
       mv.append(s("circle", { r, "data-h": "move" }));
       mv.append(s("path", { d: `M ${-r * .6} 0 H ${r * .6} M 0 ${-r * .6} V ${r * .6}`, "data-h": "move" }));
-      const sc = s("g", { class: "lh-grip", "data-h": "scale", transform: `translate(${box.x + box.w} ${box.y})` });
+      const sc = s("g", { class: "lh-grip", "data-h": "scale", transform: `translate(${scx} ${scy})` });
       sc.append(s("rect", { x: -r * .8, y: -r * .8, width: r * 1.6, height: r * 1.6, rx: r * .3, "data-h": "scale" }));
       gh.append(mv, sc);
       svg.append(gh);
@@ -293,13 +298,16 @@ export class Editor {
     if (d.kind === "bturn") { d.bg.f = (((d.f + Math.round((e.clientX - d.sx) / PX_PER_FRAME)) % d.n) + d.n) % d.n; return this.render(true); }
     if (d.kind === "oturn") { d.o.frame = (((d.f + Math.round((e.clientX - d.sx) / PX_PER_FRAME)) % d.o.n) + d.o.n) % d.o.n; return this.render(true); }
     if (d.kind === "lmove") {
-      d.l.x = clamp(d.x + (pt.x - d.start.x) / d.bb.w, -0.6, 1.6);
-      d.l.y = clamp(d.y + (pt.y - d.start.y) / d.bb.h, -0.5, 2.5);
+      d.l.x = clamp(d.x + (pt.x - d.start.x) / d.bb.w, -40, 40);     // sans limite pratique : gros plans, hors-champ
+      d.l.y = clamp(d.y + (pt.y - d.start.y) / d.bb.h, -40, 40);
+      if (this.app.syncLayer) this.app.syncLayer();
       return this.render(true);
     }
     if (d.kind === "lscale") {                             // taille autour des pieds
       const y1 = d.bb.y0 + d.l.y * d.bb.h;
-      d.l.s = clamp((y1 - pt.y) / d.bb.h, 0.03, 6);
+      const y0 = d.bb.y0 + d.y * d.bb.h, ref = y0 - d.start.y;         // proportionnel au geste, ou que soit la poignee
+      d.l.s = clamp(Math.abs(ref) > 4 ? d.s * (y1 - pt.y) / ref : d.s * Math.exp((d.start.y - pt.y) / d.bb.h * 2), 0.03, 40);
+      if (this.app.syncLayer) this.app.syncLayer();
       return this.render(true);
     }
     if (d.kind === "pan") {
@@ -351,7 +359,8 @@ export class Editor {
     const k = Math.exp(-e.deltaY * 0.0015);
     if (l && e.target.dataset && (e.target.dataset.layer === l.id || e.target.dataset.h)) {
       e.preventDefault();
-      l.s = clamp(l.s * k, 0.03, 6);
+      l.s = clamp(l.s * k, 0.03, 40);
+      if (app.syncLayer) app.syncLayer();
       this.render(true);
       return app.commitSoon("lscale");
     }

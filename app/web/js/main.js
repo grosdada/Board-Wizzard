@@ -474,7 +474,7 @@ class App {
 
   // ---------------------------------------------------------------- inspecteur
   refreshInspector() {
-    const box = this.el.insp; box.textContent = "";
+    const box = this.el.insp; box.textContent = ""; this.syncLayer = null;
     const pan = this.curPanel(), l = this.layer(), b = this.bubble();
     const range = (label, val, min, max, step, fn, kind) => { const out = h("output", fmt(val));
       return h("label.row.range", label, h("input", { type: "range", min, max, step, value: val, on: { input: (e) => { fn(+e.target.value); out.textContent = fmt(+e.target.value); this.editor.render(true); this.commitSoon(kind); } } }), out); };
@@ -490,7 +490,10 @@ class App {
         box.append(h("div.axes", AXES.map((a) => h("button.mini" + (a === cur ? ".on" : ""), { on: { click: () => this.setAxis(l, a) } }, a))),
           range("Rotation", sp.i, 0, sp.n - 1, 1, (x) => { l.f = x; }, "frame"));
       } else box.append(h("p.muted", this.jobsFor(l.item, l.v) ? "Orbite en calcul : le personnage deviendra pivotable." : "Pas d'orbite pour cette pose : image fixe."));
-      box.append(range("Taille", l.s, 0.05, 3, 0.01, (x) => { l.s = x; }, "lscale"),
+      const rs = range("Taille", l.s, 0.05, 12, 0.01, (x) => { l.s = x; }, "lscale");
+      const rpx = range("Position ↔", l.x, -4, 5, 0.005, (x) => { l.x = x; }, "lmove"), rpy = range("Position ↕", l.y, -4, 8, 0.005, (x) => { l.y = x; }, "lmove");
+      this.syncLayer = () => { for (const [r, v] of [[rs, l.s], [rpx, l.x], [rpy, l.y]]) { r.querySelector("input").value = v; r.querySelector("output").textContent = fmt(v); } };
+      box.append(rs, rpx, rpy,
         range("Profondeur", depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"),
         h("div.row", h("button.mini" + (l.flip ? ".on" : ""), { on: { click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); this.refreshInspector(); } } }, "⇋ Miroir"),
           h("button.mini", { on: { click: () => this.order(l, "up") } }, "Avancer"), h("button.mini", { on: { click: () => this.order(l, "down") } }, "Reculer"),

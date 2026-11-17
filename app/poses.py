@@ -101,11 +101,12 @@ def pose_prompt_drawing(key, custom=""):
     hit = find("character", key)
     label = hit[0] if hit else (custom[:40] or key)
     move = BODY_ONLY.get(key) or custom or (hit[1] if hit else key)
-    return label, ("This is a rough hand-drawn black pencil sketch on white paper. Only change the body pose: %s. "
-                   "Do not redraw anything else. The head and face must stay pixel-identical to the original drawing: same odd "
-                   "distorted head shape, same huge uneven bulging eyes, same nose, same mouth, same ears, same hair, same "
-                   "crooked proportions, the head facing the same direction. Keep the same rough shaky sketch lines, pure "
-                   "black lines on white, no colour, no grey shading, no cleanup, no beautification. Same framing, full body." % move)
+    return label, ("This is a rough hand-drawn black pencil sketch of a strange caricature character on white paper. Only change "
+                   "the body pose: %s. Do not redraw anything else. Copy the head from the original drawing without any change: "
+                   "exactly the same head shape, the same face as drawn, nothing added and nothing removed on the head, the head "
+                   "facing the same direction. Same body proportions and same clothes. Keep the same rough shaky sketch lines, "
+                   "pure black lines on white, no colour, no grey shading, no cleanup, no beautification. Same framing, "
+                   "full body." % move)
 
 
 def pose_prompt(kind, key, style="photo", custom=""):
