@@ -266,3 +266,9 @@ label.row.range.off { opacity: .4; }
 .mt-lane .key { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; background: #8fd0c4; border: 1px solid #0e1b19; transform: rotate(45deg); cursor: ew-resize; }
 .mt-lane .key.on { background: #ffd27a; }
 .mt-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #ff6b5e; pointer-events: none; }
+
+.mt-keys { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 28px; }
+.mt-keys label.row { gap: 6px; margin: 0; } .mt-keys button:disabled { opacity: .35; cursor: default; }
+.mt-lane .key.lin { border-radius: 50%; transform: none; }
+.mt-lane .key.fixe { transform: none; border-radius: 1px; }
+.menu.mt-menu { z-index: 200; }

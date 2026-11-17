@@ -1,15 +1,19 @@
 // Mode montage d'une case (maquette) : une visionneuse, une timeline avec une piste par element et une piste camera,
 // des poses cles. panel.anim = { dur (secondes), tracks: { cam: [cles], <id du calque>: [cles] } }.
-//   cle d'un calque : { t, x, y, s, f (image de l'orbite), v (pose), e (lin | doux) }
+//   cle d'un calque : { t, x, y, s, f (image de l'orbite), v (pose), lw (trait), shg, shw, sha (ombre : gris, largeur,
+//                       angle), e (interpolation pour arriver sur cette cle : doux | lin | fixe) }
 //   cle de camera   : { t, cx, cy (centre du cadre, fraction de la case), z (zoom), rot (degres), e }
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { h, modal, toast } from "./api.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf } from "./model.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf } from "./model.js";
 import { drawSvg, W } from "./draw.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
 const CAM0 = { cx: 0.5, cy: 0.5, z: 1, rot: 0 };
-const ease = (u, e) => (e === "lin" ? u : u * u * (3 - 2 * u));
+// doux : depart et arrivee amortis · lin : vitesse reguliere · fixe : pas d'intermediaire, on saute a la cle (paliers)
+export const EASES = { doux: "En douceur", lin: "Régulière", fixe: "Fixe (par paliers, sans intermédiaire)" };
+const ease = (u, e) => (e === "fixe" ? 0 : e === "lin" ? u : u * u * (3 - 2 * u));
+const NUM = ["x", "y", "s", "cx", "cy", "z", "rot", "lw", "shg", "shw", "sha"];
 // mouvements de camera prets : [nom, depart, arrivee]
 export const MOVES = {
   "trav-d": ["Travelling vers la droite", { cx: 0.38, z: 1.35 }, { cx: 0.62, z: 1.35 }],
@@ -33,8 +37,8 @@ export function valueAt(keys, base, t, n) {
   while (i < ks.length - 2 && ks[i + 1].t <= t) i++;
   const a = ks[i], b = ks[i + 1], u = ease((t - a.t) / Math.max(1e-6, b.t - a.t), b.e);
   const out = Object.assign({}, base, a);
-  for (const k of ["x", "y", "s", "cx", "cy", "z", "rot"]) if (a[k] != null && b[k] != null) out[k] = a[k] + (b[k] - a[k]) * u;
-  if (a.f != null && b.f != null) {
+  for (const k of NUM) if (a[k] != null && b[k] != null) out[k] = a[k] + (b[k] - a[k]) * u;
+  if (a.f != null && b.f != null && b.e !== "fixe") {
     let d = b.f - a.f;
     if (n) { d = ((d % n) + n) % n; if (d > n / 2) d -= n; }      // l'orbite boucle : on tourne par le plus court chemin
     out.f = Math.round(a.f + d * u);
@@ -61,7 +65,9 @@ export function openMontage(app, pid) {
   const itemOf = (l) => app.bank.get(l.item);
   const nOf = (l, v) => { const it = itemOf(l), vv = it && variantOf(it, v || l.v); return vv && vv.orbit ? vv.orbit.n : 0; };
   const keysOf = (id) => anim.tracks[id] || [];
-  const stateOf = (l) => { const k = keysOf(l.id), v0 = valueAt(k, { x: l.x, y: l.y, s: l.s, f: l.f || 0, v: l.v }, t, 0); return valueAt(k, { x: l.x, y: l.y, s: l.s, f: l.f || 0, v: l.v }, t, nOf(l, v0.v)); };
+  const baseOf = (l) => { const sh = l.sh || {}; return { x: l.x, y: l.y, s: l.s, f: l.f || 0, v: l.v, lw: l.lw || 0, shg: sh.g ?? 0.72, shw: sh.w ?? 5, sha: sh.a ?? 135 }; };
+  const stateOf = (l) => { const k = keysOf(l.id), b = baseOf(l), v0 = valueAt(k, b, t, 0); return valueAt(k, b, t, nOf(l, v0.v)); };
+  const KEYED = ["x", "y", "s", "f", "v", "lw", "shg", "shw", "sha"];
   const camAt = () => valueAt(keysOf("cam"), CAM0, t, 0);
   const drawBg = pan.draw && (pan.draw.shapes || []).length ? drawSvg(pan.draw, H, "mt") : "";
 
@@ -70,26 +76,30 @@ export function openMontage(app, pid) {
     const c = camAt();
     let o = `<defs><clipPath id="mtclip"><rect width="${W}" height="${f1(H)}"/></clipPath></defs><rect width="${W}" height="${f1(H)}" fill="${pg.page.fill || "#fff"}"/>` +
       `<g clip-path="url(#mtclip)"><g transform="translate(${W / 2} ${f1(H / 2)}) rotate(${f1(-c.rot)}) scale(${f3(c.z)}) translate(${f1(-c.cx * W)} ${f1(-c.cy * H)})">`;
+    const bpar = anim.parallax ? (anim.pstr ?? 0.4) * 0.5 : 0, bdx = (c.cx - 0.5) * bpar * W, bdy = (c.cy - 0.5) * bpar * H;   // le fond suit un peu la camera
+    o += `<g transform="translate(${f1(bdx)} ${f1(bdy)})">`;
     if (bgInfo) {
       const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, pan.view), vf = vecFrame(bgInfo, paint);
       if (vf) { const st = inkStroke(pan.bglw); o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})"><path d="${vf.body}" fill="#fff"/><path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/></g>`; }
       else o += `<image href="${bgInfo.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/>`;
     }
-    o += drawBg;
-    for (const l of pan.layers) {
+    o += drawBg + "</g>";
+    pan.layers.forEach((l, li) => {
       const s = stateOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
-      if (!sp) continue;
-      const box = layerBox(bb, Object.assign({}, l, s), sp), vf = vecFrame(sp, paint), on = sel === l.id;
+      if (!sp) return;
+      // parallaxe : quand la camera se deplace, le premier plan glisse plus que le fond (profondeur 0 = devant, 1 = fond)
+      const par = anim.parallax ? (anim.pstr ?? 0.4) * (depthOf(pan, li) - 0.5) : 0;
+      const box = layerBox(bb, Object.assign({}, l, s, { x: s.x + (c.cx - 0.5) * par, y: s.y + (c.cy - 0.5) * par }), sp), vf = vecFrame(sp, paint), on = sel === l.id;
       const flip = l.flip ? `translate(${f1(2 * box.cx)} 0) scale(-1 1) ` : "";
       if (vf) {
-        const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, st = inkStroke(l.lw), shd = shadeOf(l.sh, vf.h);
+        const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, st = inkStroke(s.lw), shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h);
         let inner = "";
         if (shd) shadeShapes(l.sh, vf).forEach((pd, i) => { inner += `<clipPath id="mts-${l.id}-${i}"><path d="${pd}"/></clipPath><g clip-path="url(#mts-${l.id}-${i})"><path d="${pd}" fill="${shd.fill}"/><path d="${pd}" fill="#fff" transform="translate(${f1(l.flip ? -shd.dx : shd.dx)} ${f1(shd.dy)})"/></g>`; });
         o += `<g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})"><clipPath id="mtc-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="#fff" data-layer="${l.id}"/>` +
           `<g clip-path="url(#mtc-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g>`;
       } else o += `<image data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
       if (on && !playing) o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
-    }
+    });
     svg.innerHTML = o + `</g></g><rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
   }
 
@@ -100,7 +110,7 @@ export function openMontage(app, pid) {
     let k = near(id);
     if (!k) {
       const l = layerOf(id), full = id === "cam" ? camAt() : stateOf(l);
-      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot } : { x: full.x, y: full.y, s: full.s, f: full.f, v: full.v };
+      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
       if (!keys.length && t > 0.04) keys.push(Object.assign({ t: 0 }, base));     // premiere cle posee plus loin : on garde le depart
       k = Object.assign({ t: f3(t) }, base);
       keys.push(k); keys.sort((a, b) => a.t - b.t);
@@ -134,23 +144,56 @@ export function openMontage(app, pid) {
       side.append(range("Cadre ↔", "cx", -0.5, 1.5, 0.005), range("Cadre ↕", "cy", -0.5, 1.5, 0.005), range("Zoom", "z", 0.4, 5, 0.01), range("Inclinaison", "rot", -45, 45, 0.5, (x) => Math.round(x) + "°"),
         h("h4", "Mouvements prêts"),
         h("select", { on: { change: (e) => { applyMove(e.target.value); e.target.value = ""; } } }, h("option", { value: "" }, "Choisir un mouvement…"), Object.entries(MOVES).map(([k, [name]]) => h("option", { value: k }, name))),
-        h("p.muted", "Un mouvement prêt pose deux clés, au début et à la fin. Tu peux ensuite les régler ou en ajouter."));
+        h("p.muted", "Un mouvement prêt pose deux clés, au début et à la fin. Tu peux ensuite les régler ou en ajouter."),
+        h("h4", "Parallaxe"),
+        h("label.row.check", h("input", { type: "checkbox", checked: !!anim.parallax, on: { change: (e) => { anim.parallax = e.target.checked; paint(); props(); } } }), "Parallaxe automatique"),
+        anim.parallax ? h("label.row.range", "Force", h("input", { type: "range", min: 0, max: 1.5, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "",
+        h("p.muted", "Quand la caméra se déplace, le premier plan glisse plus vite que le fond, selon l'ordre des éléments (ou leur profondeur réglée dans la case)."));
     } else {
       const it = itemOf(l), n = nOf(l, cur().v);
       side.append(range("Position ↔", "x", -1, 2, 0.005), range("Position ↕", "y", -1, 3, 0.005), range("Taille", "s", 0.05, 6, 0.01));
       if (n) side.append(range("Axe (rotation)", "f", 0, n - 1, 1, (x) => Math.round(x * 360 / n) + "°"));
+      if (sprite(it, cur().v, cur().f)?.vec) {
+        side.append(range("Trait", "lw", -2, 6, 0.1, (x) => (+x).toFixed(1)));
+        const sh = l.sh || {};
+        side.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: e.target.checked }); paint(); props(); } } }), "Ombre"));
+        if (sh.on) side.append(range("Gris de l'ombre", "shg", 0.2, 0.95, 0.01), range("Largeur de l'ombre", "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range("Lumière (angle)", "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
+          h("label.row.range", "Formes détaillées", h("input", { type: "range", min: 0, max: 8, step: 1, value: sh.k || 0, on: { input: (e) => { l.sh.k = +e.target.value; e.target.nextSibling.textContent = e.target.value; paint(); } } }), h("output", String(sh.k || 0))));
+      }
+      const move = (d) => { const i = pan.layers.indexOf(l), j = d === "top" ? pan.layers.length - 1 : d === "bottom" ? 0 : i + d; if (j < 0 || j >= pan.layers.length || j === i) return; pan.layers.splice(i, 1); pan.layers.splice(j, 0, l); paint(); lanes(); props(); };
+      side.append(h("h4", "Ordre"), h("div.row.wrap", h("button.mini", { on: { click: () => move(1) } }, "Avancer"), h("button.mini", { on: { click: () => move(-1) } }, "Reculer"),
+        h("button.mini", { on: { click: () => move("top") } }, "Premier plan"), h("button.mini", { on: { click: () => move("bottom") } }, "Arrière-plan")));
       if (it && Object.keys(it.variants).length > 1) side.append(h("label.row", "Pose", h("select", { on: { change: (e) => { const vv = variantOf(it, e.target.value); preload(it, e.target.value); change(sel, { v: e.target.value, f: vv && vv.orbit ? Math.min(cur().f, vv.orbit.n - 1) : 0 }); props(); } } },
         Object.entries(it.variants).map(([k, vv]) => h("option", { value: k, selected: k === cur().v }, (vv.orbit ? "↻ " : "▫ ") + vv.label)))));
     }
-    const k = near(sel);
-    side.append(h("h4", "Pose clé"), h("div.row.wrap",
-      h("button.mini", { title: "Enregistre les réglages de cet instant", on: { click: () => { setKey(sel, {}); paint(); lanes(); props(); } } }, "◆ Poser une clé ici"),
-      k ? h("button.mini.danger", { on: { click: () => { anim.tracks[sel] = keysOf(sel).filter((x) => x !== k); selKey = null; paint(); lanes(); props(); } } }, "Retirer cette clé") : "",
-      keysOf(sel).length ? h("button.mini.danger", { on: { click: () => { delete anim.tracks[sel]; selKey = null; paint(); lanes(); props(); } } }, "Vider la piste") : ""));
-    if (k) side.append(h("label.row", "Arrivée sur cette clé", h("select", { on: { change: (e) => { k.e = e.target.value; paint(); } } }, [["doux", "En douceur"], ["lin", "Régulière"]].map(([v, n]) => h("option", { value: v, selected: (k.e || "doux") === v }, n)))));
+    keyBar();
     side.append(h("label.row.check", h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage"),
       h("p.muted", "Dans l'image : glisser un élément le déplace, molette = taille, Maj + glisser = le faire tourner. Avec la clé automatique, chaque geste pose une clé à l'instant affiché."));
     syncProps = () => rows.forEach((f) => f());
+  }
+  // boutons de cle : juste au-dessus de la timeline
+  const keyBox = h("div.mt-keys");
+  function keyBar() {
+    keyBox.textContent = "";
+    const k = near(sel), name = sel === "cam" ? "Caméra" : (itemOf(layerOf(sel)) || {}).name || "élément";
+    keyBox.append(h("span.muted", name + " :"),
+      h("button.mini", { title: "Enregistre les réglages de cet instant", on: { click: () => { setKey(sel, {}); paint(); lanes(); props(); } } }, "◆ Poser une clé"),
+      h("button.mini.danger", { disabled: !k, title: "Retire la clé sous la tête de lecture", on: { click: () => { anim.tracks[sel] = keysOf(sel).filter((x) => x !== k); selKey = null; paint(); lanes(); props(); } } }, "Retirer cette clé"),
+      h("button.mini.danger", { disabled: !keysOf(sel).length, on: { click: () => { delete anim.tracks[sel]; selKey = null; paint(); lanes(); props(); } } }, "Vider la piste"),
+      k ? h("label.row", "Interpolation", h("select", { title: "Façon d'arriver sur cette clé", on: { change: (e) => { k.e = e.target.value; paint(); lanes(); } } }, Object.entries(EASES).map(([v, n]) => h("option", { value: v, selected: (k.e || "doux") === v }, n)))) : "");
+  }
+  function keyMenu(e, id, k) {                              // clic droit sur une cle : son interpolation
+    e.preventDefault();
+    document.querySelector(".mt-menu")?.remove();
+    const box = h("div.menu.mt-menu", h("div.mhead", `Clé à ${k.t.toFixed(2)} s · arrivée`),
+      Object.entries(EASES).map(([v, n]) => h("button" + ((k.e || "doux") === v ? ".on" : ""), { on: { click: () => { k.e = v; box.remove(); paint(); lanes(); props(); } } }, ((k.e || "doux") === v ? "✓ " : "") + n)),
+      h("button.danger", { on: { click: () => { anim.tracks[id] = keysOf(id).filter((x) => x !== k); selKey = null; box.remove(); paint(); lanes(); props(); } } }, "Retirer cette clé"));
+    document.body.append(box);
+    const r = box.getBoundingClientRect();
+    box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px";
+    box.style.top = Math.max(4, Math.min(e.clientY, innerHeight - r.height - 6)) + "px";
+    const close = (ev) => { if (!box.contains(ev.target)) { box.remove(); document.removeEventListener("pointerdown", close, true); } };
+    document.addEventListener("pointerdown", close, true);
   }
   function applyMove(k) {
     if (!MOVES[k]) return;
@@ -169,7 +212,7 @@ export function openMontage(app, pid) {
     const ruler = h("div.mt-lane.ruler", { "data-lane": "ruler" }, ticks.map((s) => h("span.tick", { style: `left:${pct(s)}` }, Number.isInteger(s) ? s + " s" : "")));
     tl.append(h("div.mt-row", h("div.mt-name", ""), ruler));
     const row = (id, name, ico) => {
-      const lane = h("div.mt-lane", { "data-lane": id }, keysOf(id).map((k) => { const d = h("span.key" + (k === selKey ? ".on" : ""), { style: `left:${pct(k.t)}`, title: k.t.toFixed(2) + " s" }); d.__key = k; d.dataset.key = id; return d; }));
+      const lane = h("div.mt-lane", { "data-lane": id }, keysOf(id).map((k) => { const d = h("span.key" + (k === selKey ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: `${k.t.toFixed(2)} s · ${EASES[k.e || "doux"]} (clic droit pour changer)` }); d.__key = k; d.dataset.key = id; return d; }));
       tl.append(h("div.mt-row" + (sel === id ? ".on" : ""), h("div.mt-name", { on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, ico, " ", name, keysOf(id).length ? h("span.count", String(keysOf(id).length)) : ""), lane));
     };
     row("cam", "Caméra", "🎥");
@@ -179,10 +222,22 @@ export function openMontage(app, pid) {
   }
   const head = () => { const hd = tl.querySelector(".mt-head"); if (hd) hd.style.left = `calc(var(--mt-name) + (100% - var(--mt-name)) * ${t / anim.dur})`; clock.textContent = `${t.toFixed(2)} s / ${anim.dur.toFixed(1)} s`; };
   const seek = (x, full) => { t = clamp(x, 0, anim.dur); paint(); if (full) { lanes(); props(); } else { head(); syncProps(); } };
-  const timeAt = (e, lane) => { const r = lane.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width, 0, 1) * anim.dur; };
+  // Maj enfonce : la tete de lecture s'aimante sur la cle la plus proche (toutes pistes confondues)
+  const timeAt = (e, lane, skip) => {
+    const r = lane.getBoundingClientRect();
+    let x = clamp((e.clientX - r.left) / r.width, 0, 1) * anim.dur;
+    if (e.shiftKey) {
+      let best = null;
+      for (const ks of Object.values(anim.tracks)) for (const k of ks) if (k !== skip && (best === null || Math.abs(k.t - x) < Math.abs(best - x))) best = k.t;
+      for (const edge of [0, anim.dur]) if (best === null || Math.abs(edge - x) < Math.abs(best - x)) best = edge;
+      if (best !== null) x = best;
+    }
+    return x;
+  };
+  tl.addEventListener("contextmenu", (e) => { if (e.target.__key) { sel = e.target.dataset.key; selKey = e.target.__key; keyMenu(e, sel, selKey); lanes(); } else e.preventDefault(); });
   tl.addEventListener("pointerdown", (e) => {
     const lane = e.target.closest(".mt-lane");
-    if (!lane) return;
+    if (!lane || e.button !== 0) return;
     stop();
     try { tl.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
     if (e.target.__key) { sel = e.target.dataset.key; selKey = e.target.__key; drag = { kind: "key", key: selKey, lane }; seek(selKey.t, true); return; }
@@ -193,7 +248,7 @@ export function openMontage(app, pid) {
   tl.addEventListener("pointermove", (e) => {
     if (!drag) return;
     if (drag.kind === "seek") { if (drag.lane.isConnected) seek(timeAt(e, drag.lane)); else { const ln = tl.querySelector(".mt-lane"); seek(timeAt(e, ln)); } }
-    else { const ln = tl.querySelector(`.mt-lane[data-lane="${sel}"]`) || tl.querySelector(".mt-lane"); drag.key.t = f3(timeAt(e, ln)); keysOf(sel).sort((a, b) => a.t - b.t); t = drag.key.t; paint(); lanes(); }
+    else { const ln = tl.querySelector(`.mt-lane[data-lane="${sel}"]`) || tl.querySelector(".mt-lane"); drag.key.t = f3(timeAt(e, ln, drag.key)); keysOf(sel).sort((a, b) => a.t - b.t); t = drag.key.t; paint(); lanes(); }
   });
   tl.addEventListener("pointerup", () => { if (drag) { drag = null; lanes(); props(); } });
   tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); setKey(sel, {}); paint(); lanes(); props(); } });
@@ -250,9 +305,10 @@ export function openMontage(app, pid) {
     on: { change: (e) => { const d = clamp(+e.target.value || 4, 0.5, 60), k = d / anim.dur; if (confirm("Étirer aussi les clés sur la nouvelle durée ?\nAnnuler : les clés gardent leur instant.")) for (const ks of Object.values(anim.tracks)) for (const x of ks) x.t = f3(x.t * k); anim.dur = d; t = Math.min(t, d); paint(); lanes(); props(); } } });
   const bar = h("div.mt-bar", h("button.mini", { title: "Revenir au début", on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn,
     h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), "En boucle"), clock,
+    h("span.muted", "Maj : la tête de lecture s'aimante sur les clés"),
     h("span.spacer"), h("label.row", "Durée (s)", dur));
   paint(); lanes(); props();
-  const m = modal(`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, tl),
+  const m = modal(`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, keyBox, tl),
     [{ label: "Annuler", click: done },
      { label: "Enregistrer le montage", primary: true, click: () => {
        done();
