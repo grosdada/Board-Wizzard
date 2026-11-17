@@ -2,7 +2,9 @@
 // des poses cles. panel.anim = { dur (secondes), tracks: { cam: [cles], <id du calque>: [cles] } }.
 //   cle d'un calque : { t, x, y, s, f (image de l'orbite), v (pose), lw (trait), shg, shw, sha (ombre : gris, largeur,
 //                       angle), e (interpolation pour arriver sur cette cle : doux | lin | fixe) }
-//   cle de camera   : { t, cx, cy (centre du cadre, fraction de la case), z (zoom), rot (degres), e }
+//   cle de camera   : { t, cx, cy (centre du cadre, fraction de la case), z (zoom), rot (degres),
+//                       fo (mise au point, 0 devant a 1 fond), bl (force du flou), e }
+// Profondeur de champ : panel.dof = { on, focus, amount } comme dans la case ; fo et bl l'animent.
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { h, modal, toast } from "./api.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf } from "./model.js";
@@ -13,7 +15,7 @@ const CAM0 = { cx: 0.5, cy: 0.5, z: 1, rot: 0 };
 // doux : depart et arrivee amortis · lin : vitesse reguliere · fixe : pas d'intermediaire, on saute a la cle (paliers)
 export const EASES = { doux: "En douceur", lin: "Régulière", fixe: "Fixe (par paliers, sans intermédiaire)" };
 const ease = (u, e) => (e === "fixe" ? 0 : e === "lin" ? u : u * u * (3 - 2 * u));
-const NUM = ["x", "y", "s", "cx", "cy", "z", "rot", "lw", "shg", "shw", "sha"];
+const NUM = ["x", "y", "s", "cx", "cy", "z", "rot", "fo", "bl", "lw", "shg", "shw", "sha"];
 // mouvements de camera prets : [nom, depart, arrivee]
 export const MOVES = {
   "trav-d": ["Travelling vers la droite", { cx: 0.38, z: 1.35 }, { cx: 0.62, z: 1.35 }],
@@ -59,26 +61,34 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   const keysOf = (id) => (anim.tracks || {})[id] || [];
   const baseOf = (l) => { const sh = l.sh || {}; return { x: l.x, y: l.y, s: l.s, f: l.f || 0, v: l.v, lw: l.lw || 0, shg: sh.g ?? 0.72, shw: sh.w ?? 5, sha: sh.a ?? 135 }; };
   const stateOf = (l, t) => { const k = keysOf(l.id), b = baseOf(l), v0 = valueAt(k, b, t, 0); return valueAt(k, b, t, nOf(l, v0.v)); };
-  const camAt = (t) => valueAt(keysOf("cam"), CAM0, t, 0);
+  const camAt = (t) => { const d = pan.dof || {}; return valueAt(keysOf("cam"), Object.assign({ fo: d.focus ?? 0.3, bl: d.amount ?? 12 }, CAM0), t, 0); };
   const drawBg = pan.draw && (pan.draw.shapes || []).length ? drawSvg(pan.draw, H, pre) : "";
   /** Balisage SVG de la case a l'instant t. sel : calque a encadrer. again : rappele quand des traces finissent de charger. */
   function markup(t, sel, again) {
-    const c = camAt(t);
+    const c = camAt(t), dofOn = !!(pan.dof && pan.dof.on), blurs = {};
+    // profondeur de champ : plus un plan est loin de la mise au point, plus il est flou
+    const blur = (depth) => {
+      const a = dofOn ? c.bl / 1000 * H * Math.abs(depth - c.fo) : 0;
+      if (!(a > 0.4)) return "";
+      const q = Math.round(a * 4);
+      blurs[q] = `<filter id="${pre}bl${q}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="${q / 4}"/></filter>`;
+      return ` filter="url(#${pre}bl${q})"`;
+    };
     let o = `<defs><clipPath id="${pre}clip"><rect width="${W}" height="${f1(H)}"/></clipPath></defs><rect width="${W}" height="${f1(H)}" fill="${pg.page.fill || "#fff"}"/>` +
       `<g clip-path="url(#${pre}clip)"><g transform="translate(${W / 2} ${f1(H / 2)}) rotate(${f1(-c.rot)}) scale(${f3(c.z)}) translate(${f1(-c.cx * W)} ${f1(-c.cy * H)})">`;
     const bpar = anim.parallax ? (anim.pstr ?? 0.4) * 0.5 : 0, bdx = (c.cx - 0.5) * bpar * W, bdy = (c.cy - 0.5) * bpar * H;   // le fond suit un peu la camera
-    o += `<g transform="translate(${f1(bdx)} ${f1(bdy)})">`;
+    o += `<g transform="translate(${f1(bdx)} ${f1(bdy)})"><g${blur(1)}>`;
     if (bgInfo) {
       const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, pan.view), vf = vecFrame(bgInfo, again);
       if (vf) { const st = inkStroke(pan.bglw); o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})"><path d="${vf.body}" fill="#fff"/><path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/></g>`; }
       else o += `<image href="${bgInfo.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/>`;
     }
-    o += drawBg + "</g>";
+    o += "</g>" + (drawBg ? `<g${blur(0.9)}>${drawBg}</g>` : "") + "</g>";
     pan.layers.forEach((l, li) => {
       const s = stateOf(l, t), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
       if (!sp) return;
       // parallaxe : quand la camera se deplace, le premier plan glisse plus que le fond (profondeur 0 = devant, 1 = fond)
-      const par = anim.parallax ? (anim.pstr ?? 0.4) * (depthOf(pan, li) - 0.5) : 0;
+      const par = anim.parallax ? (anim.pstr ?? 0.4) * (depthOf(pan, li) - 0.5) : 0, bl = blur(depthOf(pan, li));
       const box = layerBox(bb, Object.assign({}, l, s, { x: s.x + (c.cx - 0.5) * par, y: s.y + (c.cy - 0.5) * par }), sp), vf = vecFrame(sp, again);
       const flip = l.flip ? `translate(${f1(2 * box.cx)} 0) scale(-1 1) ` : "";
       if (vf) {
@@ -86,12 +96,12 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h);
         let inner = "";
         if (shd) shadeShapes(l.sh, vf).forEach((pd, i) => { inner += `<clipPath id="${pre}s-${l.id}-${i}"><path d="${pd}"/></clipPath><g clip-path="url(#${pre}s-${l.id}-${i})"><path d="${pd}" fill="${shd.fill}"/><path d="${pd}" fill="#fff" transform="translate(${f1(l.flip ? -shd.dx : shd.dx)} ${f1(shd.dy)})"/></g>`; });
-        o += `<g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})"><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="#fff" data-layer="${l.id}"/>` +
-          `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g>`;
-      } else o += `<image data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
+        o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})"><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="#fff" data-layer="${l.id}"/>` +
+          `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g>`;
+      } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
       if (sel === l.id) o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
     });
-    return o + `</g></g><rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
+    return o + `</g></g><defs>${Object.values(blurs).join("")}</defs><rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
   }
   return { H, anim, markup, stateOf, camAt, nOf, itemOf, keysOf };
 }
@@ -103,6 +113,7 @@ export function openMontage(app, pid) {
   const pan = JSON.parse(JSON.stringify(src));            // copie de travail : rien ne change avant « Enregistrer »
   pan.layers = pan.layers || [];
   const anim = pan.anim = Object.assign({ dur: 4, tracks: {} }, pan.anim);
+  const dof = pan.dof = Object.assign({ on: false, focus: 0.3, amount: 12 }, pan.dof);
   anim.tracks = anim.tracks || {};
   let t = 0, sel = "cam", selKey = null, playing = false, loop = true, auto = true, raf = 0, last = 0, drag = null;
   const NS = "http://www.w3.org/2000/svg";
@@ -141,6 +152,8 @@ export function openMontage(app, pid) {
         `<text x="6" y="${f1(yOf(d) - 4)}" font-size="${f1(fs * 0.75)}" fill="#8a8578">${d === 0 ? "Devant · 0" : d === 1 ? "Fond · 1" : d}</text>`;
     o += `<rect x="0" y="${f1(yOf(1) - H * 0.035)}" width="${W}" height="${f1(H * 0.035)}" fill="#cfcabd"/>` +
       `<text x="${W / 2}" y="${f1(yOf(1) - H * 0.045)}" font-size="${f1(fs * 0.8)}" fill="#8a8578" text-anchor="middle">DÉCOR</text>`;
+    if (dof.on) o += `<line x1="0" x2="${W}" y1="${f1(yOf(c.fo))}" y2="${f1(yOf(c.fo))}" stroke="#16a34a" stroke-width="2.5"/>` +
+      `<text x="${W - 6}" y="${f1(yOf(c.fo) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT · ${c.fo.toFixed(2)}</text>`;
     const th = H * 0.03;
     pan.layers.forEach((l, li) => {
       const st = stateOf(l), it = itemOf(l), sp = it && sprite(it, st.v, st.f);
@@ -164,7 +177,7 @@ export function openMontage(app, pid) {
     let k = near(id);
     if (!k) {
       const l = layerOf(id), full = id === "cam" ? camAt() : stateOf(l);
-      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
+      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot, fo: full.fo, bl: full.bl } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
       if (!keys.length && t > 0.04) keys.push(Object.assign({ t: 0 }, base));     // premiere cle posee plus loin : on garde le depart
       k = Object.assign({ t: f3(t) }, base);
       keys.push(k); keys.sort((a, b) => a.t - b.t);
@@ -199,6 +212,11 @@ export function openMontage(app, pid) {
         h("h4", "Mouvements prêts"),
         h("select", { on: { change: (e) => { applyMove(e.target.value); e.target.value = ""; } } }, h("option", { value: "" }, "Choisir un mouvement…"), Object.entries(MOVES).map(([k, [name]]) => h("option", { value: k }, name))),
         h("p.muted", "Un mouvement prêt pose deux clés, au début et à la fin. Tu peux ensuite les régler ou en ajouter."),
+        h("h4", "Profondeur de champ"),
+        h("label.row.check", h("input", { type: "checkbox", checked: !!dof.on, on: { change: (e) => { dof.on = e.target.checked; paint(); props(); } } }), "Flou de profondeur"));
+      if (dof.on) side.append(range("Mise au point", "fo", 0, 1, 0.01), range("Flou", "bl", 0, 60, 1, (x) => String(Math.round(x))),
+        h("p.muted", "0 = tout devant, 1 = le décor. Ces deux réglages se posent en clés sur la piste Caméra : la mise au point peut passer d'un personnage à l'autre. La vue « Profondeur » montre le plan net."));
+      side.append(
         h("h4", "Parallaxe"),
         h("label.row.check", h("input", { type: "checkbox", checked: !!anim.parallax, on: { change: (e) => { anim.parallax = e.target.checked; paint(); props(); } } }), "Parallaxe automatique"),
         anim.parallax ? h("label.row.range", "Force", h("input", { type: "range", min: 0, max: 1.5, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "",
@@ -377,6 +395,7 @@ export function openMontage(app, pid) {
     done();
     const real = pg.panels[pid] || (pg.panels[pid] = {});
     real.layers = pan.layers;
+    real.dof = dof;
     for (const id of Object.keys(anim.tracks)) if (!anim.tracks[id].length) delete anim.tracks[id];
     real.anim = anim;
     app.commit("montage"); app.editor.render(); app.refreshInspector();

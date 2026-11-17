@@ -143,55 +143,107 @@ def list_items():
     return sorted(out, key=lambda x: (x.get("kind", ""), x.get("name", "").lower()))
 
 
-# ---- dossiers de la banque : un chemin « Projet/Sous-dossier ». La liste garde aussi les dossiers encore vides.
+# ---- dossiers de la banque : un chemin « Projet/Sous-dossier », propre a chaque onglet (personnages, decors, assets).
+# folders.json garde les dossiers encore vides : { "character": [...], "decor": [...], "asset": [...] }.
+FOLDER_KINDS = ("character", "decor", "asset")
+
+
 def _clean_folder(name):
     parts = [re.sub(r"[\<>:\"|?*]", "", p).strip() for p in str(name or "").replace("\\", "/").split("/")]
     return "/".join(p for p in parts if p)[:120]
 
 
-def list_folders():
+def _empty_folders(items=None):
     try:
         extra = _read(_dir("bank") / "folders.json")
     except (OSError, ValueError):
-        extra = []
-    seen = set(f for f in extra if isinstance(f, str) and f)
-    for it in list_items():
-        if it.get("folder"):
-            seen.add(_clean_folder(it["folder"]))
-    for f in list(seen):                                          # un sous-dossier fait exister ses parents
-        parts = f.split("/")
-        for i in range(1, len(parts)):
-            seen.add("/".join(parts[:i]))
-    return sorted(f for f in seen if f)
+        extra = {}
+    if isinstance(extra, list):                                   # ancienne liste commune aux trois onglets
+        used = {}
+        for it in (items if items is not None else list_items()):
+            used.setdefault(_clean_folder(it.get("folder", "")), set()).add(it.get("kind"))
+        old, extra = extra, {k: [] for k in FOLDER_KINDS}
+        for f in old:
+            if isinstance(f, str) and f and f not in used:        # dossier vide : on ne sait pas a qui il etait, on le garde partout
+                for k in FOLDER_KINDS:
+                    extra[k].append(f)
+    return {k: [f for f in (extra.get(k) or []) if isinstance(f, str) and f] for k in FOLDER_KINDS}
 
 
-def add_folder(name):
+def list_folders():
+    """Dossiers de chaque onglet : { type: [chemins] }."""
+    items = list_items()
+    seen = {k: set(v) for k, v in _empty_folders(items).items()}
+    for it in items:
+        if it.get("folder") and it.get("kind") in seen:
+            seen[it["kind"]].add(_clean_folder(it["folder"]))
+    for fs in seen.values():
+        for f in list(fs):                                        # un sous-dossier fait exister ses parents
+            parts = f.split("/")
+            for i in range(1, len(parts)):
+                fs.add("/".join(parts[:i]))
+    return {k: sorted(f for f in fs if f) for k, fs in seen.items()}
+
+
+def add_folder(name, kind):
     name = _clean_folder(name)
     if not name:
         raise ValueError("nom de dossier vide")
+    if kind not in FOLDER_KINDS:
+        raise ValueError("onglet inconnu : %s" % kind)
     with _lock:
         _dir("bank").mkdir(parents=True, exist_ok=True)
-        _write(_dir("bank") / "folders.json", sorted(set(list_folders()) | {name}))
+        extra = _empty_folders()
+        extra[kind] = sorted(set(extra[kind]) | {name})
+        _write(_dir("bank") / "folders.json", extra)
     return name
 
 
-def remove_folder(name):
-    """Supprime un dossier et ses sous-dossiers. Leurs elements ne sont pas supprimes : ils remontent dans le dossier
-    parent (ou hors dossier). Renvoie le nombre d'elements deplaces."""
+def remove_folder(name, kind):
+    """Supprime un dossier d'un onglet et ses sous-dossiers. Leurs elements ne sont pas supprimes : ils remontent dans
+    le dossier parent (ou hors dossier). Les dossiers du meme nom dans les autres onglets ne bougent pas.
+    Renvoie le nombre d'elements deplaces."""
     name = _clean_folder(name)
+    if not name or kind not in FOLDER_KINDS:
+        raise ValueError("dossier ou onglet inconnu")
     parent = "/".join(name.split("/")[:-1])
     inside = lambda f: f == name or (f or "").startswith(name + "/")
     moved = 0
     for it in list_items():
-        if inside(_clean_folder(it.get("folder", ""))):
+        if it.get("kind") == kind and inside(_clean_folder(it.get("folder", ""))):
             mutate_item(it["id"], lambda x: x.update(folder=parent))
             moved += 1
     with _lock:
-        try:
-            extra = _read(_dir("bank") / "folders.json")
-        except (OSError, ValueError):
-            extra = []
-        _write(_dir("bank") / "folders.json", sorted(f for f in extra if not inside(f)))
+        extra = _empty_folders()
+        extra[kind] = sorted(f for f in extra[kind] if not inside(f))
+        if parent:
+            extra[kind] = sorted(set(extra[kind]) | {parent})     # le parent reste, meme s'il se retrouve vide
+        _write(_dir("bank") / "folders.json", extra)
+    return moved
+
+
+def rename_folder(name, to, kind):
+    """Renomme un dossier d'un onglet (chemin complet vers chemin complet) ; ses sous-dossiers et ses elements suivent.
+    Renvoie le nombre d'elements deplaces."""
+    name, to = _clean_folder(name), _clean_folder(to)
+    if not name or not to or kind not in FOLDER_KINDS:
+        raise ValueError("dossier ou onglet inconnu")
+    if to == name:
+        return 0
+    if to.startswith(name + "/"):
+        raise ValueError("un dossier ne peut pas aller dans lui-meme")
+    inside = lambda f: f == name or (f or "").startswith(name + "/")
+    swap = lambda f: to + f[len(name):]
+    moved = 0
+    for it in list_items():
+        f = _clean_folder(it.get("folder", ""))
+        if it.get("kind") == kind and inside(f):
+            mutate_item(it["id"], lambda x, f=f: x.update(folder=swap(f)))
+            moved += 1
+    with _lock:
+        extra = _empty_folders()
+        extra[kind] = sorted(set(swap(f) if inside(f) else f for f in extra[kind]) | {to})
+        _write(_dir("bank") / "folders.json", extra)
     return moved
 
 

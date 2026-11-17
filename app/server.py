@@ -256,9 +256,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True})
         if head == "folders":                                       # dossiers et sous-dossiers de la banque
             if method == "POST":
-                store.add_folder((data or {}).get("name", ""))
+                store.add_folder((data or {}).get("name", ""), (data or {}).get("kind", ""))
+            elif method == "PUT":
+                d = data or {}
+                store.rename_folder(d.get("name", ""), d.get("to", ""), d.get("kind", ""))
             elif method == "DELETE":
-                return self.send_json({"moved": store.remove_folder(q.get("name", "")), "folders": store.list_folders()})
+                return self.send_json({"moved": store.remove_folder(q.get("name", ""), q.get("kind", "")), "folders": store.list_folders()})
             return self.send_json(store.list_folders())
         if head == "bank":
             return self.api_bank(method, seg[1:], q, data, body)

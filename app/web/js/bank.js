@@ -14,7 +14,8 @@ export class Bank {
     this.app = app; this.host = host;
     this.tab = localStorage.getItem("bw.tab") || "character";
     this.query = "";
-    this.folder = localStorage.getItem("bw.folder") || "";       // "" = tous les dossiers
+    // dossier choisi dans chaque onglet ("" = tous les dossiers) : les dossiers d'un onglet lui sont propres
+    try { this.folderBy = JSON.parse(localStorage.getItem("bw.folders") || "{}") || {}; } catch (e) { this.folderBy = {}; }
     host.addEventListener("dragover", (e) => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); host.classList.add("drop"); } });
     host.addEventListener("dragleave", () => host.classList.remove("drop"));
     host.addEventListener("drop", (e) => {
@@ -24,10 +25,13 @@ export class Bank {
     });
   }
 
+  get folder() { return this.folderBy[this.tab] || ""; }
+  set folder(f) { this.folderBy[this.tab] = f || ""; localStorage.setItem("bw.folders", JSON.stringify(this.folderBy)); }
+
   async reload() {
-    const [items, extra] = await Promise.all([get("bank"), get("folders").catch(() => [])]);
+    const [items, extra] = await Promise.all([get("bank"), get("folders").catch(() => ({}))]);
     this.app.bank = new Map(items.map((it) => [it.id, it]));
-    this.extraFolders = extra || [];
+    this.extraFolders = extra && !Array.isArray(extra) ? extra : {};
     this.render();
     if (this.openId && this.refreshItem) this.refreshItem();
   }
@@ -45,25 +49,26 @@ export class Bank {
     if (!items.length) grid.append(h("p.muted.bank-empty", `Aucun ${KIND_ONE[this.tab]} pour l'instant. Glisse des images ici, ou « Générer ».`));
     const search = h("input.search", { type: "search", placeholder: "Chercher…", value: this.query,
                                        on: { input: (e) => { this.query = e.target.value.toLowerCase(); this.renderGrid(); } } });
-    const folderSel = h("select.folder", { title: "Dossier de la banque (un par projet, par exemple)",
-      on: { change: (e) => { this.folder = e.target.value; localStorage.setItem("bw.folder", this.folder); this.render(); } } },
+    const folderSel = h("select.folder", { title: `Dossiers de l'onglet ${KINDS.find(([k]) => k === this.tab)[1]} (un par projet, par exemple)`,
+      on: { change: (e) => { this.folder = e.target.value; this.render(); } } },
       h("option", { value: "" }, "Tous les dossiers"), folders.map((f) => { const parts = f.split("/"); return h("option", { value: f, selected: f === this.folder }, "   ".repeat(parts.length - 1) + (parts.length > 1 ? "└ " : "📁 ") + parts[parts.length - 1]); }),
       h("option", { value: "·", selected: this.folder === "·" }, "Sans dossier"));
     this.host.textContent = "";
     this.host.append(
       h("div.tabs", KINDS.map(([k, label]) => h("button" + (k === this.tab ? ".on" : ""), {
         on: { click: () => { this.tab = k; localStorage.setItem("bw.tab", k); this.render(); } } },
-        label, h("span.count", String([...app.bank.values()].filter((x) => x.kind === k && inFolder(x)).length))))),
+        label, h("span.count", String([...app.bank.values()].filter((x) => x.kind === k && (k === this.tab ? inFolder(x) : true)).length))))),
       h("div.bank-bar", folderSel,
         h("button.mini", { title: this.folder && this.folder !== "·" ? `Créer un sous-dossier dans « ${this.folder} »` : "Créer un dossier", on: { click: () => this.newFolder() } }, "＋ Dossier"),
+        this.folder && this.folder !== "·" ? h("button.mini", { title: `Renommer le dossier « ${this.folder} »`, on: { click: () => this.renameFolder() } }, "✎") : "",
         this.folder && this.folder !== "·" ? h("button.mini.danger", { title: `Supprimer le dossier « ${this.folder} » (ses éléments ne sont pas supprimés)`, on: { click: () => this.deleteFolder() } }, "🗑") : ""),
       h("div.bank-bar", search, h("button.mini", { title: "Importer des images", on: { click: () => pick.click() } }, "＋ Importer"),
         h("button.mini", { title: "Générer à partir d'une description", on: { click: () => this.generateDialog() } }, "✨ Générer"), pick),
       grid);
     this.grid = grid;
   }
-  folders() {                         // dossiers des elements, dossiers crees vides, et les parents de chacun
-    const all = new Set([...(this.extraFolders || []), ...[...this.app.bank.values()].map((it) => it.folder).filter(Boolean)]);
+  folders(kind = this.tab) {          // dossiers d'un onglet : ceux de ses elements, ceux crees vides, et leurs parents
+    const all = new Set([...((this.extraFolders || {})[kind] || []), ...[...this.app.bank.values()].filter((it) => it.kind === kind).map((it) => it.folder).filter(Boolean)]);
     for (const f of [...all]) { const p = f.split("/"); for (let i = 1; i < p.length; i++) all.add(p.slice(0, i).join("/")); }
     return [...all].sort((a, b) => a.localeCompare(b, "fr"));
   }
@@ -72,25 +77,36 @@ export class Bank {
     const name = (prompt(parent ? `Nom du sous-dossier à créer dans « ${parent} » :` : "Nom du dossier à créer :") || "").trim().replace(/[\/]+/g, " ");
     if (!name) return;
     const path = parent ? parent + "/" + name : name;
-    await post("folders", { name: path });
-    this.folder = path; localStorage.setItem("bw.folder", path);
+    await post("folders", { name: path, kind: this.tab });
+    this.folder = path;
     await this.reload();
     toast(`Dossier « ${path} » créé. Les éléments importés ou générés maintenant y vont.`);
   }
+  async renameFolder() {
+    const f = this.folder, parts = f.split("/"), old = parts.pop();
+    const name = (prompt(`Nouveau nom du dossier « ${old} » :`, old) || "").trim().replace(/[\/]+/g, " ");
+    if (!name || name === old) return;
+    const to = [...parts, name].join("/");
+    if (this.folders().includes(to) && !confirm(`Le dossier « ${to} » existe déjà dans cet onglet. Y verser le contenu de « ${old} » ?`)) return;
+    await put("folders", { name: f, to, kind: this.tab });
+    this.folder = to;
+    await this.reload();
+    toast(`Dossier renommé en « ${name} ».`);
+  }
   async deleteFolder() {
-    const f = this.folder, n = [...this.app.bank.values()].filter((it) => it.folder === f || (it.folder || "").startsWith(f + "/")).length;
+    const f = this.folder, n = [...this.app.bank.values()].filter((it) => it.kind === this.tab).filter((it) => it.folder === f || (it.folder || "").startsWith(f + "/")).length;
     const parent = f.split("/").slice(0, -1).join("/");
     if (!confirm(`Supprimer le dossier « ${f} » et ses sous-dossiers ?
 ` + (n ? `Ses ${n} élément(s) ne sont pas supprimés : ils vont dans ${parent ? "« " + parent + " »" : "« Sans dossier »"}.` : "Il est vide."))) return;
-    await del("folders?name=" + encodeURIComponent(f));
-    this.folder = parent; localStorage.setItem("bw.folder", parent);
+    await del("folders?name=" + encodeURIComponent(f) + "&kind=" + this.tab);
+    this.folder = parent;
     await this.reload();
     toast(`Dossier « ${f} » supprimé.`);
   }
-  folderInput(value) {                // champ « dossier » avec les dossiers existants en suggestion
+  folderInput(value, kind = this.tab) {                // champ « dossier » avec les dossiers existants en suggestion
     const id = "bwf" + Math.random().toString(36).slice(2, 7);
     return h("span.fin", h("input", { type: "text", value: value || "", placeholder: "Dossier (projet)…", list: id }),
-      h("datalist", { id }, this.folders().map((f) => h("option", { value: f }))));
+      h("datalist", { id }, this.folders(kind).map((f) => h("option", { value: f }))));
   }
   renderGrid() {
     const q = this.query;
@@ -218,7 +234,7 @@ export class Bank {
       const nameIn = h("input", { type: "text", value: item.name, on: { change: async (e) => { await put("bank/" + id, { name: e.target.value }); this.reload(); } } });
       const styleIn = h("select", { on: { change: async (e) => { await put("bank/" + id, { style: e.target.value }); this.reload(); } } },
         STYLES.map(([k, l]) => h("option", { value: k, selected: k === item.style }, l)));
-      const fold = this.folderInput(item.folder);
+      const fold = this.folderInput(item.folder, item.kind);
       fold.querySelector("input").addEventListener("change", async (e) => { await put("bank/" + id, { folder: e.target.value.trim() }); this.reload(); });
       head.append(h("label.row", "Nom", nameIn), h("label.row", "Dossier", fold), h("label.row", "Rendu", styleIn));
       }
