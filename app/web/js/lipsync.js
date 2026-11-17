@@ -44,14 +44,18 @@ const DRAWN = {
   L: `<path d="M-32 -8C-16 -22 16 -23 32 -9C26 22 10 32 -2 32C-18 30 -28 16 -32 -8Z" ${LIP}/><path d="M-24 -5C-8 2 12 2 26 -6" ${PEN2}/>` +
      `<path d="M-12 15C-9 -1 9 -1 13 14C6 21 -6 21 -12 15Z" ${LIP}/>`,
 };
-export const SETS = { dessin: "Dessiné (trait fin)", graphique: "Graphique (plein)" };
-const SETMAP = { dessin: DRAWN, graphique: SHAPES };
+// Jeu par defaut, le plus simple : fermee = un trait, ouverte = une capsule noire. Rien d'autre.
+const LINE = `<path d="M-30 0L30 0" fill="none" stroke="#111" stroke-width="8" stroke-linecap="round"/>`;
+const CAPSULE = `<rect x="-30" y="-15" width="60" height="30" rx="15" fill="#111" stroke="#111" stroke-width="3" stroke-linejoin="round"/>`;
+const PLAIN = { X: LINE, M: LINE, F: LINE, A: CAPSULE, E: CAPSULE, O: CAPSULE, U: CAPSULE, D: CAPSULE, L: CAPSULE };
+export const SETS = { capsule: "Trait et capsule", dessin: "Dessiné (trait fin)", graphique: "Graphique (plein)" };
+const SETMAP = { capsule: PLAIN, dessin: DRAWN, graphique: SHAPES };
 /** Dessin d'une bouche en traces, centree sur l'origine, large d'environ 100.
  *  o : { cache (masque blanc derriere), lw (epaisseur du trait, 1 = normale), hand (tremble, 0 = net), wave (longueur
  *        des ondulations), mw, mh (largeur et hauteur du masque), mx, my (decalage du masque), id (pour le filtre) } */
 export function mouthSvg(shape, o = {}) {
   const lw = o.lw ?? 1;
-  const set = SETMAP[o.set] || DRAWN;
+  const set = SETMAP[o.set] || PLAIN;
   let d = set[shape] || set.X;
   if (lw !== 1) d = d.replace(/stroke-width="([\d.]+)"/g, (m, v) => `stroke-width="${(v * lw).toFixed(2)}"`);
   let out = "";
@@ -67,23 +71,15 @@ export function mouthSvg(shape, o = {}) {
 }
 export const mouthIcon = (shape, set) => `<svg viewBox="-56 -44 112 100" width="30" height="27">${mouthSvg(shape, { cache: false, set })}</svg>`;
 
-// Lip sync simple (par defaut) : trois bouches seulement. Fermee sur les silences et les levres jointes, ouverte des que
-// ca parle, ronde seulement sur un « o » ou un « ou » bien tenu (au moins trois images, un quart de seconde).
-export const MODES = { simple: "Simple : fermée, ouverte, ronde", detail: "Détaillé : neuf bouches" };
-export const SIMPLE = ["X", "A", "O"];
+// Lip sync simple (par defaut) : deux bouches seulement. Fermee sur les silences et les levres jointes, ouverte des que
+// ca parle.
+export const MODES = { simple: "Simple : fermée, ouverte", detail: "Détaillé : neuf bouches" };
+export const SIMPLE = ["X", "A"];
 const simpleCache = new Map();
 export function simplify(cues) {
   let out = simpleCache.get(cues);
   if (out) return out;
-  const a = [...cues].map((c) => (c === "X" || c === "M" || c === "F" ? "X" : c === "O" || c === "U" ? "o" : "A"));
-  for (let i = 0; i < a.length;) {
-    if (a[i] !== "o") { i++; continue; }
-    let j = i; while (j < a.length && a[j] === "o") j++;
-    const v = j - i >= 3 ? "O" : "A";
-    for (let k = i; k < j; k++) a[k] = v;
-    i = j;
-  }
-  out = a.join("");
+  out = [...cues].map((c) => (c === "X" || c === "M" || c === "F" ? "X" : "A")).join("");
   if (simpleCache.size > 200) simpleCache.clear();
   simpleCache.set(cues, out);
   return out;
