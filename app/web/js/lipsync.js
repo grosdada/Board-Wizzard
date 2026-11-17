@@ -3,7 +3,7 @@
 //   calque.lip = { on, src (fichier son du storyboard), name, dur, fps, cues ("XXAAEEMM…", une lettre par image),
 //                  off (decalage en secondes), x, y (place de la bouche, fraction de la boite du personnage vu de face),
 //                  s (largeur, fraction de la hauteur), hw (rayon de l'axe de la tete, fraction de la hauteur), r (inclinaison),
-//                  lw (epaisseur du trait), hand, wave (tremble du trait), bg (masque blanc), mw, mh, mx, my (son reglage) }
+//                  set (jeu de bouches : dessin | graphique), lw (epaisseur du trait), hand, wave (tremble du trait), bg (masque blanc), mw, mh, mx, my (son reglage) }
 // La bouche est accrochee a un axe vertical qui tourne avec l'orbite : de trois quarts elle glisse sur le cote et se
 // resserre, de dos elle disparait.
 
@@ -22,12 +22,36 @@ const SHAPES = {
   D: `<path d="M-38 -6Q0 -18 38 -6Q0 26 -38 -6Z" fill="#fff" ${INK}/><path d="M-33 0Q0 6 33 0" fill="none" stroke="#111" stroke-width="4"/><path d="M-20 12Q0 18 20 12" fill="none" stroke="#111" stroke-width="3"/>`,
   L: `<path d="M-36 -8Q0 -24 36 -8Q0 40 -36 -8Z" fill="#111" ${INK}/><path d="M-26 -9Q0 -20 26 -9L24 -1Q0 -8 -24 -1Z" fill="#fff"/><ellipse cy="12" rx="13" ry="9" fill="#fff"/>`,
 };
+
+// Jeu « dessiné » : des levres au trait fin, un peu irregulieres, presque sans aplat noir. Le jeu « graphique » ci-dessus
+// est plus plein, facon pate a modeler.
+const PEN = `fill="none" stroke="#111" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"`;
+const PEN2 = `fill="none" stroke="#111" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"`;
+const LIP = `fill="#fff" stroke="#111" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"`;
+const DRAWN = {
+  X: `<path d="M-34 2C-18 6 -6 -2 4 3S26 6 36 0" ${PEN}/><path d="M-10 14Q2 18 14 13" ${PEN2}/>`,
+  M: `<path d="M-30 0C-14 -4 -4 4 6 0S24 -3 32 1" ${PEN}/><path d="M-35 -4L-30 2M35 -3L31 3" ${PEN2}/><path d="M-8 12Q2 15 12 11" ${PEN2}/>`,
+  A: `<path d="M-36 -8C-20 -24 18 -26 36 -9C30 28 12 44 -2 44C-20 42 -32 22 -36 -8Z" ${LIP}/><path d="M-27 -4C-10 5 14 5 29 -5C16 13 -12 13 -27 -4Z" fill="#111"/>` +
+     `<path d="M-28 -6C-10 2 14 2 30 -7" ${PEN2}/><path d="M-15 37C-6 28 8 28 17 37" ${PEN2}/>`,
+  E: `<path d="M-42 -6C-22 -16 20 -17 42 -7C26 16 -22 18 -42 -6Z" ${LIP}/><path d="M-34 0C-12 6 14 6 36 -1" ${PEN2}/><path d="M-13 -12L-12 3M2 -13L2 4M16 -12L15 3" ${PEN2}/>`,
+  O: `<path d="M-2 -26C16 -27 24 -10 22 4C20 22 10 30 -2 30C-16 29 -24 16 -23 0C-22 -16 -14 -25 -2 -26Z" ${LIP}/>` +
+     `<path d="M-2 -18C10 -19 16 -7 15 3C14 16 7 22 -2 22C-11 21 -17 12 -16 1C-15 -10 -10 -17 -2 -18Z" fill="#111"/><path d="M-9 12C-4 7 3 7 8 12" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>`,
+  U: `<path d="M0 -12C9 -12 13 -4 12 3C11 11 6 14 0 14C-7 14 -12 8 -12 1C-12 -7 -7 -12 0 -12Z" ${LIP}/><path d="M0 -8C6 -8 8 -2 8 2C7 8 4 10 0 10C-5 10 -8 6 -8 1C-8 -4 -5 -8 0 -8Z" fill="#111"/>` +
+     `<path d="M-21 -7L-16 -3M-22 6L-16 4M21 -7L16 -3M22 6L16 4" ${PEN2}/>`,
+  F: `<path d="M-32 -5C-14 -11 14 -11 32 -5" ${PEN}/><path d="M-20 -6L-19 6C-6 9 8 9 20 6L20 -6" ${LIP}/><path d="M-7 -7L-7 7M6 -7L6 7" ${PEN2}/><path d="M-24 13C-8 19 10 19 24 12" ${PEN2}/>`,
+  D: `<path d="M-36 -4C-18 -13 18 -14 36 -5C22 14 -20 15 -36 -4Z" ${LIP}/><path d="M-28 0C-10 5 12 5 30 -1" ${PEN2}/><path d="M-20 8C-8 11 10 11 22 7" ${PEN2}/>`,
+  L: `<path d="M-32 -8C-16 -22 16 -23 32 -9C26 22 10 32 -2 32C-18 30 -28 16 -32 -8Z" ${LIP}/><path d="M-24 -5C-8 2 12 2 26 -6" ${PEN2}/>` +
+     `<path d="M-12 15C-9 -1 9 -1 13 14C6 21 -6 21 -12 15Z" ${LIP}/>`,
+};
+export const SETS = { dessin: "Dessiné (trait fin)", graphique: "Graphique (plein)" };
+const SETMAP = { dessin: DRAWN, graphique: SHAPES };
 /** Dessin d'une bouche en traces, centree sur l'origine, large d'environ 100.
  *  o : { cache (masque blanc derriere), lw (epaisseur du trait, 1 = normale), hand (tremble, 0 = net), wave (longueur
  *        des ondulations), mw, mh (largeur et hauteur du masque), mx, my (decalage du masque), id (pour le filtre) } */
 export function mouthSvg(shape, o = {}) {
   const lw = o.lw ?? 1;
-  let d = SHAPES[shape] || SHAPES.X;
+  const set = SETMAP[o.set] || DRAWN;
+  let d = set[shape] || set.X;
   if (lw !== 1) d = d.replace(/stroke-width="([\d.]+)"/g, (m, v) => `stroke-width="${(v * lw).toFixed(2)}"`);
   let out = "";
   // le masque ne change pas d'une bouche a l'autre : une fois aligne sur le personnage, il le reste
@@ -40,7 +64,7 @@ export function mouthSvg(shape, o = {}) {
   } else out += d;
   return out;
 }
-export const mouthIcon = (shape) => `<svg viewBox="-56 -44 112 100" width="30" height="27">${mouthSvg(shape, { cache: false })}</svg>`;
+export const mouthIcon = (shape, set) => `<svg viewBox="-56 -44 112 100" width="30" height="27">${mouthSvg(shape, { cache: false, set })}</svg>`;
 
 /** Partie gardee de la voix : [debut, fin] en secondes dans le fichier (lip.in, lip.out : la decoupe). */
 export function voiceSpan(lip) { const a = Math.max(0, lip.in || 0), b = Math.min(lip.dur || 1e9, lip.out ?? lip.dur ?? 1e9); return [a, Math.max(a, b)]; }
@@ -64,7 +88,7 @@ export function lipMarkup(lip, box, flip, t, angle = 0, id = "", mask = "#ffffff
   let cx = box.x + (lip.x ?? 0.5) * box.w - Math.sin(angle) * (lip.hw ?? 0.03) * box.h;   // l'axe tourne : la bouche part sur le cote
   const cy = box.y + (lip.y ?? 0.13) * box.h;
   if (flip) cx = 2 * box.cx - cx;
-  const o = { cache: lip.bg !== false, lw: lip.lw, hand: lip.hand, wave: lip.wave, mw: lip.mw, mh: lip.mh, mx: lip.mx, my: lip.my, id, mask };
+  const o = { cache: lip.bg !== false, lw: lip.lw, hand: lip.hand, wave: lip.wave, mw: lip.mw, mh: lip.mh, mx: lip.mx, my: lip.my, id, mask, set: lip.set };
   return `<g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)}) rotate(${((flip ? -1 : 1) * (lip.r || 0)).toFixed(1)}) scale(${(size / 100 * kx).toFixed(4)} ${(size / 100).toFixed(4)})" style="pointer-events:none">${mouthSvg(cueAt(lip, t), o)}</g>`;
 }
 

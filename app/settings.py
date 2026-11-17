@@ -31,6 +31,7 @@ DEFAULTS = {
         "matte": "fal-ai/birefnet/v2",
         "matte_video": "fal-ai/birefnet/v2/video",
     },
+    "elevenlabs": {"key": "", "model": "eleven_multilingual_v2"},      # voix de synthese du montage (lip sync)
     "render": {
         "target": "auto",                # local | fal | auto (machines d'abord, fal si aucune)
         "orbit_length": 73,              # images a 24 i/s, forme 17k+5 : 73 = 3 s, 124 = 5,2 s
@@ -67,6 +68,8 @@ def save(patch):
             raw = {}
         if (patch.get("fal") or {}).get("key", "").startswith("••"):     # cle masquee renvoyee telle quelle
             patch["fal"].pop("key")
+        if (patch.get("elevenlabs") or {}).get("key", "").startswith("••"):
+            patch["elevenlabs"].pop("key")
         if (patch.get("server") or {}).get("password", "").startswith("••"):
             patch["server"].pop("password")
         raw = _merge(raw, patch)
@@ -105,6 +108,8 @@ def public():
     s = load()
     key = s["fal"].get("key") or ""
     s["fal"]["key"] = ("••••" + key[-4:]) if key else ""
+    ekey = (s.get("elevenlabs") or {}).get("key") or ""
+    s.setdefault("elevenlabs", {})["key"] = ("••••" + ekey[-4:]) if ekey else ""
     if s["server"].get("password"):
         s["server"]["password"] = "••••"
     s["data"] = str(DATA)

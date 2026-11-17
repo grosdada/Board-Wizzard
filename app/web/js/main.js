@@ -787,6 +787,7 @@ class App {
       catch (err) { toast("Le navigateur refuse l'accès au presse-papiers : clique dans le champ puis Ctrl+V.", "error"); } } } }, "Coller");
     const key = secret(s.fal.key, "clé fal du poste"), myKey = secret(localStorage.getItem("bw.falKey") || "", "ma clé fal (reste dans ce navigateur)");
     const orbit = f(s.fal.orbit), edit = f(s.fal.edit), t2i = f(s.fal.t2i);
+    const el = s.elevenlabs || {}, ekey = secret(el.key, "clé ElevenLabs du poste"), emodel = f(el.model || "eleven_multilingual_v2");
     const fres = h("select", [["480P", "480P · le moins cher (≈ 0,31 $ l'orbite de 5 s)"], ["768P", "768P (≈ 0,375 $)"], ["2K", "2K"], ["4K", "4K"]].map(([v, t]) => h("option", { value: v, selected: v === (s.fal.orbit_resolution || "768P") }, t)));
     const fcon = h("input", { type: "number", min: 1, max: 20, step: 1, value: s.fal.concurrency || 3 });
     const pw = f(s.server.password || "", "vide = pas de mot de passe", "password");
@@ -801,6 +802,8 @@ class App {
       h("label.row", "Résolution de l'orbite", fres), h("label.row", "Calculs fal en même temps", fcon),
       h("label.row", "Modèle orbite", orbit), h("label.row", "Modèle édition / Integrate", edit), h("label.row", "Modèle image", t2i),
       h("p.muted", "Sur fal, l'orbite H3 + LoRA dure 5 s au minimum ; « minimax/h3-max/camera-controls » accepte 3 s. Sur fal : image, détourage et orbite essayés ; édition pas encore."),
+      h("h4", { title: "Pour le bouton « Générer une voix » du montage. La clé reste sur ce poste." }, "ElevenLabs (voix) ⓘ"), h("div.row.keyrow", h("span", "Clé ElevenLabs"), ekey, paste(ekey)),
+      h("label.row", "Modèle de voix", emodel),
       h("h4", "Accès"), h("label.row", "Mot de passe de l'application", pw),
       h("p.muted", `Données (banque et storyboards) : ${s.data}`)),
       [{ label: "Annuler" }, { label: "Enregistrer", primary: true, click: async () => {
@@ -808,7 +811,8 @@ class App {
         const list = workers.value.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p[0])
           .map((p) => (p.length > 1 ? { name: p[0], url: p[1], enabled: true } : { name: p[0], url: p[0], enabled: true }));
         await put("settings", { workers: list, qbuilder_settings: qb.value.trim(), render: { orbit_length: +len.value, target: tgt.value },
-                                fal: { key: key.value.trim(), orbit_resolution: fres.value, concurrency: Math.max(1, Math.min(20, +fcon.value || 3)), orbit: orbit.value.trim(), edit: edit.value.trim(), t2i: t2i.value.trim() }, server: { password: pw.value } });
+                                fal: { key: key.value.trim(), orbit_resolution: fres.value, concurrency: Math.max(1, Math.min(20, +fcon.value || 3)), orbit: orbit.value.trim(), edit: edit.value.trim(), t2i: t2i.value.trim() },
+                                elevenlabs: { key: ekey.value.trim(), model: emodel.value.trim() || "eleven_multilingual_v2" }, server: { password: pw.value } });
         this.info = await get("info"); toast("Réglages enregistrés."); this.pollWorkers();
       } }]);
   }

@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import jobs, poses, settings, sprites, store
+from . import jobs, poses, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"
 VERSION = "0.1"
@@ -254,6 +254,11 @@ class Handler(BaseHTTPRequestHandler):
             elif len(seg) == 3 and seg[2] == "cancel":
                 S.cancel(seg[1])
             return self.send_json({"ok": True})
+        if head == "tts" and seg[1:] == ["voices"]:                 # voix ElevenLabs du compte
+            try:
+                return self.send_json(eleven.voices((settings.load().get("elevenlabs") or {}).get("key")))
+            except eleven.ElevenError as e:
+                raise ApiError(str(e), 400)
         if head == "folders":                                       # dossiers et sous-dossiers de la banque
             if method == "POST":
                 store.add_folder((data or {}).get("name", ""), (data or {}).get("kind", ""))
@@ -383,6 +388,16 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 tmp.unlink(missing_ok=True)
             return self.send_json({"file": "assets/" + dest.name, "w": w, "h": h})
+        if act == "tts" and method == "POST":                      # voix generee par ElevenLabs, rangee comme une voix importee
+            cfg = settings.load().get("elevenlabs") or {}
+            try:
+                mp3 = eleven.speak(cfg.get("key"), d.get("voice"), d.get("text"), cfg.get("model"))
+            except eleven.ElevenError as e:
+                raise ApiError(str(e), 400)
+            dest = pdir / "assets" / ("voix_%d.mp3" % (time.time() * 1000))
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(mp3)
+            return self.send_json({"file": "assets/" + dest.name})
         if act == "audio" and method == "POST":                    # voix d'un personnage (fichier importe ou micro)
             ext = Path(q.get("name", "voix.webm")).suffix.lower()
             if ext not in (".webm", ".wav", ".mp3", ".m4a", ".ogg", ".oga", ".aac", ".flac", ".mp4"):
