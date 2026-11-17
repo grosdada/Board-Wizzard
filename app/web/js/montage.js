@@ -135,7 +135,13 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
           `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
       if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l))}</g>`;   // lip sync : la bouche qui parle
-      if (sel === l.id) o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
+      if (sel === l.id) {
+        o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
+        if (nOf(l, s.v)) {                                 // il a une orbite : une pastille ↻ a glisser pour le faire tourner
+          const k = 2.4 / c.z, r = 15 * k, ry = Math.max(r + 2, box.y - r - 4);   // au-dessus de la tete, sans sortir de la case
+          o += `<g class="mt-rot" data-layer="${l.id}" transform="translate(${f1(box.cx)} ${f1(ry)}) scale(${f3(k)})"><circle r="15" data-layer="${l.id}"/><path d="M-7 -3A8 8 0 1 1 -5 6M-7 -3L-11 -8M-7 -3L-1 -4" data-layer="${l.id}"/></g>`;
+        }
+      }
     };
     // formes du decor et elements, du plus loin au plus pres ; a profondeur egale, les formes passent derriere
     const order = [];
@@ -345,7 +351,7 @@ export function openMontage(app, pid) {
         Object.entries(it.variants).map(([k, vv]) => h("option", { value: k, selected: k === cur().v }, (vv.orbit ? "↻ " : "▫ ") + vv.label)))));
     }
     keyBar();
-    side.append(h("label.row.check", { title: "Dans l'image : glisser un élément le déplace, molette = taille, Maj + glisser = le faire tourner. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));
+    side.append(h("label.row.check", { title: "Dans l'image, sur un élément : clic gauche + glisser = le faire tourner (orbite), clic droit + glisser = le déplacer (ou Maj + clic gauche), molette = taille. Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));
     syncProps = () => rows.forEach((f) => f());
   }
   // boutons de cle : juste au-dessus de la timeline
@@ -673,7 +679,7 @@ export function openMontage(app, pid) {
     sel = id || (shp ? "s:" + shId : "cam"); selKey = null;
     const p = ptOf(e), c = camAt();
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
-    if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: e.shiftKey, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
+    if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: !depthView && e.button === 0 && !e.shiftKey && nOf(layerOf(id), s.v) > 0, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
     else if (shp && depthView) vdrag = { id: sel, shape: shp, p, d: shp.d ?? 1 };   // carte d'une forme : elle ne glisse qu'en profondeur
     else vdrag = { id: "cam", p, c };                      // dans le vide (ou sur une forme du decor, dans l'image) : on deplace le cadre de la camera
     paint(); lanes(); props();
@@ -689,6 +695,7 @@ export function openMontage(app, pid) {
     else change(vdrag.id, { x: f3(vdrag.s.x + dx / vdrag.z), y: f3(vdrag.s.y + dy / vdrag.z) });
   });
   svg.addEventListener("pointerup", () => { vdrag = null; });
+  svg.addEventListener("contextmenu", (e) => e.preventDefault());       // le clic droit sert a deplacer un element
   svg.addEventListener("wheel", (e) => {
     e.preventDefault();
     const k = Math.exp(-e.deltaY * 0.0015);
