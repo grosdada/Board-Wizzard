@@ -689,12 +689,12 @@ class App {
   // ---------------------------------------------------------------- reglages
   async settingsDialog() {
     const s = await get("settings"), ws = await get("workers?fresh=1").catch(() => []);
-    const f = (v, ph, type = "text") => h("input", { type, value: v ?? "", placeholder: ph || "" });
+    const f = (v, ph, type = "text") => h("input", { type, value: v ?? "", placeholder: ph || "", autocomplete: type === "password" ? "new-password" : "off" });
     const workers = h("textarea", { rows: 4, placeholder: "HITCHCOCK | http://192.168.1.60:8188" }, (s.workers || []).map((w) => `${w.name} | ${w.url}`).join("\n"));
     const qb = f(s.qbuilder_settings, "…\\Workflows-Q-Builder\\local_settings.json");
     const len = h("select", [[73, "3 s (73 images)"], [90, "3,75 s"], [107, "4,5 s"], [124, "5,2 s (124 images)"]].map(([v, t]) => h("option", { value: v, selected: v === s.render.orbit_length }, t)));
     const tgt = h("select", [["auto", "Auto : machines d'abord, fal sinon"], ["local", "Machines seulement"], ["fal", "fal seulement"]].map(([v, t]) => h("option", { value: v, selected: v === s.render.target }, t)));
-    const key = f(s.fal.key, "clé fal du poste"), myKey = f(localStorage.getItem("bw.falKey") || "", "ma clé fal (reste dans ce navigateur)", "password");
+    const key = f(s.fal.key, "clé fal du poste", "password"), myKey = f(localStorage.getItem("bw.falKey") || "", "ma clé fal (reste dans ce navigateur)", "password");
     const orbit = f(s.fal.orbit), edit = f(s.fal.edit), t2i = f(s.fal.t2i);
     const pw = f(s.server.password || "", "vide = pas de mot de passe", "password");
     modal("Réglages", h("div.form.settings",
