@@ -228,3 +228,16 @@ label.row.range.off { opacity: .4; }
 .draw-side h4 { margin: 10px 0 6px; }
 .draw-sel { fill: none; stroke: #2bb3a3; stroke-width: 2; stroke-dasharray: 8 6; pointer-events: none; }
 .draw-pt { fill: #8fd0c4; stroke: #0e1b19; stroke-width: 2; cursor: move; }
+.menu .mnote { width: 100%; font-size: 11px; color: var(--muted); padding: 2px 8px 5px; }
+.draw-drop { position: relative; display: inline-flex; }
+.draw-drop .main { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.draw-drop .caret { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; padding-left: 6px; padding-right: 6px; }
+.draw-drop.on .main, .draw-drop.on .caret { border-color: var(--accent); color: var(--accent); }
+.draw-menu { display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 5; min-width: 220px; background: var(--panel); border: 1px solid #484c4c; border-radius: 9px; padding: 5px; box-shadow: 0 10px 28px rgba(0,0,0,.5); }
+.draw-drop.open .draw-menu { display: block; }
+.draw-menu button { display: flex; gap: 9px; align-items: center; width: 100%; text-align: left; background: none; border: 0; padding: 6px 8px; border-radius: 5px; font-size: 12.5px; color: inherit; cursor: pointer; }
+.draw-menu button:hover, .draw-menu button.on { background: rgba(143,208,196,.14); }
+.draw-menu .ico { width: 18px; text-align: center; }
+.draw-rot { cursor: grab; } .draw-rot circle { fill: #8fd0c4; stroke: #0e1b19; stroke-width: 2; } .draw-rot path { fill: none; stroke: #0e1b19; stroke-width: 2.4; stroke-linecap: round; pointer-events: none; }
+.draw-build { fill: none; stroke: #2bb3a3; stroke-width: 2.5; stroke-dasharray: 7 5; pointer-events: none; }
+.draw-pt.first { fill: #ffd27a; }

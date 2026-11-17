@@ -25,8 +25,9 @@ export class Bank {
   }
 
   async reload() {
-    const items = await get("bank");
+    const [items, extra] = await Promise.all([get("bank"), get("folders").catch(() => [])]);
     this.app.bank = new Map(items.map((it) => [it.id, it]));
+    this.extraFolders = extra || [];
     this.render();
     if (this.openId && this.refreshItem) this.refreshItem();
   }
@@ -34,7 +35,8 @@ export class Bank {
   render() {
     const app = this.app, folders = this.folders();
     if (this.folder && this.folder !== "·" && !folders.includes(this.folder)) this.folder = "";
-    const inFolder = (it) => !this.folder || (this.folder === "·" ? !it.folder : it.folder === this.folder);
+    // un dossier montre aussi le contenu de ses sous-dossiers
+    const inFolder = (it) => !this.folder || (this.folder === "·" ? !it.folder : it.folder === this.folder || (it.folder || "").startsWith(this.folder + "/"));
     const items = [...app.bank.values()].filter((it) => it.kind === this.tab && inFolder(it) &&
       (!this.query || (it.name + " " + (it.tags || []).join(" ")).toLowerCase().includes(this.query)));
     const pick = h("input", { type: "file", accept: "image/*", multiple: true, style: { display: "none" },
@@ -45,20 +47,46 @@ export class Bank {
                                        on: { input: (e) => { this.query = e.target.value.toLowerCase(); this.renderGrid(); } } });
     const folderSel = h("select.folder", { title: "Dossier de la banque (un par projet, par exemple)",
       on: { change: (e) => { this.folder = e.target.value; localStorage.setItem("bw.folder", this.folder); this.render(); } } },
-      h("option", { value: "" }, "Tous les dossiers"), folders.map((f) => h("option", { value: f, selected: f === this.folder }, "📁 " + f)),
+      h("option", { value: "" }, "Tous les dossiers"), folders.map((f) => { const parts = f.split("/"); return h("option", { value: f, selected: f === this.folder }, "   ".repeat(parts.length - 1) + (parts.length > 1 ? "└ " : "📁 ") + parts[parts.length - 1]); }),
       h("option", { value: "·", selected: this.folder === "·" }, "Sans dossier"));
     this.host.textContent = "";
     this.host.append(
       h("div.tabs", KINDS.map(([k, label]) => h("button" + (k === this.tab ? ".on" : ""), {
         on: { click: () => { this.tab = k; localStorage.setItem("bw.tab", k); this.render(); } } },
         label, h("span.count", String([...app.bank.values()].filter((x) => x.kind === k && inFolder(x)).length))))),
-      h("div.bank-bar", folderSel),
+      h("div.bank-bar", folderSel,
+        h("button.mini", { title: this.folder && this.folder !== "·" ? `Créer un sous-dossier dans « ${this.folder} »` : "Créer un dossier", on: { click: () => this.newFolder() } }, "＋ Dossier"),
+        this.folder && this.folder !== "·" ? h("button.mini.danger", { title: `Supprimer le dossier « ${this.folder} » (ses éléments ne sont pas supprimés)`, on: { click: () => this.deleteFolder() } }, "🗑") : ""),
       h("div.bank-bar", search, h("button.mini", { title: "Importer des images", on: { click: () => pick.click() } }, "＋ Importer"),
         h("button.mini", { title: "Générer à partir d'une description", on: { click: () => this.generateDialog() } }, "✨ Générer"), pick),
       grid);
     this.grid = grid;
   }
-  folders() { return [...new Set([...this.app.bank.values()].map((it) => it.folder).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")); }
+  folders() {                         // dossiers des elements, dossiers crees vides, et les parents de chacun
+    const all = new Set([...(this.extraFolders || []), ...[...this.app.bank.values()].map((it) => it.folder).filter(Boolean)]);
+    for (const f of [...all]) { const p = f.split("/"); for (let i = 1; i < p.length; i++) all.add(p.slice(0, i).join("/")); }
+    return [...all].sort((a, b) => a.localeCompare(b, "fr"));
+  }
+  async newFolder() {
+    const parent = this.folder && this.folder !== "·" ? this.folder : "";
+    const name = (prompt(parent ? `Nom du sous-dossier à créer dans « ${parent} » :` : "Nom du dossier à créer :") || "").trim().replace(/[\/]+/g, " ");
+    if (!name) return;
+    const path = parent ? parent + "/" + name : name;
+    await post("folders", { name: path });
+    this.folder = path; localStorage.setItem("bw.folder", path);
+    await this.reload();
+    toast(`Dossier « ${path} » créé. Les éléments importés ou générés maintenant y vont.`);
+  }
+  async deleteFolder() {
+    const f = this.folder, n = [...this.app.bank.values()].filter((it) => it.folder === f || (it.folder || "").startsWith(f + "/")).length;
+    const parent = f.split("/").slice(0, -1).join("/");
+    if (!confirm(`Supprimer le dossier « ${f} » et ses sous-dossiers ?
+` + (n ? `Ses ${n} élément(s) ne sont pas supprimés : ils vont dans ${parent ? "« " + parent + " »" : "« Sans dossier »"}.` : "Il est vide."))) return;
+    await del("folders?name=" + encodeURIComponent(f));
+    this.folder = parent; localStorage.setItem("bw.folder", parent);
+    await this.reload();
+    toast(`Dossier « ${f} » supprimé.`);
+  }
   folderInput(value) {                // champ « dossier » avec les dossiers existants en suggestion
     const id = "bwf" + Math.random().toString(36).slice(2, 7);
     return h("span.fin", h("input", { type: "text", value: value || "", placeholder: "Dossier (projet)…", list: id }),

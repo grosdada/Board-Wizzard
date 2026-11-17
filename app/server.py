@@ -254,6 +254,12 @@ class Handler(BaseHTTPRequestHandler):
             elif len(seg) == 3 and seg[2] == "cancel":
                 S.cancel(seg[1])
             return self.send_json({"ok": True})
+        if head == "folders":                                       # dossiers et sous-dossiers de la banque
+            if method == "POST":
+                store.add_folder((data or {}).get("name", ""))
+            elif method == "DELETE":
+                return self.send_json({"moved": store.remove_folder(q.get("name", "")), "folders": store.list_folders()})
+            return self.send_json(store.list_folders())
         if head == "bank":
             return self.api_bank(method, seg[1:], q, data, body)
         if head == "projects":

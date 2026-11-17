@@ -358,7 +358,9 @@ class App {
     const l = this.layer(); if (!l) return;
     const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [];
     items.push({ head: "Pose" });
-    for (const [k, vv] of Object.entries(item?.variants || {})) items.push({ label: vv.label, checked: k === l.v, click: () => this.setPose(l, k) });
+    // ↻ : orbite calculee, la pose tourne · ⏳ : orbite en calcul · ▫ : image fixe, pas d'orbite
+    for (const [k, vv] of Object.entries(item?.variants || {})) items.push({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + vv.label, checked: k === l.v, click: () => this.setPose(l, k) });
+    items.push({ note: "↻ orbite prête · ⏳ en calcul · ▫ image fixe" });
     items.push({ label: "Générer d'autres poses…", click: () => this.bankUI.openItem(l.item) });
     if (v && v.orbit) {
       const cur = nearestAxis(v.orbit, l.f || 0);
@@ -559,7 +561,7 @@ class App {
       box.append(h("h3", item ? item.name : "Élément retiré de la banque"));
       if (!item) { box.append(h("button.mini.danger", { on: { click: () => this.removeLayer(l) } }, "Supprimer le calque")); return; }
       box.append(h("label.row", "Pose", h("select", { on: { change: (e) => this.setPose(l, e.target.value) } },
-        Object.entries(item.variants).map(([k, vv]) => h("option", { value: k, selected: k === l.v }, vv.label + (vv.orbit ? "" : " (fixe)"))))));
+        Object.entries(item.variants).map(([k, vv]) => h("option", { value: k, selected: k === l.v }, (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + vv.label)))));
       if (v && v.orbit) {
         const cur = nearestAxis(v.orbit, l.f || 0);
         box.append(h("div.axes", AXES.map((a) => h("button.mini" + (a === cur ? ".on" : ""), { on: { click: () => this.setAxis(l, a) } }, a))),
@@ -832,6 +834,7 @@ function menu(e, items) {
   const box = h("div.menu");
   for (const it of items) {
     if (it.head) { box.append(h("div.mhead", it.head)); continue; }
+    if (it.note) { box.append(h("div.mnote", it.note)); continue; }
     box.append(h("button" + (it.half ? ".half" : "") + (it.checked ? ".on" : "") + (it.danger ? ".danger" : ""),
       { on: { click: () => { box.remove(); it.click(); } } }, it.checked ? "✓ " : "", it.label));
   }

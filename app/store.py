@@ -143,6 +143,58 @@ def list_items():
     return sorted(out, key=lambda x: (x.get("kind", ""), x.get("name", "").lower()))
 
 
+# ---- dossiers de la banque : un chemin « Projet/Sous-dossier ». La liste garde aussi les dossiers encore vides.
+def _clean_folder(name):
+    parts = [re.sub(r"[\<>:\"|?*]", "", p).strip() for p in str(name or "").replace("\\", "/").split("/")]
+    return "/".join(p for p in parts if p)[:120]
+
+
+def list_folders():
+    try:
+        extra = _read(_dir("bank") / "folders.json")
+    except (OSError, ValueError):
+        extra = []
+    seen = set(f for f in extra if isinstance(f, str) and f)
+    for it in list_items():
+        if it.get("folder"):
+            seen.add(_clean_folder(it["folder"]))
+    for f in list(seen):                                          # un sous-dossier fait exister ses parents
+        parts = f.split("/")
+        for i in range(1, len(parts)):
+            seen.add("/".join(parts[:i]))
+    return sorted(f for f in seen if f)
+
+
+def add_folder(name):
+    name = _clean_folder(name)
+    if not name:
+        raise ValueError("nom de dossier vide")
+    with _lock:
+        _dir("bank").mkdir(parents=True, exist_ok=True)
+        _write(_dir("bank") / "folders.json", sorted(set(list_folders()) | {name}))
+    return name
+
+
+def remove_folder(name):
+    """Supprime un dossier et ses sous-dossiers. Leurs elements ne sont pas supprimes : ils remontent dans le dossier
+    parent (ou hors dossier). Renvoie le nombre d'elements deplaces."""
+    name = _clean_folder(name)
+    parent = "/".join(name.split("/")[:-1])
+    inside = lambda f: f == name or (f or "").startswith(name + "/")
+    moved = 0
+    for it in list_items():
+        if inside(_clean_folder(it.get("folder", ""))):
+            mutate_item(it["id"], lambda x: x.update(folder=parent))
+            moved += 1
+    with _lock:
+        try:
+            extra = _read(_dir("bank") / "folders.json")
+        except (OSError, ValueError):
+            extra = []
+        _write(_dir("bank") / "folders.json", sorted(f for f in extra if not inside(f)))
+    return moved
+
+
 def create_item(kind, name, style="photo", tags=None):
     if kind not in KINDS:
         raise ValueError("type inconnu")
