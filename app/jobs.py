@@ -135,6 +135,7 @@ def run_item_orbit(job, prov):
                 try:
                     job["progress"] = "conversion en tracés"
                     info["vec"] = vector.orbit(d / rel, info["n"])
+                    info["vt"] = int(time.time())
                 except Exception:                                  # noqa: BLE001 : les images suffisent a afficher
                     info["vec"] = False
             # orbite ratee : volet noir, sujet perdu par le detourage, ou camera presque immobile. Le mouvement est

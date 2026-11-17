@@ -3,7 +3,7 @@
 // mieux sur une image nette ; le flou reste un reglage d'affichage).
 import { loadImage } from "./api.js";
 import { drawImage } from "./draw.js";
-import { sprite, placement, layerBox, depthOf, blurOf, background, vecReady, inkStroke, shadeOf } from "./model.js";
+import { sprite, placement, layerBox, depthOf, blurOf, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   const pg = app.page(), pan = pg.panels[g.id] || {}, bb = g.bbox;
@@ -61,7 +61,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       ctx.save(); ctx.clip(body);
       const shd = shadeOf(l.sh, vf.h);
       if (shd) {
-        for (const pd of vf.parts) {                       // forme par forme
+        for (const pd of shadeShapes(l.sh, vf)) {                       // forme par forme
           const part = new Path2D(pd);
           ctx.save(); ctx.clip(part);
           ctx.fillStyle = shd.fill; ctx.fill(part);

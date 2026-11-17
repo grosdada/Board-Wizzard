@@ -24,10 +24,10 @@ def available():
     return cv2 is not None
 
 
-def _paths(mask, origin=(0, 0)):
+def _paths(mask, origin=(0, 0), holes=True):
     """Contours d'un masque (avec ses trous) -> attribut d d'un trace SVG, en coordonnees de l'image d'origine.
     origin : place du masque dans l'image sur-echantillonnee, quand on ne trace qu'un morceau."""
-    cs, _ = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+    cs, _ = cv2.findContours(mask, cv2.RETR_CCOMP if holes else cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     out = []
     for c in cs:
         if cv2.contourArea(c) < 6 * UP * UP:
@@ -72,17 +72,24 @@ def _parts(body, ink):
     n, lab, stats, _ = cv2.connectedComponentsWithStats(free.astype(np.uint8), connectivity=4)
     total = max(1, int((body > 0).sum()))
     order = sorted(range(1, n), key=lambda i: -stats[i, cv2.CC_STAT_AREA])[:MAX_PARTS]
+    big = int(0.022 * body.shape[0]) | 1
+    kbig = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (big, big))
     out = []
     for i in order:
         x, y, ww, hh, area = stats[i]
         if area < 0.004 * total:
             break
-        x0, y0, x1, y1 = max(0, x - GAP), max(0, y - GAP), min(lab.shape[1], x + ww + GAP), min(lab.shape[0], y + hh + GAP)
+        pad = big + GAP
+        x0, y0, x1, y1 = max(0, x - pad), max(0, y - pad), min(lab.shape[1], x + ww + pad), min(lab.shape[0], y + hh + pad)
         m = cv2.dilate((lab[y0:y1, x0:x1] == i).astype(np.uint8), k)          # on revient jusque sous le trait
+        # les traits qui entrent dans la forme sans rien fermer (un pli, une ride) y creusent des couloirs : on les
+        # rebouche, sinon l'ombre longe chaque trait et le dessin parait dedouble
+        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, kbig)
         m &= body[y0:y1, x0:x1]
         full = np.zeros((y1 - y0 + 2, x1 - x0 + 2), np.uint8)
         full[1:-1, 1:-1] = m
-        d = _paths(full, (x0 - 1, y0 - 1))
+        d = _paths(full, (x0 - 1, y0 - 1), holes=False)      # contour exterieur seul : sinon chaque petit trait interieur
+                                                              # recoit son ombre et le dessin parait dedouble
         if d:
             out.append(d)
     return out

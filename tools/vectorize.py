@@ -6,6 +6,7 @@
 """
 
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -33,6 +34,7 @@ def main():
                 cur = x["variants"].get(vid, {}).get("orbit")
                 if cur and cur.get("dir") == rel:                 # l'orbite n'a pas ete refaite entre-temps
                     cur["vec"] = True
+                    cur["vt"] = int(time.time())               # version des traces : le navigateur les recharge
             store.mutate_item(it["id"], mark)
             done += 1
             print("traces :", it["id"], vid, flush=True)

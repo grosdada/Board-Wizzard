@@ -18,7 +18,7 @@ export function sprite(item, vid, f) {
   if (v.orbit && v.orbit.n) {
     const n = v.orbit.n, i = ((Math.round(f || 0) % n) + n) % n;
     return { url: `/bank/${item.id}/${v.orbit.dir}/${pad3(i)}.webp`, w: v.orbit.w, h: v.orbit.h, n, i, orbit: true,
-             vec: v.orbit.vec ? `/bank/${item.id}/${v.orbit.dir}/vec.json` : null };
+             vec: v.orbit.vec ? `/bank/${item.id}/${v.orbit.dir}/vec.json?v=${v.orbit.vt || 0}` : null };
   }
   if (v.cut) return { url: `/bank/${item.id}/${v.cut}?t=${v.t || 0}`, w: v.cw || item.w, h: v.ch || item.h, n: 1, i: 0 };
   return { url: `/bank/${item.id}/${v.ref}`, w: item.w || 1, h: item.h || 1, n: 1, i: 0, raw: true };
@@ -40,7 +40,7 @@ export function vecFrame(sp, onReady) {
   if (e.data === null) { if (onReady && e.wait.length < 4) e.wait.push(onReady); return null; }
   if (!e.data) return null;
   const fr = e.data.frames[sp.i];
-  return fr ? { w: e.data.w, h: e.data.h, body: fr.body, ink: fr.ink, parts: fr.parts && fr.parts.length ? fr.parts : [fr.body] } : null;
+  return fr ? { w: e.data.w, h: e.data.h, body: fr.body, ink: fr.ink, parts: fr.parts || [] } : null;
 }
 export function vecReady(sp) { return new Promise((ok) => { const f = vecFrame(sp, () => ok(vecFrame(sp))); if (f || !sp || !sp.vec || (vecs.get(sp.vec) || {}).data === false) ok(f); }); }
 /** Ombre graphique d'un dessin en traces, sans calcul : la silhouette moins elle-meme decalee vers la lumiere laisse
@@ -51,6 +51,9 @@ export function shadeOf(sh, h) {
   const g = Math.round(255 * clamp(sh.g ?? 0.72, 0, 1)), d = (sh.w ?? 5) / 100 * h, a = (sh.a ?? 135) * Math.PI / 180;
   return { fill: `rgb(${g},${g},${g})`, dx: Math.cos(a) * d, dy: -Math.sin(a) * d };
 }
+/** Formes a ombrer : toujours la silhouette entiere, plus les sh.k plus grandes formes fermees par le trait (0 = aucune :
+ *  l'ombre rough, sur la silhouette seule ; les formes sont rangees de la plus grande a la plus petite). */
+export function shadeShapes(sh, vf) { return [vf.body].concat((vf.parts || []).slice(0, Math.max(0, Math.round((sh && sh.k) || 0)))); }
 /** Trait d'un dessin en traces : epaisseur ajoutee (lw > 0 : plus epais, < 0 : plus fin), en unites du dessin. */
 export function inkStroke(lw) { const t = +lw || 0; return { color: t >= 0 ? "#111111" : "#ffffff", width: Math.abs(t), outline: 0 }; }   // pas de contour de silhouette : il inventerait des traits la ou le dessin n'en a pas
 

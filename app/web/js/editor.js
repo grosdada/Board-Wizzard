@@ -4,7 +4,7 @@
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
-import { vecFrame, inkStroke, shadeOf } from "./model.js";
+import { vecFrame, inkStroke, shadeOf, shadeShapes } from "./model.js";
 import { drawSvg, W as DRAW_W } from "./draw.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, background, clamp, variantOf, pad3 } from "./model.js";
 
@@ -146,7 +146,7 @@ export class Editor {
             const shd = shadeOf(l.sh, vf.h);
             if (shd) {                                       // ombre : aplat gris, puis la silhouette decalee en blanc par-dessus
               const mv = `translate(${(l.flip ? -shd.dx : shd.dx).toFixed(2)} ${shd.dy.toFixed(2)})`;
-              vf.parts.forEach((pd, pi) => {                 // forme par forme : chaque zone fermee par le trait a son ombre
+              shadeShapes(l.sh, vf).forEach((pd, pi) => {                 // forme par forme : chaque zone fermee par le trait a son ombre
                 const pcid = cid + "-" + pi, pc = s("clipPath", { id: pcid });
                 pc.append(s("path", { d: pd }));
                 defs.append(pc);
