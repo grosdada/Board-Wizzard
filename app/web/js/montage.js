@@ -119,7 +119,9 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h, col);
         let inner = "";
         if (shd) shadeShapes(l.sh, vf).forEach((pd, i) => { inner += `<clipPath id="${pre}s-${l.id}-${i}"><path d="${pd}"/></clipPath><g clip-path="url(#${pre}s-${l.id}-${i})"><path d="${pd}" fill="${shd.fill}"/><path d="${pd}" fill="${col}" transform="translate(${f1(l.flip ? -shd.dx : shd.dx)} ${f1(shd.dy)})"/></g>`; });
-        const lwf = wiggleFilter(`${pre}wg-${l.id}`, l.hand, l.wave, vf.w, vf.h);
+        // tremble anime (l.boil = { on, a : intensite, v : changements par seconde }) : le trait change de tremble en boucle, sur 4 dessins
+        const boil = l.boil && l.boil.on ? l.boil : null;
+        const lwf = wiggleFilter(`${pre}wg-${l.id}`, boil ? (boil.a ?? 2) : l.hand, l.wave, vf.w, vf.h, boil ? 5 + (Math.floor(t * (boil.v ?? 8)) % 4) * 13 : 5);
         o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})">${lwf}<g${lwf ? ` filter="url(#${pre}wg-${l.id})"` : ""}><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="${col}" data-layer="${l.id}"/>` +
           `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
@@ -269,6 +271,7 @@ export function openMontage(app, pid) {
       if (sprite(it, cur().v, cur().f)?.vec) {
         const wig = (label, k, min, max, def) => { const out = h("output", (l[k] ?? def).toFixed(1)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.1, value: l[k] ?? def, on: { input: (e) => { l[k] = +e.target.value; out.textContent = (+e.target.value).toFixed(1); paint(); } } }), out); };
         side.append(range("Trait", "lw", -2, 6, 0.1, (x) => (+x).toFixed(1)), fold("wig", "Tremblé du trait", wig("Tremblé", "hand", 0, 10, 0), wig("Ondulation", "wave", 0.5, 12, 4)),
+          h("label.row.check", { title: "Le trait tremble en boucle pendant la lecture, comme un dessin refait à chaque image" }, h("input", { type: "checkbox", checked: !!(l.boil && l.boil.on), on: { change: (e) => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: e.target.checked }); paint(); props(); } } }), "Animer le tremblé"),
           h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
             swatch(l.col || "#ffffff", (c) => { l.col = c; paint(); }),
             l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; paint(); props(); } } }, "Blanc") : ""));
@@ -284,6 +287,12 @@ export function openMontage(app, pid) {
         if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée", plain("Force", "a", 0.05, 0.9, 0.35), plain("Largeur", "w", 0.2, 2.5, 0.8)));
       }
       side.append(voiceBox(l));
+      if (l.boil && l.boil.on && sprite(it, cur().v, cur().f)?.vec) {
+        const bo = (label, k, min, max, step, def, fmt) => { const out = h("output", fmt(l.boil[k] ?? def)); return h("label.row.range", label, h("input", { type: "range", min, max, step, value: l.boil[k] ?? def, on: { input: (e) => { l.boil[k] = +e.target.value; out.textContent = fmt(+e.target.value); paint(); } } }), out); };
+        const at = [...side.children].find((x) => x.matches && x.matches("label.check") && /Animer le tremblé/.test(x.textContent));
+        const box = h("div.fold-in", bo("Intensité", "a", 0.3, 8, 0.1, 2, (x) => (+x).toFixed(1)), bo("Rapidité", "v", 1, 24, 1, 8, (x) => Math.round(x) + " /s"));
+        if (at) at.after(box); else side.append(box);
+      }
       const move = (d) => { const i = pan.layers.indexOf(l), j = d === "top" ? pan.layers.length - 1 : d === "bottom" ? 0 : i + d; if (j < 0 || j >= pan.layers.length || j === i) return;
         const has = pan.layers.some((x) => x.d != null);       // profondeurs reglees : elles restent rangees dans l'ordre
         if (has) fixDepths();

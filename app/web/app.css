@@ -326,3 +326,5 @@ details.fold > summary:hover { opacity: 1; }
 .mt-timeline { --mt-pad: 22px; }
 .mt-timeline .mt-lane { margin: 0 var(--mt-pad); }
 .mt-timeline .mt-row { cursor: pointer; }
+
+.fold-in { margin: 2px 0 6px 6px; padding-left: 8px; border-left: 2px solid rgba(127, 127, 127, 0.35); }
