@@ -40,7 +40,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       ctx.restore();
     } else draw(await loadImage(bg.url), pl.x, pl.y, pl.w, pl.h, sharp ? 0 : blurOf(pan, 1, bb));
   }
-  if (pan.draw && (pan.draw.shapes || []).length) {        // fond dessine a la main
+  if (pan.draw && ((pan.draw.shapes || []).length || (pan.draw.fx && pan.draw.fx.on))) {        // fond dessine a la main, lignes d'effet
     const dim = await drawImage(pan.draw, cv.width, cv.height);
     if (dim) ctx.drawImage(dim, 0, 0, cv.width, cv.height);
   }
@@ -70,7 +70,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       ctx.translate(tx, ty); ctx.scale(sc, sc);
       ctx.fillStyle = col; ctx.fill(body);
       ctx.save(); ctx.clip(body);
-      const shd = shadeOf(l.sh, vf.h, col);
+      const shd = shadeOf(l.sh, vf.h, col, inkc);
       if (shd) {
         for (const pd of shadeShapes(l.sh, vf)) {                       // forme par forme
           const part = new Path2D(pd);

@@ -433,7 +433,7 @@ class App {
     const bg = background(pan, this.bank, this.project.id);
     const ghosts = (pan.layers || []).map((l) => { const it = this.bank.get(l.item), sp = it && sprite(it, l.v, l.f); return sp && { url: sp.url, x: l.x, y: l.y, s: l.s, ar: sp.w / sp.h, flip: l.flip }; }).filter(Boolean);
     openDrawEditor({ draw: pan.draw, ratio: g.bbox.h / g.bbox.w, backdrop: bg ? bg.url : null, ghosts, title: `Dessiner le fond de la case ${g.order}`,
-      onSave: (d) => { if (d.shapes.length) pan.draw = d; else delete pan.draw; pan.show = "layers"; this.commit("draw"); this.editor.render(); this.refreshInspector(); } });
+      onSave: (d) => { if (d.shapes.length || (d.fx && d.fx.on)) pan.draw = d; else delete pan.draw; pan.show = "layers"; this.commit("draw"); this.editor.render(); this.refreshInspector(); } });
   }
   // decks de montage : plusieurs par storyboard, enregistres avec lui
   decks() {
@@ -615,7 +615,9 @@ class App {
       if (sp && sp.vec) {
         const sh = l.sh || {}, put = (k, x) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135 }, l.sh, { [k]: x }); };
         box.append(h("label.row.check", { title: "Un aplat gris posé sur le dessin, du côté opposé à la lumière. Sans calcul." }, h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), "Ombre"));
-        if (sh.on) box.append(fold("sh", "Réglages de l'ombre", range("Gris", sh.g ?? 0.72, 0.2, 0.95, 0.01, (x) => put("g", x), "shade"),
+        if (sh.on) box.append(fold("sh", "Réglages de l'ombre",
+          h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu d'assombrir la couleur du corps" }, h("input", { type: "checkbox", checked: !!sh.ink, on: { change: (e) => { put("ink", e.target.checked); this.editor.render(true); this.commit("shade"); } } }), "Couleur du contour"),
+          range("Gris", sh.g ?? 0.72, 0.2, 0.95, 0.01, (x) => put("g", x), "shade"),
           range("Largeur", sh.w ?? 5, 0.5, 25, 0.1, (x) => put("w", x), "shade"),
           range("Lumière (angle)", sh.a ?? 135, 0, 360, 1, (x) => put("a", x), "shade"),
           h("div", { title: "0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin (tête, torse…), une par cran." }, range("Formes détaillées ⓘ", sh.k ?? 0, 0, 8, 1, (x) => put("k", x), "shade"))));

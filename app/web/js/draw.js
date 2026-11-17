@@ -73,10 +73,55 @@ export function boxOf(sh, H) {
   return { x, y, w, h: hh, cx: x + w / 2, cy: y + hh / 2 };
 }
 
+// ------------------------------------------------------------------------------------------------ lignes d'effet
+// Lignes de manga posees sur le fond, facon generateur de « koukasen » en version simple.
+//   draw.fx = { on, type (focus : lignes de concentration · speed : lignes de vitesse · flash : eclat plein),
+//               cx, cy (centre, fraction de la case), n (nombre), inner (zone libre au centre, 0..1), w (epaisseur),
+//               vari (irregularite, 0..1), ang (sens des lignes de vitesse), col (#111111 ou #ffffff), seed,
+//               anim (animable dans le montage : piste « Lignes d'effet »), force (force de base, 1 = pleine) }
+export const FX_TYPES = { focus: "Lignes de concentration", speed: "Lignes de vitesse", flash: "Éclat plein" };
+export const FX_DEF = { on: false, type: "focus", cx: 0.5, cy: 0.5, n: 90, inner: 0.45, w: 1, vari: 0.6, ang: 0, col: "#111111", seed: 7, anim: false, force: 1 };
+export const hasDraw = (draw) => !!(draw && (((draw.shapes || []).length) || (draw.fx && draw.fx.on)));
+function rng(seed) { let a = (seed * 2654435761) >>> 0; return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+/** Balisage SVG des lignes d'effet, dans le repere W x H de la case. force : 0 (rien) a 1 (pleines), au-dela plus
+ *  epaisses. tick : change le tirage (les lignes vibrent quand on l'incremente pendant la lecture). */
+export function fxSvg(fx0, H, pre, force, tick = 0) {
+  if (!fx0 || !fx0.on) return "";
+  const fx = Object.assign({}, FX_DEF, fx0), f = Math.max(0, force ?? fx.force ?? 1);
+  if (f <= 0.005) return "";
+  const rnd = rng((fx.seed || 1) + tick * 101), cx = fx.cx * W, cy = fx.cy * H, n = Math.max(3, Math.round(fx.n)), v = Math.max(0, Math.min(1, fx.vari));
+  const reach = Math.min(1, f), fat = Math.max(1, f);       // en dessous de 1 les lignes s'arretent plus loin du centre ; au-dessus elles grossissent
+  const R = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) * 1.08, base = Math.min(W, H) * 0.62;
+  const R0 = base * (fx.inner + (1 - reach) * (R / base - fx.inner));     // rayon libre : celui du reglage a pleine force, hors cadre a force 0
+  let d = "", extra = "";
+  if (fx.type === "speed") {
+    const diag = Math.hypot(W, H);
+    for (let i = 0; i < n; i++) {
+      const y = (rnd() - 0.5) * diag, len = diag * (0.2 + rnd() * 0.8) * (0.25 + 0.75 * reach), x0 = (rnd() - 0.5) * diag * 1.3 - len / 2, th = fx.w * fat * (0.6 + rnd() * 2.6 * (0.3 + v));
+      d += `M${f1(x0)} ${f1(y)}L${f1(x0 + len)} ${f1(y - th / 2)}L${f1(x0 + len)} ${f1(y + th / 2)}Z`;
+    }
+    extra = ` transform="translate(${f1(W / 2)} ${f1(H / 2)}) rotate(${f1(fx.ang || 0)})"`;
+  } else if (fx.type === "flash") {
+    const m = Math.max(8, n);
+    d = `M${f1(-W)} ${f1(-H)}H${f1(2 * W)}V${f1(2 * H)}H${f1(-W)}Z`;
+    for (let i = 0; i < m * 2; i++) {
+      const a = (i + (rnd() - 0.5) * v * 0.8) / (m * 2) * Math.PI * 2, r = R0 * (i % 2 ? 1 + 0.28 * (0.4 + rnd() * v) : 1 - 0.3 * rnd() * v);
+      d += `${i ? "L" : "M"}${f1(cx + Math.cos(a) * r)} ${f1(cy + Math.sin(a) * r)}`;
+    }
+    d += "Z";
+  } else {
+    for (let i = 0; i < n; i++) {
+      const a = (i + (rnd() - 0.5) * v * 1.6) / n * Math.PI * 2, r = R0 * (1 + (rnd() - 0.5) * v * 0.9), hw = fx.w * fat * 0.0065 * (0.35 + rnd() * (0.3 + v));
+      d += `M${f1(cx + Math.cos(a) * r)} ${f1(cy + Math.sin(a) * r)}L${f1(cx + Math.cos(a - hw) * R)} ${f1(cy + Math.sin(a - hw) * R)}L${f1(cx + Math.cos(a + hw) * R)} ${f1(cy + Math.sin(a + hw) * R)}Z`;
+    }
+  }
+  return `<clipPath id="${pre}fxc"><rect width="${W}" height="${f1(H)}"/></clipPath><g clip-path="url(#${pre}fxc)" style="pointer-events:none"><path d="${d}" fill="${fx.col === "#ffffff" ? "#ffffff" : "#111111"}" fill-rule="evenodd"${extra}/></g>`;
+}
+
 /** Balisage SVG du fond dessine, dans un repere W x H. pre : prefixe des identifiants (unique par case). */
 export function drawSvg(draw, H, pre) {
   const shapes = (draw && draw.shapes) || [];
-  if (!shapes.length) return "";
+  if (!shapes.length) return fxSvg(draw && draw.fx, H, pre);
   let defs = `<filter id="${pre}th" color-interpolation-filters="sRGB" x="-5%" y="-5%" width="110%" height="110%"><feComponentTransfer>` +
     ["R", "G", "B"].map((c) => `<feFunc${c} type="linear" slope="26" intercept="-12.5"/>`).join("") + `</feComponentTransfer></filter>`;
   let body = "";
@@ -118,7 +163,7 @@ export function drawSvg(draw, H, pre) {
     }
     body += sh.r ? `<g transform="rotate(${f1(sh.r)} ${f1(bx.cx)} ${f1(bx.cy)})">${one}</g>` : one;
   });
-  return `<defs>${defs}</defs>${body}`;
+  return `<defs>${defs}</defs>${body}` + fxSvg(draw.fx, H, pre);          // les lignes d'effet par-dessus les formes
 }
 
 /** Image (pour l'aplatissement) du fond dessine d'une case de wpx x hpx pixels. */
@@ -167,7 +212,31 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const ghostBar = ghosts.length ? h("div.row.draw-ghost", { title: "Montre les personnages de la case par-dessus le dessin, pour s'en servir de repère. Ils ne font pas partie du fond." },
     h("label.row.check", h("input", { type: "checkbox", checked: gs.on, on: { change: (e) => { gs.on = e.target.checked; ghostSync(); } } }), "👻 Personnages en fantôme"),
     h("label.row.range", "Opacité", h("input", { type: "range", min: 0.05, max: 1, step: 0.01, value: gs.a, on: { input: (e) => { gs.a = +e.target.value; gOut.textContent = Math.round(gs.a * 100) + " %"; ghostSync(); } } }), gOut)) : "";
-  svg.append(back, art, ghost, guide, over);
+  const fxG = document.createElementNS(NS, "g");
+  const fx = Object.assign({}, FX_DEF, draw && draw.fx);
+  const fxPaint = () => { fxG.innerHTML = fxSvg(fx, H, "efx"); };
+  let fxAim = false;                                      // le prochain clic dans l'image pose le centre des lignes
+  const fxBox = h("details.fold.draw-fx", { open: !!fx.on });
+  const fxUi = () => {
+    fxBox.textContent = "";
+    const rg = (label, k, min, max, step, title) => { const out = h("output", String(fx[k]));
+      return h("label.row.range", { title: title || "" }, label, h("input", { type: "range", min, max, step, value: fx[k], on: { input: (e) => { fx[k] = +e.target.value; out.textContent = e.target.value; fxPaint(); } } }), out); };
+    fxBox.append(h("summary", "⚡ Lignes d'effet (concentration, vitesse, éclat)"),
+      h("div.row.wrap", h("label.row.check", h("input", { type: "checkbox", checked: fx.on, on: { change: (e) => { fx.on = e.target.checked; fxPaint(); fxUi(); } } }), "Afficher"),
+        h("select", { on: { change: (e) => { fx.type = e.target.value; fxPaint(); fxUi(); } } }, Object.entries(FX_TYPES).map(([k, n]) => h("option", { value: k, selected: fx.type === k }, n))),
+        h("select", { title: "Couleur des lignes", on: { change: (e) => { fx.col = e.target.value; fxPaint(); } } }, [["#111111", "Noires"], ["#ffffff", "Blanches"]].map(([k, n]) => h("option", { value: k, selected: fx.col === k }, n))),
+        h("button.mini", { type: "button", title: "Un autre tirage des mêmes lignes", on: { click: () => { fx.seed = 1 + Math.floor(Math.random() * 9999); fxPaint(); } } }, "🎲")));
+    if (!fx.on) return;
+    fxBox.append(rg("Nombre", "n", 8, 400, 1), rg("Épaisseur", "w", 0.2, 6, 0.1), rg("Irrégularité", "vari", 0, 1, 0.01));
+    if (fx.type === "speed") fxBox.append(rg("Sens", "ang", -180, 180, 1));
+    else fxBox.append(rg("Zone libre", "inner", 0, 1.4, 0.01, "Taille de la zone sans lignes autour du centre"),
+      h("div.row.wrap", h("button.mini" + (fxAim ? ".on" : ""), { type: "button", title: "Puis clique dans l'image, là où les lignes doivent converger", on: { click: () => { fxAim = !fxAim; fxUi(); } } }, fxAim ? "Clique dans l'image…" : "✛ Placer le centre"),
+        h("button.mini", { type: "button", on: { click: () => { fx.cx = 0.5; fx.cy = 0.5; fxPaint(); } } }, "Centrer")));
+    fxBox.append(h("label.row.check", { title: "Ajoute une piste « Lignes d'effet » dans le montage : un curseur de force à animer par clés (les lignes arrivent, grossissent, disparaissent), et elles vibrent pendant la lecture." },
+      h("input", { type: "checkbox", checked: !!fx.anim, on: { change: (e) => { fx.anim = e.target.checked; } } }), "Animable dans le montage ⓘ"));
+  };
+  fxUi(); fxPaint();
+  svg.append(back, art, fxG, ghost, guide, over);
   // agrandir la zone : un demi-format de case a chaque clic, de chaque cote
   const grow = (side, d) => { ext[side] = Math.max(0, Math.min(6, +(ext[side] + d).toFixed(2))); zone(); paint(); extInfo(); };
   const fit = () => {                                     // recadrer : juste ce qu'il faut pour contenir les formes
@@ -275,6 +344,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const local = (t, p, c) => { if (!t.r) return p; const q = rotPt([p[0] * W, p[1] * H], [c[0] * W, c[1] * H], -t.r); return [q[0] / W, q[1] / H]; };
 
   svg.addEventListener("pointerdown", (e) => {
+    if (fxAim) { const q = at(e); fx.cx = +q[0].toFixed(3); fx.cy = +q[1].toFixed(3); fxAim = false; fxPaint(); fxUi(); return; }
     if (e.button !== 0) return;
     const p = at(e);
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* pointeur deja relache */ }
@@ -342,9 +412,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   document.addEventListener("click", away);
   const done = () => { document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
   tools(); props(); paint();
-  const m = modal(title || "Dessiner le fond", h("div.draw-editor", h("div.draw-main", bar, ghostBar, extBar, h("div.draw-frame", svg)), side),
+  const m = modal(title || "Dessiner le fond", h("div.draw-editor", h("div.draw-main", bar, ghostBar, extBar, h("div.draw-frame", svg), fxBox), side),
     [{ label: "Annuler", click: done },
-     { label: "Enregistrer le fond", primary: true, click: () => { finish(true); done(); onSave(ext.l + ext.r + ext.t + ext.b > 0 ? { shapes, ext } : { shapes }); toast("Fond dessiné enregistré."); } }]);
+     { label: "Enregistrer le fond", primary: true, click: () => { finish(true); done(); onSave(Object.assign({ shapes }, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null)); toast("Fond dessiné enregistré."); } }]);
   m.box.classList.add("modal-wide");
   hist.watch(m.box);
   return m;

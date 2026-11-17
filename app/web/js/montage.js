@@ -12,7 +12,7 @@ import { h, modal, toast, history, upload, get, post, put } from "./api.js";
 import { MOUTHS, SETS, MODES, SIMPLE, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter } from "./model.js";
-import { drawSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
+import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
 const CAM0 = { cx: 0.5, cy: 0.5, z: 1, rot: 0, dz: 0 };
@@ -24,7 +24,7 @@ export const perspOf = (d, dz) => { const den = d + CAM_BACK - (dz || 0); return
 // doux : depart et arrivee amortis · lin : vitesse reguliere · fixe : pas d'intermediaire, on saute a la cle (paliers)
 export const EASES = { doux: "En douceur", lin: "Régulière", fixe: "Fixe (par paliers, sans intermédiaire)" };
 const ease = (u, e) => (e === "fixe" ? 0 : e === "lin" ? u : u * u * (3 - 2 * u));
-const NUM = ["x", "y", "s", "rz", "cx", "cy", "z", "rot", "dz", "fo", "bl", "lw", "shg", "shw", "sha"];
+const NUM = ["x", "y", "s", "rz", "cx", "cy", "z", "rot", "dz", "fo", "bl", "fx", "lw", "shg", "shw", "sha"];
 // mouvements de camera prets : [nom, depart, arrivee]
 export const MOVES = {
   "trav-d": ["Travelling vers la droite", { cx: 0.38, z: 1.35 }, { cx: 0.62, z: 1.35 }],
@@ -79,6 +79,8 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     const d = pan.dof || {}, c = valueAt(keysOf("cam"), CAM0, t, 0);
     c.fo = valueAt(keysOf("fo"), { fo: c.fo ?? d.focus ?? 0.3 }, t, 0).fo;
     c.bl = valueAt(keysOf("bl"), { bl: c.bl ?? d.amount ?? 12 }, t, 0).bl;
+    const fx = pan.draw && pan.draw.fx;                      // lignes d'effet du fond : leur force, animable
+    c.fx = fx && fx.on ? (fx.anim ? valueAt(keysOf("fx"), { fx: fx.force ?? 1 }, t, 0).fx : (fx.force ?? 1)) : 0;
     return c;
   };
   // formes dessinees sur le decor : dans le montage chacune a sa profondeur (forme.d, 1 = collee au decor), pour la
@@ -128,7 +130,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const o1 = o.length;
       if (vf) {
         const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), ink = inkFill(l), st = inkStroke(s.lw, col, ink);
-        const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h, col);
+        const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h, col, ink);
         let inner = "";
         if (shd) shadeShapes(l.sh, vf).forEach((pd, i) => { inner += `<clipPath id="${pre}s-${l.id}-${i}"><path d="${pd}"/></clipPath><g clip-path="url(#${pre}s-${l.id}-${i})"><path d="${pd}" fill="${shd.fill}"/><path d="${pd}" fill="${col}" transform="translate(${f1(l.flip ? -shd.dx : shd.dx)} ${f1(shd.dy)})"/></g>`; });
         // tremble anime (l.boil = { on, a : intensite, v : changements par seconde }) : le trait change de tremble en boucle, sur 4 dessins
@@ -155,8 +157,14 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     const order = [];
     shapesOf().forEach((sh, i) => order.push({ d: sh.d ?? 1, k: 0, i }));
     pan.layers.forEach((l, i) => order.push({ d: depthOf(pan, i), k: 1, i }));
+    const fxd = pan.draw && pan.draw.fx;
+    if (fxd && fxd.on) order.push({ d: 1, k: 0.5, i: 0 });  // les lignes d'effet : sur le decor, sous les elements
     order.sort((a, b) => b.d - a.d || a.k - b.k || a.i - b.i);
     for (const e of order) {
+      if (e.k === 0.5) {                                   // fixes a l'ecran (la camera ne les deplace pas) ; animables, elles vibrent a 12 images par seconde
+        o += `<g transform="translate(${f1(c.cx * W)} ${f1(c.cy * H)}) scale(${f3(1 / c.z)}) rotate(${f1(c.rot)}) translate(${f1(-W / 2)} ${f1(-H / 2)})">${fxSvg(fxd, H, pre, c.fx, fxd.anim ? Math.floor(t * 12) : 0)}</g>`;
+        continue;
+      }
       if (e.k) { drawLayer(pan.layers[e.i], e.i); continue; }
       const sh = shapesOf()[e.i], b = sel === "s:" + sh.id ? boxOf(sh, H) : null;
       o += plane(e.d, shapeSvg(sh, e.i) + (b ? `<rect x="${f1(b.x - 4)}" y="${f1(b.y - 4)}" width="${f1(b.w + 8)}" height="${f1(b.h + 8)}" class="mt-sel" transform="rotate(${f1(sh.r || 0)} ${f1(b.cx)} ${f1(b.cy)})"/>` : ""));
@@ -187,7 +195,7 @@ export function openMontage(app, pid) {
   const stateOf = (l) => scene.stateOf(l, t);
   const KEYED = ["x", "y", "s", "rz", "f", "v", "lw", "shg", "shw", "sha"];
   const camAt = () => scene.camAt(t);
-  const CAMS = { cam: "Caméra", fo: "Mise au point", bl: "Flou" };      // pistes de la camera ; fo et bl : profondeur de champ
+  const CAMS = { cam: "Caméra", fo: "Mise au point", bl: "Flou", fx: "Lignes d'effet" };      // pistes de la camera ; fo et bl : profondeur de champ
 
   // ------------------------------------------------------------------------------------------ visionneuse
   function paint() {
@@ -211,6 +219,7 @@ export function openMontage(app, pid) {
   // place de la camera sur le schema : au repos un peu sous le premier plan ; dz = 1 la pose sur le premier plan
   const camD = (dz) => (dz <= 1 ? -0.2 + 0.2 * dz : dz - 1), camDz = (d) => clamp(d <= 0 ? (d + 0.2) / 0.2 : d + 1, -2, 1.95);
   const shapes = () => (pan.draw && pan.draw.shapes) || [];
+  const fxAnim = () => !!(pan.draw && pan.draw.fx && pan.draw.fx.on && pan.draw.fx.anim);
   const shapeOf = (id) => (typeof id === "string" && id.startsWith("s:") ? shapes().find((x) => "s:" + x.id === id) : null);
   const shapeName = (sh, i) => `Forme ${i + 1} (${((PRIMS[sh.t] || PATHS[sh.t] || ["forme"])[0]).toLowerCase()})`;
   function topView() {
@@ -264,6 +273,7 @@ export function openMontage(app, pid) {
     if (auto || keysOf(id).length) setKey(id, patch);
     else if (id === "fo") dof.focus = patch.fo;
     else if (id === "bl") dof.amount = patch.bl;
+    else if (id === "fx") pan.draw.fx.force = patch.fx;
     else if (id !== "cam") Object.assign(layerOf(id), patch);
     else setKey(id, patch);
     if (CAMS[id] && CAMS[sel] && sel !== id) { sel = id; keyBar(); }      // camera, mise au point, flou : la piste reglee devient la piste choisie
@@ -309,6 +319,8 @@ export function openMontage(app, pid) {
         h("label.row.check", h("input", { type: "checkbox", checked: !!dof.on, on: { change: (e) => { dof.on = e.target.checked; if (!dof.on && (sel === "fo" || sel === "bl")) sel = "cam"; paint(); lanes(); props(); } } }), "Flou de profondeur"));
       if (dof.on) side.append(range("Mise au point", "fo", 0, 1, 0.01, undefined, "fo"), range("Flou", "bl", 0, 60, 1, (x) => String(Math.round(x)), "bl"));
       side.append(
+        fxAnim() ? h("h4", { title: "Les lignes d'effet dessinées dans le fond de la case. 0 : aucune ; 1 : pleines ; au-delà : plus épaisses. Se pose en clés sur la piste « Lignes d'effet » : elles arrivent, grossissent, disparaissent." }, "⚡ Lignes d'effet ⓘ") : "",
+        fxAnim() ? range("Force", "fx", 0, 2.5, 0.01, undefined, "fx") : "",
         h("h4", { title: "Quand la caméra se déplace, le premier plan glisse plus vite que le fond, selon la profondeur des éléments : le bouton « Profondeur » sous l'image les montre vus de dessus pour les placer." }, "Parallaxe ⓘ"),
         h("label.row.check", h("input", { type: "checkbox", checked: !!anim.parallax, on: { change: (e) => { anim.parallax = e.target.checked; paint(); props(); } } }), "Parallaxe automatique"),
         anim.parallax ? h("label.row.range", "Force", h("input", { type: "range", min: 0, max: 3, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "");
@@ -349,7 +361,9 @@ export function openMontage(app, pid) {
       if (sprite(it, cur().v, cur().f)?.vec) {
         const sh = l.sh || {};
         side.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: e.target.checked }); paint(); props(); } } }), "Ombre"));
-        if (sh.on) side.append(fold("sh", "Réglages de l'ombre", range("Gris", "shg", 0.2, 0.95, 0.01), range("Largeur", "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range("Lumière (angle)", "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
+        if (sh.on) side.append(fold("sh", "Réglages de l'ombre",
+          h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu d'assombrir la couleur du corps" }, h("input", { type: "checkbox", checked: !!sh.ink, on: { change: (e) => { l.sh.ink = e.target.checked; paint(); } } }), "Couleur du contour"),
+          range("Gris", "shg", 0.2, 0.95, 0.01), range("Largeur", "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range("Lumière (angle)", "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
           h("label.row.range", { title: "0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin, une par cran." }, "Formes détaillées ⓘ", h("input", { type: "range", min: 0, max: 8, step: 1, value: sh.k || 0, on: { input: (e) => { l.sh.k = +e.target.value; e.target.nextSibling.textContent = e.target.value; paint(); } } }), h("output", String(sh.k || 0)))));
       }
       {
@@ -643,6 +657,7 @@ export function openMontage(app, pid) {
     };
     row("cam", "Caméra", "🎥");
     if (dof.on) { row("fo", "Mise au point", "◎"); row("bl", "Flou", "◌"); }
+    if (fxAnim()) row("fx", "Lignes d'effet", "⚡");
     for (const l of [...pan.layers].reverse()) {
       const name = itemOf(l) ? itemOf(l).name : "élément";
       row(l.id, name, "●");

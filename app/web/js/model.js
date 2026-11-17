@@ -58,8 +58,9 @@ export function wiggleFilter(id, hand, wave, w, h, seed = 5) {
 /** Couleur unie d'un dessin en traces (l.col) : blanc par defaut. */
 export function bodyFill(l) { return l && /^#[0-9a-f]{6}$/i.test(l.col || "") ? l.col : "#ffffff"; }
 /** Ombre d'un dessin : la couleur du corps assombrie (un gris sur un corps blanc), decalee vers la lumiere. */
-export function shadeOf(sh, h, col = "#ffffff") {
+export function shadeOf(sh, h, col = "#ffffff", ink = "#111111") {
   if (!sh || !sh.on) return null;
+  if (sh.ink) { const d0 = (sh.w ?? 5) / 100 * h, a0 = (sh.a ?? 135) * Math.PI / 180; return { fill: ink, dx: Math.cos(a0) * d0, dy: -Math.sin(a0) * d0 }; }   // ombre a la couleur du contour
   const g = clamp(sh.g ?? 0.72, 0, 1), d = (sh.w ?? 5) / 100 * h, a = (sh.a ?? 135) * Math.PI / 180;
   const c = [1, 3, 5].map((i) => Math.round(parseInt(col.slice(i, i + 2), 16) * g));
   return { fill: `rgb(${c[0]},${c[1]},${c[2]})`, dx: Math.cos(a) * d, dy: -Math.sin(a) * d };

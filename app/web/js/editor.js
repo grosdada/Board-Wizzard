@@ -5,7 +5,7 @@ import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
 import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
-import { drawSvg, W as DRAW_W } from "./draw.js";
+import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -114,7 +114,7 @@ export class Editor {
       cp.append(s("polygon", { points: pts(g.poly) }));
       defs.append(cp);
       const grp = s("g", { "clip-path": `url(#cp-${g.id})` });
-      const drawn = pan.draw && (pan.draw.shapes || []).length;
+      const drawn = hasDraw(pan.draw);
       const empty = !pan.bg && !drawn && !(pan.layers || []).length && !pan.integrated && !pan.orbit;
       grp.append(s("polygon", { points: pts(g.poly), fill: empty ? "var(--empty)" : (page.fill || "#fff") }));
       const cover = { x: bb.x0, y: bb.y0, width: bb.w, height: bb.h, preserveAspectRatio: "xMidYMid slice", "data-bg": g.id };
@@ -171,7 +171,7 @@ export class Editor {
             if (gw !== gv) gv.append(gw);
             gw.append(s("path", Object.assign({ d: vf.body, fill: col }, tag)));
             const gi = s("g", { "clip-path": `url(#${cid})` });
-            const shd = shadeOf(l.sh, vf.h, col);
+            const shd = shadeOf(l.sh, vf.h, col, ink);
             if (shd) {                                       // ombre : aplat gris, puis la silhouette decalee en blanc par-dessus
               const mv = `translate(${(l.flip ? -shd.dx : shd.dx).toFixed(2)} ${shd.dy.toFixed(2)})`;
               shadeShapes(l.sh, vf).forEach((pd, pi) => {                 // forme par forme : chaque zone fermee par le trait a son ombre

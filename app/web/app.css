@@ -361,3 +361,7 @@ details.fold > summary:hover { opacity: 1; }
 .center.focused .page-wrap { box-shadow: none; }
 
 .lh-grip[data-h=rot] { cursor: grab; }
+
+/* atelier de dessin : panneau des lignes d'effet, sous l'image */
+.draw-fx { margin-top: 8px; }
+.draw-fx select { width: auto; }
