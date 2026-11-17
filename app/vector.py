@@ -24,14 +24,15 @@ def available():
     return cv2 is not None
 
 
-def _paths(mask):
-    """Contours d'un masque (avec ses trous) -> attribut d d'un trace SVG, en coordonnees de l'image d'origine."""
+def _paths(mask, origin=(0, 0)):
+    """Contours d'un masque (avec ses trous) -> attribut d d'un trace SVG, en coordonnees de l'image d'origine.
+    origin : place du masque dans l'image sur-echantillonnee, quand on ne trace qu'un morceau."""
     cs, _ = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
     out = []
     for c in cs:
         if cv2.contourArea(c) < 6 * UP * UP:
             continue
-        c = cv2.approxPolyDP(c, EPS, True)[:, 0, :].astype(np.float32) / UP
+        c = (cv2.approxPolyDP(c, EPS, True)[:, 0, :].astype(np.float32) + np.float32(origin)) / UP
         if len(c) < 3:
             continue
         mid = (c + np.roll(c, -1, axis=0)) / 2                    # courbe lisse : on passe par les milieux des cotes
@@ -50,13 +51,41 @@ def frame(src):
     grey = cv2.GaussianBlur(cv2.cvtColor(big[..., :3], cv2.COLOR_RGB2GRAY), (0, 0), 1.0)
     if im[..., 3].min() > 250:                                    # image pleine (un decor) : tout le cadre est du papier
         ink = (grey < 175).astype(np.uint8)
-        return w, h, "M0 0H%dV%dH0Z" % (w, h), _paths(ink)
+        return w, h, "M0 0H%dV%dH0Z" % (w, h), _paths(ink), []
     solid = cv2.GaussianBlur(big[..., 3], (0, 0), 1.2) > 128
     ink = ((grey < 175) & solid).astype(np.uint8)
     # silhouette : arrondie (le rebouchage des dessins laisse de petites marches), mais jamais plus petite que l'encre
     soft = cv2.GaussianBlur(big[..., 3], (0, 0), 2.0 * UP) > 128
     body = (soft | (cv2.dilate(ink, np.ones((3, 3), np.uint8)) > 0)).astype(np.uint8)
-    return w, h, _paths(body), _paths(ink)
+    return w, h, _paths(body), _paths(ink), _parts(body, ink)
+
+
+GAP = 2 * UP + 1      # les traits sont epaissis d'autant pour refermer les petits trous entre deux formes
+MAX_PARTS = 28
+
+
+def _parts(body, ink):
+    """Les formes du dessin : chaque zone blanche que les traits enferment (une tete, un short, une manche...). Servent
+    a l'ombre, posee forme par forme. Les plus grandes d'abord, les miettes sont laissees."""
+    k = np.ones((GAP, GAP), np.uint8)
+    free = (body > 0) & (cv2.dilate(ink, k) == 0)
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(free.astype(np.uint8), connectivity=4)
+    total = max(1, int((body > 0).sum()))
+    order = sorted(range(1, n), key=lambda i: -stats[i, cv2.CC_STAT_AREA])[:MAX_PARTS]
+    out = []
+    for i in order:
+        x, y, ww, hh, area = stats[i]
+        if area < 0.004 * total:
+            break
+        x0, y0, x1, y1 = max(0, x - GAP), max(0, y - GAP), min(lab.shape[1], x + ww + GAP), min(lab.shape[0], y + hh + GAP)
+        m = cv2.dilate((lab[y0:y1, x0:x1] == i).astype(np.uint8), k)          # on revient jusque sous le trait
+        m &= body[y0:y1, x0:x1]
+        full = np.zeros((y1 - y0 + 2, x1 - x0 + 2), np.uint8)
+        full[1:-1, 1:-1] = m
+        d = _paths(full, (x0 - 1, y0 - 1))
+        if d:
+            out.append(d)
+    return out
 
 
 def orbit(folder, n):
@@ -66,7 +95,7 @@ def orbit(folder, n):
     folder = Path(folder)
     frames, w, h = [], 0, 0
     for i in range(n):
-        w, h, body, ink = frame(folder / ("%03d.webp" % i))
-        frames.append({"body": body, "ink": ink})
+        w, h, body, ink, parts = frame(folder / ("%03d.webp" % i))
+        frames.append({"body": body, "ink": ink, "parts": parts} if parts else {"body": body, "ink": ink})
     (folder / "vec.json").write_text(json.dumps({"w": w, "h": h, "frames": frames}, separators=(",", ":")), encoding="utf-8")
     return True

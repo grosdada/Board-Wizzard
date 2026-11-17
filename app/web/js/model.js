@@ -40,7 +40,7 @@ export function vecFrame(sp, onReady) {
   if (e.data === null) { if (onReady && e.wait.length < 4) e.wait.push(onReady); return null; }
   if (!e.data) return null;
   const fr = e.data.frames[sp.i];
-  return fr ? { w: e.data.w, h: e.data.h, body: fr.body, ink: fr.ink } : null;
+  return fr ? { w: e.data.w, h: e.data.h, body: fr.body, ink: fr.ink, parts: fr.parts && fr.parts.length ? fr.parts : [fr.body] } : null;
 }
 export function vecReady(sp) { return new Promise((ok) => { const f = vecFrame(sp, () => ok(vecFrame(sp))); if (f || !sp || !sp.vec || (vecs.get(sp.vec) || {}).data === false) ok(f); }); }
 /** Ombre graphique d'un dessin en traces, sans calcul : la silhouette moins elle-meme decalee vers la lumiere laisse

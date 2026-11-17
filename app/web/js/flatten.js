@@ -56,8 +56,13 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       ctx.save(); ctx.clip(body);
       const shd = shadeOf(l.sh, vf.h);
       if (shd) {
-        ctx.fillStyle = shd.fill; ctx.fill(body);
-        ctx.save(); ctx.translate(l.flip ? -shd.dx : shd.dx, shd.dy); ctx.fillStyle = "#ffffff"; ctx.fill(body); ctx.restore();
+        for (const pd of vf.parts) {                       // forme par forme
+          const part = new Path2D(pd);
+          ctx.save(); ctx.clip(part);
+          ctx.fillStyle = shd.fill; ctx.fill(part);
+          ctx.translate(l.flip ? -shd.dx : shd.dx, shd.dy); ctx.fillStyle = "#ffffff"; ctx.fill(part);
+          ctx.restore();
+        }
       }
       ctx.fillStyle = "#111111"; ctx.fill(ink, "evenodd");
       if (st.width > 0) { ctx.strokeStyle = st.color; ctx.lineWidth = st.width; ctx.lineJoin = "round"; ctx.stroke(ink); }

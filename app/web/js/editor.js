@@ -134,8 +134,15 @@ export class Editor {
             const gi = s("g", { "clip-path": `url(#${cid})` });
             const shd = shadeOf(l.sh, vf.h);
             if (shd) {                                       // ombre : aplat gris, puis la silhouette decalee en blanc par-dessus
-              gi.append(s("path", Object.assign({ d: vf.body, fill: shd.fill }, tag)));
-              gi.append(s("path", { d: vf.body, fill: "#ffffff", transform: `translate(${(l.flip ? -shd.dx : shd.dx).toFixed(2)} ${shd.dy.toFixed(2)})`, "pointer-events": "none" }));
+              const mv = `translate(${(l.flip ? -shd.dx : shd.dx).toFixed(2)} ${shd.dy.toFixed(2)})`;
+              vf.parts.forEach((pd, pi) => {                 // forme par forme : chaque zone fermee par le trait a son ombre
+                const pcid = cid + "-" + pi, pc = s("clipPath", { id: pcid });
+                pc.append(s("path", { d: pd }));
+                defs.append(pc);
+                const gp = s("g", { "clip-path": `url(#${pcid})`, "pointer-events": "none" });
+                gp.append(s("path", { d: pd, fill: shd.fill }), s("path", { d: pd, fill: "#ffffff", transform: mv }));
+                gi.append(gp);
+              });
             }
             gi.append(s("path", Object.assign({ d: vf.ink, fill: "#111111", "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round" }, tag)));
             gv.append(gi);
