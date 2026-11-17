@@ -7,7 +7,7 @@
 // Profondeur de champ : panel.dof = { on, focus, amount } comme dans la case. Deux pistes l'animent :
 //   tracks.fo : [{ t, fo (mise au point, 0 devant a 1 fond), e }]   ·   tracks.bl : [{ t, bl (force du flou), e }]
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
-import { h, modal, toast } from "./api.js";
+import { h, modal, toast, history } from "./api.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow } from "./model.js";
 import { drawSvg, W } from "./draw.js";
 
@@ -395,7 +395,19 @@ export function openMontage(app, pid) {
   }
   function play() { if (t >= anim.dur - 0.01) t = 0; playing = true; playBtn.textContent = "⏸ Pause"; last = performance.now(); raf = requestAnimationFrame(tick); }
   function stop() { if (!playing) return; playing = false; cancelAnimationFrame(raf); playBtn.textContent = "▶ Lecture"; paint(); lanes(); props(); }
+  // Ctrl+Z / Ctrl+Y : les 5 dernieres actions (elements, cles, camera, profondeur de champ)
+  const hist = history(() => ({ layers: pan.layers, anim, dof }), (st) => {
+    pan.layers = st.layers;
+    for (const k of Object.keys(anim)) delete anim[k];
+    Object.assign(anim, st.anim);
+    Object.assign(dof, st.dof);
+    selKey = null; drag = null; vdrag = null; t = Math.min(t, anim.dur);
+    if (!CAMS[sel] && !layerOf(sel)) sel = "cam";
+    dur.value = anim.dur;
+    paint(); lanes(); props();
+  });
   const key = (e) => {
+    if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === " ") { e.preventDefault(); e.stopPropagation(); return playing ? stop() : play(); }
     if ((e.key === "Delete" || e.key === "Backspace") && selKey) { e.preventDefault(); e.stopPropagation(); anim.tracks[sel] = keysOf(sel).filter((x) => x !== selKey); selKey = null; paint(); lanes(); props(); }
@@ -428,5 +440,6 @@ export function openMontage(app, pid) {
      { label: "Enregistrer le montage", click: () => { save(); toast("Montage enregistré."); } },
      { label: "Enregistrer et envoyer dans le deck ▸", primary: true, click: () => { save(); app.sendToDeck(pid); } }]);
   m.box.classList.add("modal-wide", "modal-montage");
+  hist.watch(m.box);
   return m;
 }

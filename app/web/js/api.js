@@ -71,6 +71,35 @@ export function dragByHeader(box, handle) {
   handle.addEventListener("pointercancel", end);
 }
 
+/** Annulation dans un atelier (dessin du fond, montage) : get() rend l'etat, set(etat) le remet. `max` actions gardees.
+ *  watch(el) : note l'etat peu apres chaque geste dans el. keydown(e) : Ctrl+Z, Ctrl+Maj+Z, Ctrl+Y ; vrai si traite. */
+export function history(get, set, max = 5) {
+  let stack = [JSON.stringify(get())], at = 0, timer = 0;
+  const snap = () => {
+    clearTimeout(timer);
+    const s = JSON.stringify(get());
+    if (s === stack[at]) return;
+    stack = stack.slice(0, at + 1); stack.push(s);
+    if (stack.length > max + 1) stack = stack.slice(-(max + 1));
+    at = stack.length - 1;
+  };
+  const go = (d) => { snap(); const j = at + d; if (j < 0 || j >= stack.length) { toast(d < 0 ? "Rien de plus à annuler." : "Rien à rétablir."); return; } at = j; set(JSON.parse(stack[at])); };
+  const soon = () => { clearTimeout(timer); timer = setTimeout(snap, 300); };
+  return {
+    snap, undo: () => go(-1), redo: () => go(1),
+    watch(el) { for (const ev of ["pointerup", "change", "click", "keyup", "input", "wheel"]) el.addEventListener(ev, soon, { passive: true }); },
+    keydown(e) {
+      if (!(e.ctrlKey || e.metaKey)) return false;
+      const k = e.key.toLowerCase(), t = e.target;
+      if (k !== "z" && k !== "y") return false;
+      if (t && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && /^(text|number|search)$/.test(t.type)))) return false;   // le champ annule sa propre saisie
+      e.preventDefault(); e.stopPropagation();
+      go(k === "y" || e.shiftKey ? 1 : -1);
+      return true;
+    },
+  };
+}
+
 export function modal(title, body, buttons) {
   const back = h("div.modal-back");
   const close = () => back.remove();

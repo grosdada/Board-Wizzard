@@ -7,7 +7,7 @@
 // La trame est faite par le navigateur : un motif en « cones » de gris + le ton voulu, puis un seuil. Les points
 // grossissent donc tout seuls la ou le ton fonce, sans dessiner chaque point.
 import { swatch } from "./colors.js";
-import { h, modal, toast } from "./api.js";
+import { h, modal, toast, history } from "./api.js";
 
 export const W = 1000;                                   // largeur de travail ; la hauteur suit le format de la case
 const uid = () => Math.random().toString(36).slice(2, 8);
@@ -285,7 +285,10 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     props(); paint();
   });
   svg.addEventListener("dblclick", (e) => { if (building) { e.preventDefault(); finish(true); } });
+  // Ctrl+Z / Ctrl+Y : les 5 dernieres actions
+  const hist = history(() => shapes.filter((x) => x !== building), (st) => { building = null; hover = null; drag = null; shapes.splice(0, shapes.length, ...st); if (!target()) sel = null; props(); paint(); });
   const key = (e) => {
+    if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (building && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); return finish(true); }
     if (building && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return finish(false); }
@@ -300,5 +303,6 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     [{ label: "Annuler", click: done },
      { label: "Enregistrer le fond", primary: true, click: () => { finish(true); done(); onSave({ shapes }); toast("Fond dessiné enregistré."); } }]);
   m.box.classList.add("modal-wide");
+  hist.watch(m.box);
   return m;
 }
