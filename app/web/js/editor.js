@@ -31,6 +31,12 @@ export class Editor {
     this.imgs = new Map();
     this.bubs = new Map();
     this.svg.addEventListener("pointerdown", (e) => this.down(e));
+    // double-clic sur une case : elle prend toute la place de la feuille ; double-clic encore (ou Echap) : retour a la page
+    this.host = host; this.focusId = null;
+    this.back = h("button.mini.focus-back", { title: "Revenir à la page entière (Échap, ou double-clic)", on: { click: () => this.focus(null) } }, "⤡ Page entière");
+    host.append(this.back);
+    this.svg.addEventListener("dblclick", (e) => { const g = this.panelAt(this.pagePt(e)); if (g) { e.preventDefault(); this.focus(this.focusId === g.id ? null : g.id); } });
+    window.addEventListener("resize", () => this.applyFocus());
     window.addEventListener("pointermove", (e) => this.move(e));
     window.addEventListener("pointerup", (e) => this.up(e));
     this.svg.addEventListener("wheel", (e) => this.wheel(e), { passive: false });
@@ -58,6 +64,19 @@ export class Editor {
   }
   scale() { return this.svg.getScreenCTM().a || 1; }            // px ecran par unite de page
 
+  focus(pid) { this.focusId = pid || null; this.applyFocus(); }
+  /** Cadre la feuille sur la case choisie (ou la remet entiere) : on agrandit toute la feuille, bulles comprises. */
+  applyFocus() {
+    const w = this.wrap, g = this.focusId && this.geom ? this.geom.panels.find((x) => x.id === this.focusId) : null;
+    w.style.transform = ""; w.style.transformOrigin = "0 0";
+    this.back.style.display = g ? "" : "none";
+    this.host.classList.toggle("focused", !!g);
+    if (!g) { this.focusId = null; return; }
+    const wr = w.getBoundingClientRect(), cr = this.host.getBoundingClientRect(), s0 = wr.width / this.pg.page.width;
+    const k = Math.min((cr.width - 28) / (g.bbox.w * s0), (cr.height - 44) / (g.bbox.h * s0));
+    const tx = cr.left + cr.width / 2 - (wr.left + (g.bbox.x0 + g.bbox.w / 2) * s0 * k), ty = cr.top + (cr.height - 16) / 2 - (wr.top + (g.bbox.y0 + g.bbox.h / 2) * s0 * k);
+    w.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${k.toFixed(4)})`;
+  }
   panelAt(pt) {
     if (!this.geom) return null;
     for (const g of this.geom.panels) if (inside([pt.x, pt.y], g.poly)) return g;
@@ -238,6 +257,7 @@ export class Editor {
     }
     this.wrap.classList.toggle("drawing", !!app.markTool);
     for (const key of [...this.imgs.keys()]) if (!this.used.has(key)) this.imgs.delete(key);
+    this.applyFocus();
     if (!light) this.renderOverlay();
   }
 

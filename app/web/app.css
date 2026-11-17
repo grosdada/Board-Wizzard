@@ -355,3 +355,7 @@ details.fold > summary:hover { opacity: 1; }
 .mt-move path { fill: none; stroke: #111; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 
 .mt-stage .mt-rot, .mt-stage .mt-rot * { cursor: grab; }
+
+/* une case agrandie a toute la feuille (double-clic) */
+.center .focus-back { position: absolute; left: 10px; top: 8px; z-index: 6; }
+.center.focused .page-wrap { box-shadow: none; }

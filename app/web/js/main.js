@@ -829,6 +829,7 @@ class App {
       const k = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey, l = this.layer();
       if (ctrl && k === "z") { e.preventDefault(); return e.shiftKey ? this.doRedo() : this.doUndo(); }
       if (ctrl && k === "y") { e.preventDefault(); return this.doRedo(); }
+      if (k === "escape" && this.editor.focusId && !document.querySelector(".menu") && !this.markTool) return this.editor.focus(null);
       if (k === "escape") { document.querySelector(".menu")?.remove(); if (this.markTool) { this.markTool = null; this.editor.render(true); } return this.select({}); }
       if (k === "delete" || k === "backspace") {
         e.preventDefault();
