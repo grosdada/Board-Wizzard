@@ -24,6 +24,9 @@ souris. Sœur d'Alive-Comics (même découpage, mêmes bulles, même client Comf
 - **Axes** : l'orbite passe par face → 3/4 face gauche → profil gauche → dos → profil droit (gauche / droite = côté
   de l'écran vers lequel le sujet regarde). `sprites.AXES` et `model.js` `AXES` doivent rester dans le même ordre.
   Les repères par défaut sont réguliers ; la fiche permet de les corriger.
+- **Planche de vues** : avant l'orbite d'un personnage, `jobs.ensure_sheet` génère dos, profil et trois-quarts dos
+  (Qwen-Image-Edit, `poses.SHEET_VIEWS`) dans `sheet/` ; elles partent en `character_1..4` du nœud H3 avec l'image de
+  base. Sans elles un dessin tourne « à plat ». Réglage `render.sheet`.
 - **Poses** : `app/poses.py`. Une pose = Qwen-Image-Edit sur l'image de base, puis détourage et orbite propres.
 - **Dessins** (`style: "dessin"`) : le détourage troue le blanc intérieur ; `sprites.fill_holes` rebouche ce que la
   silhouette enferme.

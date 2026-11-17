@@ -34,6 +34,7 @@ DEFAULTS = {
     "render": {
         "target": "auto",                # local | fal | auto (machines d'abord, fal si aucune)
         "orbit_length": 73,              # images a 24 i/s, forme 17k+5 : 73 = 3 s, 124 = 5,2 s
+        "sheet": True,                   # planche de vues (dos, profil) avant l'orbite d'un personnage
         "megapixels": 0.6,
         "steps": 28,
         "seed": 904231,

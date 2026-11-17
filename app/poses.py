@@ -122,6 +122,31 @@ def pose_prompt(kind, key, style="photo", custom=""):
                    "distance, same background." % (desc, look))
 
 
+# ---- planche de vues d'un personnage : faite avant l'orbite, elle montre au modele le dos et le profil qu'il devrait
+# sinon inventer (sans elle, un dessin tourne souvent « plat », comme une planche de carton)
+SHEET_VIEWS = [
+    ("dos", "Turn the character around: show the same character seen exactly from behind, back view, we see the back of "
+            "the head and the back of the clothes."),
+    ("profil", "Rotate the character 90 degrees: show the same character in strict side view, profile, facing the left of "
+               "the image."),
+    ("trois-quarts-dos", "Rotate the character: show the same character in three-quarter back view, seen from behind and "
+                         "slightly from the side."),
+]
+SHEET_STYLE = {
+    "dessin": ("Same character, same odd proportions, same clothes, same rough hand-drawn black pencil sketch lines on white "
+               "paper, pure black lines on white, no colour, no grey shading. Full body, same size, standing in the same pose."),
+    "photo": ("Same person, same body, same clothes and colours, same lighting, photorealistic. Full body, same size, standing "
+              "in the same pose, same plain background."),
+    "3d": ("Same character, same proportions, same clothes and colours, same 3D render look. Full body, same size, standing in "
+           "the same pose, same plain background."),
+}
+
+
+def sheet_prompt(view, style="photo"):
+    desc = dict(SHEET_VIEWS)[view]
+    return desc + " " + SHEET_STYLE.get(style, SHEET_STYLE["photo"])
+
+
 def orbit_subject(kind, name):
     return {"character": "The camera orbits around the character.",
             "decor": "The camera orbits around the centre of the place.",

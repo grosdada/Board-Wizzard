@@ -23,7 +23,9 @@ et ffmpeg dans le PATH.
 2. **Banque** (colonne de droite) : trois onglets, Personnages, Décors, Assets, et un classement par **dossiers**
    (un par projet, par exemple). « ＋ Importer » ou glisser des images dans la banque ; « ✨ Générer » fabrique un
    élément à partir d'une description (« un marteau de charpentier usé »).
-   Chaque élément est détouré, puis son orbite 360° est calculée (≈ 3 minutes par machine).
+   Chaque élément est détouré, puis son orbite 360° est calculée (≈ 3 minutes par machine). Pour un personnage, une
+   **planche de vues** (dos, profil, trois-quarts dos) est d'abord générée à partir de son image et sert de référence
+   à toutes ses orbites, poses comprises ; on la voit et on la refait dans sa fiche.
 3. **Composer** : glisser un décor dans une case (il devient le fond), puis des personnages et des objets.
    - glisser sur un personnage : **le faire tourner** ; flèches ← → : image par image ;
    - poignée ✥ ou Alt + glisser : le déplacer ; coin carré ou molette : sa taille ;

@@ -254,6 +254,12 @@ export class Bank {
         vid !== "base" ? h("button.mini.danger", { on: { click: async () => { await del(`bank/${id}/variant/${vid}`); vid = "base"; await this.reload(); } } }, "Supprimer cette variante") : null,
         h("button.mini.danger", { on: { click: async () => { if (!confirm(`Retirer « ${item.name} » de la banque ? (il part à la corbeille du dossier de données)`)) return;
           await del("bank/" + id); m.close(); this.openId = null; this.reload(); } } }, "Retirer de la banque"));
+      if (item.kind === "character") {   // planche de vues : sert de reference a l'orbite (dos, profil)
+        const sh = item.sheet || {}, names = { dos: "dos", profil: "profil", "trois-quarts-dos": "3/4 dos" };
+        acts.append(h("div.sheet", h("div.sheet-head", h("span.muted", Object.keys(sh).length ? "Planche de vues (référence des orbites)" : "Pas encore de planche de vues : elle se fait avant la prochaine orbite."),
+            h("button.mini", { title: "Recalcule les vues de dos et de profil ; relance ensuite l'orbite pour qu'elle s'en serve", on: { click: async () => { await post(`bank/${id}/sheet`, { redo: true, target: target() }); toast("Planche de vues relancée."); app.pollSoon(); } } }, Object.keys(sh).length ? "↻ Refaire la planche" : "Faire la planche")),
+          h("div.sheet-views", Object.entries(sh).map(([k, rel]) => h("figure", h("img", { src: `/bank/${id}/${rel}?t=${item.sheet_t || 0}`, loading: "lazy" }), h("figcaption", names[k] || k))))));
+      }
       // catalogue de poses
       const cat = app.info.poses[item.kind] || [];
       if (light) {                       // seulement les poses devenues disponibles

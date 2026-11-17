@@ -18,7 +18,7 @@ from pathlib import Path
 
 from . import comfy, poses, settings, sprites, store, vector
 
-CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i",
+CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i", "item_sheet": "edit",
         "panel_integrate": "edit", "panel_orbit": "orbit"}
 POLL = 3.0
 # priorite : 0 = case en cours de travail (Integrate, orbite de case), 1 = banque a la main, 2 = remplissage en lot
@@ -107,6 +107,47 @@ def run_item_cut(job, prov):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+_sheet_locks, _sheet_guard = {}, threading.Lock()
+
+
+def ensure_sheet(it, prov, job=None, redo=False):
+    """Planche de vues d'un personnage (dos, profil, trois-quarts dos), faite une fois a partir de son image de base.
+    Renvoie les chemins des vues. Un verrou par element : deux orbites lancees ensemble ne la calculent qu'une fois."""
+    if it["kind"] != "character" or not settings.load()["render"].get("sheet", True):
+        return []
+    with _sheet_guard:
+        lock = _sheet_locks.setdefault(it["id"], threading.Lock())
+    d = store.item_dir(it["id"])
+    with lock:
+        it = store.load_item(it["id"])
+        have = {} if redo else dict(it.get("sheet") or {})
+        base = d / it["variants"]["base"]["ref"]
+        for k, (view, _) in enumerate(poses.SHEET_VIEWS):
+            if view in have and (d / have[view]).exists():
+                continue
+            if job is not None:
+                job["progress"] = "planche de vues : %s" % view
+            tmp = _tmp()
+            try:
+                png = prov.edit([base], poses.sheet_prompt(view, it.get("style", "photo")), 31 + k, tmp)
+                rel = "sheet/%s.png" % view
+                (d / "sheet").mkdir(parents=True, exist_ok=True)
+                if it.get("style") == "dessin":
+                    sprites.ink(png, d / rel)
+                else:
+                    sprites.normalize(png, d / rel)
+                have[view] = rel
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+        store.mutate_item(it["id"], lambda x: x.update(sheet=have, sheet_t=int(time.time())))
+        return [d / have[v] for v, _ in poses.SHEET_VIEWS if v in have]
+
+
+def run_item_sheet(job, prov):
+    it = store.load_item(job["params"]["item"])
+    ensure_sheet(it, prov, job, redo=bool(job["params"].get("redo")))
+
+
 def run_item_orbit(job, prov):
     p = job["params"]
     it = store.load_item(p["item"])
@@ -117,6 +158,14 @@ def run_item_orbit(job, prov):
     length = int(p.get("length") or r["orbit_length"])
     mp = float(p.get("megapixels") or (0.8 if decor else r["megapixels"]))
     best = None
+    refs = None
+    if it["kind"] == "character" and not p.get("no_sheet"):      # planche de vues d'abord : le dos et le profil servent de references
+        try:
+            views = ensure_sheet(it, prov, job)
+            if views:
+                refs = {"character": [d / it["variants"]["base"]["ref"]] + views[:3]}
+        except Exception:                                          # noqa: BLE001 : sans planche, l'orbite se fait comme avant
+            refs = None
     for attempt in range(2):
         tmp = _tmp()
         try:
@@ -126,7 +175,7 @@ def run_item_orbit(job, prov):
                 start = sprites.studio(d / v["cut"], tmp / "studio.png")
                 job["progress"] = "orbite sur fond de studio"
             rgb, mat = prov.orbit(start, length, _seed(job, attempt), poses.orbit_subject(it["kind"], it["name"]),
-                                  mp, not decor, tmp)
+                                  mp, not decor, tmp, refs=refs)
             job["progress"] = "découpe des images"
             rel = "v/%s/o%d_%d" % (p["variant"], int(time.time()), attempt)
             info = sprites.build_orbit(rgb, mat, d / rel, fill=it.get("style") == "dessin")
@@ -306,7 +355,7 @@ def run_panel_orbit(job, prov):
     store.mutate_project(p["project"], apply)
 
 
-RUNNERS = {"item_cut": run_item_cut, "item_orbit": run_item_orbit, "item_pose": run_item_pose,
+RUNNERS = {"item_cut": run_item_cut, "item_orbit": run_item_orbit, "item_pose": run_item_pose, "item_sheet": run_item_sheet,
            "item_new": run_item_new, "panel_integrate": run_panel_integrate, "panel_orbit": run_panel_orbit}
 
 

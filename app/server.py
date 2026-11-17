@@ -324,6 +324,9 @@ class Handler(BaseHTTPRequestHandler):
                     params[k] = d[k]
             return self.send_json({"job": S.add("item_orbit", params, "Orbite · %s · %s" % (
                 it["name"], it["variants"][vid]["label"]), **opts)})
+        if act == "sheet":                                          # planche de vues d'un personnage (dos, profil...)
+            return self.send_json({"job": S.add("item_sheet", {"item": iid, "redo": bool(d.get("redo"))},
+                                                "Planche de vues · %s" % it["name"], **opts)})
         if act == "cut":
             vid = d.get("variant", "base")
             return self.send_json({"job": S.add("item_cut", {"item": iid, "variant": vid},
