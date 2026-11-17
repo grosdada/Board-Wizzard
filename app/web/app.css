@@ -241,3 +241,28 @@ label.row.range.off { opacity: .4; }
 .draw-rot { cursor: grab; } .draw-rot circle { fill: #8fd0c4; stroke: #0e1b19; stroke-width: 2; } .draw-rot path { fill: none; stroke: #0e1b19; stroke-width: 2.4; stroke-linecap: round; pointer-events: none; }
 .draw-build { fill: none; stroke: #2bb3a3; stroke-width: 2.5; stroke-dasharray: 7 5; pointer-events: none; }
 .draw-pt.first { fill: #ffd27a; }
+
+/* mode montage (maquette) */
+.modal.modal-montage { width: min(1320px, 97vw); }
+.mt-editor { display: flex; flex-direction: column; gap: 10px; --mt-name: 170px; }
+.mt-top { display: flex; gap: 14px; align-items: flex-start; }
+.mt-view { flex: 1; min-width: 0; background: #101212; border-radius: 8px; padding: 10px; display: flex; justify-content: center; }
+.mt-stage { max-width: 100%; max-height: 46vh; background: #fff; touch-action: none; user-select: none; cursor: grab; }
+.mt-stage [data-layer] { cursor: move; }
+.mt-sel { fill: none; stroke: #2bb3a3; stroke-width: 3; stroke-dasharray: 10 7; pointer-events: none; vector-effect: non-scaling-stroke; }
+.mt-frame { fill: none; stroke: #111; stroke-width: 4; pointer-events: none; }
+.mt-side { flex: 0 0 290px; max-height: 48vh; overflow: auto; }
+.mt-side h4 { margin: 8px 0 6px; } .mt-side select { width: 100%; }
+.mt-bar { display: flex; gap: 10px; align-items: center; } .mt-bar .spacer { flex: 1; } .mt-bar input[type=number] { width: 70px; }
+.mt-clock { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12.5px; }
+.mt-timeline { position: relative; background: #17191a; border: 1px solid #34383a; border-radius: 8px; padding: 4px 0; max-height: 26vh; overflow-y: auto; user-select: none; touch-action: none; }
+.mt-row { display: flex; align-items: stretch; height: 28px; border-bottom: 1px solid #25282a; }
+.mt-row.on { background: rgba(143,208,196,.09); }
+.mt-name { flex: 0 0 var(--mt-name); box-sizing: border-box; padding: 5px 9px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border-right: 1px solid #34383a; }
+.mt-name .count { margin-left: 6px; color: var(--accent); font-size: 11px; }
+.mt-lane { position: relative; flex: 1; cursor: pointer; }
+.mt-lane.ruler { cursor: ew-resize; }
+.mt-lane .tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid #3a3f41; padding-left: 4px; font-size: 10.5px; color: var(--muted); line-height: 26px; pointer-events: none; }
+.mt-lane .key { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; background: #8fd0c4; border: 1px solid #0e1b19; transform: rotate(45deg); cursor: ew-resize; }
+.mt-lane .key.on { background: #ffd27a; }
+.mt-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #ff6b5e; pointer-events: none; }

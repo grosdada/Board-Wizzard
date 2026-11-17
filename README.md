@@ -60,6 +60,13 @@ et ffmpeg dans le PATH.
 11. **Orbite de la case** : une orbite 360° de toute la composition, que l'on fait tourner à la souris.
 12. **Imprimer** : la page courante, en PDF par l'impression du navigateur.
 
+## Mode montage (maquette)
+
+Case sélectionnée → « 🎬 Mode montage » (inspecteur ou clic droit). Une visionneuse, une timeline avec une piste par
+élément et une piste caméra, et des poses clés : position, taille, axe et pose d'un élément ; cadre, zoom et
+inclinaison de la caméra, avec des mouvements prêts (travellings, panoramiques, zoom, bascule). Lecture en boucle,
+durée réglable. C'est une maquette : l'animation se joue dans cette fenêtre, il n'y a pas encore d'export vidéo.
+
 ## Rendus
 
 - **Machines ComfyUI** (Réglages ⚙) : une par ligne, ou le fichier `local_settings.json` de Workflows Q-builder dont

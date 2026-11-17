@@ -8,6 +8,7 @@ import { flattenPanel } from "./flatten.js";
 import { MARKS, MARK_COLORS, newMark } from "./marks.js";
 import { swatch } from "./colors.js";
 import { openDrawEditor } from "./draw.js";
+import { openMontage } from "./montage.js";
 import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement } from "./model.js";
 
 const FORMATS = [
@@ -385,7 +386,8 @@ class App {
     for (const [t, [label, ico]] of Object.entries(MARKS)) items.push({ label: `${ico} ${label}`, half: true, click: () => (t === "free" ? this.armMark(t) : this.addMark(pid, t, [rel.x, rel.y])) });
     items.push({ head: "Banque" }, { label: "✨ Générer un élément ici…", click: () => this.generateHere(pid, rel) });
     items.push({ head: "Case" }, { label: "Integrate (image unifiée)", click: () => this.integrate() },
-      { label: "Orbite de la case", click: () => this.panelOrbit() });
+      { label: "Orbite de la case", click: () => this.panelOrbit() },
+      { label: "🎬 Montage (animer la case)…", click: () => openMontage(this, pid) });
     if (pan.integrated || pan.orbit) {
       items.push({ head: "Afficher" }, { label: "Calques", checked: (pan.show || "layers") === "layers", click: () => this.setShow("layers") });
       if (pan.integrated) items.push({ label: "Image intégrée", checked: pan.show === "integrated", click: () => this.setShow("integrated") });
@@ -663,6 +665,8 @@ class App {
         src: `/projects/${this.project.id}/${f}`, title: "Version " + (i + 1), on: { click: () => { pan.integrated = f; pan.show = "integrated"; this.commit("ver"); this.editor.render(); this.refreshInspector(); } } }))));
       if (pan.show === "orbit" && pan.orbit) box.append(range("Axe de la scène", pan.orbit.frame || 0, 0, pan.orbit.n - 1, 1, (x) => { pan.orbit.frame = x; }, "oturn"));
     }
+    box.append(h("h4", "Animation"), h("div.row", h("button.mini", { title: "Timeline, poses clés, caméra virtuelle", on: { click: () => openMontage(this, this.sel.panel) } }, pan.anim ? "🎬 Ouvrir le montage" : "🎬 Mode montage"),
+      pan.anim ? h("span.muted", `${pan.anim.dur} s · ${Object.values(pan.anim.tracks || {}).reduce((n, k) => n + k.length, 0)} clés`) : ""));
     box.append(h("h4", "Indications"), h("div.row.wrap", Object.entries(MARKS).map(([t, [label, ico]]) => h("button.mini" + (this.markTool === t ? ".on" : ""), { title: "Tracer dans une case : " + label, on: { click: () => this.armMark(t) } }, `${ico} ${label}`))));
     box.append(h("h4", "Bulles"), h("div.row", Object.entries(BUB).map(([t, [label]]) => h("button.mini", { on: { click: () => this.addBubble(t) } }, "+ " + label))));
     if ((pan.layers || []).length) box.append(h("h4", "Calques (du fond vers l'avant)"), h("div.layers", pan.layers.map((x) => {
