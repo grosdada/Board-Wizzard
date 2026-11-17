@@ -112,7 +112,7 @@ export function drawImage(draw, wpx, hpx) {
 
 // ------------------------------------------------------------------------------------------------ l'atelier
 /** Ouvre l'atelier de dessin pour une case. ratio = hauteur / largeur ; backdrop : url du decor a montrer dessous. */
-export function openDrawEditor({ draw, ratio, backdrop, title, onSave }) {
+export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [] }) {
   const H = W * ratio;
   const shapes = JSON.parse(JSON.stringify((draw && draw.shapes) || []));
   let tool = "rect", prim = "rect", path = "free", sel = null, drag = null, building = null, hover = null;
@@ -123,7 +123,19 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave }) {
   const art = document.createElementNS(NS, "g"), over = document.createElementNS(NS, "g");
   const back = document.createElementNS(NS, "g");
   back.innerHTML = `<rect width="${W}" height="${f1(H)}" fill="#ffffff"/>` + (backdrop ? `<image href="${backdrop}" width="${W}" height="${f1(H)}" preserveAspectRatio="xMidYMid slice" opacity="0.35"/>` : "");
-  svg.append(back, art, over);
+  // fantome : les personnages de la case par-dessus le dessin, en transparence, pour dessiner autour d'eux
+  const ghost = document.createElementNS(NS, "g");
+  ghost.setAttribute("style", "pointer-events:none");
+  ghost.innerHTML = ghosts.map((q) => { const hh = q.s * H, ww = hh * q.ar, cx = q.x * W, x = cx - ww / 2, y = q.y * H - hh;
+    return `<image href="${q.url}" x="${f1(x)}" y="${f1(y)}" width="${f1(ww)}" height="${f1(hh)}" preserveAspectRatio="xMidYMax meet"${q.flip ? ` transform="translate(${f1(2 * cx)} 0) scale(-1 1)"` : ""}/>`; }).join("");
+  const gs = Object.assign({ on: true, a: 0.45 }, JSON.parse(localStorage.getItem("bw.ghost") || "{}"));
+  const ghostSync = () => { ghost.setAttribute("opacity", gs.a); ghost.setAttribute("display", gs.on ? "inline" : "none"); localStorage.setItem("bw.ghost", JSON.stringify(gs)); };
+  ghostSync();
+  const gOut = h("output", Math.round(gs.a * 100) + " %");
+  const ghostBar = ghosts.length ? h("div.row.draw-ghost", { title: "Montre les personnages de la case par-dessus le dessin, pour s'en servir de repère. Ils ne font pas partie du fond." },
+    h("label.row.check", h("input", { type: "checkbox", checked: gs.on, on: { change: (e) => { gs.on = e.target.checked; ghostSync(); } } }), "👻 Personnages en fantôme"),
+    h("label.row.range", "Opacité", h("input", { type: "range", min: 0.05, max: 1, step: 0.01, value: gs.a, on: { input: (e) => { gs.a = +e.target.value; gOut.textContent = Math.round(gs.a * 100) + " %"; ghostSync(); } } }), gOut)) : "";
+  svg.append(back, art, ghost, over);
   const side = h("div.draw-side"), bar = h("div.draw-tools");
   const target = () => (sel ? shapes.find((s) => s.id === sel) : null);
   const val = (k) => { const t = target(); return t && t[k] !== undefined ? t[k] : cur[k]; };
@@ -272,7 +284,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave }) {
   document.addEventListener("click", away);
   const done = () => { document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
   tools(); props(); paint();
-  const m = modal(title || "Dessiner le fond", h("div.draw-editor", h("div.draw-main", bar, h("div.draw-frame", svg)), side),
+  const m = modal(title || "Dessiner le fond", h("div.draw-editor", h("div.draw-main", bar, ghostBar, h("div.draw-frame", svg)), side),
     [{ label: "Annuler", click: done },
      { label: "Enregistrer le fond", primary: true, click: () => { finish(true); done(); onSave({ shapes }); toast("Fond dessiné enregistré."); } }]);
   m.box.classList.add("modal-wide");

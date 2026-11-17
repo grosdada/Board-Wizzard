@@ -432,7 +432,8 @@ class App {
     const pg = this.page(), pan = pg.panels[pid] || (pg.panels[pid] = {}), g = this.geo(pid);
     if (!g) return;
     const bg = background(pan, this.bank, this.project.id);
-    openDrawEditor({ draw: pan.draw, ratio: g.bbox.h / g.bbox.w, backdrop: bg ? bg.url : null, title: `Dessiner le fond de la case ${g.order}`,
+    const ghosts = (pan.layers || []).map((l) => { const it = this.bank.get(l.item), sp = it && sprite(it, l.v, l.f); return sp && { url: sp.url, x: l.x, y: l.y, s: l.s, ar: sp.w / sp.h, flip: l.flip }; }).filter(Boolean);
+    openDrawEditor({ draw: pan.draw, ratio: g.bbox.h / g.bbox.w, backdrop: bg ? bg.url : null, ghosts, title: `Dessiner le fond de la case ${g.order}`,
       onSave: (d) => { if (d.shapes.length) pan.draw = d; else delete pan.draw; pan.show = "layers"; this.commit("draw"); this.editor.render(); this.refreshInspector(); } });
   }
   // decks de montage : plusieurs par storyboard, enregistres avec lui
