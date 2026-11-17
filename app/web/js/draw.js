@@ -77,7 +77,8 @@ export function boxOf(sh, H) {
 // Lignes de manga posees sur le fond, facon generateur de « koukasen » en version simple.
 //   draw.fx = { on, type (focus : lignes de concentration · speed : lignes de vitesse · flash : eclat plein),
 //               cx, cy (centre, fraction de la case), n (nombre), inner (zone libre au centre, 0..1), w (epaisseur),
-//               vari (irregularite, 0..1), ang (sens des lignes de vitesse), col (#111111 ou #ffffff), seed,
+//               vari (irregularite, 0..1), ang (sens des lignes de vitesse), col (couleur des lignes), seed,
+//               bgon, bg (fond colore derriere les lignes ; sinon elles sont sur fond transparent),
 //               anim (animable dans le montage : piste « Lignes d'effet »), force (force de base, 1 = pleine) }
 export const FX_TYPES = { focus: "Lignes de concentration", speed: "Lignes de vitesse", flash: "Éclat plein" };
 export const FX_DEF = { on: false, type: "focus", cx: 0.5, cy: 0.5, n: 90, inner: 0.45, w: 1, vari: 0.6, ang: 0, col: "#111111", seed: 7, anim: false, force: 1 };
@@ -115,7 +116,9 @@ export function fxSvg(fx0, H, pre, force, tick = 0) {
       d += `M${f1(cx + Math.cos(a) * r)} ${f1(cy + Math.sin(a) * r)}L${f1(cx + Math.cos(a - hw) * R)} ${f1(cy + Math.sin(a - hw) * R)}L${f1(cx + Math.cos(a + hw) * R)} ${f1(cy + Math.sin(a + hw) * R)}Z`;
     }
   }
-  return `<clipPath id="${pre}fxc"><rect width="${W}" height="${f1(H)}"/></clipPath><g clip-path="url(#${pre}fxc)" style="pointer-events:none"><path d="${d}" fill="${fx.col === "#ffffff" ? "#ffffff" : "#111111"}" fill-rule="${fx.type === "flash" ? "evenodd" : "nonzero"}"${extra}/></g>`;   // nonzero : deux lignes qui se chevauchent restent pleines
+  const hex = (c, def) => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : def);
+  return `<clipPath id="${pre}fxc"><rect width="${W}" height="${f1(H)}"/></clipPath><g clip-path="url(#${pre}fxc)" style="pointer-events:none">` +
+    (fx.bgon ? `<rect width="${W}" height="${f1(H)}" fill="${hex(fx.bg, "#ffffff")}"/>` : "") + `<path d="${d}" fill="${hex(fx.col, "#111111")}" fill-rule="${fx.type === "flash" ? "evenodd" : "nonzero"}"${extra}/></g>`;   // nonzero : deux lignes qui se chevauchent restent pleines
 }
 
 /** Balisage SVG du fond dessine, dans un repere W x H. pre : prefixe des identifiants (unique par case). */
@@ -228,7 +231,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     fxBox.append(h("summary", "⚡ Lignes d'effet (concentration, vitesse, éclat)"),
       h("div.row.wrap", h("label.row.check", h("input", { type: "checkbox", checked: fx.on, on: { change: (e) => { fx.on = e.target.checked; fxPaint(); fxUi(); } } }), "Afficher"),
         h("select", { on: { change: (e) => { fx.type = e.target.value; fxPaint(); fxUi(); } } }, Object.entries(FX_TYPES).map(([k, n]) => h("option", { value: k, selected: fx.type === k }, n))),
-        h("select", { title: "Couleur des lignes", on: { change: (e) => { fx.col = e.target.value; fxPaint(); } } }, [["#111111", "Noires"], ["#ffffff", "Blanches"]].map(([k, n]) => h("option", { value: k, selected: fx.col === k }, n))),
+        h("span.row.colrow", { title: "Couleur des lignes (les bandes)" }, "Lignes", swatch(fx.col || "#111111", (c) => { fx.col = c; fxPaint(); })),
+        h("label.row.check", { title: "Décoché : fond transparent, on voit le décor entre les lignes. Coché : un fond de couleur derrière les lignes." }, h("input", { type: "checkbox", checked: !!fx.bgon, on: { change: (e) => { fx.bgon = e.target.checked; if (!fx.bg) fx.bg = "#ffffff"; fxPaint(); fxUi(); } } }), "Fond"),
+        fx.bgon ? swatch(fx.bg || "#ffffff", (c) => { fx.bg = c; fxPaint(); }) : h("span.muted", "transparent"),
         h("button.mini", { type: "button", title: "Un autre tirage des mêmes lignes", on: { click: () => { fx.seed = 1 + Math.floor(Math.random() * 9999); fxPaint(); } } }, "🎲")));
     if (!fx.on) return;
     fxBox.append(rg("Nombre", "n", 8, 400, 1), rg("Épaisseur", "w", 0.2, 80, 0.1, "Tout à droite, les lignes se rejoignent et couvrent tout de noir"), rg("Irrégularité", "vari", 0, 1, 0.01));
