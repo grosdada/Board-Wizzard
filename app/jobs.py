@@ -245,7 +245,14 @@ def run_item_pose(job, prov):
     tmp = _tmp()
     try:
         base = d / it["variants"]["base"]["ref"]
-        if it.get("style") == "dessin" and it["kind"] == "character":
+        if it.get("style") == "dessin" and it["kind"] == "character" and "mannequin" in (it.get("tags") or []):
+            # corps de mannequin (tete lisse, sans visage : la tete est ajoutee en traces par l'application). Pas de
+            # visage a respecter : un seul tirage, pas de controle de fidelite.
+            label, prompt = poses.pose_prompt_drawing(p.get("pose", ""), p.get("custom", ""))
+            cand = prov.edit([base], prompt, _seed(job), tmp)
+            png = tmp / "mannequin.png"
+            sprites.ink(cand, png)
+        elif it.get("style") == "dessin" and it["kind"] == "character":
             # dessin : le visage fait partie du design. Plusieurs tirages, on garde le plus fidele a la tete d'origine,
             # et on refuse la pose si aucun ne la respecte (mieux vaut une pose en moins qu'un visage refait).
             label, prompt = poses.pose_prompt_drawing(p.get("pose", ""), p.get("custom", ""))
@@ -297,6 +304,8 @@ def run_item_new(job, prov):
         prompt = ("%s. One single subject, entire subject visible, centred, three-quarter front view, on a plain light "
                   "grey seamless studio backdrop with a soft ground shadow. %s." % (p["prompt"], look))
         w, h = (832, 1216) if kind == "character" else (1024, 1024)
+    if p.get("raw"):                                             # description complete fournie telle quelle (corps de mannequin, lots)
+        prompt = p["prompt"]
     tmp = _tmp()
     try:
         png = prov.t2i(prompt, w, h, _seed(job), tmp)

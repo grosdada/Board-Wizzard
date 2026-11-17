@@ -314,7 +314,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError("décris ce qu'il faut générer")
             jid = S.add("item_new", {"kind": d.get("kind", "asset"), "name": d.get("name", ""), "prompt": d["prompt"],
                                      "style": d.get("style", "photo"), "orbit": d.get("orbit", True),
-                                     "folder": d.get("folder", "")},
+                                     "folder": d.get("folder", ""), "tags": d.get("tags") or None, "raw": bool(d.get("raw"))},
                         "Création · %s" % (d.get("name") or d["prompt"][:30]), **self.job_opts(d))
             return self.send_json({"job": jid})
         iid = seg[0]
