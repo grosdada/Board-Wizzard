@@ -481,10 +481,10 @@ export function openMontage(app, pid) {
         tl.append(h("div.mt-row.voice", h("div.mt-name", { title: `Voix de ${name}`, on: { click: () => { sel = l.id; selKey = null; paint(); lanes(); props(); } } }, "🔊 ", name), h("div.mt-lane", { "data-lane": l.id }, clip)));
       }
     }
-    tl.append(h("div.mt-head", { style: `left:calc(var(--mt-name) + (100% - var(--mt-name)) * ${t / anim.dur})` }));
+    tl.append(h("div.mt-head", { style: `left:calc(var(--mt-name) + var(--mt-pad) + (100% - var(--mt-name) - 2 * var(--mt-pad)) * ${t / anim.dur})` }));
     clock.textContent = `${t.toFixed(2)} s / ${anim.dur.toFixed(1)} s`;
   }
-  const head = () => { const hd = tl.querySelector(".mt-head"); if (hd) hd.style.left = `calc(var(--mt-name) + (100% - var(--mt-name)) * ${t / anim.dur})`; clock.textContent = `${t.toFixed(2)} s / ${anim.dur.toFixed(1)} s`; };
+  const head = () => { const hd = tl.querySelector(".mt-head"); if (hd) hd.style.left = `calc(var(--mt-name) + var(--mt-pad) + (100% - var(--mt-name) - 2 * var(--mt-pad)) * ${t / anim.dur})`; clock.textContent = `${t.toFixed(2)} s / ${anim.dur.toFixed(1)} s`; };
   const seek = (x, full) => { t = clamp(x, 0, anim.dur); paint(); if (full) { lanes(); props(); } else { head(); syncProps(); } };
   // Maj enfonce : la tete de lecture s'aimante sur la cle la plus proche (toutes pistes confondues)
   const timeAt = (e, lane, skip) => {
@@ -500,7 +500,8 @@ export function openMontage(app, pid) {
   };
   tl.addEventListener("contextmenu", (e) => { if (e.target.__key) { sel = e.target.dataset.key; selKey = e.target.__key; keyMenu(e, sel, selKey); lanes(); } else e.preventDefault(); });
   tl.addEventListener("pointerdown", (e) => {
-    const lane = e.target.closest(".mt-lane");
+    // les marges a gauche et a droite des pistes comptent aussi : on peut y commencer un lasso pour prendre les cles des bouts
+    const rowEl = e.target.closest(".mt-row"), lane = e.target.closest(".mt-lane") || (rowEl && !e.target.closest(".mt-name") ? rowEl.querySelector(".mt-lane") : null);
     if (!lane || e.button !== 0) return;
     stop();
     try { tl.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }

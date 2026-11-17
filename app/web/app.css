@@ -321,3 +321,8 @@ details.fold > summary:hover { opacity: 1; }
 
 /* bouton plein ecran dans l'en-tete d'une fenetre, juste avant la croix */
 .modal > header .head-full { margin-left: auto; margin-right: 8px; white-space: nowrap; }
+
+/* marge de chaque cote des pistes du montage : les cles du debut et de la fin restent attrapables */
+.mt-timeline { --mt-pad: 22px; }
+.mt-timeline .mt-lane { margin: 0 var(--mt-pad); }
+.mt-timeline .mt-row { cursor: pointer; }
