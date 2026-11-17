@@ -124,7 +124,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const flip = l.flip ? `translate(${f1(2 * box.cx)} 0) scale(-1 1) ` : "";
       const gsd = groundShadow(l, box);                    // ombre portee : sous l'element
       const rz = s.rz || 0;                 // ce qui suit (dessin, bouche, cadre, poignees) tourne autour du centre
-      if (gsd) o += `<ellipse cx="${f1(gsd.cx)}" cy="${f1(gsd.cy)}" rx="${f1(gsd.rx)}" ry="${f1(gsd.ry)}" fill="#000" opacity="${f3(gsd.a)}" style="pointer-events:none"${blur(depthOf(pan, li), gsd.blur)}/>`;
+      if (gsd) o += `<ellipse cx="${f1(gsd.cx)}" cy="${f1(gsd.cy)}" rx="${f1(gsd.rx)}" ry="${f1(gsd.ry)}" fill="${gsd.col}" opacity="${f3(gsd.a)}" style="pointer-events:none"${blur(depthOf(pan, li), gsd.blur)}/>`;
       const o1 = o.length;
       if (vf) {
         const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), ink = inkFill(l), st = inkStroke(s.lw, col, ink);
@@ -356,7 +356,8 @@ export function openMontage(app, pid) {
         const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); paint(); };
         const plain = (label, k, min, max, def) => { const out = h("output", (gs[k] ?? def).toFixed(2)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.01, value: gs[k] ?? def, on: { input: (e) => { putg(k, +e.target.value); out.textContent = (+e.target.value).toFixed(2); } } }), out); };
         side.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); props(); } } }), "Ombre portée"));
-        if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée", plain("Opacité", "a", 0.05, 1, 0.35), h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, plain("Flou ⓘ", "b", 0, 4, 1)), plain("Largeur", "w", 0.2, 2.5, 0.8), plain("Épaisseur", "h", 0.2, 4, 1),
+        if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée",
+          h("div.row.colrow", h("span", "Couleur"), swatch(gs.c || "#000000", (c) => putg("c", c))), plain("Opacité", "a", 0.05, 1, 0.35), h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, plain("Flou ⓘ", "b", 0, 4, 1)), plain("Largeur", "w", 0.2, 2.5, 0.8), plain("Épaisseur", "h", 0.2, 4, 1),
           h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, plain("Décalage ↔ ⓘ", "dx", -0.6, 0.6, 0), plain("Décalage ↕", "dy", -0.6, 0.6, 0))));
       }
     }

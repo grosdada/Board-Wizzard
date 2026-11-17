@@ -49,7 +49,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     const q = groundShadow(l, box);
     if (!q) return;
     ctx.save();
-    ctx.filter = `blur(${(q.blur * kx).toFixed(2)}px)`; ctx.globalAlpha = q.a; ctx.fillStyle = "#000000";
+    ctx.filter = `blur(${(q.blur * kx).toFixed(2)}px)`; ctx.globalAlpha = q.a; ctx.fillStyle = q.col;
     ctx.scale(kx, ky); ctx.beginPath(); ctx.ellipse(q.cx, q.cy, q.rx, q.ry, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   };

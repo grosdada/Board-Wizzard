@@ -623,7 +623,9 @@ class App {
       {
         const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); };
         box.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); this.commit("cast"); this.editor.render(); this.refreshInspector(); } } }), "Ombre portée"));
-        if (gs.on) box.append(fold("gs", "Réglages de l'ombre portée", range("Opacité", gs.a ?? 0.35, 0.05, 1, 0.01, (x) => putg("a", x), "cast"),
+        if (gs.on) box.append(fold("gs", "Réglages de l'ombre portée",
+          h("div.row.colrow", h("span", "Couleur"), swatch(gs.c || "#000000", (c) => { putg("c", c); this.editor.render(true); this.commitSoon("cast"); })),
+          range("Opacité", gs.a ?? 0.35, 0.05, 1, 0.01, (x) => putg("a", x), "cast"),
           h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, range("Flou ⓘ", gs.b ?? 1, 0, 4, 0.05, (x) => putg("b", x), "cast")),
           range("Épaisseur", gs.h ?? 1, 0.2, 4, 0.05, (x) => putg("h", x), "cast"),
           h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, range("Décalage ↔ ⓘ", gs.dx || 0, -0.6, 0.6, 0.005, (x) => putg("dx", x), "cast"), range("Décalage ↕", gs.dy || 0, -0.6, 0.6, 0.005, (x) => putg("dy", x), "cast")),

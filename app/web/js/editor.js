@@ -154,7 +154,7 @@ export class Editor {
           if (!sp) return;
           const box = layerBox(bb, l, sp);
           const gsd = groundShadow(l, box);                  // ombre portee : sous l'element
-          if (gsd) grp.append(s("ellipse", { cx: gsd.cx, cy: gsd.cy, rx: gsd.rx, ry: gsd.ry, fill: "#000000", opacity: gsd.a, "pointer-events": "none",
+          if (gsd) grp.append(s("ellipse", { cx: gsd.cx, cy: gsd.cy, rx: gsd.rx, ry: gsd.ry, fill: gsd.col, opacity: gsd.a, "pointer-events": "none",
                                              filter: this.blur(defs, gsd.blur + blurOf(pan, depthOf(pan, i), bb)) }));
           const vf = vecFrame(sp, () => this.render(true));
           if (vf) {                                          // dessin en traces : net a tout zoom, trait reglable
