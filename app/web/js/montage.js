@@ -111,7 +111,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})"><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="#fff" data-layer="${l.id}"/>` +
           `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
-      if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f))}</g>`;   // lip sync : la bouche qui parle
+      if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`)}</g>`;   // lip sync : la bouche qui parle
       if (sel === l.id) o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
     });
     return o + `</g></g><defs>${Object.values(blurs).join("")}</defs><rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
@@ -143,7 +143,10 @@ export function openMontage(app, pid) {
   const CAMS = { cam: "Caméra", fo: "Mise au point", bl: "Flou" };      // pistes de la camera ; fo et bl : profondeur de champ
 
   // ------------------------------------------------------------------------------------------ visionneuse
-  function paint() { svg.innerHTML = depthView ? topView() : scene.markup(t, playing ? null : sel, paint); }
+  function paint() {
+    svg.innerHTML = depthView ? topView() : scene.markup(t, playing ? null : sel, paint);
+    if (showMask && !playing) svg.querySelectorAll('g[style*="pointer-events:none"] > ellipse[fill="#fff"]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
+  }
 
   // ------------------------------------------------------------------------------------------ vue de dessus (profondeur)
   // Schema vu d'en haut : la camera en bas, le fond en haut, chaque element est une carte posee a sa profondeur.
@@ -213,7 +216,7 @@ export function openMontage(app, pid) {
   // ------------------------------------------------------------------------------------------ reglages (droite)
   const side = h("div.mt-side");
   let syncProps = () => {};
-  const folds = { sh: true, gs: true, lip: true };
+  const folds = { sh: true, gs: true, lip: true, lipt: false, lipm: false };
   const fold = (key, label, ...rows) => h("details.fold", { open: !!folds[key], on: { toggle: (e) => { folds[key] = e.target.open; } } }, h("summary", label), ...rows);
                     // depliants ouverts ou fermes
   function props() {
@@ -312,7 +315,7 @@ export function openMontage(app, pid) {
 
   // ------------------------------------------------------------------------------------------ voix et bouche (lip sync)
   const players = new Map();                               // un lecteur de son par calque qui parle
-  let placing = null, rec = null;
+  let placing = null, rec = null, showMask = false;
   const voiceUrl = (lip) => `/projects/${app.project.id}/${lip.src}`;
   function voices(on) {                                    // pendant la lecture, chaque voix suit la tete de lecture
     for (const l of pan.layers) {
@@ -387,7 +390,12 @@ export function openMontage(app, pid) {
         h("button.mini" + (placing === l.id ? ".on" : ""), { title: "Puis clique dans l'image, à l'endroit de la bouche", on: { click: () => { placing = placing === l.id ? null : l.id; svg.style.cursor = placing ? "crosshair" : ""; props(); } } }, placing === l.id ? "Clique sur la bouche…" : "✛ Placer à la main")),
         plain("Taille", "s", 0.005, 0.2, 0.001, 0.035), plain("Position ↔", "x", 0, 1, 0.002, 0.5), plain("Position ↕", "y", 0, 1, 0.002, 0.13),
         h("div", { title: "Rayon de l'axe sur lequel la bouche tourne avec l'orbite : plus il est grand, plus la bouche part sur le côté quand le personnage tourne." }, plain("Axe de la tête ⓘ", "hw", 0, 0.15, 0.001, 0.03)),
-        h("label.row.check", { title: "Une pastille blanche derrière la bouche, pour couvrir celle du dessin" }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => put("bg", e.target.checked) } }), "Cache blanc derrière"));
+        plain("Inclinaison", "r", -60, 60, 1, 0, (x) => Math.round(x) + "°"),
+        fold("lipt", "Trait de la bouche", plain("Épaisseur", "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain("Tremblé", "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain("Ondulation", "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))),
+        h("label.row.check", { title: "Une forme blanche derrière la bouche, pour couvrir celle du dessin" }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => { put("bg", e.target.checked); props(); } } }), "Masque blanc derrière"));
+      if (lip.bg !== false) rows.push(fold("lipm", "Réglages du masque", plain("Largeur", "mw", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)), plain("Hauteur", "mh", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)),
+        plain("Décalage ↔", "mx", -120, 120, 1, 0, (x) => String(Math.round(x))), plain("Décalage ↕", "my", -120, 120, 1, 0, (x) => String(Math.round(x))),
+        h("label.row.check", { title: "Montre le masque en rose le temps de l'aligner" }, h("input", { type: "checkbox", checked: !!showMask, on: { change: (e) => { showMask = e.target.checked; paint(); } } }), "Voir le masque")));
       if (lip.cues) {
         const fps = lip.fps || 12, force = (sh) => { const i = Math.floor((t - (lip.off || 0)) * fps); if (i < 0 || i >= lip.cues.length) return toast("La tête de lecture est hors de la voix."); const c = lip.cues.split(""); c[i] = sh; if (i + 1 < c.length) c[i + 1] = sh; put("cues", c.join("")); props(); };
         rows.push(plain("Décalage (s)", "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2)),

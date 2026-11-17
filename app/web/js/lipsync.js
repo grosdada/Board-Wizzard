@@ -2,7 +2,8 @@
 // une des neuf bouches dessinees au trait. Animation limitee : chaque bouche tient au moins deux images.
 //   calque.lip = { on, src (fichier son du storyboard), name, dur, fps, cues ("XXAAEEMM…", une lettre par image),
 //                  off (decalage en secondes), x, y (place de la bouche, fraction de la boite du personnage vu de face),
-//                  s (largeur, fraction de la hauteur), hw (rayon de l'axe de la tete, fraction de la hauteur), bg (cache blanc) }
+//                  s (largeur, fraction de la hauteur), hw (rayon de l'axe de la tete, fraction de la hauteur), r (inclinaison),
+//                  lw (epaisseur du trait), hand, wave (tremble du trait), bg (masque blanc), mw, mh, mx, my (son reglage) }
 // La bouche est accrochee a un axe vertical qui tourne avec l'orbite : de trois quarts elle glisse sur le cote et se
 // resserre, de dos elle disparait.
 
@@ -21,11 +22,25 @@ const SHAPES = {
   D: `<path d="M-38 -6Q0 -18 38 -6Q0 26 -38 -6Z" fill="#fff" ${INK}/><path d="M-33 0Q0 6 33 0" fill="none" stroke="#111" stroke-width="4"/><path d="M-20 12Q0 18 20 12" fill="none" stroke="#111" stroke-width="3"/>`,
   L: `<path d="M-36 -8Q0 -24 36 -8Q0 40 -36 -8Z" fill="#111" ${INK}/><path d="M-26 -9Q0 -20 26 -9L24 -1Q0 -8 -24 -1Z" fill="#fff"/><ellipse cy="12" rx="13" ry="9" fill="#fff"/>`,
 };
-/** Dessin d'une bouche, centree sur l'origine, large d'environ 100. cache : pastille blanche qui couvre la bouche d'origine. */
-export function mouthSvg(shape, cache = true) {
-  return (cache ? `<ellipse rx="54" ry="${shape === "A" || shape === "L" || shape === "O" ? 42 : 30}" cy="${shape === "A" || shape === "L" ? 12 : 4}" fill="#fff"/>` : "") + (SHAPES[shape] || SHAPES.X);
+/** Dessin d'une bouche en traces, centree sur l'origine, large d'environ 100.
+ *  o : { cache (masque blanc derriere), lw (epaisseur du trait, 1 = normale), hand (tremble, 0 = net), wave (longueur
+ *        des ondulations), mw, mh (largeur et hauteur du masque), mx, my (decalage du masque), id (pour le filtre) } */
+export function mouthSvg(shape, o = {}) {
+  const lw = o.lw ?? 1;
+  let d = SHAPES[shape] || SHAPES.X;
+  if (lw !== 1) d = d.replace(/stroke-width="([\d.]+)"/g, (m, v) => `stroke-width="${(v * lw).toFixed(2)}"`);
+  let out = "";
+  // le masque ne change pas d'une bouche a l'autre : une fois aligne sur le personnage, il le reste
+  if (o.cache !== false) out += `<ellipse cx="${(o.mx || 0).toFixed(1)}" cy="${(6 + (o.my || 0)).toFixed(1)}" rx="${(54 * (o.mw ?? 1)).toFixed(1)}" ry="${(38 * (o.mh ?? 1)).toFixed(1)}" fill="#fff"/>`;
+  if (o.hand > 0 && o.id) {                                 // trait a la main : un bruit doux deplace le trace, different pour chaque bouche
+    const seed = 3 + "XMAEOUFDL".indexOf(shape) * 7;
+    out += `<filter id="${o.id}" filterUnits="userSpaceOnUse" x="-90" y="-80" width="180" height="170" color-interpolation-filters="sRGB">` +
+      `<feTurbulence type="fractalNoise" baseFrequency="${(0.09 / Math.max(0.5, o.wave ?? 4)).toFixed(4)}" numOctaves="2" seed="${seed}"/><feDisplacementMap in="SourceGraphic" scale="${(o.hand * 2.2).toFixed(1)}" xChannelSelector="R" yChannelSelector="G"/></filter>` +
+      `<g filter="url(#${o.id})">${d}</g>`;
+  } else out += d;
+  return out;
 }
-export const mouthIcon = (shape) => `<svg viewBox="-56 -44 112 100" width="30" height="27">${mouthSvg(shape, false)}</svg>`;
+export const mouthIcon = (shape) => `<svg viewBox="-56 -44 112 100" width="30" height="27">${mouthSvg(shape, { cache: false })}</svg>`;
 
 /** Lettre de la bouche a l'instant t. */
 export function cueAt(lip, t) {
@@ -35,7 +50,7 @@ export function cueAt(lip, t) {
 }
 
 /** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face). */
-export function lipMarkup(lip, box, flip, t, angle = 0) {
+export function lipMarkup(lip, box, flip, t, angle = 0, id = "") {
   if (!lip || !lip.on) return "";
   const c = Math.cos(angle);
   if (c < -0.12) return "";                                 // de dos : la bouche est derriere la tete
@@ -43,7 +58,8 @@ export function lipMarkup(lip, box, flip, t, angle = 0) {
   let cx = box.x + (lip.x ?? 0.5) * box.w - Math.sin(angle) * (lip.hw ?? 0.03) * box.h;   // l'axe tourne : la bouche part sur le cote
   const cy = box.y + (lip.y ?? 0.13) * box.h;
   if (flip) cx = 2 * box.cx - cx;
-  return `<g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)}) scale(${(size / 100 * kx).toFixed(4)} ${(size / 100).toFixed(4)})" style="pointer-events:none">${mouthSvg(cueAt(lip, t), lip.bg !== false)}</g>`;
+  const o = { cache: lip.bg !== false, lw: lip.lw, hand: lip.hand, wave: lip.wave, mw: lip.mw, mh: lip.mh, mx: lip.mx, my: lip.my, id };
+  return `<g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)}) rotate(${((flip ? -1 : 1) * (lip.r || 0)).toFixed(1)}) scale(${(size / 100 * kx).toFixed(4)} ${(size / 100).toFixed(4)})" style="pointer-events:none">${mouthSvg(cueAt(lip, t), o)}</g>`;
 }
 
 // ------------------------------------------------------------------------------------------------ ecoute de la voix
