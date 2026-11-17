@@ -115,7 +115,7 @@ export function fxSvg(fx0, H, pre, force, tick = 0) {
       d += `M${f1(cx + Math.cos(a) * r)} ${f1(cy + Math.sin(a) * r)}L${f1(cx + Math.cos(a - hw) * R)} ${f1(cy + Math.sin(a - hw) * R)}L${f1(cx + Math.cos(a + hw) * R)} ${f1(cy + Math.sin(a + hw) * R)}Z`;
     }
   }
-  return `<clipPath id="${pre}fxc"><rect width="${W}" height="${f1(H)}"/></clipPath><g clip-path="url(#${pre}fxc)" style="pointer-events:none"><path d="${d}" fill="${fx.col === "#ffffff" ? "#ffffff" : "#111111"}" fill-rule="evenodd"${extra}/></g>`;
+  return `<clipPath id="${pre}fxc"><rect width="${W}" height="${f1(H)}"/></clipPath><g clip-path="url(#${pre}fxc)" style="pointer-events:none"><path d="${d}" fill="${fx.col === "#ffffff" ? "#ffffff" : "#111111"}" fill-rule="${fx.type === "flash" ? "evenodd" : "nonzero"}"${extra}/></g>`;   // nonzero : deux lignes qui se chevauchent restent pleines
 }
 
 /** Balisage SVG du fond dessine, dans un repere W x H. pre : prefixe des identifiants (unique par case). */
@@ -214,8 +214,12 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     h("label.row.range", "Opacité", h("input", { type: "range", min: 0.05, max: 1, step: 0.01, value: gs.a, on: { input: (e) => { gs.a = +e.target.value; gOut.textContent = Math.round(gs.a * 100) + " %"; ghostSync(); } } }), gOut)) : "";
   const fxG = document.createElementNS(NS, "g");
   const fx = Object.assign({}, FX_DEF, draw && draw.fx);
-  const fxPaint = () => { fxG.innerHTML = fxSvg(fx, H, "efx"); };
-  let fxAim = false;                                      // le prochain clic dans l'image pose le centre des lignes
+  const fxPaint = () => {
+    const k = 1 + ext.l + ext.r;                            // la mire reste lisible quand la zone est agrandie
+    fxG.innerHTML = fxSvg(fx, H, "efx") + (fxAim && fx.on ? `<g transform="translate(${f1(fx.cx * W)} ${f1(fx.cy * H)}) scale(${f1(k)})" style="pointer-events:none"><circle r="16" fill="none" stroke="#e2603a" stroke-width="3"/><path d="M-26 0H26M0 -26V26" stroke="#e2603a" stroke-width="3"/></g>` : "");
+    svg.style.cursor = fxAim ? "move" : "";
+  };
+  let fxAim = false, fxDrag = false;                      // mode « centre » : tant qu'il est allume, glisser dans l'image deplace le centre des lignes
   const fxBox = h("details.fold.draw-fx", { open: !!fx.on });
   const fxUi = () => {
     fxBox.textContent = "";
@@ -227,10 +231,10 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
         h("select", { title: "Couleur des lignes", on: { change: (e) => { fx.col = e.target.value; fxPaint(); } } }, [["#111111", "Noires"], ["#ffffff", "Blanches"]].map(([k, n]) => h("option", { value: k, selected: fx.col === k }, n))),
         h("button.mini", { type: "button", title: "Un autre tirage des mêmes lignes", on: { click: () => { fx.seed = 1 + Math.floor(Math.random() * 9999); fxPaint(); } } }, "🎲")));
     if (!fx.on) return;
-    fxBox.append(rg("Nombre", "n", 8, 400, 1), rg("Épaisseur", "w", 0.2, 6, 0.1), rg("Irrégularité", "vari", 0, 1, 0.01));
+    fxBox.append(rg("Nombre", "n", 8, 400, 1), rg("Épaisseur", "w", 0.2, 80, 0.1, "Tout à droite, les lignes se rejoignent et couvrent tout de noir"), rg("Irrégularité", "vari", 0, 1, 0.01));
     if (fx.type === "speed") fxBox.append(rg("Sens", "ang", -180, 180, 1));
     else fxBox.append(rg("Zone libre", "inner", 0, 1.4, 0.01, "Taille de la zone sans lignes autour du centre"),
-      h("div.row.wrap", h("button.mini" + (fxAim ? ".on" : ""), { type: "button", title: "Puis clique dans l'image, là où les lignes doivent converger", on: { click: () => { fxAim = !fxAim; fxUi(); } } }, fxAim ? "Clique dans l'image…" : "✛ Placer le centre"),
+      h("div.row.wrap", h("button.mini" + (fxAim ? ".on" : ""), { type: "button", title: "Allume le mode centre : glisse alors dans l'image pour déplacer le point où les lignes convergent, autant de fois que tu veux. Reclique ce bouton quand c'est bon.", on: { click: () => { fxAim = !fxAim; fxDrag = false; fxPaint(); fxUi(); } } }, fxAim ? "✓ Centre trouvé (cliquer pour finir)" : "✛ Trouver le centre"),
         h("button.mini", { type: "button", on: { click: () => { fx.cx = 0.5; fx.cy = 0.5; fxPaint(); } } }, "Centrer")));
     fxBox.append(h("label.row.check", { title: "Ajoute une piste « Lignes d'effet » dans le montage : un curseur de force à animer par clés (les lignes arrivent, grossissent, disparaissent), et elles vibrent pendant la lecture." },
       h("input", { type: "checkbox", checked: !!fx.anim, on: { change: (e) => { fx.anim = e.target.checked; } } }), "Animable dans le montage ⓘ"));
@@ -352,7 +356,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const local = (t, p, c) => { if (!t.r) return p; const q = rotPt([p[0] * W, p[1] * H], [c[0] * W, c[1] * H], -t.r); return [q[0] / W, q[1] / H]; };
 
   svg.addEventListener("pointerdown", (e) => {
-    if (fxAim) { const q = at(e); fx.cx = +q[0].toFixed(3); fx.cy = +q[1].toFixed(3); fxAim = false; fxPaint(); fxUi(); return; }
+    if (fxAim) { const q = at(e); fx.cx = +q[0].toFixed(3); fx.cy = +q[1].toFixed(3); fxDrag = true; try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ } fxPaint(); return; }
     if (e.button !== 0) return;
     const p = at(e);
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* pointeur deja relache */ }
@@ -380,6 +384,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   });
   svg.addEventListener("pointermove", (e) => {
     const p = at(e);
+    if (fxAim) { if (fxDrag) { fx.cx = +p[0].toFixed(3); fx.cy = +p[1].toFixed(3); fxPaint(); } return; }
     if (building) { hover = p; return paint(); }
     if (!drag) return;
     const t = target();
@@ -402,6 +407,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     paint();
   });
   svg.addEventListener("pointerup", () => {
+    fxDrag = false;
     const d = drag; drag = null;
     if (!d || d.kind !== "new") return;
     const t = d.sh, a = t.p[0], b = t.p[t.p.length - 1];
