@@ -49,8 +49,19 @@ const DRAWN = {
 const LINE = `<path d="M-30 0L30 0" fill="none" stroke="#111" stroke-width="8" stroke-linecap="round"/>`;
 const CAPSULE = `<rect x="-30" y="-15" width="60" height="30" rx="15" fill="#111" stroke="#111" stroke-width="3" stroke-linejoin="round"/>`;
 const PLAIN = { X: LINE, M: LINE, F: LINE, A: CAPSULE, E: CAPSULE, O: CAPSULE, U: CAPSULE, D: CAPSULE, L: CAPSULE };
+// Jeux en images : des cartes decoupees d'une planche par tools/mouths.py (app/web/mouths/<planche>/nNN.png au trait
+// noir et blanc, cNN.png en couleurs d'origine), toutes dans un cadre 360 x 240 donc a la meme echelle.
+// [nom affiche, dossier/prefixe, numero de la carte pour chaque bouche]
+const IMG_SETS = {
+  pate: ["Pâte à modeler · au trait, avec dents", "pate/n", { X: 12, M: 9, A: 2, E: 4, O: 0, U: 3, F: 11, D: 6, L: 7 }],
+  pate2: ["Pâte à modeler · au trait, bouches rondes", "pate/n", { X: 12, M: 10, A: 5, E: 1, O: 0, U: 3, F: 11, D: 6, L: 8 }],
+  patec: ["Pâte à modeler · couleurs, avec dents", "pate/c", { X: 12, M: 9, A: 2, E: 4, O: 0, U: 3, F: 11, D: 6, L: 7 }],
+  pate2c: ["Pâte à modeler · couleurs, bouches rondes", "pate/c", { X: 12, M: 10, A: 5, E: 1, O: 0, U: 3, F: 11, D: 6, L: 8 }],
+};
+const CARD = (path, n) => `<image href="/web/mouths/${path}${String(n).padStart(2, "0")}.png" x="-60" y="-40" width="120" height="80"/>`;
 export const SETS = { capsule: "Trait et capsule", dessin: "Dessiné (trait fin)", graphique: "Graphique (plein)" };
 const SETMAP = { capsule: PLAIN, dessin: DRAWN, graphique: SHAPES };
+for (const [k, [name, path, map]] of Object.entries(IMG_SETS)) { SETS[k] = name; SETMAP[k] = Object.fromEntries(Object.entries(map).map(([c, n]) => [c, CARD(path, n)])); }
 /** Dessin d'une bouche en traces, centree sur l'origine, large d'environ 100.
  *  o : { cache (masque blanc derriere), lw (epaisseur du trait, 1 = normale), hand (tremble, 0 = net), wave (longueur
  *        des ondulations), mw, mh (largeur et hauteur du masque), mx, my (decalage du masque), id (pour le filtre) } */
@@ -78,18 +89,18 @@ export const mouthIcon = (shape, set) => `<svg viewBox="-56 -44 112 100" width="
 
 // Lip sync simple (par defaut) : deux bouches seulement. Fermee sur les silences ; des que ca parle, elle alterne
 // ouverte et fermee (lip.flap battements par seconde, 4 par defaut) pour imiter le mouvement.
-export const MODES = { simple: "Simple : la bouche bat quand ça parle", detail: "Détaillé : neuf bouches" };
+export const MODES = { simple: "Simple : la bouche bat quand ça parle", mix: "Varié : elle bat, et s'ouvre selon le son", detail: "Détaillé : neuf bouches" };
 export const SIMPLE = ["X", "A"];
 const simpleCache = new Map();
-export function simplify(cues, rate = 4) {
-  const key = rate + "|" + cues;
+export function simplify(cues, rate = 4, varied = false) {
+  const key = rate + (varied ? "v|" : "|") + cues;
   let out = simpleCache.get(key);
   if (out) return out;
   // tant que ca parle, la bouche bat : ouverte puis fermee, `rate` fois par seconde (12 images par seconde) ; chaque
   // prise de parole commence bouche ouverte. Sur les silences elle reste fermee.
   const period = Math.max(2, Math.round(12 / Math.max(0.5, rate))), open = Math.max(1, Math.min(period - 1, Math.ceil(period * 0.6)));
   let n = 0;
-  out = [...cues].map((c) => { if (c === "X" || c === "M" || c === "F") { n = 0; return "X"; } return n++ % period < open ? "A" : "X"; }).join("");
+  out = [...cues].map((c) => { if (c === "X" || c === "M" || c === "F") { n = 0; return "X"; } return n++ % period < open ? (varied ? c : "A") : "X"; }).join("");   // varie : la bouche ouverte est celle du son
   if (simpleCache.size > 200) simpleCache.clear();
   simpleCache.set(key, out);
   return out;
@@ -104,7 +115,7 @@ export function cueIndex(lip, t) { const v = voiceTime(lip, t), i = Math.floor(v
 export function cueAt(lip, t) {
   if (!lip || !lip.cues) return "X";
   const i = cueIndex(lip, t);
-  return (i >= 0 && (lip.mode === "detail" ? lip.cues : simplify(lip.cues, lip.flap ?? 4))[i]) || "X";
+  return (i >= 0 && (lip.mode === "detail" ? lip.cues : simplify(lip.cues, lip.flap ?? 4, lip.mode === "mix"))[i]) || "X";
 }
 
 /** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face). */

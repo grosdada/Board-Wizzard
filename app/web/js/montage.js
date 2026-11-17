@@ -534,7 +534,7 @@ export function openMontage(app, pid) {
         plain("Taille", "s", 0.005, 0.2, 0.001, 0.035), plain("Position ↔", "x", 0, 1, 0.002, 0.5), plain("Position ↕", "y", 0, 1, 0.002, 0.13),
         h("div", { title: "Rayon de l'axe sur lequel la bouche tourne avec l'orbite : plus il est grand, plus la bouche part sur le côté quand le personnage tourne." }, plain("Axe de la tête ⓘ", "hw", 0, 0.15, 0.001, 0.03)),
         plain("Inclinaison", "r", -60, 60, 1, 0, (x) => Math.round(x) + "°"),
-        h("label.row", { title: "Simple : fermée sur les silences ; dès que ça parle, elle alterne ouverte et fermée. Détaillé : les neuf bouches." }, "Lip sync",
+        h("label.row", { title: "Simple : fermée sur les silences ; dès que ça parle, elle alterne ouverte et fermée. Varié : pareil, mais la bouche ouverte change selon le son. Détaillé : les neuf bouches, sans battement." }, "Lip sync",
           h("select", { on: { change: (e) => { put("mode", e.target.value); lanes(); props(); } } }, Object.entries(MODES).map(([k, n]) => h("option", { value: k, selected: (lip.mode || "simple") === k }, n)))),
         lip.mode !== "detail" ? h("div", { title: "Nombre de battements de bouche par seconde pendant que ça parle" }, plain("Rythme ⓘ", "flap", 1.5, 6, 0.5, 4, (x) => (+x).toFixed(1) + " /s")) : "",
         (lip.set || "capsule") === "capsule" ? h("div", { title: "Taille de la bouche ouverte, par rapport au trait de la bouche fermée" }, plain("Ouverture ↔ ⓘ", "ow", 0.15, 1.2, 0.01, 0.55, (x) => (+x).toFixed(2)), plain("Ouverture ↕", "oh", 0.2, 2.5, 0.01, 1, (x) => (+x).toFixed(2))) : "",
@@ -545,7 +545,7 @@ export function openMontage(app, pid) {
         plain("Décalage ↔", "mx", -120, 120, 1, 0, (x) => String(Math.round(x))), plain("Décalage ↕", "my", -120, 120, 1, 0, (x) => String(Math.round(x))),
         h("label.row.check", { title: "Montre le masque en rose le temps de l'aligner" }, h("input", { type: "checkbox", checked: !!showMask, on: { change: (e) => { showMask = e.target.checked; paint(); } } }), "Voir le masque")));
       if (lip.cues) {
-        const simple = lip.mode !== "detail", force = (sh) => { const i = cueIndex(lip, t); if (i < 0) return toast("La tête de lecture est hors de la voix."); const c = lip.cues.split(""); for (let q = i; q < Math.min(c.length, i + 2); q++) c[q] = sh; put("cues", c.join("")); props(); };
+        const simple = lip.mode !== "detail" && lip.mode !== "mix", force = (sh) => { const i = cueIndex(lip, t); if (i < 0) return toast("La tête de lecture est hors de la voix."); const c = lip.cues.split(""); for (let q = i; q < Math.min(c.length, i + 2); q++) c[q] = sh; put("cues", c.join("")); props(); };
         rows.push(plain("Décalage (s)", "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2)),
           h("div.muted", { title: "Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée." }, `Bouche à cet instant ⓘ : ${MOUTHS[cueAt(lip, t)]}`),
           h("div.row.wrap.mouths", (simple ? SIMPLE : Object.keys(MOUTHS)).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); b.innerHTML = mouthIcon(k, lip.set); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));

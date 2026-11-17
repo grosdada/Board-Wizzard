@@ -3,3 +3,5 @@ data/
 __pycache__/
 *.pyc
 *.tmp
+# cartes de bouches tirees d une planche qui n est pas a nous (tools/mouths.py les refabrique)
+app/web/mouths/
