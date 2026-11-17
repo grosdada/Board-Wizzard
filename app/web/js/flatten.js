@@ -26,7 +26,17 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   const bg = background(pan, app.bank, app.project.id);
   if (bg) {
     const pl = placement(local, bg.w || 16, bg.h || 9, pan.view);
-    draw(await loadImage(bg.url), pl.x, pl.y, pl.w, pl.h, sharp ? 0 : blurOf(pan, 1, bb));
+    const bvf = await vecReady(bg);
+    if (bvf) {                                             // decor en traces
+      const st = inkStroke(pan.bglw), blur = sharp ? 0 : blurOf(pan, 1, bb), ink = new Path2D(bvf.ink);
+      ctx.save();
+      ctx.filter = blur > 0.4 ? `blur(${(blur * kx).toFixed(2)}px)` : "none";
+      ctx.scale(kx, ky); ctx.translate(pl.x, pl.y); ctx.scale(pl.w / bvf.w, pl.h / bvf.h);
+      ctx.fillStyle = "#ffffff"; ctx.fill(new Path2D(bvf.body));
+      ctx.fillStyle = "#111111"; ctx.fill(ink, "evenodd");
+      if (st.width > 0) { ctx.strokeStyle = st.color; ctx.lineWidth = st.width; ctx.lineJoin = "round"; ctx.stroke(ink); }
+      ctx.restore();
+    } else draw(await loadImage(bg.url), pl.x, pl.y, pl.w, pl.h, sharp ? 0 : blurOf(pan, 1, bb));
   }
   const layers = pan.layers || [];
   for (let i = 0; i < layers.length; i++) {

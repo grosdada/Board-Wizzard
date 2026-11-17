@@ -140,5 +140,5 @@ export function background(panel, bank, projectId) {
   const item = bank.get(bg.item);
   if (!item) return null;
   const sp = sprite(item, bg.v || "base", bg.f || 0);
-  return sp && { url: sp.url, w: sp.w, h: sp.h, orbit: sp.orbit, n: sp.n, item };
+  return sp && { url: sp.url, w: sp.w, h: sp.h, orbit: sp.orbit, n: sp.n, item, vec: sp.vec, i: sp.i };
 }

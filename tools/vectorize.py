@@ -1,6 +1,6 @@
 """Convertit en traces les orbites de dessins deja calculees (les nouvelles le sont toutes seules).
 
-    python tools/vectorize.py                 tous les elements de style « dessin » (personnages et objets)
+    python tools/vectorize.py                 tous les elements de style « dessin » (personnages, objets, decors)
     python tools/vectorize.py <element> ...   seulement ceux-la
     python tools/vectorize.py --force         refait aussi ceux qui ont deja leurs traces
 """
@@ -20,7 +20,7 @@ def main():
     only = [a for a in sys.argv[1:] if not a.startswith("--")]
     done = 0
     for it in store.list_items():
-        if (only and it["id"] not in only) or (not only and (it.get("style") != "dessin" or it["kind"] == "decor")):
+        if (only and it["id"] not in only) or (not only and it.get("style") != "dessin"):
             continue
         d = store.item_dir(it["id"])
         for vid, v in it["variants"].items():

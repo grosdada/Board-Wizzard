@@ -48,6 +48,9 @@ def frame(src):
     h, w = im.shape[:2]
     big = cv2.resize(im, (w * UP, h * UP), interpolation=cv2.INTER_CUBIC)
     grey = cv2.GaussianBlur(cv2.cvtColor(big[..., :3], cv2.COLOR_RGB2GRAY), (0, 0), 1.0)
+    if im[..., 3].min() > 250:                                    # image pleine (un decor) : tout le cadre est du papier
+        ink = (grey < 175).astype(np.uint8)
+        return w, h, "M0 0H%dV%dH0Z" % (w, h), _paths(ink)
     solid = cv2.GaussianBlur(big[..., 3], (0, 0), 1.2) > 128
     ink = ((grey < 175) & solid).astype(np.uint8)
     # silhouette : arrondie (le rebouchage des dessins laisse de petites marches), mais jamais plus petite que l'encre

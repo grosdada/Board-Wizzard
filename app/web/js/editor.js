@@ -107,6 +107,13 @@ export class Editor {
         if (bg) {
           const pl = placement(bb, bg.w || 16, bg.h || 9, pan.view);
           const blur = blurOf(pan, 1, bb);
+          const bvf = vecFrame(bg, () => this.render(true));
+          if (bvf) {                                         // decor dessine, en traces : net au zoom, trait reglable
+            const st = inkStroke(pan.bglw), gb = s("g", { transform: `translate(${pl.x} ${pl.y}) scale(${pl.w / bvf.w} ${pl.h / bvf.h})`, filter: this.blur(defs, blur), "data-bg": g.id });
+            gb.append(s("path", { d: bvf.body, fill: "#ffffff", "data-bg": g.id }));
+            gb.append(s("path", { d: bvf.ink, fill: "#111111", "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round", "pointer-events": "none" }));
+            grp.append(gb);
+          } else
           grp.append(this.image("b:" + g.id, bg.url, { x: pl.x, y: pl.y, width: pl.w, height: pl.h, "data-bg": g.id,
                                                         preserveAspectRatio: "none", filter: this.blur(defs, blur) }));
         }

@@ -616,6 +616,7 @@ class App {
       const ry = range("Cadrage ↕", pos("y"), -100, 100, 1, (x) => setPos("y", x), "pan");
       const sync = () => { for (const [r, a] of [[rx, "x"], [ry, "y"]]) { const t = travel(), free = (a === "x" ? t.mx : t.my) > 1e-4; r.querySelector("input").value = pos(a); r.querySelector("output").textContent = pos(a); r.querySelector("input").disabled = !free; r.classList.toggle("off", !free); } };
       this.syncPan = sync;
+      if (bg.vec) box.append(range("Trait du fond", pan.bglw || 0, -2, 6, 0.1, (x) => { pan.bglw = x; }, "bglw"));
       box.append(range("Zoom du fond", (pan.view || {}).zoom || 1, 1, 6, 0.01, (x) => { const t0 = travel(), kx = t0.mx > 1e-4 ? t0.pl.ox / t0.mx : 0, ky = t0.my > 1e-4 ? t0.pl.oy / t0.my : 0; pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); const t1 = travel(); pan.view.ox = kx * t1.mx; pan.view.oy = ky * t1.my; sync(); }, "pan"),
         rx, ry, h("div.row", h("button.mini", { title: "Zoom 1, fond centré", on: { click: () => { pan.view = { zoom: 1, ox: 0, oy: 0 }; this.commit("pan"); this.editor.render(); this.refreshInspector(); } } }, "Recentrer le fond"),
           h("span.muted", bg.orbit ? "Maj + glisser dans la case : recadrer" : "Glisser dans la case : recadrer")));

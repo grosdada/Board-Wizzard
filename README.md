@@ -39,17 +39,21 @@ et ffmpeg dans le PATH.
 5. **Profondeur de champ** (case choisie) : mise au point et flou ; chaque calque a une profondeur (0 = premier plan,
    1 = décor), par défaut son ordre d'empilement.
 6. **Bulles** : parole, pensée, cri, chuchotement, narration (clic droit dans la case, ou inspecteur).
-7. **Indications** (inspecteur de la case, ou clic droit) : flèche, flèche courbe, flèche dessinée à main levée, flèche de
+7. **Dessins en tracés** : les orbites des éléments de style « Dessin » (personnages, objets, décors) sont converties en
+   tracés. Dans les cases ils restent nets à tout zoom, et l'épaisseur du trait se règle : « Trait » pour un élément,
+   « Trait du fond » pour le décor (0 = le trait du dessin). `python tools/vectorize.py` convertit les orbites anciennes
+   (demande `opencv-python-headless`).
+8. **Indications** (inspecteur de la case, ou clic droit) : flèche, flèche courbe, flèche dessinée à main levée, flèche de
    rotation, cadre en pointillés. On les trace en glissant dans la case ; ensuite glisser pour déplacer, points ronds
    pour déformer, clic droit pour la couleur, les pointillés, la double pointe ou le sens. Elles ne partent pas dans
    Integrate.
-8. **Integrate** : aplatit la case et demande une seule image cohérente. En « Photoréaliste », lumière et grain
+9. **Integrate** : aplatit la case et demande une seule image cohérente. En « Photoréaliste », lumière et grain
    unifiés ; en « Dessin », toute la case devient un dessin de storyboard au trait, même composée de photos.
    Les calques restent disponibles : « Afficher : Calques / Intégrée ». Colonne de gauche, « Toute la page » :
    lancer Integrate sur toutes les cases composées d'un coup. Clic droit dans une case : « Générer un élément ici »
    (« un marteau ») ; il entre en banque et se pose dans la case.
-9. **Orbite de la case** : une orbite 360° de toute la composition, que l'on fait tourner à la souris.
-10. **Imprimer** : la page courante, en PDF par l'impression du navigateur.
+10. **Orbite de la case** : une orbite 360° de toute la composition, que l'on fait tourner à la souris.
+11. **Imprimer** : la page courante, en PDF par l'impression du navigateur.
 
 ## Rendus
 

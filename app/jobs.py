@@ -131,7 +131,7 @@ def run_item_orbit(job, prov):
             rel = "v/%s/o%d_%d" % (p["variant"], int(time.time()), attempt)
             info = sprites.build_orbit(rgb, mat, d / rel, fill=it.get("style") == "dessin")
             info.update({"dir": rel, "seed": _seed(job, attempt), "length": length})
-            if it.get("style") == "dessin" and not decor:          # dessin : l'orbite est aussi convertie en traces
+            if it.get("style") == "dessin":                        # dessin (decor compris) : l'orbite est aussi convertie en traces
                 try:
                     job["progress"] = "conversion en tracés"
                     info["vec"] = vector.orbit(d / rel, info["n"])
