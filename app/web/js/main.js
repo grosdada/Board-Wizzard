@@ -712,7 +712,7 @@ class App {
       h("h4", "Calcul"), h("label.row", "Durée d'une orbite", len), h("label.row", "Où calculer par défaut", tgt),
       h("h4", "fal (cloud)"), h("div.row.keyrow", h("span", "Clé du poste"), key, paste(key)), h("div.row.keyrow", h("span", "Ma clé (ce navigateur)"), myKey, paste(myKey)),
       h("label.row", "Modèle orbite", orbit), h("label.row", "Modèle édition / Integrate", edit), h("label.row", "Modèle image", t2i),
-      h("p.muted", "Sur fal, l'orbite H3 + LoRA dure 5 s au minimum ; « minimax/h3-max/camera-controls » accepte 3 s. Sur fal : image et détourage essayés ; orbite et édition pas encore."),
+      h("p.muted", "Sur fal, l'orbite H3 + LoRA dure 5 s au minimum ; « minimax/h3-max/camera-controls » accepte 3 s. Sur fal : image, détourage et orbite essayés ; édition pas encore."),
       h("h4", "Accès"), h("label.row", "Mot de passe de l'application", pw),
       h("p.muted", `Données (banque et storyboards) : ${s.data}`)),
       [{ label: "Annuler" }, { label: "Enregistrer", primary: true, click: async () => {

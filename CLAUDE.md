@@ -34,7 +34,7 @@ souris. Sœur d'Alive-Comics (même découpage, mêmes bulles, même client Comf
   (`qbuilder_settings`). On envoie directement à l'API de chaque ComfyUI ; l'API par lots de Q-builder ne prend que
   des scènes H3 Director.
 - **fal** (`app/falapi.py`) : clé, t2i, envoi de fichier (`storage_type=fal-cdn-v3`) et détourage d'image essayés le
-  17/11/2026. **Pas encore essayés** : édition, orbite H3, vidéo de masque de BiRefNet v2 vidéo.
+  17/11/2026, ainsi que l'orbite H3 + LoRA et son masque vidéo (480P, 5 s, 198 s). **Pas encore essayée** : l'édition.
 - Calques d'une case : `{id, item, v (variante), f (image de l'orbite), x, y (pieds, fraction de la case), s (hauteur),
   flip, d (profondeur)}`. Fond : `panel.bg` (élément de banque ou image importée) + `panel.view`.
 

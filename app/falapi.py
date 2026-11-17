@@ -1,8 +1,8 @@
 """Fournisseur fal.ai : memes quatre gestes que la machine locale (t2i, edit, matte, orbit), par la file fal.
 
 Ecrit d'apres la documentation publique de fal (schemas OpenAPI des modeles, novembre 2026) et le client d'Alive-Comics
-pour H3. Essaye avec une vraie cle le 17/11/2026 : cle, image (t2i), envoi de fichier et detourage d'image. Restent a
-valider : l'edition, l'orbite H3 et la video de masque BiRefNet. Les modeles se choisissent dans les reglages (fal.orbit, fal.edit, fal.t2i...).
+pour H3. Essaye avec une vraie cle le 17/11/2026 : cle, image (t2i), envoi de fichier et detourage d'image. L'orbite H3 +
+LoRA et la video de masque BiRefNet aussi (480P, 5 s, 198 s). Reste a valider : l'edition. Les modeles se choisissent dans les reglages (fal.orbit, fal.edit, fal.t2i...).
 """
 
 import json
