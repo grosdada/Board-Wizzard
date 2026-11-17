@@ -190,3 +190,6 @@ label.row.range output { width: 34px; text-align: right; color: var(--muted); fo
 .bank-bar select.folder { flex: 1; }
 .bank-bar + .bank-bar { padding-top: 0; }
 .fin { flex: 1; max-width: 62%; display: flex; } .fin input { flex: 1; width: 100%; max-width: none !important; }
+
+label.row.range.off { opacity: .4; }
+.checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 12px; }

@@ -105,14 +105,21 @@ def build_orbit(rgb_video, matte_video, dest, height=None, fill=False):
 
 def fill_holes(a):
     """Dessin sur papier blanc : le detourage troue l'interieur blanc du sujet. Tout ce que la silhouette enferme
-    (non relie au bord de l'image) redevient opaque."""
+    (non relie au bord de l'image) redevient opaque. Le contour est d'abord epaissi pour refermer les traits qui ne
+    se rejoignent pas (un pantalon dessine d'un trait ouvert), puis l'interieur trouve est retreci d'autant."""
     solid = (a > 40)
     h, w = solid.shape
-    im = Image.new("L", (w + 2, h + 2), 0)
-    im.paste(Image.fromarray((solid * 255).astype(np.uint8)), (1, 1))
-    ImageDraw.floodfill(im, (0, 0), 128)                       # 128 = exterieur
-    inner = np.asarray(im)[1:-1, 1:-1] == 0                    # ni sujet ni exterieur : un trou
-    return np.where(inner, 255, a).astype(np.uint8)
+    f = max(1, h // 240)                                       # travail en petit : rapide, et bien assez precis
+    sw, sh = max(8, w // f), max(8, h // f)
+    small = Image.fromarray((solid * 255).astype(np.uint8)).resize((sw, sh), Image.BOX).point(lambda v: 255 if v > 20 else 0)
+    k = 7
+    im = Image.new("L", (sw + 2 * k, sh + 2 * k), 0)
+    im.paste(small, (k, k))
+    thick = im.filter(ImageFilter.MaxFilter(k))
+    ImageDraw.floodfill(thick, (0, 0), 128)                    # 128 = exterieur
+    inner = Image.fromarray(((np.asarray(thick) != 128) * 255).astype(np.uint8)).filter(ImageFilter.MinFilter(k))
+    inner = np.asarray(inner.crop((k, k, k + sw, k + sh)).resize((w, h), Image.NEAREST)) > 0
+    return np.where(inner & ~solid, 255, a).astype(np.uint8)
 
 
 def _bbox(mask, pad=0):
@@ -190,3 +197,47 @@ def thumb(src, dest, size=320):
     im.thumbnail((size, size), Image.LANCZOS)
     Path(dest).parent.mkdir(parents=True, exist_ok=True)
     im.save(dest, quality=82)
+
+
+def _ink(path, height=220):
+    """Image en gris, rognee sur le dessin, ramenee a une hauteur fixe (trait = valeurs hautes)."""
+    im = Image.open(path).convert("RGBA")
+    bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+    bg.alpha_composite(im)
+    g = 255 - np.asarray(bg.convert("L"), dtype=np.float32)
+    box = _bbox(g > 60)
+    g = Image.fromarray(g[box[1]:box[3], box[0]:box[2]].astype(np.uint8))
+    g = g.resize((max(8, round(g.width * height / g.height)), height), Image.BILINEAR).filter(ImageFilter.GaussianBlur(1.2))
+    return np.asarray(g, dtype=np.float32)
+
+
+def face_score(original, candidate, head=0.4):
+    """Fidelite de la tete d'un dessin apres une pose : meilleure correlation (0 a 1) entre la tete d'origine (le haut
+    du dessin) et l'image candidate, en cherchant un peu autour (position, taille). Sert a ecarter les poses qui
+    redessinent le visage."""
+    a = _ink(original)
+    t0 = a[: int(a.shape[0] * head)]
+    best = 0.0
+    for scale in (0.8, 0.9, 1.0, 1.1, 1.25):
+        b = _ink(candidate, int(220 * scale))
+        t = t0
+        if t.shape[0] >= b.shape[0]:
+            continue
+        if t.shape[1] > b.shape[1]:                                   # le candidat est plus etroit : on borde de blanc
+            pad = t.shape[1] - b.shape[1] + 2
+            b = np.pad(b, ((0, 0), (pad // 2, pad - pad // 2)))
+        b = np.pad(b, ((6, 0), (10, 10)))
+        win = np.lib.stride_tricks.sliding_window_view(b[: int(b.shape[0] * 0.62)], t.shape)[::2, ::2]
+        tz = t - t.mean()
+        wz = win - win.mean(axis=(2, 3), keepdims=True)
+        den = np.sqrt((wz ** 2).sum(axis=(2, 3)) * (tz ** 2).sum()) + 1e-6
+        best = max(best, float(((wz * tz).sum(axis=(2, 3)) / den).max()))
+    return round(best, 3)
+
+
+def ink(src, dest):
+    """Ramene un dessin a du trait noir sur blanc : plus de couleur, les gris clairs partent, les traits gris foncent."""
+    g = np.asarray(Image.open(src).convert("L"), dtype=np.float32)
+    g = np.clip((g - 50) / (215 - 50), 0, 1) * 255
+    Image.fromarray(g.astype(np.uint8)).convert("RGB").save(dest)
+    return dest

@@ -169,6 +169,18 @@ def _orbit_log(it, vid, attempt, info, rel_motion, bad):
         pass
 
 
+DRAW_TRIES, DRAW_MIN = 4, 0.85
+
+
+def _log_pose(item, pose, score):
+    try:
+        with open(settings.DATA / "poses.log", "a", encoding="utf-8") as f:
+            f.write("%s %s/%s fidelite %.3f %s\n" % (time.strftime("%d/%m %H:%M"), item, pose, score,
+                                                    "ok" if score >= DRAW_MIN else "ECARTEE"))
+    except OSError:
+        pass
+
+
 def run_item_pose(job, prov):
     p = job["params"]
     it = store.load_item(p["item"])
@@ -176,7 +188,28 @@ def run_item_pose(job, prov):
     label, prompt = poses.pose_prompt(it["kind"], p.get("pose", ""), it.get("style", "photo"), p.get("custom", ""))
     tmp = _tmp()
     try:
-        png = prov.edit([d / it["variants"]["base"]["ref"]], prompt, _seed(job), tmp)
+        base = d / it["variants"]["base"]["ref"]
+        if it.get("style") == "dessin" and it["kind"] == "character":
+            # dessin : le visage fait partie du design. Plusieurs tirages, on garde le plus fidele a la tete d'origine,
+            # et on refuse la pose si aucun ne la respecte (mieux vaut une pose en moins qu'un visage refait).
+            label, prompt = poses.pose_prompt_drawing(p.get("pose", ""), p.get("custom", ""))
+            best = None
+            for k in range(DRAW_TRIES):
+                job["progress"] = "pose, tirage %d" % (k + 1)
+                cand = prov.edit([base], prompt, _seed(job) + 7919 * k, tmp)
+                keep = tmp / ("cand_%d.png" % k)
+                sprites.ink(cand, keep)
+                score = sprites.face_score(base, keep)
+                if best is None or score > best[0]:
+                    best = (score, keep)
+                if score >= 0.9:
+                    break
+            _log_pose(it["id"], p.get("pose") or label, best[0])
+            if best[0] < DRAW_MIN:
+                raise RuntimeError("pose écartée : le visage du dessin n'était pas respecté (fidélité %.2f)" % best[0])
+            png = best[1]
+        else:
+            png = prov.edit([base], prompt, _seed(job), tmp)
         box = {}
 
         def apply(x):

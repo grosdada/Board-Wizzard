@@ -64,6 +64,50 @@ def find(kind, key):
     return None
 
 
+# Dessins : on ne demande que le geste du corps. Les visages des dessins (yeux inegaux, tetes tordues) sont le design :
+# toute consigne d'expression pousse le modele a les redessiner « proprement ».
+BODY_ONLY = {
+    "parle": "one hand is raised at chest height, palm open, in an explaining gesture",
+    "ecoute": "both arms hang relaxed along the body and the torso leans very slightly forward",
+    "pointe": "one arm is stretched out straight ahead, pointing with the index finger",
+    "bras-croises": "both arms are crossed on the chest",
+    "pensif": "one hand touches the chin and the other arm supports its elbow",
+    "tete-mains": "both hands are placed on the sides of the head, elbows out",
+    "marche": "the legs are walking mid-stride, one leg forward, the arms swinging",
+    "surpris": "both hands are raised open at shoulder height",
+    "colere": "one fist is raised and the body leans forward",
+    "rit": "one hand rests on the belly and the torso leans slightly back",
+    "triste": "the shoulders are dropped and both arms hang limp",
+    "explique": "both hands are open in front of the chest, palms up",
+    "mains-hanches": "both hands are on the hips",
+    "telephone": "one hand holds a phone against the ear",
+    "assis": "the character sits on a plain simple stool, hands resting on the knees, feet on the ground",
+    "court": "the legs are running fast mid-stride, the arms pumping, the body leaning forward",
+    "tend-main": "one hand reaches forward, palm open",
+    "salue": "one hand is raised high, waving",
+    "peur": "the body leans back and both hands are raised in front of the chest, palms out",
+    "victoire": "both arms are raised high above the head",
+    "accroupi": "the character crouches low, knees bent, one hand touching the ground",
+    "regarde-haut": "one hand is raised flat above the eyebrows like a visor",
+    "porte": "both arms carry a large plain box in front of the body",
+    "epaules": "the shoulders are shrugged, both palms up at the sides",
+    "assis-tete": "the character sits on a plain simple stool, one elbow on the knee",
+    "a-terre": "the character sits on the ground, leaning back on both hands, legs stretched out",
+}
+
+
+def pose_prompt_drawing(key, custom=""):
+    """Pose d'un personnage dessine : le corps bouge, la tete ne doit pas etre redessinee."""
+    hit = find("character", key)
+    label = hit[0] if hit else (custom[:40] or key)
+    move = BODY_ONLY.get(key) or custom or (hit[1] if hit else key)
+    return label, ("This is a rough hand-drawn black pencil sketch on white paper. Only change the body pose: %s. "
+                   "Do not redraw anything else. The head and face must stay pixel-identical to the original drawing: same odd "
+                   "distorted head shape, same huge uneven bulging eyes, same nose, same mouth, same ears, same hair, same "
+                   "crooked proportions, the head facing the same direction. Keep the same rough shaky sketch lines, pure "
+                   "black lines on white, no colour, no grey shading, no cleanup, no beautification. Same framing, full body." % move)
+
+
 def pose_prompt(kind, key, style="photo", custom=""):
     """(nom affiche, prompt d'edition)."""
     hit = find(kind, key)

@@ -306,6 +306,7 @@ export class Editor {
       d.pan.view = Object.assign({}, d.pan.view, { ox: d.ox + (pt.x - d.start.x) / d.bb.w, oy: d.oy + (pt.y - d.start.y) / d.bb.h });
       const pl = placement(d.bb, d.bg.w, d.bg.h, d.pan.view);
       d.pan.view.ox = pl.ox; d.pan.view.oy = pl.oy;
+      if (this.app.syncPan) this.app.syncPan();
       return this.render(true);
     }
     const pg = this.pg, node = nodeAt(pg.layout, d.path);
@@ -363,6 +364,7 @@ export class Editor {
     v.zoom = clamp(v.zoom * k, 1, 6);
     pan.view = v;
     this.render(true);
+    if (app.syncPan) app.syncPan();
     app.commitSoon("pan");
   }
 

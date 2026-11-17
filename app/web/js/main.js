@@ -5,7 +5,7 @@ import { compute, PRESETS, transpose, splitLeaf, removeLeaf, leaves, randomLayou
 import { Editor } from "./editor.js";
 import { Bank, target } from "./bank.js";
 import { flattenPanel } from "./flatten.js";
-import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background } from "./model.js";
+import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement } from "./model.js";
 
 const FORMATS = [
   { id: "story", label: "Storyboard 16:10", w: 2400, h: 1500 },
@@ -364,10 +364,36 @@ class App {
       if (pan.integrated) items.push({ label: "Image intégrée", checked: pan.show === "integrated", click: () => this.setShow("integrated") });
       if (pan.orbit) items.push({ label: "Orbite", checked: pan.show === "orbit", click: () => this.setShow("orbit") });
     }
+    if (this.editor.geom.panels.length > 1) items.push({ label: "Copier cette case vers…", click: () => this.copyPanelTo(pid) });
     items.push({ head: "Découpage" }, { label: "Couper ━", click: () => this.split("h"), half: true }, { label: "Couper ┃", click: () => this.split("v"), half: true });
     if (pan.bg) items.push({ label: "Retirer le fond", click: () => { delete pan.bg; this.commit("bg"); this.editor.render(); this.refreshInspector(); } });
     items.push({ label: "Vider la case", danger: true, click: () => { this.page().panels[pid] = {}; this.commit("clear"); this.editor.render(); this.refreshInspector(); } });
     menu(e, items);
+  }
+  // copie tout le contenu d'une case (fond, cadrage, calques, bulles, profondeur de champ) dans d'autres cases de la page
+  copyPanelTo(pid) {
+    const pg = this.page(), src = pg.panels[pid] || {}, from = this.geo(pid);
+    const others = this.editor.geom.panels.filter((g) => g.id !== pid).sort((x, y) => x.order - y.order);
+    const filled = (g) => { const q = pg.panels[g.id] || {}; return !!(q.bg || (q.layers || []).length || (q.bubbles || []).length); };
+    const boxes = others.map((g) => [g, h("input", { type: "checkbox" })]);
+    const all = h("button.mini", { on: { click: (e) => { e.preventDefault(); const on = boxes.some(([, c]) => !c.checked); boxes.forEach(([, c]) => { c.checked = on; }); } } }, "Toutes / aucune");
+    modal(`Copier la case ${from ? from.order : ""} vers…`, h("div.form",
+      h("p.muted", "Tout est copié : fond et cadrage, personnages et objets, bulles, profondeur de champ. Le contenu des cases cochées est remplacé."),
+      h("div.checks", boxes.map(([g, c]) => h("label.row.check", c, `Case ${g.order}`, filled(g) ? h("span.muted", " (déjà remplie)") : ""))), h("div.row", all)),
+      [{ label: "Annuler" }, { label: "Copier", primary: true, click: () => {
+        const to = boxes.filter(([, c]) => c.checked).map(([g]) => g);
+        if (!to.length) { toast("Coche au moins une case.", "error"); return false; }
+        for (const g of to) {
+          const copy = JSON.parse(JSON.stringify(src));
+          for (const k of ["integrated", "integrations", "orbit"]) delete copy[k];   // images calculées pour la case d'origine
+          copy.show = "layers";
+          for (const l of copy.layers || []) l.id = uid();
+          for (const b of copy.bubbles || []) b.id = uid();
+          pg.panels[g.id] = copy;
+        }
+        this.commit("copy"); this.editor.render(); this.refreshInspector();
+        toast(`Case copiée vers ${to.map((g) => g.order).join(", ")}.`);
+      } }]);
   }
   showAll(mode) {
     for (const pan of Object.values(this.page().panels)) { if (mode === "layers" || pan.integrated) pan.show = mode; }
@@ -496,7 +522,20 @@ class App {
     if (bg && bg.item && Object.keys(bg.item.variants).length > 1) box.append(h("label.row", "Ambiance", h("select", { on: { change: (e) => { pan.bg.v = e.target.value; pan.bg.f = 0; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } },
       Object.entries(bg.item.variants).map(([k, vv]) => h("option", { value: k, selected: k === (pan.bg.v || "base") }, vv.label)))));
     if (bg && bg.orbit) box.append(range("Axe du décor", pan.bg.f || 0, 0, bg.n - 1, 1, (x) => { pan.bg.f = x; }, "bturn"));
-    if (bg) box.append(range("Zoom du fond", (pan.view || {}).zoom || 1, 1, 6, 0.01, (x) => { pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); }, "pan"));
+    if (bg) {
+      // cadrage du fond : zoom, puis position horizontale et verticale (-100 = bord gauche / haut, 100 = bord droit / bas)
+      const travel = () => { const pl = placement(g.bbox, bg.w || 16, bg.h || 9, pan.view); return { pl, mx: (pl.w - g.bbox.w) / (2 * g.bbox.w), my: (pl.h - g.bbox.h) / (2 * g.bbox.h) }; };
+      const pos = (axis) => { const t = travel(), m = axis === "x" ? t.mx : t.my, o = axis === "x" ? t.pl.ox : t.pl.oy; return m > 1e-4 ? Math.round(-o / m * 100) : 0; };
+      const setPos = (axis, x) => { const t = travel(), v = Object.assign({ zoom: 1, ox: 0, oy: 0 }, pan.view); if (axis === "x") v.ox = -x / 100 * t.mx; else v.oy = -x / 100 * t.my; pan.view = v; };
+      const rx = range("Cadrage ↔", pos("x"), -100, 100, 1, (x) => setPos("x", x), "pan");
+      const ry = range("Cadrage ↕", pos("y"), -100, 100, 1, (x) => setPos("y", x), "pan");
+      const sync = () => { for (const [r, a] of [[rx, "x"], [ry, "y"]]) { const t = travel(), free = (a === "x" ? t.mx : t.my) > 1e-4; r.querySelector("input").value = pos(a); r.querySelector("output").textContent = pos(a); r.querySelector("input").disabled = !free; r.classList.toggle("off", !free); } };
+      this.syncPan = sync;
+      box.append(range("Zoom du fond", (pan.view || {}).zoom || 1, 1, 6, 0.01, (x) => { const t0 = travel(), kx = t0.mx > 1e-4 ? t0.pl.ox / t0.mx : 0, ky = t0.my > 1e-4 ? t0.pl.oy / t0.my : 0; pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); const t1 = travel(); pan.view.ox = kx * t1.mx; pan.view.oy = ky * t1.my; sync(); }, "pan"),
+        rx, ry, h("div.row", h("button.mini", { title: "Zoom 1, fond centré", on: { click: () => { pan.view = { zoom: 1, ox: 0, oy: 0 }; this.commit("pan"); this.editor.render(); this.refreshInspector(); } } }, "Recentrer le fond"),
+          h("span.muted", bg.orbit ? "Maj + glisser dans la case : recadrer" : "Glisser dans la case : recadrer")));
+      sync();
+    } else this.syncPan = null;
     box.append(h("h4", "Profondeur de champ"),
       h("label.row.check", h("input", { type: "checkbox", checked: dof.on, on: { change: (e) => { dof.on = e.target.checked; this.commit("dof"); this.editor.render(); } } }), "Flouter selon la profondeur"),
       range("Mise au point", dof.focus, 0, 1, 0.01, (x) => { dof.focus = x; dof.on = true; }, "dof"),

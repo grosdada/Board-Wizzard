@@ -29,6 +29,8 @@ et ffmpeg dans le PATH.
    - poignée ✥ ou Alt + glisser : le déplacer ; coin carré ou molette : sa taille ;
    - **clic droit** : changer de **pose**, choisir un **axe** (face, 3/4, profil, dos…), miroir, ordre, dupliquer ;
    - glisser sur un décor en orbite : tourner le décor (Maj : recadrer ; molette : zoom).
+   - cadrage du fond : « Zoom du fond », « Cadrage ↔ » et « Cadrage ↕ » dans l'inspecteur de la case ;
+   - clic droit dans une case, « Copier cette case vers… » : cocher les numéros des cases qui reçoivent la copie.
 4. **Poses** : dans la fiche d'un personnage (clic sur sa vignette), cocher les poses à générer. Trois paliers :
    essentiel (7 : parle, écoute, pointe du doigt, bras croisés, pensif, tête entre les mains, marche), complet (16),
    tout (26), plus une pose libre. Chaque pose est une image (Qwen-Image-Edit, même personnage) puis sa propre
