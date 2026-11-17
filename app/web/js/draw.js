@@ -6,6 +6,7 @@
 //     ha (angle de la trame) }
 // La trame est faite par le navigateur : un motif en « cones » de gris + le ton voulu, puis un seuil. Les points
 // grossissent donc tout seuls la ou le ton fonce, sans dessiner chaque point.
+import { swatch } from "./colors.js";
 import { h, modal, toast } from "./api.js";
 
 export const W = 1000;                                   // largeur de travail ; la hauteur suit le format de la case
@@ -20,9 +21,9 @@ export const PATHS = { line: ["Ligne", "╱"], free: ["Tracé libre", "✎"], bl
                        polyline: ["Ligne brisée point par point", "⌇"] };
 const OPEN = new Set(["line", "free", "polyline"]);       // sans remplissage
 const MANY = new Set(["free", "blob", "poly", "polyline"]);
-const FILLS = { none: "Aucun", white: "Blanc", black: "Noir", tone: "Gris en trame", grad: "Dégradé en trame" };
+const FILLS = { none: "Aucun", white: "Blanc", black: "Noir", color: "Couleur", tone: "Gris en trame", grad: "Dégradé en trame" };
 const FORMS = { points: "Points", lignes: "Lignes", croix: "Croisillons" };
-const DEF = { stroke: "#111111", sw: 1, fill: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4 };   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
+const DEF = { stroke: "#111111", sw: 1, fill: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, col: "#808080" };   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
 
 function geom(sh, H) {
   const P = sh.p.map(([x, y]) => [x * W, y * H]);
@@ -91,6 +92,8 @@ export function drawSvg(draw, H, pre) {
       } else tone = grey(sh.tone);
       // moyenne du motif et du ton, puis seuil a mi-gris : noir la ou le motif est plus sombre que le ton demande
       one += `<g ${tag} filter="url(#${pre}th)"><g clip-path="url(#${id}c)" style="isolation:isolate">${rect("#fff")}${cone}${rect(tone, ` opacity="0.5"`)}</g></g>`;
+    } else if (!open && sh.fill === "color") {
+      one += `<path ${tag} d="${d}" fill="${/^#[0-9a-f]{3,8}$/i.test(sh.col) ? sh.col : "#808080"}"/>`;
     } else if (!open && (sh.fill === "white" || sh.fill === "black")) {
       one += `<path ${tag} d="${d}" fill="${sh.fill === "white" ? "#ffffff" : "#111111"}"/>`;
     }
@@ -188,6 +191,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (!open) {
       side.append(pick("Remplissage", "fill", FILLS));
       const fill = val("fill");
+      if (fill === "color") side.append(h("div.row.colrow", h("span", "Couleur"), swatch(val("col") || "#808080", (c) => set("col", c))));
       if (fill === "tone" || fill === "grad") {
         side.append(h("h4", "Trame"), pick("Motif", "form", FORMS), range("Taille", "dot", 4, 60, 0.5), range("Angle de la trame", "ha", 0, 180, 1),
           range(fill === "grad" ? "Gris au départ" : "Gris", "tone", 0, 1, 0.01));
