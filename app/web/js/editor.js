@@ -5,6 +5,7 @@ import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
 import { vecFrame, inkStroke, shadeOf } from "./model.js";
+import { drawSvg, W as DRAW_W } from "./draw.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, background, clamp, variantOf, pad3 } from "./model.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -19,6 +20,7 @@ const PX_PER_FRAME = 5;                       // glisser de 5 px = une image d'o
 export class Editor {
   constructor(host, app) {
     this.app = app;
+    this.drawCache = new Map();
     this.wrap = h("div.page-wrap");
     this.svg = s("svg", { class: "page-svg" });
     this.overlay = h("div.overlay");
@@ -93,7 +95,8 @@ export class Editor {
       cp.append(s("polygon", { points: pts(g.poly) }));
       defs.append(cp);
       const grp = s("g", { "clip-path": `url(#cp-${g.id})` });
-      const empty = !pan.bg && !(pan.layers || []).length && !pan.integrated && !pan.orbit;
+      const drawn = pan.draw && (pan.draw.shapes || []).length;
+      const empty = !pan.bg && !drawn && !(pan.layers || []).length && !pan.integrated && !pan.orbit;
       grp.append(s("polygon", { points: pts(g.poly), fill: empty ? "var(--empty)" : (page.fill || "#fff") }));
       const cover = { x: bb.x0, y: bb.y0, width: bb.w, height: bb.h, preserveAspectRatio: "xMidYMid slice", "data-bg": g.id };
       const show = pan.show || "layers";
@@ -116,6 +119,14 @@ export class Editor {
           } else
           grp.append(this.image("b:" + g.id, bg.url, { x: pl.x, y: pl.y, width: pl.w, height: pl.h, "data-bg": g.id,
                                                         preserveAspectRatio: "none", filter: this.blur(defs, blur) }));
+        }
+        if (drawn) {                                         // fond dessine a la main : formes, traces, trames
+          const key = g.id + "|" + bb.w + "x" + bb.h + "|" + JSON.stringify(pan.draw);
+          let c = this.drawCache.get(g.id);
+          if (!c || c.key !== key) { c = { key, html: drawSvg(pan.draw, DRAW_W * bb.h / bb.w, "d" + g.id + "-") }; this.drawCache.set(g.id, c); }
+          const gd = s("g", { transform: `translate(${bb.x0} ${bb.y0}) scale(${bb.w / DRAW_W})`, "pointer-events": "none", filter: this.blur(defs, blurOf(pan, 0.9, bb)) });
+          gd.innerHTML = c.html;
+          grp.append(gd);
         }
         (pan.layers || []).forEach((l, i) => {
           const item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);

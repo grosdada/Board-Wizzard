@@ -43,17 +43,22 @@ et ffmpeg dans le PATH.
    tracés. Dans les cases ils restent nets à tout zoom, et l'épaisseur du trait se règle : « Trait » pour un élément,
    « Trait du fond » pour le décor (0 = le trait du dessin). `python tools/vectorize.py` convertit les orbites anciennes
    (demande `opencv-python-headless`).
-8. **Indications** (inspecteur de la case, ou clic droit) : flèche, flèche courbe, flèche dessinée à main levée, flèche de
+   Sur un dessin en tracés, « Ombre » pose un aplat gris sans calcul, forme par forme (gris, largeur, angle de lumière).
+8. **Fond dessiné** (inspecteur de la case ou clic droit, « ✎ Dessiner le fond ») : un atelier pour faire un décor à la
+   main en noir et blanc. Rectangle, ellipse, triangle, ligne, tracé libre, forme libre ; trait noir ou blanc ;
+   remplissage blanc, noir, gris en trame ou dégradé en trame (motif points, lignes ou croisillons, taille, angle, gris
+   de départ et d'arrivée, sens du dégradé).
+9. **Indications** (inspecteur de la case, ou clic droit) : flèche, flèche courbe, flèche dessinée à main levée, flèche de
    rotation, cadre en pointillés. On les trace en glissant dans la case ; ensuite glisser pour déplacer, points ronds
    pour déformer, clic droit pour la couleur, les pointillés, la double pointe ou le sens. Elles ne partent pas dans
    Integrate.
-9. **Integrate** : aplatit la case et demande une seule image cohérente. En « Photoréaliste », lumière et grain
+10. **Integrate** : aplatit la case et demande une seule image cohérente. En « Photoréaliste », lumière et grain
    unifiés ; en « Dessin », toute la case devient un dessin de storyboard au trait, même composée de photos.
    Les calques restent disponibles : « Afficher : Calques / Intégrée ». Colonne de gauche, « Toute la page » :
    lancer Integrate sur toutes les cases composées d'un coup. Clic droit dans une case : « Générer un élément ici »
    (« un marteau ») ; il entre en banque et se pose dans la case.
-10. **Orbite de la case** : une orbite 360° de toute la composition, que l'on fait tourner à la souris.
-11. **Imprimer** : la page courante, en PDF par l'impression du navigateur.
+11. **Orbite de la case** : une orbite 360° de toute la composition, que l'on fait tourner à la souris.
+12. **Imprimer** : la page courante, en PDF par l'impression du navigateur.
 
 ## Rendus
 

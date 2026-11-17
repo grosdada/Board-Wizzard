@@ -216,3 +216,15 @@ label.row.range.off { opacity: .4; }
 .colorpop .cp-foot label { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
 .colorpop .cp-foot input[type=text] { width: 76px; font-family: ui-monospace, monospace; }
 .colorpop .cp-foot input[type=color] { width: 30px; height: 24px; padding: 0; border: 0; background: none; }
+
+/* atelier de dessin du fond */
+.modal.modal-wide { width: min(1180px, 96vw); max-width: none; }
+.draw-editor { display: flex; gap: 14px; align-items: flex-start; }
+.draw-main { flex: 1; min-width: 0; }
+.draw-tools { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.draw-frame { background: #2a2d2d; padding: 10px; border-radius: 8px; display: flex; justify-content: center; }
+.draw-stage { max-width: 100%; max-height: 62vh; background: #fff; cursor: crosshair; touch-action: none; user-select: none; box-shadow: 0 2px 14px rgba(0,0,0,.4); }
+.draw-side { flex: 0 0 270px; max-height: 70vh; overflow: auto; }
+.draw-side h4 { margin: 10px 0 6px; }
+.draw-sel { fill: none; stroke: #2bb3a3; stroke-width: 2; stroke-dasharray: 8 6; pointer-events: none; }
+.draw-pt { fill: #8fd0c4; stroke: #0e1b19; stroke-width: 2; cursor: move; }

@@ -2,6 +2,7 @@
 // de case. Les bulles n'y sont pas : elles restent par-dessus. sharp : sans le flou de profondeur (le modele travaille
 // mieux sur une image nette ; le flou reste un reglage d'affichage).
 import { loadImage } from "./api.js";
+import { drawImage } from "./draw.js";
 import { sprite, placement, layerBox, depthOf, blurOf, background, vecReady, inkStroke, shadeOf } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
@@ -37,6 +38,10 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       if (st.width > 0) { ctx.strokeStyle = st.color; ctx.lineWidth = st.width; ctx.lineJoin = "round"; ctx.stroke(ink); }
       ctx.restore();
     } else draw(await loadImage(bg.url), pl.x, pl.y, pl.w, pl.h, sharp ? 0 : blurOf(pan, 1, bb));
+  }
+  if (pan.draw && (pan.draw.shapes || []).length) {        // fond dessine a la main
+    const dim = await drawImage(pan.draw, cv.width, cv.height);
+    if (dim) ctx.drawImage(dim, 0, 0, cv.width, cv.height);
   }
   const layers = pan.layers || [];
   for (let i = 0; i < layers.length; i++) {

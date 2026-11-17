@@ -7,6 +7,7 @@ import { Bank, target } from "./bank.js";
 import { flattenPanel } from "./flatten.js";
 import { MARKS, MARK_COLORS, newMark } from "./marks.js";
 import { swatch } from "./colors.js";
+import { openDrawEditor } from "./draw.js";
 import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement } from "./model.js";
 
 const FORMATS = [
@@ -377,6 +378,7 @@ class App {
     const pan = this.curPanel(), items = [{ head: "Bulle" }];
     const rel = { x: (pt.x - g.bbox.x0) / g.bbox.w, y: (pt.y - g.bbox.y0) / g.bbox.h };
     for (const [t, [label]] of Object.entries(BUB)) items.push({ label, click: () => this.addBubble(t, rel), half: true });
+    items.push({ head: "Fond" }, { label: "✎ Dessiner le fond…", click: () => this.drawBackground(pid) });
     items.push({ head: "Indication" });
     for (const [t, [label, ico]] of Object.entries(MARKS)) items.push({ label: `${ico} ${label}`, half: true, click: () => (t === "free" ? this.armMark(t) : this.addMark(pid, t, [rel.x, rel.y])) });
     items.push({ head: "Banque" }, { label: "✨ Générer un élément ici…", click: () => this.generateHere(pid, rel) });
@@ -418,6 +420,14 @@ class App {
         this.commit("copy"); this.editor.render(); this.refreshInspector();
         toast(`Case copiée vers ${to.map((g) => g.order).join(", ")}.`);
       } }]);
+  }
+  // atelier de dessin du fond de la case : formes simples, traces, gris en trame
+  drawBackground(pid) {
+    const pg = this.page(), pan = pg.panels[pid] || (pg.panels[pid] = {}), g = this.geo(pid);
+    if (!g) return;
+    const bg = background(pan, this.bank, this.project.id);
+    openDrawEditor({ draw: pan.draw, ratio: g.bbox.h / g.bbox.w, backdrop: bg ? bg.url : null, title: `Dessiner le fond de la case ${g.order}`,
+      onSave: (d) => { if (d.shapes.length) pan.draw = d; else delete pan.draw; pan.show = "layers"; this.commit("draw"); this.editor.render(); this.refreshInspector(); } });
   }
   showAll(mode) {
     for (const pan of Object.values(this.page().panels)) { if (mode === "layers" || pan.integrated) pan.show = mode; }
@@ -611,6 +621,8 @@ class App {
     box.append(h("h3", "Case " + (g ? g.order : "")));
     box.append(h("div.row", h("span.muted", "Fond :"), h("span", bg ? (bg.item ? bg.item.name : "image importée") : "aucun"),
       bg ? h("button.mini", { on: { click: () => { delete pan.bg; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } }, "Retirer") : null));
+    box.append(h("div.row", h("button.mini", { title: "Formes simples, tracés, gris en trame de points : un décor fait à la main en noir et blanc", on: { click: () => this.drawBackground(this.sel.panel) } }, (pan.draw ? "✎ Modifier le fond dessiné" : "✎ Dessiner le fond")),
+      pan.draw ? h("button.mini.danger", { on: { click: () => { delete pan.draw; this.commit("draw"); this.editor.render(); this.refreshInspector(); } } }, "Retirer le dessin") : ""));
     if (bg && bg.item && Object.keys(bg.item.variants).length > 1) box.append(h("label.row", "Ambiance", h("select", { on: { change: (e) => { pan.bg.v = e.target.value; pan.bg.f = 0; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } },
       Object.entries(bg.item.variants).map(([k, vv]) => h("option", { value: k, selected: k === (pan.bg.v || "base") }, vv.label)))));
     if (bg && bg.orbit) box.append(range("Axe du décor", pan.bg.f || 0, 0, bg.n - 1, 1, (x) => { pan.bg.f = x; }, "bturn"));
