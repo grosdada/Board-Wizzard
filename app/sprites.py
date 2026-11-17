@@ -216,7 +216,14 @@ def face_score(original, candidate, head=0.4):
     du dessin) et l'image candidate, en cherchant un peu autour (position, taille). Sert a ecarter les poses qui
     redessinent le visage."""
     a = _ink(original)
-    t0 = a[: int(a.shape[0] * head)]
+    top = a[: int(a.shape[0] * head)]
+    # le gabarit est la fenetre la plus chargee en trait du haut du dessin : le visage, et non ce qui l'entoure
+    # (un bras leve, une pipe et sa fumee), que la pose a le droit de deplacer
+    side = int(min(top.shape[0], top.shape[1], a.shape[0] * 0.3))
+    ii = np.pad(top, ((1, 0), (1, 0))).cumsum(0).cumsum(1)
+    dens = ii[side:, side:] - ii[:-side, side:] - ii[side:, :-side] + ii[:-side, :-side]
+    y, x = np.unravel_index(int(dens.argmax()), dens.shape)
+    t0 = top[y:y + side, x:x + side]
     best = 0.0
     for scale in (0.8, 0.9, 1.0, 1.1, 1.25):
         b = _ink(candidate, int(220 * scale))
