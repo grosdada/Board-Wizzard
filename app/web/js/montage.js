@@ -125,6 +125,7 @@ export function openMontage(app, pid) {
   const dof = pan.dof = Object.assign({ on: false, focus: 0.3, amount: 12 }, pan.dof);
   anim.tracks = anim.tracks || {};
   let t = 0, sel = "cam", selKey = null, playing = false, loop = true, auto = true, raf = 0, last = 0, drag = null;
+  const picked = new Set();                                // cles prises au lasso (ou Ctrl + clic) : elles bougent et s'effacent ensemble
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${f1(H)}`); svg.setAttribute("class", "mt-stage");
@@ -312,7 +313,7 @@ export function openMontage(app, pid) {
     const ruler = h("div.mt-lane.ruler", { "data-lane": "ruler" }, ticks.map((s) => h("span.tick", { style: `left:${pct(s)}` }, Number.isInteger(s) ? s + " s" : "")));
     tl.append(h("div.mt-row", h("div.mt-name", ""), ruler));
     const row = (id, name, ico) => {
-      const lane = h("div.mt-lane", { "data-lane": id }, keysOf(id).map((k) => { const d = h("span.key" + (k === selKey ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: `${k.t.toFixed(2)} s · ${EASES[k.e || "doux"]} (clic droit pour changer)` }); d.__key = k; d.dataset.key = id; return d; }));
+      const lane = h("div.mt-lane", { "data-lane": id }, keysOf(id).map((k) => { const d = h("span.key" + (k === selKey || picked.has(k) ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: `${k.t.toFixed(2)} s · ${EASES[k.e || "doux"]} (clic droit pour changer)` }); d.__key = k; d.dataset.key = id; return d; }));
       tl.append(h("div.mt-row" + (sel === id ? ".on" : ""), h("div.mt-name", { on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, ico, " ", name, keysOf(id).length ? h("span.count", String(keysOf(id).length)) : ""), lane));
     };
     row("cam", "Caméra", "🎥");
@@ -341,17 +342,52 @@ export function openMontage(app, pid) {
     if (!lane || e.button !== 0) return;
     stop();
     try { tl.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
-    if (e.target.__key) { sel = e.target.dataset.key; selKey = e.target.__key; drag = { kind: "key", key: selKey, lane }; seek(selKey.t, true); return; }
-    if (lane.dataset.lane !== "ruler") sel = lane.dataset.lane;
-    selKey = null; drag = { kind: "seek", lane };
-    seek(timeAt(e, lane), true);
+    if (e.target.__key) {
+      const k = e.target.__key;
+      if (e.ctrlKey || e.metaKey) {                        // Ctrl + clic : ajoute ou retire la cle de la selection
+        if (selKey) picked.add(selKey);
+        if (picked.has(k)) picked.delete(k); else picked.add(k);
+        sel = e.target.dataset.key; selKey = picked.has(k) ? k : null; lanes(); props(); return;
+      }
+      if (picked.has(k) && picked.size > 1) {              // une cle de la selection : elles glissent toutes ensemble
+        drag = { kind: "keys", t0: timeAt({ clientX: e.clientX }, lane), start: new Map([...picked].map((q) => [q, q.t])) }; return;
+      }
+      picked.clear();
+      sel = e.target.dataset.key; selKey = k; drag = { kind: "key", key: selKey, lane }; seek(selKey.t, true); return;
+    }
+    if (lane.dataset.lane === "ruler") { picked.clear(); selKey = null; drag = { kind: "seek", lane }; seek(timeAt(e, lane), true); return; }
+    drag = { kind: "box", lane, x0: e.clientX, y0: e.clientY };  // dans une piste : simple clic = aller a cet instant, glisser = lasso
   });
   tl.addEventListener("pointermove", (e) => {
     if (!drag) return;
+    if (drag.kind === "box") {
+      if (!drag.el && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 4) return;
+      if (!drag.el) { drag.el = h("div", { style: "position:fixed;z-index:9999;border:1px dashed #7dd3c0;background:rgba(125,211,192,.16);pointer-events:none" }); document.body.append(drag.el); }
+      const x = Math.min(drag.x0, e.clientX), y = Math.min(drag.y0, e.clientY), w = Math.abs(e.clientX - drag.x0), hh = Math.abs(e.clientY - drag.y0);
+      Object.assign(drag.el.style, { left: x + "px", top: y + "px", width: w + "px", height: hh + "px" });
+      picked.clear(); selKey = null;
+      tl.querySelectorAll(".key").forEach((d) => { const r = d.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        const inb = cx >= x && cx <= x + w && cy >= y && cy <= y + hh; d.classList.toggle("on", inb); if (inb) picked.add(d.__key); });
+      return;
+    }
+    if (drag.kind === "keys") {
+      const dt = timeAt({ clientX: e.clientX }, tl.querySelector(".mt-lane")) - drag.t0;
+      for (const [k, t0] of drag.start) k.t = f3(clamp(t0 + dt, 0, anim.dur));
+      for (const ks of Object.values(anim.tracks)) ks.sort((a, b) => a.t - b.t);
+      paint(); lanes(); return;
+    }
     if (drag.kind === "seek") { if (drag.lane.isConnected) seek(timeAt(e, drag.lane)); else { const ln = tl.querySelector(".mt-lane"); seek(timeAt(e, ln)); } }
     else { const ln = tl.querySelector(`.mt-lane[data-lane="${sel}"]`) || tl.querySelector(".mt-lane"); drag.key.t = f3(timeAt(e, ln, drag.key)); keysOf(sel).sort((a, b) => a.t - b.t); t = drag.key.t; paint(); lanes(); }
   });
-  tl.addEventListener("pointerup", () => { if (drag) { drag = null; lanes(); props(); } });
+  tl.addEventListener("pointerup", (e) => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    if (d.kind === "box") {
+      if (d.el) { d.el.remove(); if (picked.size === 1) { selKey = [...picked][0]; picked.clear(); } }
+      else { picked.clear(); sel = d.lane.dataset.lane; selKey = null; t = clamp(timeAt(e, d.lane), 0, anim.dur); paint(); }
+    }
+    lanes(); props();
+  });
   tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); setKey(sel, {}); paint(); lanes(); props(); } });
 
   // ------------------------------------------------------------------------------------------ gestes dans l'image
@@ -401,7 +437,7 @@ export function openMontage(app, pid) {
     for (const k of Object.keys(anim)) delete anim[k];
     Object.assign(anim, st.anim);
     Object.assign(dof, st.dof);
-    selKey = null; drag = null; vdrag = null; t = Math.min(t, anim.dur);
+    selKey = null; drag = null; vdrag = null; picked.clear(); t = Math.min(t, anim.dur);
     if (!CAMS[sel] && !layerOf(sel)) sel = "cam";
     dur.value = anim.dur;
     paint(); lanes(); props();
@@ -410,6 +446,11 @@ export function openMontage(app, pid) {
     if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === " ") { e.preventDefault(); e.stopPropagation(); return playing ? stop() : play(); }
+    if ((e.key === "Delete" || e.key === "Backspace") && picked.size) {
+      e.preventDefault(); e.stopPropagation();
+      for (const id of Object.keys(anim.tracks)) anim.tracks[id] = anim.tracks[id].filter((x) => !picked.has(x));
+      picked.clear(); selKey = null; paint(); lanes(); props(); return;
+    }
     if ((e.key === "Delete" || e.key === "Backspace") && selKey) { e.preventDefault(); e.stopPropagation(); anim.tracks[sel] = keysOf(sel).filter((x) => x !== selKey); selKey = null; paint(); lanes(); props(); }
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); seek(t + (e.key === "ArrowRight" ? 1 : -1) / 24, true); }
   };
@@ -432,7 +473,7 @@ export function openMontage(app, pid) {
   };
   const bar = h("div.mt-bar", h("button.mini", { title: "Revenir au début", on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn,
     h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), "En boucle"), clock,
-    h("span.muted", "Maj : la tête de lecture s'aimante sur les clés"),
+    h("span.muted", { title: "Dans une piste : glisser trace un lasso qui prend les clés, Ctrl + clic en ajoute une. Les clés prises se déplacent ensemble et s'effacent avec Suppr. La règle des secondes déplace la tête de lecture." }, "Maj : aimant sur les clés · glisser : lasso ⓘ"),
     h("span.spacer"), depthBtn, h("label.row", "Durée (s)", dur), fullBtn);
   paint(); lanes(); props();
   const m = modal(`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, keyBox, tl),
