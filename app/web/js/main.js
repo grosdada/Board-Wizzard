@@ -538,6 +538,8 @@ class App {
       const rs = range("Taille", l.s, 0.05, 12, 0.01, (x) => { l.s = x; }, "lscale");
       const rpx = range("Position ↔", l.x, -4, 5, 0.005, (x) => { l.x = x; }, "lmove"), rpy = range("Position ↕", l.y, -4, 8, 0.005, (x) => { l.y = x; }, "lmove");
       this.syncLayer = () => { for (const [r, v] of [[rs, l.s], [rpx, l.x], [rpy, l.y]]) { r.querySelector("input").value = v; r.querySelector("output").textContent = fmt(v); } };
+      if (sp && sp.vec) box.append(range("Trait", l.lw || 0, -2, 6, 0.1, (x) => { l.lw = x; }, "lw"),
+        h("p.muted", "Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin."));
       box.append(rs, rpx, rpy,
         range("Profondeur", depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"),
         h("div.row", h("button.mini" + (l.flip ? ".on" : ""), { on: { click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); this.refreshInspector(); } } }, "⇋ Miroir"),

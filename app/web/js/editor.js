@@ -4,6 +4,7 @@
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
+import { vecFrame, inkStroke } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, background, clamp, variantOf, pad3 } from "./model.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -113,6 +114,24 @@ export class Editor {
           const item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
           if (!sp) return;
           const box = layerBox(bb, l, sp);
+          const vf = vecFrame(sp, () => this.render(true));
+          if (vf) {                                          // dessin en traces : net a tout zoom, trait reglable
+            const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc;
+            const st = inkStroke(l.lw), tag = { "data-layer": l.id, "data-panel": g.id };
+            const gv = s("g", Object.assign({ class: "layer vlayer", transform: (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1) ` : "") + `translate(${tx} ${ty}) scale(${sc})`,
+                                              filter: this.blur(defs, blurOf(pan, depthOf(pan, i), bb)) }, tag));
+            const cid = "vc-" + g.id + "-" + l.id, clip = s("clipPath", { id: cid });
+            clip.append(s("path", { d: vf.body }));
+            defs.append(clip);
+            gv.append(s("path", Object.assign({ d: vf.body, fill: "#ffffff" }, tag)));
+            const gi = s("g", { "clip-path": `url(#${cid})` });
+            gi.append(s("path", Object.assign({ d: vf.ink, fill: "#111111", "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round" }, tag)));
+            gv.append(gi);
+            if (st.outline > 0) gv.append(s("path", { d: vf.body, fill: "none", stroke: "#111111", "stroke-width": st.outline, "pointer-events": "none" }));
+            grp.append(gv);
+            if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };
+            return;
+          }
           const im = this.image("l:" + g.id + ":" + l.id, sp.url, {
             x: box.x, y: box.y, width: box.w, height: box.h, preserveAspectRatio: "xMidYMax meet", "data-layer": l.id,
             "data-panel": g.id, transform: l.flip ? `translate(${2 * box.cx} 0) scale(-1 1)` : null,

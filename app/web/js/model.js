@@ -17,11 +17,34 @@ export function sprite(item, vid, f) {
   if (!v) return null;
   if (v.orbit && v.orbit.n) {
     const n = v.orbit.n, i = ((Math.round(f || 0) % n) + n) % n;
-    return { url: `/bank/${item.id}/${v.orbit.dir}/${pad3(i)}.webp`, w: v.orbit.w, h: v.orbit.h, n, i, orbit: true };
+    return { url: `/bank/${item.id}/${v.orbit.dir}/${pad3(i)}.webp`, w: v.orbit.w, h: v.orbit.h, n, i, orbit: true,
+             vec: v.orbit.vec ? `/bank/${item.id}/${v.orbit.dir}/vec.json` : null };
   }
   if (v.cut) return { url: `/bank/${item.id}/${v.cut}?t=${v.t || 0}`, w: v.cw || item.w, h: v.ch || item.h, n: 1, i: 0 };
   return { url: `/bank/${item.id}/${v.ref}`, w: item.w || 1, h: item.h || 1, n: 1, i: 0, raw: true };
 }
+
+// ---- dessins en traces : vec.json d'une orbite = { w, h, frames: [{ body, ink }] }, charge une fois puis garde
+const vecs = new Map();
+/** Traces de l'image affichee, ou null tant qu'ils ne sont pas charges (l'image WebP sert en attendant). */
+export function vecFrame(sp, onReady) {
+  if (!sp || !sp.vec) return null;
+  let e = vecs.get(sp.vec);
+  if (!e) {
+    e = { data: null, wait: [] };
+    vecs.set(sp.vec, e);
+    fetch(sp.vec).then((r) => (r.ok ? r.json() : null)).then((d) => { e.data = d || false; e.wait.splice(0).forEach((f) => f()); })
+      .catch(() => { e.data = false; });
+    if (vecs.size > 40) vecs.delete(vecs.keys().next().value);
+  }
+  if (e.data === null) { if (onReady && e.wait.length < 4) e.wait.push(onReady); return null; }
+  if (!e.data) return null;
+  const fr = e.data.frames[sp.i];
+  return fr ? { w: e.data.w, h: e.data.h, body: fr.body, ink: fr.ink } : null;
+}
+export function vecReady(sp) { return new Promise((ok) => { const f = vecFrame(sp, () => ok(vecFrame(sp))); if (f || !sp || !sp.vec || (vecs.get(sp.vec) || {}).data === false) ok(f); }); }
+/** Trait d'un dessin en traces : epaisseur ajoutee (lw > 0 : plus epais, < 0 : plus fin), en unites du dessin. */
+export function inkStroke(lw) { const t = +lw || 0; return { color: t >= 0 ? "#111111" : "#ffffff", width: Math.abs(t), outline: 0 }; }   // pas de contour de silhouette : il inventerait des traits la ou le dessin n'en a pas
 
 export function frameUrls(item, vid) {
   const v = variantOf(item, vid);

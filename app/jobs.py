@@ -16,7 +16,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from . import comfy, poses, settings, sprites, store
+from . import comfy, poses, settings, sprites, store, vector
 
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i",
         "panel_integrate": "edit", "panel_orbit": "orbit"}
@@ -131,6 +131,12 @@ def run_item_orbit(job, prov):
             rel = "v/%s/o%d_%d" % (p["variant"], int(time.time()), attempt)
             info = sprites.build_orbit(rgb, mat, d / rel, fill=it.get("style") == "dessin")
             info.update({"dir": rel, "seed": _seed(job, attempt), "length": length})
+            if it.get("style") == "dessin" and not decor:          # dessin : l'orbite est aussi convertie en traces
+                try:
+                    job["progress"] = "conversion en tracés"
+                    info["vec"] = vector.orbit(d / rel, info["n"])
+                except Exception:                                  # noqa: BLE001 : les images suffisent a afficher
+                    info["vec"] = False
             # orbite ratee : volet noir, sujet perdu par le detourage, ou camera presque immobile. Le mouvement est
             # rapporte a la place du sujet dans l'image : un petit objet qui tourne bouge peu de pixels.
             rel_motion = info["motion"] / (1.0 if decor else max(info["cover"], 0.03))

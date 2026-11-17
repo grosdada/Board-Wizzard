@@ -118,7 +118,7 @@ def fill_holes(a):
     thick = im.filter(ImageFilter.MaxFilter(k))
     ImageDraw.floodfill(thick, (0, 0), 128)                    # 128 = exterieur
     inner = Image.fromarray(((np.asarray(thick) != 128) * 255).astype(np.uint8)).filter(ImageFilter.MinFilter(k))
-    inner = np.asarray(inner.crop((k, k, k + sw, k + sh)).resize((w, h), Image.NEAREST)) > 0
+    inner = np.asarray(inner.crop((k, k, k + sw, k + sh)).resize((w, h), Image.BICUBIC)) > 127      # bords sans marches
     return np.where(inner & ~solid, 255, a).astype(np.uint8)
 
 
