@@ -5,6 +5,7 @@ import { compute, PRESETS, transpose, splitLeaf, removeLeaf, leaves, randomLayou
 import { Editor } from "./editor.js";
 import { Bank, target } from "./bank.js";
 import { flattenPanel } from "./flatten.js";
+import { MARKS, MARK_COLORS, newMark } from "./marks.js";
 import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement } from "./model.js";
 
 const FORMATS = [
@@ -183,7 +184,7 @@ class App {
 
   // ---------------------------------------------------------------- selection
   select(sel, keepOverlay) {
-    const same = sel.panel === this.sel.panel && sel.layer === this.sel.layer && sel.bubble === this.sel.bubble;
+    const same = sel.panel === this.sel.panel && sel.layer === this.sel.layer && sel.bubble === this.sel.bubble && sel.mark === this.sel.mark;
     this.sel = sel;
     if (same) return;
     this.editor.render(keepOverlay);
@@ -356,6 +357,8 @@ class App {
     const pan = this.curPanel(), items = [{ head: "Bulle" }];
     const rel = { x: (pt.x - g.bbox.x0) / g.bbox.w, y: (pt.y - g.bbox.y0) / g.bbox.h };
     for (const [t, [label]] of Object.entries(BUB)) items.push({ label, click: () => this.addBubble(t, rel), half: true });
+    items.push({ head: "Indication" });
+    for (const [t, [label, ico]] of Object.entries(MARKS)) items.push({ label: `${ico} ${label}`, half: true, click: () => (t === "free" ? this.armMark(t) : this.addMark(pid, t, [rel.x, rel.y])) });
     items.push({ head: "Banque" }, { label: "✨ Générer un élément ici…", click: () => this.generateHere(pid, rel) });
     items.push({ head: "Case" }, { label: "Integrate (image unifiée)", click: () => this.integrate() },
       { label: "Orbite de la case", click: () => this.panelOrbit() });
@@ -389,6 +392,7 @@ class App {
           copy.show = "layers";
           for (const l of copy.layers || []) l.id = uid();
           for (const b of copy.bubbles || []) b.id = uid();
+          for (const m of copy.marks || []) m.id = uid();
           pg.panels[g.id] = copy;
         }
         this.commit("copy"); this.editor.render(); this.refreshInspector();
@@ -413,6 +417,47 @@ class App {
     setTimeout(() => this.el.insp.querySelector("textarea")?.select(), 30);
   }
   bubble() { return (this.curPanel()?.bubbles || []).find((b) => b.id === this.sel.bubble); }
+  // ---------------------------------------------------------------- indications (fleches, rotation, cadres)
+  mark() { return (this.curPanel()?.marks || []).find((m) => m.id === this.sel.mark); }
+  addMark(pid, type, at, quiet) {
+    const pg = this.page(), pan = pg.panels[pid] || (pg.panels[pid] = {});
+    const m = newMark(type, uid(), at);
+    (pan.marks = pan.marks || []).push(m);
+    this.sel = { panel: pid, mark: m.id };
+    if (!quiet) { this.commit("mark"); this.editor.render(); this.refreshInspector(); }
+    return m;
+  }
+  resetMark(m, at) { m.pts = newMark(m.type, m.id, [at[0] + (m.type === "frame" || m.type === "turn" ? 0 : 0.15), at[1]]).pts; }
+  armMark(type) {                                       // l'indication se trace au prochain glisser dans une case
+    this.markTool = type; this.editor.render(true);
+    toast(type === "free" ? "Dessine la flèche dans la case : la pointe se met au bout du trait." : "Glisse dans une case pour tracer (un simple clic pose une taille standard).");
+  }
+  removeMark() {
+    const pan = this.curPanel(), m = this.mark();
+    if (!pan || !m) return;
+    pan.marks = pan.marks.filter((x) => x !== m);
+    this.sel = { panel: this.sel.panel };
+    this.commit("mark"); this.editor.render(); this.refreshInspector();
+  }
+  duplicateMark() {
+    const pan = this.curPanel(), m = this.mark();
+    if (!m) return;
+    const c = JSON.parse(JSON.stringify(m)); c.id = uid(); c.pts = c.pts.map((p) => [p[0] + 0.04, p[1] + 0.04]);
+    pan.marks.push(c); this.sel = { panel: this.sel.panel, mark: c.id };
+    this.commit("mark"); this.editor.render(); this.refreshInspector();
+  }
+  markMenu(e) {
+    const m = this.mark();
+    if (!m) return;
+    const set = (k, v) => () => { m[k] = v; this.commit("mark"); this.editor.render(); this.refreshInspector(); };
+    const items = [{ head: MARKS[m.type][0] }];
+    for (const [c, name] of Object.entries(MARK_COLORS)) items.push({ label: name, half: true, checked: (m.color || "#111111") === c, click: set("color", c) });
+    if (m.type === "turn") items.push({ label: "Inverser le sens", click: set("cw", m.cw === false) });
+    else if (m.type !== "frame") items.push({ label: "Pointe aux deux bouts", checked: !!m.both, click: set("both", !m.both) });
+    items.push({ label: "Pointillés", checked: m.type === "frame" ? m.dash !== false : !!m.dash, click: set("dash", m.type === "frame" ? m.dash === false : !m.dash) },
+      { label: "Dupliquer", click: () => this.duplicateMark() }, { label: "Supprimer", danger: true, click: () => this.removeMark() });
+    menu(e, items);
+  }
   removeBubble() {
     const list = this.curPanel().bubbles, b = this.bubble(); if (!b) return;
     list.splice(list.indexOf(b), 1); this.sel = { panel: this.sel.panel };
@@ -516,6 +561,20 @@ class App {
           h("button.mini.danger", { on: { click: () => this.removeBubble() } }, "Supprimer")));
       return;
     }
+    const mk = this.mark();
+    if (mk) {
+      const redo = () => { this.editor.render(); this.commit("mark"); this.refreshInspector(); };
+      box.append(h("h3", "Indication · " + MARKS[mk.type][0]),
+        h("label.row", "Couleur", h("select", { on: { change: (e) => { mk.color = e.target.value; redo(); } } }, Object.entries(MARK_COLORS).map(([c, n]) => h("option", { value: c, selected: (mk.color || "#111111") === c }, n)))),
+        range("Épaisseur", mk.w || 1, 0.4, 4, 0.1, (x) => { mk.w = x; }, "mark"),
+        h("div.row",
+          h("button.mini" + ((mk.type === "frame" ? mk.dash !== false : mk.dash) ? ".on" : ""), { on: { click: () => { mk.dash = mk.type === "frame" ? mk.dash === false : !mk.dash; redo(); } } }, "Pointillés"),
+          mk.type === "turn" ? h("button.mini", { on: { click: () => { mk.cw = mk.cw === false; redo(); } } }, "Inverser le sens")
+            : mk.type !== "frame" ? h("button.mini" + (mk.both ? ".on" : ""), { on: { click: () => { mk.both = !mk.both; redo(); } } }, "Deux pointes") : ""),
+        h("div.row", h("button.mini", { on: { click: () => this.duplicateMark() } }, "Dupliquer"), h("button.mini.danger", { on: { click: () => this.removeMark() } }, "Supprimer")),
+        h("p.muted", "Glisser l'indication la déplace ; ses points ronds la déforment. Suppr l'efface."));
+      return;
+    }
     // ---- la case
     const g = this.geo(this.sel.panel), bg = background(pan, this.bank, this.project.id);
     const dof = pan.dof || (pan.dof = { on: false, focus: 0.3, amount: 12 });
@@ -557,6 +616,7 @@ class App {
         src: `/projects/${this.project.id}/${f}`, title: "Version " + (i + 1), on: { click: () => { pan.integrated = f; pan.show = "integrated"; this.commit("ver"); this.editor.render(); this.refreshInspector(); } } }))));
       if (pan.show === "orbit" && pan.orbit) box.append(range("Axe de la scène", pan.orbit.frame || 0, 0, pan.orbit.n - 1, 1, (x) => { pan.orbit.frame = x; }, "oturn"));
     }
+    box.append(h("h4", "Indications"), h("div.row.wrap", Object.entries(MARKS).map(([t, [label, ico]]) => h("button.mini" + (this.markTool === t ? ".on" : ""), { title: "Tracer dans une case : " + label, on: { click: () => this.armMark(t) } }, `${ico} ${label}`))));
     box.append(h("h4", "Bulles"), h("div.row", Object.entries(BUB).map(([t, [label]]) => h("button.mini", { on: { click: () => this.addBubble(t) } }, "+ " + label))));
     if ((pan.layers || []).length) box.append(h("h4", "Calques (du fond vers l'avant)"), h("div.layers", pan.layers.map((x) => {
       const it = this.bank.get(x.item);
@@ -666,11 +726,12 @@ class App {
       const k = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey, l = this.layer();
       if (ctrl && k === "z") { e.preventDefault(); return e.shiftKey ? this.doRedo() : this.doUndo(); }
       if (ctrl && k === "y") { e.preventDefault(); return this.doRedo(); }
-      if (k === "escape") { document.querySelector(".menu")?.remove(); return this.select({}); }
+      if (k === "escape") { document.querySelector(".menu")?.remove(); if (this.markTool) { this.markTool = null; this.editor.render(true); } return this.select({}); }
       if (k === "delete" || k === "backspace") {
         e.preventDefault();
         if (l) return this.removeLayer(l);
         if (this.bubble()) return this.removeBubble();
+        if (this.mark()) return this.removeMark();
         return;
       }
       if (!l) return;

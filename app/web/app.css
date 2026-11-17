@@ -193,3 +193,9 @@ label.row.range output { width: 34px; text-align: right; color: var(--muted); fo
 
 label.row.range.off { opacity: .4; }
 .checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 12px; }
+
+/* indications de storyboard */
+.mark { cursor: move; } .mark-hit { pointer-events: stroke; }
+.mh-pt { fill: var(--accent); stroke: #0e1b19; stroke-width: 2; cursor: crosshair; vector-effect: non-scaling-stroke; }
+.drawing svg { cursor: crosshair; } .drawing .layer, .drawing .mark { pointer-events: none; }
+.row.wrap { flex-wrap: wrap; }

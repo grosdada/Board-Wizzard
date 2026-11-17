@@ -3,6 +3,7 @@
 // clic droit = pose, axe, ordre. Glisser un fond en orbite = tourner le decor (Maj : recadrer). Base : Alive-Comics.
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
+import { markShape, thin } from "./marks.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, background, clamp, variantOf, pad3 } from "./model.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -84,7 +85,7 @@ export class Editor {
     const defs = s("defs");
     svg.append(defs, s("rect", { x: 0, y: 0, width: page.width, height: page.height, fill: page.bg }));
     const k = page.width / 900;
-    let handles = null;
+    let handles = null, mhandles = null;
     for (const g of this.geom.panels) {
       const pan = pg.panels[g.id] || {}, bb = g.bbox;
       const cp = s("clipPath", { id: "cp-" + g.id });
@@ -119,6 +120,18 @@ export class Editor {
           grp.append(im);
           if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };
         });
+      }
+      for (const m of pan.marks || []) {                    // indications : fleches, rotation, cadres
+        const sh = markShape(m, bb, k), col = m.color || "#111111", halo = col === "#ffffff" ? "#111111" : "#ffffff";
+        const gm = s("g", { class: "mark", "data-mark": m.id, "data-panel": g.id });
+        const line = (extra) => s("path", Object.assign({ d: sh.d, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round", "data-mark": m.id, "data-panel": g.id }, extra));
+        gm.append(line({ stroke: "transparent", "stroke-width": Math.max(sh.width * 4, 26 * k), class: "mark-hit" }));
+        gm.append(line({ stroke: halo, "stroke-width": sh.width + 5 * k, "stroke-opacity": 0.85, "stroke-dasharray": sh.dash }));
+        for (const hp of sh.heads) gm.append(s("polygon", { points: hp, fill: halo, stroke: halo, "stroke-width": 5 * k, "stroke-linejoin": "round", "fill-opacity": 0.85, "stroke-opacity": 0.85, "data-mark": m.id, "data-panel": g.id }));
+        gm.append(line({ stroke: col, "stroke-width": sh.width, "stroke-dasharray": sh.dash }));
+        for (const hp of sh.heads) gm.append(s("polygon", { points: hp, fill: col, "data-mark": m.id, "data-panel": g.id }));
+        grp.append(gm);
+        if (sel.panel === g.id && sel.mark === m.id) mhandles = { sh, m, g };
       }
       svg.append(grp);
     }
@@ -160,6 +173,12 @@ export class Editor {
       gh.append(mv, sc);
       svg.append(gh);
     }
+    if (mhandles) {                                        // poignees de l'indication choisie
+      const gh = s("g", { class: "lh mh" });
+      for (const [x, y, i] of mhandles.sh.handles) gh.append(s("circle", { cx: x, cy: y, r: 9 * k, class: "mh-pt", "data-mh": i }));
+      svg.append(gh);
+    }
+    this.wrap.classList.toggle("drawing", !!app.markTool);
     for (const key of [...this.imgs.keys()]) if (!this.used.has(key)) this.imgs.delete(key);
     if (!light) this.renderOverlay();
   }
@@ -250,6 +269,31 @@ export class Editor {
       e.preventDefault();
       return;
     }
+    const relOf = (g) => [(pt.x - g.bbox.x0) / g.bbox.w, (pt.y - g.bbox.y0) / g.bbox.h];
+    if (app.markTool) {                                    // outil d'indication arme : on la trace dans la case
+      const g = this.panelAt(pt);
+      if (!g) { app.markTool = null; this.render(true); return; }
+      const m = app.addMark(g.id, app.markTool, relOf(g), true), r = relOf(g);
+      m.pts = m.type === "curve" ? [r, r, r] : [r, r];
+      this.drag = { kind: "mdraw", m, bb: g.bbox, start: pt, pid: g.id };
+      e.preventDefault();
+      return;
+    }
+    if (t.dataset && t.dataset.mh != null) {               // un point de l'indication choisie
+      const g = this.geom.panels.find((x) => x.id === app.sel.panel), m = app.mark();
+      if (g && m) this.drag = { kind: "mpt", m, i: +t.dataset.mh, bb: g.bbox, start: pt };
+      e.preventDefault();
+      return;
+    }
+    if (t.dataset && t.dataset.mark) {                     // l'indication entiere
+      const pid = t.dataset.panel, g = this.geom.panels.find((x) => x.id === pid);
+      const m = (this.panel(pid).marks || []).find((x) => x.id === t.dataset.mark);
+      if (!m || !g) return;
+      app.select({ panel: pid, mark: m.id });
+      this.drag = { kind: "mmove", m, bb: g.bbox, start: pt, pts: m.pts.map((p) => p.slice()) };
+      e.preventDefault();
+      return;
+    }
     if (t.dataset && t.dataset.h) {                        // poignee du calque choisi
       const g = this.geom.panels.find((x) => x.id === app.sel.panel), l = app.layer();
       if (g && l) this.drag = { kind: t.dataset.h === "scale" ? "lscale" : "lmove", l, bb: g.bbox, start: pt, x: l.x, y: l.y, s: l.s };
@@ -297,6 +341,24 @@ export class Editor {
     if (d.kind === "lturn") { d.l.f = (((d.f + Math.round((e.clientX - d.sx) / PX_PER_FRAME)) % d.n) + d.n) % d.n; return this.render(true); }
     if (d.kind === "bturn") { d.bg.f = (((d.f + Math.round((e.clientX - d.sx) / PX_PER_FRAME)) % d.n) + d.n) % d.n; return this.render(true); }
     if (d.kind === "oturn") { d.o.frame = (((d.f + Math.round((e.clientX - d.sx) / PX_PER_FRAME)) % d.o.n) + d.o.n) % d.o.n; return this.render(true); }
+    if (d.kind === "mdraw" || d.kind === "mpt" || d.kind === "mmove") {
+      const m = d.m, r = [(pt.x - d.bb.x0) / d.bb.w, (pt.y - d.bb.y0) / d.bb.h];
+      if (d.kind === "mmove") {
+        const dx = (pt.x - d.start.x) / d.bb.w, dy = (pt.y - d.start.y) / d.bb.h;
+        m.pts = d.pts.map((p) => [p[0] + dx, p[1] + dy]);
+      } else if (d.kind === "mpt") {
+        if (m.type === "turn" && d.i === 0) { const dx = r[0] - m.pts[0][0], dy = r[1] - m.pts[0][1]; m.pts = m.pts.map((p) => [p[0] + dx, p[1] + dy]); }
+        else m.pts[d.i] = r;
+      } else if (m.type === "free") {
+        const last = m.pts[m.pts.length - 1];
+        if (Math.hypot((r[0] - last[0]) * d.bb.w, (r[1] - last[1]) * d.bb.h) > this.pg.page.width / 220) m.pts.push(r);
+      } else if (m.type === "curve") {
+        const a = m.pts[0], mx = (a[0] + r[0]) / 2, my = (a[1] + r[1]) / 2;
+        const px = (r[0] - a[0]) * d.bb.w, py = (r[1] - a[1]) * d.bb.h;      // creux de la courbe : perpendiculaire, en pixels
+        m.pts = [a, [mx + py * 0.22 / d.bb.w, my - px * 0.22 / d.bb.h], r];
+      } else m.pts[1] = r;
+      return this.render(true);
+    }
     if (d.kind === "lmove") {
       d.l.x = clamp(d.x + (pt.x - d.start.x) / d.bb.w, -40, 40);     // sans limite pratique : gros plans, hors-champ
       d.l.y = clamp(d.y + (pt.y - d.start.y) / d.bb.h, -40, 40);
@@ -348,6 +410,14 @@ export class Editor {
   up() {
     const d = this.drag;
     this.drag = null;
+    if (d && d.kind === "mdraw") {                         // fin du trace : un simple clic pose une indication de taille standard
+      const m = d.m, a = m.pts[0], b = m.pts[m.pts.length - 1];
+      const tiny = Math.hypot((b[0] - a[0]) * d.bb.w, (b[1] - a[1]) * d.bb.h) < this.pg.page.width / 90;
+      if (tiny) this.app.resetMark(m, a); else if (m.type === "free") m.pts = thin(m.pts);
+      this.app.markTool = null;
+      this.render(); this.app.commit("mark"); this.app.refreshInspector();
+      return;
+    }
     if (!d || !d.moved) return;
     this.render();
     this.app.commit(d.kind);
@@ -380,6 +450,10 @@ export class Editor {
   context(e) {
     e.preventDefault();
     const t = e.target, app = this.app;
+    if (t.dataset && t.dataset.mark) {
+      app.select({ panel: t.dataset.panel, mark: t.dataset.mark });
+      return app.markMenu(e);
+    }
     if (t.dataset && t.dataset.layer) {
       app.select({ panel: t.dataset.panel, layer: t.dataset.layer });
       return app.layerMenu(e);
