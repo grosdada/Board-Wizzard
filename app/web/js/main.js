@@ -9,6 +9,7 @@ import { MARKS, MARK_COLORS, newMark } from "./marks.js";
 import { swatch } from "./colors.js";
 import { openDrawEditor } from "./draw.js";
 import { openMontage } from "./montage.js";
+import { openDeck, addClip } from "./deck.js";
 import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement } from "./model.js";
 
 const FORMATS = [
@@ -71,6 +72,7 @@ class App {
       h("button.icon", { title: "Annuler (Ctrl+Z)", on: { click: () => this.doUndo() } }, "↶"),
       h("button.icon", { title: "Rétablir (Ctrl+Y)", on: { click: () => this.doRedo() } }, "↷"),
       el.pages, h("div.grow"), el.workers, el.target, el.jobsBtn,
+      h("button", { title: "Deck de montage : les cases animées mises bout à bout", on: { click: () => openDeck(this) } }, "🎞 Deck"),
       h("button", { title: "Imprimer ou enregistrer la page en PDF", on: { click: () => window.print() } }, "Imprimer"),
       h("button.icon", { title: "Réglages", on: { click: () => this.settingsDialog() } }, "⚙"));
     document.getElementById("app").append(top, h("div.work", el.left, el.center, h("aside.right", el.bank, el.insp)), el.drawer);
@@ -433,6 +435,13 @@ class App {
     openDrawEditor({ draw: pan.draw, ratio: g.bbox.h / g.bbox.w, backdrop: bg ? bg.url : null, title: `Dessiner le fond de la case ${g.order}`,
       onSave: (d) => { if (d.shapes.length) pan.draw = d; else delete pan.draw; pan.show = "layers"; this.commit("draw"); this.editor.render(); this.refreshInspector(); } });
   }
+  // deck de montage global : une case animee y devient un plan
+  sendToDeck(pid) { addClip(this, pid); this.refreshInspector(); }
+  openPanelMontage(pageIndex, pid) {
+    if (pageIndex !== this.pageIndex) { this.pageIndex = pageIndex; this.sel = {}; this.refresh(); }
+    this.select({ panel: pid });
+    openMontage(this, pid);
+  }
   showAll(mode) {
     for (const pan of Object.values(this.page().panels)) { if (mode === "layers" || pan.integrated) pan.show = mode; }
     this.commit("show"); this.editor.render(); this.refreshInspector();
@@ -666,7 +675,10 @@ class App {
       if (pan.show === "orbit" && pan.orbit) box.append(range("Axe de la scène", pan.orbit.frame || 0, 0, pan.orbit.n - 1, 1, (x) => { pan.orbit.frame = x; }, "oturn"));
     }
     box.append(h("h4", "Animation"), h("div.row", h("button.mini", { title: "Timeline, poses clés, caméra virtuelle", on: { click: () => openMontage(this, this.sel.panel) } }, pan.anim ? "🎬 Ouvrir le montage" : "🎬 Mode montage"),
-      pan.anim ? h("span.muted", `${pan.anim.dur} s · ${Object.values(pan.anim.tracks || {}).reduce((n, k) => n + k.length, 0)} clés`) : ""));
+      pan.anim ? h("span.muted", `${pan.anim.dur} s · ${Object.values(pan.anim.tracks || {}).reduce((n, k) => n + k.length, 0)} clés`) : ""),
+      h("div.row", h("button.mini", { title: "Ajoute cette case comme plan dans le deck de montage global", on: { click: () => this.sendToDeck(this.sel.panel) } }, "▸ Envoyer dans le deck"),
+        h("button.mini", { on: { click: () => openDeck(this) } }, "🎞 Ouvrir le deck"),
+        (() => { const n = ((this.project.deck || {}).clips || []).filter((c) => c.panel === this.sel.panel && c.page === this.page().id).length; return n ? h("span.muted", `déjà ${n} fois dans le deck`) : ""; })()));
     box.append(h("h4", "Indications"), h("div.row.wrap", Object.entries(MARKS).map(([t, [label, ico]]) => h("button.mini" + (this.markTool === t ? ".on" : ""), { title: "Tracer dans une case : " + label, on: { click: () => this.armMark(t) } }, `${ico} ${label}`))));
     box.append(h("h4", "Bulles"), h("div.row", Object.entries(BUB).map(([t, [label]]) => h("button.mini", { on: { click: () => this.addBubble(t) } }, "+ " + label))));
     if ((pan.layers || []).length) box.append(h("h4", "Calques (du fond vers l'avant)"), h("div.layers", pan.layers.map((x) => {

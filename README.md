@@ -65,7 +65,9 @@ et ffmpeg dans le PATH.
 Case sélectionnée → « 🎬 Mode montage » (inspecteur ou clic droit). Une visionneuse, une timeline avec une piste par
 élément et une piste caméra, et des poses clés : position, taille, axe et pose d'un élément ; cadre, zoom et
 inclinaison de la caméra, avec des mouvements prêts (travellings, panoramiques, zoom, bascule). Lecture en boucle,
-durée réglable. C'est une maquette : l'animation se joue dans cette fenêtre, il n'y a pas encore d'export vidéo.
+durée réglable, plein écran. « Enregistrer et envoyer dans le deck » ajoute la case comme plan au **deck de montage**
+(bouton « 🎞 Deck » en haut) : les cases animées y sont mises bout à bout, on les réordonne, on les retire, on lit le
+tout. C'est une maquette : pas encore de transitions, de son ni d'export vidéo.
 
 ## Rendus
 

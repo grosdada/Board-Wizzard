@@ -272,3 +272,22 @@ label.row.range.off { opacity: .4; }
 .mt-lane .key.lin { border-radius: 50%; transform: none; }
 .mt-lane .key.fixe { transform: none; border-radius: 1px; }
 .menu.mt-menu { z-index: 200; }
+
+/* montage et deck en plein ecran */
+.modal.modal-full { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100vh; max-height: none; border-radius: 0; transform: none !important; }
+.modal.modal-full .modal-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.modal.modal-full .mt-editor { flex: 1; min-height: 0; }
+.modal.modal-full .mt-top { flex: 1; min-height: 0; align-items: stretch; }
+.modal.modal-full .mt-view { align-items: center; }
+.modal.modal-full .mt-stage { max-height: 100%; height: 100%; width: auto; }
+.modal.modal-full .mt-side { max-height: none; flex-basis: 320px; }
+.modal.modal-full .mt-timeline { max-height: 30vh; }
+.modal.modal-full .dk-editor > .mt-view { flex: 1; min-height: 0; }
+/* deck de montage */
+.dk-stage { cursor: default; }
+.dk-track { position: relative; display: flex; gap: 3px; min-height: 74px; background: #17191a; border: 1px solid #34383a; border-radius: 8px; padding: 6px; user-select: none; }
+.dk-clip { min-width: 96px; background: #263432; border: 1px solid #3d524e; border-radius: 6px; padding: 6px 8px; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
+.dk-clip.on { border-color: var(--accent); background: #2d423e; } .dk-clip.missing { background: #3a2a29; border-color: #6b4744; }
+.dk-name { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .dk-sub { font-size: 11px; color: var(--muted); }
+.dk-acts { display: flex; gap: 4px; margin-top: auto; } .dk-acts button { background: #1b2221; border: 1px solid #3d524e; color: inherit; border-radius: 4px; font-size: 11px; padding: 1px 6px; cursor: pointer; }
+.dk-info { display: flex; gap: 10px; align-items: center; } .dk-empty { margin: auto; }
