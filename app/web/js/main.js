@@ -148,7 +148,7 @@ class App {
   }
 
   // ---------------------------------------------------------------- annuler / enregistrer
-  snapshot() { const P = this.project; return JSON.stringify({ pages: P.pages, nextId: P.nextId, name: P.name }); }
+  snapshot() { const P = this.project; return JSON.stringify({ pages: P.pages, nextId: P.nextId, name: P.name, deck: P.deck || { clips: [] } }); }
   commit(kind) {
     const now = Date.now(), snap = this.snapshot();
     if (snap === this.last) return;
