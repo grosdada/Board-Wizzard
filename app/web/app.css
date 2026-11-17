@@ -291,3 +291,10 @@ label.row.range.off { opacity: .4; }
 .dk-name { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .dk-sub { font-size: 11px; color: var(--muted); }
 .dk-acts { display: flex; gap: 4px; margin-top: auto; } .dk-acts button { background: #1b2221; border: 1px solid #3d524e; color: inherit; border-radius: 4px; font-size: 11px; padding: 1px 6px; cursor: pointer; }
 .dk-info { display: flex; gap: 10px; align-items: center; } .dk-empty { margin: auto; }
+
+.dk-clip { position: relative; padding-left: 14px; padding-right: 14px; min-width: 60px; }
+.dk-h { position: absolute; top: 0; bottom: 0; width: 9px; background: #8fd0c4; opacity: .55; cursor: ew-resize; touch-action: none; }
+.dk-h.l { left: 0; border-radius: 5px 0 0 5px; } .dk-h.r { right: 0; border-radius: 0 5px 5px 0; }
+.dk-h:hover, .dk-clip.on .dk-h { opacity: 1; }
+.dk-h::after { content: ""; position: absolute; left: 3px; right: 3px; top: 30%; bottom: 30%; border-left: 1px solid #0e1b19; border-right: 1px solid #0e1b19; }
+.dk-title { width: 230px; font-weight: 600; }

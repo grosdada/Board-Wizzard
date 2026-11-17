@@ -72,7 +72,7 @@ class App {
       h("button.icon", { title: "Annuler (Ctrl+Z)", on: { click: () => this.doUndo() } }, "↶"),
       h("button.icon", { title: "Rétablir (Ctrl+Y)", on: { click: () => this.doRedo() } }, "↷"),
       el.pages, h("div.grow"), el.workers, el.target, el.jobsBtn,
-      h("button", { title: "Deck de montage : les cases animées mises bout à bout", on: { click: () => openDeck(this) } }, "🎞 Deck"),
+      h("button", { title: "Decks de montage : les cases animées mises bout à bout", on: { click: (e) => this.decksMenu(e) } }, "🎞 Decks ▾"),
       h("button", { title: "Imprimer ou enregistrer la page en PDF", on: { click: () => window.print() } }, "Imprimer"),
       h("button.icon", { title: "Réglages", on: { click: () => this.settingsDialog() } }, "⚙"));
     document.getElementById("app").append(top, h("div.work", el.left, el.center, h("aside.right", el.bank, el.insp)), el.drawer);
@@ -148,7 +148,7 @@ class App {
   }
 
   // ---------------------------------------------------------------- annuler / enregistrer
-  snapshot() { const P = this.project; return JSON.stringify({ pages: P.pages, nextId: P.nextId, name: P.name, deck: P.deck || { clips: [] } }); }
+  snapshot() { const P = this.project; return JSON.stringify({ pages: P.pages, nextId: P.nextId, name: P.name, decks: P.decks || [], deckCur: P.deckCur || null }); }
   commit(kind) {
     const now = Date.now(), snap = this.snapshot();
     if (snap === this.last) return;
@@ -435,6 +435,22 @@ class App {
     openDrawEditor({ draw: pan.draw, ratio: g.bbox.h / g.bbox.w, backdrop: bg ? bg.url : null, title: `Dessiner le fond de la case ${g.order}`,
       onSave: (d) => { if (d.shapes.length) pan.draw = d; else delete pan.draw; pan.show = "layers"; this.commit("draw"); this.editor.render(); this.refreshInspector(); } });
   }
+  // decks de montage : plusieurs par storyboard, enregistres avec lui
+  decks() {
+    const P = this.project;
+    if (!P.decks) { P.decks = []; if (P.deck && (P.deck.clips || []).length) P.decks.push({ id: uid(), name: "Deck 1", clips: P.deck.clips }); delete P.deck; }
+    return P.decks;
+  }
+  newDeck(name, clips) { const d = { id: uid(), name: name || `Deck ${this.decks().length + 1}`, clips: clips || [] }; this.decks().push(d); this.project.deckCur = d.id; this.commit("deck"); this.refreshTop(); return d; }
+  /** Le deck demande, sinon le deck en cours, sinon le premier, sinon un deck neuf. */
+  deckOf(id) { const ds = this.decks(); return ds.find((d) => d.id === id) || ds.find((d) => d.id === this.project.deckCur) || ds[0] || this.newDeck("Deck 1"); }
+  refreshTop() { this.refreshInspector(); }
+  decksMenu(e) {
+    const ds = this.decks(), items = [{ head: ds.length ? "Decks enregistrés" : "Aucun deck pour l'instant" }];
+    for (const d of ds) items.push({ label: `🎞 ${d.name} · ${d.clips.length} plan${d.clips.length > 1 ? "s" : ""}`, checked: d.id === this.project.deckCur, click: () => openDeck(this, d.id) });
+    items.push({ label: "＋ Nouveau deck…", click: () => { const n = (prompt("Nom du nouveau deck :", `Deck ${ds.length + 1}`) || "").trim(); if (n) openDeck(this, this.newDeck(n).id); } });
+    menu(e, items);
+  }
   // deck de montage global : une case animee y devient un plan
   sendToDeck(pid) { addClip(this, pid); this.refreshInspector(); }
   openPanelMontage(pageIndex, pid) {
@@ -678,7 +694,7 @@ class App {
       pan.anim ? h("span.muted", `${pan.anim.dur} s · ${Object.values(pan.anim.tracks || {}).reduce((n, k) => n + k.length, 0)} clés`) : ""),
       h("div.row", h("button.mini", { title: "Ajoute cette case comme plan dans le deck de montage global", on: { click: () => this.sendToDeck(this.sel.panel) } }, "▸ Envoyer dans le deck"),
         h("button.mini", { on: { click: () => openDeck(this) } }, "🎞 Ouvrir le deck"),
-        (() => { const n = ((this.project.deck || {}).clips || []).filter((c) => c.panel === this.sel.panel && c.page === this.page().id).length; return n ? h("span.muted", `déjà ${n} fois dans le deck`) : ""; })()));
+        (() => { const d = this.decks().find((x) => x.id === this.project.deckCur) || this.decks()[0]; if (!d) return ""; const n = d.clips.filter((c) => c.panel === this.sel.panel && c.page === this.page().id).length; return h("span.muted", `« ${d.name} »` + (n ? ` · déjà ${n} fois` : "")); })()));
     box.append(h("h4", "Indications"), h("div.row.wrap", Object.entries(MARKS).map(([t, [label, ico]]) => h("button.mini" + (this.markTool === t ? ".on" : ""), { title: "Tracer dans une case : " + label, on: { click: () => this.armMark(t) } }, `${ico} ${label}`))));
     box.append(h("h4", "Bulles"), h("div.row", Object.entries(BUB).map(([t, [label]]) => h("button.mini", { on: { click: () => this.addBubble(t) } }, "+ " + label))));
     if ((pan.layers || []).length) box.append(h("h4", "Calques (du fond vers l'avant)"), h("div.layers", pan.layers.map((x) => {

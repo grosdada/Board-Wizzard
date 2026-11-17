@@ -66,8 +66,9 @@ Case sélectionnée → « 🎬 Mode montage » (inspecteur ou clic droit). Une 
 élément et une piste caméra, et des poses clés : position, taille, axe et pose d'un élément ; cadre, zoom et
 inclinaison de la caméra, avec des mouvements prêts (travellings, panoramiques, zoom, bascule). Lecture en boucle,
 durée réglable, plein écran. « Enregistrer et envoyer dans le deck » ajoute la case comme plan au **deck de montage**
-(bouton « 🎞 Deck » en haut) : les cases animées y sont mises bout à bout, on les réordonne, on les retire, on lit le
-tout. C'est une maquette : pas encore de transitions, de son ni d'export vidéo.
+(menu « 🎞 Decks ▾ » en haut : les decks enregistrés, et « Nouveau deck ») : les cases animées y sont mises bout à
+bout, on les réordonne, on les raccourcit par les poignées de leurs deux bouts, on les retire, on lit le tout. Un
+storyboard peut avoir plusieurs decks (« Enregistrer sous… », « Supprimer ce deck »). C'est une maquette : pas encore de transitions, de son ni d'export vidéo.
 
 ## Rendus
 
