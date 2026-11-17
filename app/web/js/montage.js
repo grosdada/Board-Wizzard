@@ -209,18 +209,15 @@ export function openMontage(app, pid) {
     side.append(h("h4", isCam ? "🎥 Caméra" : (itemOf(l) ? itemOf(l).name : "Élément")));
     if (isCam) {
       side.append(range("Cadre ↔", "cx", -0.5, 1.5, 0.005), range("Cadre ↕", "cy", -0.5, 1.5, 0.005), range("Zoom", "z", 0.4, 5, 0.01), range("Inclinaison", "rot", -45, 45, 0.5, (x) => Math.round(x) + "°"),
-        h("h4", "Mouvements prêts"),
+        h("h4", { title: "Un mouvement prêt pose deux clés, au début et à la fin. Tu peux ensuite les régler ou en ajouter." }, "Mouvements prêts ⓘ"),
         h("select", { on: { change: (e) => { applyMove(e.target.value); e.target.value = ""; } } }, h("option", { value: "" }, "Choisir un mouvement…"), Object.entries(MOVES).map(([k, [name]]) => h("option", { value: k }, name))),
-        h("p.muted", "Un mouvement prêt pose deux clés, au début et à la fin. Tu peux ensuite les régler ou en ajouter."),
-        h("h4", "Profondeur de champ"),
+        h("h4", { title: "0 = tout devant, 1 = le décor. Ces deux réglages se posent en clés sur la piste Caméra : la mise au point peut passer d'un personnage à l'autre. La vue « Profondeur » montre le plan net." }, "Profondeur de champ ⓘ"),
         h("label.row.check", h("input", { type: "checkbox", checked: !!dof.on, on: { change: (e) => { dof.on = e.target.checked; paint(); props(); } } }), "Flou de profondeur"));
-      if (dof.on) side.append(range("Mise au point", "fo", 0, 1, 0.01), range("Flou", "bl", 0, 60, 1, (x) => String(Math.round(x))),
-        h("p.muted", "0 = tout devant, 1 = le décor. Ces deux réglages se posent en clés sur la piste Caméra : la mise au point peut passer d'un personnage à l'autre. La vue « Profondeur » montre le plan net."));
+      if (dof.on) side.append(range("Mise au point", "fo", 0, 1, 0.01), range("Flou", "bl", 0, 60, 1, (x) => String(Math.round(x))));
       side.append(
-        h("h4", "Parallaxe"),
+        h("h4", { title: "Quand la caméra se déplace, le premier plan glisse plus vite que le fond, selon la profondeur des éléments : le bouton « Profondeur » sous l'image les montre vus de dessus pour les placer." }, "Parallaxe ⓘ"),
         h("label.row.check", h("input", { type: "checkbox", checked: !!anim.parallax, on: { change: (e) => { anim.parallax = e.target.checked; paint(); props(); } } }), "Parallaxe automatique"),
-        anim.parallax ? h("label.row.range", "Force", h("input", { type: "range", min: 0, max: 1.5, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "",
-        h("p.muted", "Quand la caméra se déplace, le premier plan glisse plus vite que le fond, selon la profondeur des éléments : le bouton « Profondeur » sous l'image les montre vus de dessus pour les placer."));
+        anim.parallax ? h("label.row.range", "Force", h("input", { type: "range", min: 0, max: 1.5, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "");
     } else {
       const it = itemOf(l), n = nOf(l, cur().v);
       side.append(range("Position ↔", "x", -1, 2, 0.005), range("Position ↕", "y", -1, 3, 0.005), range("Taille", "s", 0.05, 6, 0.01));
@@ -250,8 +247,7 @@ export function openMontage(app, pid) {
         Object.entries(it.variants).map(([k, vv]) => h("option", { value: k, selected: k === cur().v }, (vv.orbit ? "↻ " : "▫ ") + vv.label)))));
     }
     keyBar();
-    side.append(h("label.row.check", h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage"),
-      h("p.muted", "Dans l'image : glisser un élément le déplace, molette = taille, Maj + glisser = le faire tourner. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche. Avec la clé automatique, chaque geste pose une clé à l'instant affiché."));
+    side.append(h("label.row.check", { title: "Dans l'image : glisser un élément le déplace, molette = taille, Maj + glisser = le faire tourner. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));
     syncProps = () => rows.forEach((f) => f());
   }
   // boutons de cle : juste au-dessus de la timeline
