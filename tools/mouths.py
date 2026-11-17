@@ -1,8 +1,10 @@
 """Decoupe une planche de bouches en cartes pour le lip sync : au trait noir et blanc, et telles quelles (couleurs).
 
-    python tools/mouths.py planche.png nom [clair|noir]
+    python tools/mouths.py planche.png nom [clair|noir|peau]
 
     clair : levres rouges sur fond clair (pate a modeler)        noir : bouches claires sur fond noir (cartoon)
+    peau  : bouches dessinees sur une pastille couleur peau, fond blanc. Au trait, la peau devient transparente : il ne
+            reste que le dessin de la bouche, et c'est le « masque de peau » du personnage qui fait le fond.
 
 Chaque bouche est detouree et ecrite dans un cadre commun 360 x 240, a la meme echelle que les autres :
     app/web/mouths/<nom>/nNN.png   au trait (levres et dents blanches, interieur noir, langue grise, contours noirs)
@@ -32,12 +34,19 @@ def _chan(img):
     return r, g, b, 0.3 * r + 0.59 * g + 0.11 * b
 
 
+def _skin(r, g, b):
+    return (r > 215) & (g > 160) & (g < 222) & (b > 120) & (b < 200) & (r - b > 40)
+
+
 def find(img, mode):
     """Silhouettes des bouches, trous bouches. Rend [(x, y, w, h, masque)] rangees ligne par ligne."""
     r, g, b, lum = _chan(img)
     if mode == "noir":
         m = (np.maximum(np.maximum(r, g), b) > 55).astype(np.uint8) * 255
         k, top = 5, 0
+    elif mode == "peau":
+        m = _skin(r, g, b).astype(np.uint8) * 255
+        k, top = 9, 0
     else:
         m = ((r > 120) & (r - g > 45) & (r - b > 35)).astype(np.uint8) * 255
         k, top = 13, 85                                           # 85 : sous l'en-tete de la capture
@@ -51,6 +60,15 @@ def find(img, mode):
         mask = np.zeros(img.shape[:2], np.uint8)
         cv2.drawContours(mask, [c], -1, 255, -1)
         out.append((x, y, w, h, mask))
+    if mode == "peau":                                            # planche en grille, bouches de hauteurs tres differentes
+        rows = []
+        for o in sorted(out, key=lambda o: o[1] + o[3] / 2):
+            cy = o[1] + o[3] / 2
+            if rows and abs(cy - np.mean([q[1] + q[3] / 2 for q in rows[-1]])) < 55:
+                rows[-1].append(o)
+            else:
+                rows.append([o])
+        return [o for row in rows for o in sorted(row, key=lambda o: o[0])]
     if mode == "noir":                                            # planche en grille : ligne par ligne
         rowh = max(40, int(np.median([o[3] for o in out]) * 1.2)) if out else 60
         return sorted(out, key=lambda o: (round((o[1] + o[3] / 2) / rowh), o[0]))
@@ -66,6 +84,21 @@ def cards(img, x, y, w, h, mask, scale, mode):
     colour = np.dstack([crop, np.where(sil, 255, 0).astype(np.uint8)])
     soft = cv2.bilateralFilter(crop, 9, 50, 9)
     r, g, b, lum = _chan(soft)
+    if mode == "peau":                                            # dessin sur pastille de peau : la peau s'efface, le dessin reste
+        skin = sil & _skin(r, g, b)
+        skin = cv2.morphologyEx(skin.astype(np.uint8), cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))) > 0
+        core = cv2.erode(sil.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))) > 0   # sans le lisere du bord de la pastille
+        art = core & ~skin
+        dark = art & (lum < 110)
+        tongue = _open(art & ~dark & (r > 170) & (g < 150) & (r - g > 60), 5)
+        teeth = art & ~dark & ~tongue
+        out = np.zeros(crop.shape[:2] + (4,), np.uint8)
+        out[teeth] = (255, 255, 255, 255)
+        out[tongue] = (190, 190, 190, 255)
+        out[dark] = INK
+        a = cv2.GaussianBlur(out[..., 3], (0, 0), 0.8)            # bord adouci
+        out[..., 3] = np.where(out[..., 3] > 0, 255, 0).astype(np.uint8)
+        return _framed(out, scale), _framed(colour, scale)
     if mode == "noir":                                            # cartoon : levres roses, interieur brun sombre, dents creme, langue rouge
         teeth = _open(sil & (lum > 195) & (r - b < 90) & (g > 180), 5)
         lip = _open(sil & ~teeth & (r > 170) & (g > 105) & (b > 110), 5)
@@ -98,7 +131,11 @@ def cards(img, x, y, w, h, mask, scale, mode):
         if len(pts) > 2:
             cv2.polylines(out, [pts], False, INK, line, cv2.LINE_AA)
 
-    def framed(im):
+    return _framed(out, scale), _framed(colour, scale)
+
+
+def _framed(im, scale):
+    if True:
         hh, ww = im.shape[:2]
         small = cv2.resize(im, (max(1, int(ww * scale)), max(1, int(hh * scale))), interpolation=cv2.INTER_AREA)
         canvas = np.zeros((CH, CW, 4), np.uint8)
@@ -107,7 +144,6 @@ def cards(img, x, y, w, h, mask, scale, mode):
         sy, sx = (small.shape[0] - sh) // 2, (small.shape[1] - sw) // 2
         canvas[oy:oy + sh, ox:ox + sw] = small[sy:sy + sh, sx:sx + sw]
         return canvas
-    return framed(out), framed(colour)
 
 
 def main():

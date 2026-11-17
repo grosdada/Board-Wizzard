@@ -57,6 +57,11 @@ const IMG_SETS = {
   pate2: ["Pâte à modeler · au trait, bouches rondes", "pate/n", { X: 12, M: 10, A: 5, E: 1, O: 0, U: 3, F: 11, D: 6, L: 8 }],
   patec: ["Pâte à modeler · couleurs, avec dents", "pate/c", { X: 12, M: 9, A: 2, E: 4, O: 0, U: 3, F: 11, D: 6, L: 7 }],
   pate2c: ["Pâte à modeler · couleurs, bouches rondes", "pate/c", { X: 12, M: 10, A: 5, E: 1, O: 0, U: 3, F: 11, D: 6, L: 8 }],
+  toon: ["Cartoon · au trait, par sons", "toon/n", { X: 5, M: 5, A: 0, E: 7, O: 1, U: 10, F: 6, D: 2, L: 4 }],
+  toon2: ["Cartoon · au trait, souriant", "toon/n", { X: 23, M: 13, A: 19, E: 14, O: 20, U: 11, F: 18, D: 22, L: 17 }],
+  toon3: ["Cartoon · au trait, dents serrées", "toon/n", { X: 5, M: 23, A: 12, E: 9, O: 11, U: 10, F: 21, D: 15, L: 8 }],
+  toonc: ["Cartoon · couleurs, par sons", "toon/c", { X: 5, M: 5, A: 0, E: 7, O: 1, U: 10, F: 6, D: 2, L: 4 }],
+  toon2c: ["Cartoon · couleurs, souriant", "toon/c", { X: 23, M: 13, A: 19, E: 14, O: 20, U: 11, F: 18, D: 22, L: 17 }],
 };
 const CARD = (path, n) => `<image href="/web/mouths/${path}${String(n).padStart(2, "0")}.png" x="-60" y="-40" width="120" height="80"/>`;
 export const SETS = { capsule: "Trait et capsule", dessin: "Dessiné (trait fin)", graphique: "Graphique (plein)" };
