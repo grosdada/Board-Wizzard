@@ -199,3 +199,4 @@ label.row.range.off { opacity: .4; }
 .mh-pt { fill: var(--accent); stroke: #0e1b19; stroke-width: 2; cursor: crosshair; vector-effect: non-scaling-stroke; }
 .drawing svg { cursor: crosshair; } .drawing .layer, .drawing .mark { pointer-events: none; }
 .row.wrap { flex-wrap: wrap; }
+.keyrow { flex-wrap: nowrap; gap: 8px; } .keyrow > span { flex: 0 0 34%; } .keyrow > input { flex: 1; min-width: 0; }

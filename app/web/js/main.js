@@ -694,7 +694,13 @@ class App {
     const qb = f(s.qbuilder_settings, "…\\Workflows-Q-Builder\\local_settings.json");
     const len = h("select", [[73, "3 s (73 images)"], [90, "3,75 s"], [107, "4,5 s"], [124, "5,2 s (124 images)"]].map(([v, t]) => h("option", { value: v, selected: v === s.render.orbit_length }, t)));
     const tgt = h("select", [["auto", "Auto : machines d'abord, fal sinon"], ["local", "Machines seulement"], ["fal", "fal seulement"]].map(([v, t]) => h("option", { value: v, selected: v === s.render.target }, t)));
-    const key = f(s.fal.key, "clé fal du poste", "password"), myKey = f(localStorage.getItem("bw.falKey") || "", "ma clé fal (reste dans ce navigateur)", "password");
+    // champ secret : toujours masque, jamais propose par l'historique du navigateur, avec un bouton pour coller
+    const secret = (v, ph) => h("input", { type: "password", value: v ?? "", placeholder: ph || "", autocomplete: "new-password", name: "bw-" + uid(), spellcheck: "false", "data-lpignore": "true", "data-1p-ignore": "true" });
+    const paste = (inp) => h("button.mini", { type: "button", title: "Coller le contenu du presse-papiers dans ce champ", on: { click: async (e) => {
+      e.preventDefault();
+      try { const t = (await navigator.clipboard.readText()).trim(); if (!t) return toast("Le presse-papiers est vide.", "error"); inp.value = t; toast("Clé collée (" + t.length + " caractères). N'oublie pas « Enregistrer »."); }
+      catch (err) { toast("Le navigateur refuse l'accès au presse-papiers : clique dans le champ puis Ctrl+V.", "error"); } } } }, "Coller");
+    const key = secret(s.fal.key, "clé fal du poste"), myKey = secret(localStorage.getItem("bw.falKey") || "", "ma clé fal (reste dans ce navigateur)");
     const orbit = f(s.fal.orbit), edit = f(s.fal.edit), t2i = f(s.fal.t2i);
     const pw = f(s.server.password || "", "vide = pas de mot de passe", "password");
     modal("Réglages", h("div.form.settings",
@@ -704,7 +710,7 @@ class App {
       h("label.col", "Une machine par ligne : nom | adresse", workers),
       h("label.col", "Réglages de Workflows Q-builder (ses machines sont reprises)", qb),
       h("h4", "Calcul"), h("label.row", "Durée d'une orbite", len), h("label.row", "Où calculer par défaut", tgt),
-      h("h4", "fal (cloud)"), h("label.row", "Clé du poste", key), h("label.row", "Ma clé (ce navigateur)", myKey),
+      h("h4", "fal (cloud)"), h("div.row.keyrow", h("span", "Clé du poste"), key, paste(key)), h("div.row.keyrow", h("span", "Ma clé (ce navigateur)"), myKey, paste(myKey)),
       h("label.row", "Modèle orbite", orbit), h("label.row", "Modèle édition / Integrate", edit), h("label.row", "Modèle image", t2i),
       h("p.muted", "Sur fal, l'orbite H3 + LoRA dure 5 s au minimum ; « minimax/h3-max/camera-controls » accepte 3 s. fal n'a pas pu être testé sans clé."),
       h("h4", "Accès"), h("label.row", "Mot de passe de l'application", pw),
