@@ -10,7 +10,7 @@
 import { h, modal, toast, history, upload, get, post } from "./api.js";
 import { MOUTHS, SETS, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, frameToAngle, angleToFrame, bodyFill } from "./model.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, frameToAngle, angleToFrame, bodyFill, wiggleFilter } from "./model.js";
 import { drawSvg, W } from "./draw.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
@@ -99,7 +99,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     o += `<g transform="translate(${f1(bdx + c.cx * W)} ${f1(bdy + c.cy * H)}) scale(${f3(kb || 1)}) translate(${f1(-c.cx * W)} ${f1(-c.cy * H)})"${kb ? "" : ` display="none"`}><g${blur(1)}>`;
     if (bgInfo) {
       const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, pan.view), vf = vecFrame(bgInfo, again);
-      if (vf) { const st = inkStroke(pan.bglw); o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})"><path d="${vf.body}" fill="#fff"/><path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/></g>`; }
+      if (vf) { const st = inkStroke(pan.bglw), bw = wiggleFilter(`${pre}wgb`, pan.bghand, pan.bgwave, vf.w, vf.h, 11); o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})">${bw}<path d="${vf.body}" fill="#fff"/><path d="${vf.ink}"${bw ? ` filter="url(#${pre}wgb)"` : ""} fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/></g>`; }
       else o += `<image href="${bgInfo.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/>`;
     }
     o += "</g>" + (drawBg ? `<g${blur(0.9)}>${drawBg}</g>` : "") + "</g>";
@@ -119,8 +119,9 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h, col);
         let inner = "";
         if (shd) shadeShapes(l.sh, vf).forEach((pd, i) => { inner += `<clipPath id="${pre}s-${l.id}-${i}"><path d="${pd}"/></clipPath><g clip-path="url(#${pre}s-${l.id}-${i})"><path d="${pd}" fill="${shd.fill}"/><path d="${pd}" fill="${col}" transform="translate(${f1(l.flip ? -shd.dx : shd.dx)} ${f1(shd.dy)})"/></g>`; });
-        o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})"><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="${col}" data-layer="${l.id}"/>` +
-          `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g>`;
+        const lwf = wiggleFilter(`${pre}wg-${l.id}`, l.hand, l.wave, vf.w, vf.h);
+        o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})">${lwf}<g${lwf ? ` filter="url(#${pre}wg-${l.id})"` : ""}><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="${col}" data-layer="${l.id}"/>` +
+          `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
       if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l))}</g>`;   // lip sync : la bouche qui parle
       if (sel === l.id) o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
@@ -229,7 +230,7 @@ export function openMontage(app, pid) {
   // ------------------------------------------------------------------------------------------ reglages (droite)
   const side = h("div.mt-side");
   let syncProps = () => {};
-  const folds = { sh: true, gs: true, lip: true, lipt: false, lipm: false, tts: false };
+  const folds = { sh: true, gs: true, lip: true, lipt: false, lipm: false, tts: false, wig: false };
   const fold = (key, label, ...rows) => h("details.fold", { open: !!folds[key], on: { toggle: (e) => { folds[key] = e.target.open; } } }, h("summary", label), ...rows);
                     // depliants ouverts ou fermes
   function props() {
@@ -266,7 +267,8 @@ export function openMontage(app, pid) {
         side.append(h("label.row.range", { title: "0 = tout devant, 1 = au fond. Sert à la parallaxe, au flou de profondeur et à l'ordre des éléments." }, "Profondeur", inp, out));
       }
       if (sprite(it, cur().v, cur().f)?.vec) {
-        side.append(range("Trait", "lw", -2, 6, 0.1, (x) => (+x).toFixed(1)),
+        const wig = (label, k, min, max, def) => { const out = h("output", (l[k] ?? def).toFixed(1)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.1, value: l[k] ?? def, on: { input: (e) => { l[k] = +e.target.value; out.textContent = (+e.target.value).toFixed(1); paint(); } } }), out); };
+        side.append(range("Trait", "lw", -2, 6, 0.1, (x) => (+x).toFixed(1)), fold("wig", "Tremblé du trait", wig("Tremblé", "hand", 0, 10, 0), wig("Ondulation", "wave", 0.5, 12, 4)),
           h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
             swatch(l.col || "#ffffff", (c) => { l.col = c; paint(); }),
             l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; paint(); props(); } } }, "Blanc") : ""));

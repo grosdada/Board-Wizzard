@@ -46,6 +46,15 @@ export function vecReady(sp) { return new Promise((ok) => { const f = vecFrame(s
 /** Ombre graphique d'un dessin en traces, sans calcul : la silhouette moins elle-meme decalee vers la lumiere laisse
  *  un aplat gris du cote oppose. sh = { on, g (gris 0 = noir, 1 = blanc), w (largeur, en % de la hauteur), a (angle d'ou
  *  vient la lumiere, degres : 0 = droite, 90 = haut, 180 = gauche) }. Renvoie { fill, dx, dy } en unites du dessin, ou null. */
+/** Tremble d'un dessin en traces (personnage, asset, decor) : un bruit doux deplace le trait. hand : force (0 = net),
+ *  wave : longueur des ondulations. w, h : taille du dessin dans ses unites. Rend le balisage du filtre SVG, ou "". */
+export function wiggleFilter(id, hand, wave, w, h, seed = 5) {
+  if (!(hand > 0)) return "";
+  const amp = hand * h / 380, pad = amp + 4;
+  return `<filter id="${id}" filterUnits="userSpaceOnUse" x="${(-pad).toFixed(1)}" y="${(-pad).toFixed(1)}" width="${(w + 2 * pad).toFixed(1)}" height="${(h + 2 * pad).toFixed(1)}" color-interpolation-filters="sRGB">` +
+    `<feTurbulence type="fractalNoise" baseFrequency="${(55 / (Math.max(0.5, wave ?? 4) * h)).toFixed(5)}" numOctaves="2" seed="${seed}"/>` +
+    `<feDisplacementMap in="SourceGraphic" scale="${amp.toFixed(2)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
+}
 /** Couleur unie d'un dessin en traces (l.col) : blanc par defaut. */
 export function bodyFill(l) { return l && /^#[0-9a-f]{6}$/i.test(l.col || "") ? l.col : "#ffffff"; }
 /** Ombre d'un dessin : la couleur du corps assombrie (un gris sur un corps blanc), decalee vers la lumiere. */

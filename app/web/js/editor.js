@@ -4,7 +4,7 @@
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
-import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill } from "./model.js";
+import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill, wiggleFilter } from "./model.js";
 import { drawSvg, W as DRAW_W } from "./draw.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 
@@ -114,7 +114,9 @@ export class Editor {
           if (bvf) {                                         // decor dessine, en traces : net au zoom, trait reglable
             const st = inkStroke(pan.bglw), gb = s("g", { transform: `translate(${pl.x} ${pl.y}) scale(${pl.w / bvf.w} ${pl.h / bvf.h})`, filter: this.blur(defs, blur), "data-bg": g.id });
             gb.append(s("path", { d: bvf.body, fill: "#ffffff", "data-bg": g.id }));
-            gb.append(s("path", { d: bvf.ink, fill: "#111111", "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round", "pointer-events": "none" }));
+            const bw = wiggleFilter("wgb-" + g.id, pan.bghand, pan.bgwave, bvf.w, bvf.h, 11);     // tremble du trait du decor
+            if (bw) defs.insertAdjacentHTML("beforeend", bw);
+            gb.append(s("path", { d: bvf.ink, fill: "#111111", "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round", "pointer-events": "none", filter: bw ? `url(#wgb-${g.id})` : null }));
             grp.append(gb);
           } else
           grp.append(this.image("b:" + g.id, bg.url, { x: pl.x, y: pl.y, width: pl.w, height: pl.h, "data-bg": g.id,
@@ -144,7 +146,11 @@ export class Editor {
             const cid = "vc-" + g.id + "-" + l.id, clip = s("clipPath", { id: cid });
             clip.append(s("path", { d: vf.body }));
             defs.append(clip);
-            gv.append(s("path", Object.assign({ d: vf.body, fill: col }, tag)));
+            const lw = wiggleFilter("wg-" + g.id + "-" + l.id, l.hand, l.wave, vf.w, vf.h);      // tremble du trait : tout le dessin ondule ensemble
+            if (lw) defs.insertAdjacentHTML("beforeend", lw);
+            const gw = lw ? s("g", { filter: `url(#wg-${g.id}-${l.id})` }) : gv;
+            if (gw !== gv) gv.append(gw);
+            gw.append(s("path", Object.assign({ d: vf.body, fill: col }, tag)));
             const gi = s("g", { "clip-path": `url(#${cid})` });
             const shd = shadeOf(l.sh, vf.h, col);
             if (shd) {                                       // ombre : aplat gris, puis la silhouette decalee en blanc par-dessus
@@ -159,7 +165,7 @@ export class Editor {
               });
             }
             gi.append(s("path", Object.assign({ d: vf.ink, fill: "#111111", "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round" }, tag)));
-            gv.append(gi);
+            gw.append(gi);
             if (st.outline > 0) gv.append(s("path", { d: vf.body, fill: "none", stroke: "#111111", "stroke-width": st.outline, "pointer-events": "none" }));
             grp.append(gv);
             if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };

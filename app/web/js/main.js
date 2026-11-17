@@ -597,13 +597,14 @@ class App {
       const rs = range("Taille", l.s, 0.05, 12, 0.01, (x) => { l.s = x; }, "lscale");
       const rpx = range("Position ↔", l.x, -4, 5, 0.005, (x) => { l.x = x; }, "lmove"), rpy = range("Position ↕", l.y, -4, 8, 0.005, (x) => { l.y = x; }, "lmove");
       this.syncLayer = () => { for (const [r, v] of [[rs, l.s], [rpx, l.x], [rpy, l.y]]) { r.querySelector("input").value = v; r.querySelector("output").textContent = fmt(v); } };
+      // dépliant : reste ouvert ou fermé d'un élément à l'autre
+      const fold = (key, label, ...rows) => { this.folds = this.folds || { sh: true, gs: true, wig: false };
+        return h("details.fold", { open: !!this.folds[key], on: { toggle: (e) => { this.folds[key] = e.target.open; } } }, h("summary", label), ...rows); };
       if (sp && sp.vec) box.append(h("div", { title: "Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin." }, range("Trait ⓘ", l.lw || 0, -2, 6, 0.1, (x) => { l.lw = x; }, "lw")),
+        fold("wig", "Tremblé du trait", range("Tremblé", l.hand || 0, 0, 10, 0.1, (x) => { l.hand = x; }, "hand"), range("Ondulation", l.wave ?? 4, 0.5, 12, 0.1, (x) => { l.wave = x; }, "hand")),
         h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
           swatch(l.col || "#ffffff", (c) => { l.col = c; this.editor.render(true); this.commitSoon("col"); }),
           l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; this.commit("col"); this.editor.render(); this.refreshInspector(); } } }, "Blanc") : ""));
-      // dépliant : reste ouvert ou fermé d'un élément à l'autre
-      const fold = (key, label, ...rows) => { this.folds = this.folds || { sh: true, gs: true };
-        return h("details.fold", { open: !!this.folds[key], on: { toggle: (e) => { this.folds[key] = e.target.open; } } }, h("summary", label), ...rows); };
       if (sp && sp.vec) {
         const sh = l.sh || {}, put = (k, x) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135 }, l.sh, { [k]: x }); };
         box.append(h("label.row.check", { title: "Un aplat gris posé sur le dessin, du côté opposé à la lumière. Sans calcul." }, h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), "Ombre"));
@@ -675,7 +676,8 @@ class App {
       const ry = range("Cadrage ↕", pos("y"), -100, 100, 1, (x) => setPos("y", x), "pan");
       const sync = () => { for (const [r, a] of [[rx, "x"], [ry, "y"]]) { const t = travel(), free = (a === "x" ? t.mx : t.my) > 1e-4; r.querySelector("input").value = pos(a); r.querySelector("output").textContent = pos(a); r.querySelector("input").disabled = !free; r.classList.toggle("off", !free); } };
       this.syncPan = sync;
-      if (bg.vec) box.append(range("Trait du fond", pan.bglw || 0, -2, 6, 0.1, (x) => { pan.bglw = x; }, "bglw"));
+      if (bg.vec) box.append(range("Trait du fond", pan.bglw || 0, -2, 6, 0.1, (x) => { pan.bglw = x; }, "bglw"),
+        range("Tremblé du fond", pan.bghand || 0, 0, 10, 0.1, (x) => { pan.bghand = x; }, "bghand"), range("Ondulation du fond", pan.bgwave ?? 4, 0.5, 12, 0.1, (x) => { pan.bgwave = x; }, "bghand"));
       box.append(range("Zoom du fond", (pan.view || {}).zoom || 1, 1, 6, 0.01, (x) => { const t0 = travel(), kx = t0.mx > 1e-4 ? t0.pl.ox / t0.mx : 0, ky = t0.my > 1e-4 ? t0.pl.oy / t0.my : 0; pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); const t1 = travel(); pan.view.ox = kx * t1.mx; pan.view.oy = ky * t1.my; sync(); }, "pan"),
         rx, ry, h("div.row", h("button.mini", { title: "Zoom 1, fond centré", on: { click: () => { pan.view = { zoom: 1, ox: 0, oy: 0 }; this.commit("pan"); this.editor.render(); this.refreshInspector(); } } }, "Recentrer le fond"),
           h("span.muted", bg.orbit ? "Maj + glisser dans la case : recadrer" : "Glisser dans la case : recadrer")));
