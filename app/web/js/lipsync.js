@@ -62,6 +62,15 @@ const IMG_SETS = {
   toon3: ["Cartoon · au trait, dents serrées", "toon/n", { X: 5, M: 23, A: 12, E: 9, O: 11, U: 10, F: 21, D: 15, L: 8 }],
   toonc: ["Cartoon · couleurs, par sons", "toon/c", { X: 5, M: 5, A: 0, E: 7, O: 1, U: 10, F: 6, D: 2, L: 4 }],
   toon2c: ["Cartoon · couleurs, souriant", "toon/c", { X: 23, M: 13, A: 19, E: 14, O: 20, U: 11, F: 18, D: 22, L: 17 }],
+  expr: ["Expressif · au trait, par sons", "expr/n", { X: 29, M: 20, A: 22, E: 27, O: 5, U: 16, F: 15, D: 18, L: 6 }],
+  expr2: ["Expressif · au trait, joyeux", "expr/n", { X: 38, M: 37, A: 39, E: 17, O: 21, U: 11, F: 7, D: 28, L: 25 }],
+  expr3: ["Expressif · au trait, en colère", "expr/n", { X: 59, M: 56, A: 50, E: 51, O: 24, U: 48, F: 46, D: 57, L: 9 }],
+  expr4: ["Expressif · au trait, triste", "expr/n", { X: 41, M: 42, A: 30, E: 31, O: 34, U: 53, F: 36, D: 33, L: 32 }],
+  exprc: ["Expressif · couleurs, par sons", "expr/c", { X: 29, M: 20, A: 22, E: 27, O: 5, U: 16, F: 15, D: 18, L: 6 }],
+  expr2c: ["Expressif · couleurs, joyeux", "expr/c", { X: 38, M: 37, A: 39, E: 17, O: 21, U: 11, F: 7, D: 28, L: 25 }],
+  noir: ["Tordu · au trait", "noir/n", { X: 2, M: 11, A: 0, E: 4, O: 1, U: 10, F: 3, D: 6, L: 5 }],
+  noir2: ["Tordu · au trait, de travers", "noir/n", { X: 11, M: 2, A: 9, E: 7, O: 10, U: 13, F: 3, D: 8, L: 12 }],
+  noirc: ["Tordu · couleurs", "noir/c", { X: 2, M: 11, A: 0, E: 4, O: 1, U: 10, F: 3, D: 6, L: 5 }],
 };
 const CARD = (path, n) => `<image href="/web/mouths/${path}${String(n).padStart(2, "0")}.png" x="-60" y="-40" width="120" height="80"/>`;
 export const SETS = { capsule: "Trait et capsule", dessin: "Dessiné (trait fin)", graphique: "Graphique (plein)" };

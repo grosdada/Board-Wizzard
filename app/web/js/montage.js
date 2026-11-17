@@ -761,7 +761,18 @@ export function openMontage(app, pid) {
   const bar = h("div.mt-bar", h("button.mini", { title: "Revenir au début", on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn,
     h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), "En boucle"), clock,
     h("span.muted", { title: "Dans une piste : glisser trace un lasso qui prend les clés, Ctrl + clic en ajoute une. Les clés prises se déplacent ensemble et s'effacent avec Suppr. La règle des secondes déplace la tête de lecture." }, "Maj : aimant sur les clés · glisser : lasso ⓘ"),
-    h("span.spacer"), depthBtn, h("label.row", "Durée (s)", dur));
+    h("span.spacer"),
+    h("button.mini.danger", { title: "Retire toutes les clés de toutes les pistes : chaque élément et la caméra reviennent à leur place de départ. Ctrl+Z pour revenir en arrière.", on: { click: () => {
+      const n = Object.values(anim.tracks).reduce((q, ks) => q + ks.length, 0);
+      if (!n) return toast("Aucune clé à effacer.");
+      if (!confirm(`Effacer toute l'animation de cette case ?
+${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.tracks[k].length).length} piste(s). Les voix et les réglages des éléments sont gardés.`)) return;
+      stop(); hist.snap();
+      for (const k of Object.keys(anim.tracks)) delete anim.tracks[k];
+      picked.clear(); selKey = null; hist.snap(); paint(); lanes(); props();
+      toast("Animation effacée. Ctrl+Z pour la retrouver.");
+    } } }, "🧹 Effacer l'animation"),
+    depthBtn, h("label.row", "Durée (s)", dur));
   paint(); lanes(); props();
   const m = modal(`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, keyBox, tl),
     [{ label: "Annuler", click: done },

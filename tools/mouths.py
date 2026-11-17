@@ -1,8 +1,10 @@
 """Decoupe une planche de bouches en cartes pour le lip sync : au trait noir et blanc, et telles quelles (couleurs).
 
-    python tools/mouths.py planche.png nom [clair|noir|peau]
+    python tools/mouths.py planche.png nom [clair|noir|peau|violet]
 
     clair : levres rouges sur fond clair (pate a modeler)        noir : bouches claires sur fond noir (cartoon)
+    violet : bouches au trait violet sombre sur fond clair, legendes en noir (planche de 60 expressions). Le trait
+            devient noir, ce qu'il enferme devient blanc, la langue orange devient grise.
     peau  : bouches dessinees sur une pastille couleur peau, fond blanc. Au trait, la peau devient transparente : il ne
             reste que le dessin de la bouche, et c'est le « masque de peau » du personnage qui fait le fond.
 
@@ -20,7 +22,7 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-UP = 4                      # agrandissement avant le trait, pour des contours lisses
+UP = 4                      # agrandissement avant le trait, pour des contours lisses (6 pour les petites planches)
 CW, CH = 360, 240           # cadre commun des cartes
 INK = (17, 17, 17, 255)
 
@@ -38,6 +40,13 @@ def _skin(r, g, b):
     return (r > 215) & (g > 160) & (g < 222) & (b > 120) & (b < 200) & (r - b > 40)
 
 
+def _violet(r, g, b, lum):
+    """Trait violet sombre (pas le noir des legendes) ou langue orange."""
+    ink = (lum < 150) & (b - g > 9) & (r - g > 4)
+    tongue = (r > 190) & (g < 150) & (b < 120) & (r - g > 70)
+    return ink, tongue
+
+
 def find(img, mode):
     """Silhouettes des bouches, trous bouches. Rend [(x, y, w, h, masque)] rangees ligne par ligne."""
     r, g, b, lum = _chan(img)
@@ -47,6 +56,27 @@ def find(img, mode):
     elif mode == "peau":
         m = _skin(r, g, b).astype(np.uint8) * 255
         k, top = 9, 0
+    elif mode == "violet":                                        # traits separes d'une meme bouche : on les soude avant de compter
+        ink, tongue = _violet(r, g, b, lum)
+        raw = ((ink | tongue).astype(np.uint8)) * 255
+        glue = cv2.dilate(raw, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 13)))
+        cs, _ = cv2.findContours(glue, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        out = []
+        for c in cs:
+            x, y, w, h = cv2.boundingRect(c)
+            mask = np.zeros(img.shape[:2], np.uint8)
+            cv2.drawContours(mask, [c], -1, 255, -1)
+            if int((raw[y:y + h, x:x + w] > 0).sum()) < 25 or w < 24:
+                continue
+            out.append((x, y, w, h, mask))
+        rows = []
+        for o in sorted(out, key=lambda o: o[1] + o[3] / 2):
+            cy = o[1] + o[3] / 2
+            if rows and abs(cy - np.mean([q[1] + q[3] / 2 for q in rows[-1]])) < 30:
+                rows[-1].append(o)
+            else:
+                rows.append([o])
+        return [o for row in rows for o in sorted(row, key=lambda o: o[0])]
     else:
         m = ((r > 120) & (r - g > 45) & (r - b > 35)).astype(np.uint8) * 255
         k, top = 13, 85                                           # 85 : sous l'en-tete de la capture
@@ -84,6 +114,23 @@ def cards(img, x, y, w, h, mask, scale, mode):
     colour = np.dstack([crop, np.where(sil, 255, 0).astype(np.uint8)])
     soft = cv2.bilateralFilter(crop, 9, 50, 9)
     r, g, b, lum = _chan(soft)
+    if mode == "violet":
+        ink, tongue = _violet(r, g, b, lum)
+        ink, tongue = ink & sil, tongue & sil
+        solid = (ink | tongue).astype(np.uint8)
+        solid = cv2.morphologyEx(solid, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13)))   # barriere : on bouche les petites coupures du trait
+        flood = np.zeros((solid.shape[0] + 2, solid.shape[1] + 2), np.uint8)
+        bg = (solid * 255).copy()
+        cv2.floodFill(bg, flood, (0, 0), 128)                     # ce que le fond atteint depuis le bord
+        for cx, cy in ((bg.shape[1] - 1, 0), (0, bg.shape[0] - 1), (bg.shape[1] - 1, bg.shape[0] - 1)):
+            if bg[cy, cx] == 0:
+                cv2.floodFill(bg, flood, (cx, cy), 128)
+        inside = (bg == 0) | ((solid > 0) & ~ink & ~tongue)      # enferme par le trait : dents, levres
+        out = np.zeros(crop.shape[:2] + (4,), np.uint8)
+        out[inside] = (255, 255, 255, 255)
+        out[tongue] = (190, 190, 190, 255)
+        out[ink] = INK
+        return _framed(out, scale), _framed(colour, scale)
     if mode == "peau":                                            # dessin sur pastille de peau : la peau s'efface, le dessin reste
         skin = sil & _skin(r, g, b)
         skin = cv2.morphologyEx(skin.astype(np.uint8), cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))) > 0
@@ -160,7 +207,7 @@ def main():
     if not found:
         sys.exit("aucune bouche trouvee (essayer l'autre mode : clair ou noir)")
     scale = min((CW - 24) / ((max(o[2] for o in found) + 12) * UP), (CH - 16) / ((max(o[3] for o in found) + 12) * UP))
-    cols = 4
+    cols = 5 if mode == "violet" else 4
     sheet = np.full((((len(found) + cols - 1) // cols) * CH, 2 * cols * CW, 3), 200, np.uint8)
     for i, o in enumerate(found):
         line, colour = cards(img, *o, scale, mode)
