@@ -132,6 +132,13 @@ export function layerBox(bb, l, sp) {
   const cx = bb.x0 + l.x * bb.w, y1 = bb.y0 + l.y * bb.h;
   return { x: cx - w / 2, y: y1 - h, w, h, cx, y1 };
 }
+/** Ombre portee : une tache sombre et floue aux pieds. l.gs = { on, a (opacite), w (largeur, en largeurs du sujet) }. */
+export function groundShadow(l, box) {
+  const g = l.gs;
+  if (!g || !g.on) return null;
+  const rx = box.w * 0.5 * (g.w ?? 0.8), ry = Math.max(1.5, rx * 0.17);
+  return { cx: box.cx ?? box.x + box.w / 2, cy: box.y + box.h - ry * 0.15, rx, ry, a: g.a ?? 0.35, blur: ry * 0.4 };
+}
 // profondeur 0 (premier plan) a 1 (fond) : par defaut, l'ordre d'empilement
 export function depthOf(panel, i) {
   const ls = panel.layers || [], l = ls[i];

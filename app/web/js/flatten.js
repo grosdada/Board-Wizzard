@@ -3,7 +3,7 @@
 // mieux sur une image nette ; le flou reste un reglage d'affichage).
 import { loadImage } from "./api.js";
 import { drawImage } from "./draw.js";
-import { sprite, placement, layerBox, depthOf, blurOf, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
+import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   const pg = app.page(), pan = pg.panels[g.id] || {}, bb = g.bbox;
@@ -44,6 +44,14 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     if (dim) ctx.drawImage(dim, 0, 0, cv.width, cv.height);
   }
   const layers = pan.layers || [];
+  const cast = (l, box) => {                               // ombre portee : tache floue aux pieds, sous l'element
+    const q = groundShadow(l, box);
+    if (!q) return;
+    ctx.save();
+    ctx.filter = `blur(${(q.blur * kx).toFixed(2)}px)`; ctx.globalAlpha = q.a; ctx.fillStyle = "#000000";
+    ctx.scale(kx, ky); ctx.beginPath(); ctx.ellipse(q.cx, q.cy, q.rx, q.ry, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  };
   for (let i = 0; i < layers.length; i++) {
     const l = layers[i], item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
     if (!sp) continue;
@@ -52,6 +60,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       const box = layerBox(local, l, { w: vf.w, h: vf.h }), sc = Math.min(box.w / vf.w, box.h / vf.h);
       const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, st = inkStroke(l.lw), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);
       const body = new Path2D(vf.body), ink = new Path2D(vf.ink);
+      cast(l, box);
       ctx.save();
       ctx.filter = blur > 0.4 ? `blur(${(blur * kx).toFixed(2)}px)` : "none";
       ctx.scale(kx, ky);
@@ -78,6 +87,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     }
     const im = await loadImage(sp.url);
     const box = layerBox(local, l, { w: im.naturalWidth, h: im.naturalHeight });
+    cast(l, box);
     draw(im, box.x, box.y, box.w, box.h, sharp ? 0 : blurOf(pan, depthOf(pan, i), bb), l.flip);
   }
   return new Promise((ok) => cv.toBlob(ok, "image/png"));

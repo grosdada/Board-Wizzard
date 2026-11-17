@@ -598,16 +598,23 @@ class App {
       const rs = range("Taille", l.s, 0.05, 12, 0.01, (x) => { l.s = x; }, "lscale");
       const rpx = range("Position ↔", l.x, -4, 5, 0.005, (x) => { l.x = x; }, "lmove"), rpy = range("Position ↕", l.y, -4, 8, 0.005, (x) => { l.y = x; }, "lmove");
       this.syncLayer = () => { for (const [r, v] of [[rs, l.s], [rpx, l.x], [rpy, l.y]]) { r.querySelector("input").value = v; r.querySelector("output").textContent = fmt(v); } };
-      if (sp && sp.vec) box.append(range("Trait", l.lw || 0, -2, 6, 0.1, (x) => { l.lw = x; }, "lw"),
-        h("p.muted", "Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin."));
+      if (sp && sp.vec) box.append(h("div", { title: "Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin." }, range("Trait ⓘ", l.lw || 0, -2, 6, 0.1, (x) => { l.lw = x; }, "lw")));
+      // dépliant : reste ouvert ou fermé d'un élément à l'autre
+      const fold = (key, label, ...rows) => { this.folds = this.folds || { sh: true, gs: true };
+        return h("details.fold", { open: !!this.folds[key], on: { toggle: (e) => { this.folds[key] = e.target.open; } } }, h("summary", label), ...rows); };
       if (sp && sp.vec) {
         const sh = l.sh || {}, put = (k, x) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135 }, l.sh, { [k]: x }); };
-        box.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), "Ombre (aplat gris, sans calcul)"));
-        if (sh.on) box.append(range("Gris de l'ombre", sh.g ?? 0.72, 0.2, 0.95, 0.01, (x) => put("g", x), "shade"),
-          range("Largeur de l'ombre", sh.w ?? 5, 0.5, 25, 0.1, (x) => put("w", x), "shade"),
+        box.append(h("label.row.check", { title: "Un aplat gris posé sur le dessin, du côté opposé à la lumière. Sans calcul." }, h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), "Ombre"));
+        if (sh.on) box.append(fold("sh", "Réglages de l'ombre", range("Gris", sh.g ?? 0.72, 0.2, 0.95, 0.01, (x) => put("g", x), "shade"),
+          range("Largeur", sh.w ?? 5, 0.5, 25, 0.1, (x) => put("w", x), "shade"),
           range("Lumière (angle)", sh.a ?? 135, 0, 360, 1, (x) => put("a", x), "shade"),
-          range("Formes détaillées", sh.k ?? 0, 0, 8, 1, (x) => put("k", x), "shade"),
-          h("p.muted", "0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin (tête, torse…), une par cran."));
+          h("div", { title: "0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin (tête, torse…), une par cran." }, range("Formes détaillées ⓘ", sh.k ?? 0, 0, 8, 1, (x) => put("k", x), "shade"))));
+      }
+      {
+        const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); };
+        box.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); this.commit("cast"); this.editor.render(); this.refreshInspector(); } } }), "Ombre portée"));
+        if (gs.on) box.append(fold("gs", "Réglages de l'ombre portée", range("Force", gs.a ?? 0.35, 0.05, 0.9, 0.01, (x) => putg("a", x), "cast"),
+          range("Largeur", gs.w ?? 0.8, 0.2, 2.5, 0.01, (x) => putg("w", x), "cast")));
       }
       box.append(rs, rpx, rpy,
         range("Profondeur", depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"),
@@ -643,8 +650,7 @@ class App {
           h("button.mini" + ((mk.type === "frame" ? mk.dash !== false : mk.dash) ? ".on" : ""), { on: { click: () => { mk.dash = mk.type === "frame" ? mk.dash === false : !mk.dash; redo(); } } }, "Pointillés"),
           mk.type === "turn" ? h("button.mini", { on: { click: () => { mk.cw = mk.cw === false; redo(); } } }, "Inverser le sens")
             : mk.type !== "frame" ? h("button.mini" + (mk.both ? ".on" : ""), { on: { click: () => { mk.both = !mk.both; redo(); } } }, "Deux pointes") : ""),
-        h("div.row", h("button.mini", { on: { click: () => this.duplicateMark() } }, "Dupliquer"), h("button.mini.danger", { on: { click: () => this.removeMark() } }, "Supprimer")),
-        h("p.muted", "Glisser l'indication la déplace ; ses points ronds la déforment. Suppr l'efface."));
+        h("div.row", h("button.mini", { title: "Glisser l'indication la déplace ; ses points ronds la déforment.", on: { click: () => this.duplicateMark() } }, "Dupliquer"), h("button.mini.danger", { title: "Ou touche Suppr", on: { click: () => this.removeMark() } }, "Supprimer")));
       return;
     }
     // ---- la case
@@ -673,11 +679,10 @@ class App {
           h("span.muted", bg.orbit ? "Maj + glisser dans la case : recadrer" : "Glisser dans la case : recadrer")));
       sync();
     } else this.syncPan = null;
-    box.append(h("h4", "Profondeur de champ"),
+    box.append(h("h4", { title: "0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre)." }, "Profondeur de champ ⓘ"),
       h("label.row.check", h("input", { type: "checkbox", checked: dof.on, on: { change: (e) => { dof.on = e.target.checked; this.commit("dof"); this.editor.render(); } } }), "Flouter selon la profondeur"),
       range("Mise au point", dof.focus, 0, 1, 0.01, (x) => { dof.focus = x; dof.on = true; }, "dof"),
-      range("Flou", dof.amount, 0, 60, 1, (x) => { dof.amount = x; dof.on = true; }, "dof"),
-      h("p.muted", "0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre)."));
+      range("Flou", dof.amount, 0, 60, 1, (x) => { dof.amount = x; dof.on = true; }, "dof"));
     const style = h("select", [["photo", "Photoréaliste"], ["dessin", "Dessin"]].map(([v, t]) => h("option", { value: v, selected: v === (pan.style || this.guessStyle(pan)) }, t)));
     style.addEventListener("change", () => { pan.style = style.value; this.commitSoon("style"); });
     const extra = h("input", { type: "text", placeholder: "Consigne en plus (facultatif) : « night, rain »…" });

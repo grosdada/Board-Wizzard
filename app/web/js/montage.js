@@ -8,7 +8,7 @@
 //   tracks.fo : [{ t, fo (mise au point, 0 devant a 1 fond), e }]   ·   tracks.bl : [{ t, bl (force du flou), e }]
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { h, modal, toast } from "./api.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf } from "./model.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow } from "./model.js";
 import { drawSvg, W } from "./draw.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
@@ -73,8 +73,9 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   function markup(t, sel, again) {
     const c = camAt(t), dofOn = !!(pan.dof && pan.dof.on), blurs = {};
     // profondeur de champ : plus un plan est loin de la mise au point, plus il est flou
-    const blur = (depth) => {
-      const a = dofOn ? c.bl / 1000 * H * Math.abs(depth - c.fo) : 0;
+    const dofBlur = (depth) => (dofOn ? c.bl / 1000 * H * Math.abs(depth - c.fo) : 0);
+    const blur = (depth, more = 0) => {
+      const a = dofBlur(depth) + more;
       if (!(a > 0.4)) return "";
       const q = Math.round(a * 4);
       blurs[q] = `<filter id="${pre}bl${q}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="${q / 4}"/></filter>`;
@@ -97,6 +98,8 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const par = anim.parallax ? (anim.pstr ?? 0.4) * (depthOf(pan, li) - 0.5) : 0, bl = blur(depthOf(pan, li));
       const box = layerBox(bb, Object.assign({}, l, s, { x: s.x + (c.cx - 0.5) * par, y: s.y + (c.cy - 0.5) * par }), sp), vf = vecFrame(sp, again);
       const flip = l.flip ? `translate(${f1(2 * box.cx)} 0) scale(-1 1) ` : "";
+      const gsd = groundShadow(l, box);                    // ombre portee : sous l'element
+      if (gsd) o += `<ellipse cx="${f1(gsd.cx)}" cy="${f1(gsd.cy)}" rx="${f1(gsd.rx)}" ry="${f1(gsd.ry)}" fill="#000" opacity="${f3(gsd.a)}" style="pointer-events:none"${blur(depthOf(pan, li), gsd.blur)}/>`;
       if (vf) {
         const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, st = inkStroke(s.lw);
         const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h);
@@ -205,6 +208,7 @@ export function openMontage(app, pid) {
   // ------------------------------------------------------------------------------------------ reglages (droite)
   const side = h("div.mt-side");
   let syncProps = () => {};
+  const folds = { sh: true, gs: true };                    // depliants ouverts ou fermes
   function props() {
     side.textContent = "";
     const isCam = !!CAMS[sel], l = isCam ? null : layerOf(sel);
@@ -216,6 +220,7 @@ export function openMontage(app, pid) {
       rows.push(() => { const v = cur()[k]; if (document.activeElement !== inp) inp.value = v; out.textContent = fmt(v); });
       return h("label.row.range", label, inp, out);
     };
+    const fold = (key, label, ...rows) => h("details.fold", { open: !!folds[key], on: { toggle: (e) => { folds[key] = e.target.open; } } }, h("summary", label), ...rows);
     side.append(h("h4", isCam ? "🎥 Caméra" : (itemOf(l) ? itemOf(l).name : "Élément")));
     if (isCam) {
       side.append(range("Cadre ↔", "cx", -0.5, 1.5, 0.005), range("Cadre ↕", "cy", -0.5, 1.5, 0.005), range("Zoom", "z", 0.4, 5, 0.01), range("Inclinaison", "rot", -45, 45, 0.5, (x) => Math.round(x) + "°"),
@@ -241,8 +246,14 @@ export function openMontage(app, pid) {
         side.append(range("Trait", "lw", -2, 6, 0.1, (x) => (+x).toFixed(1)));
         const sh = l.sh || {};
         side.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: e.target.checked }); paint(); props(); } } }), "Ombre"));
-        if (sh.on) side.append(range("Gris de l'ombre", "shg", 0.2, 0.95, 0.01), range("Largeur de l'ombre", "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range("Lumière (angle)", "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
-          h("label.row.range", "Formes détaillées", h("input", { type: "range", min: 0, max: 8, step: 1, value: sh.k || 0, on: { input: (e) => { l.sh.k = +e.target.value; e.target.nextSibling.textContent = e.target.value; paint(); } } }), h("output", String(sh.k || 0))));
+        if (sh.on) side.append(fold("sh", "Réglages de l'ombre", range("Gris", "shg", 0.2, 0.95, 0.01), range("Largeur", "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range("Lumière (angle)", "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
+          h("label.row.range", { title: "0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin, une par cran." }, "Formes détaillées ⓘ", h("input", { type: "range", min: 0, max: 8, step: 1, value: sh.k || 0, on: { input: (e) => { l.sh.k = +e.target.value; e.target.nextSibling.textContent = e.target.value; paint(); } } }), h("output", String(sh.k || 0)))));
+      }
+      {
+        const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); paint(); };
+        const plain = (label, k, min, max, def) => { const out = h("output", (gs[k] ?? def).toFixed(2)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.01, value: gs[k] ?? def, on: { input: (e) => { putg(k, +e.target.value); out.textContent = (+e.target.value).toFixed(2); } } }), out); };
+        side.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); props(); } } }), "Ombre portée"));
+        if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée", plain("Force", "a", 0.05, 0.9, 0.35), plain("Largeur", "w", 0.2, 2.5, 0.8)));
       }
       const move = (d) => { const i = pan.layers.indexOf(l), j = d === "top" ? pan.layers.length - 1 : d === "bottom" ? 0 : i + d; if (j < 0 || j >= pan.layers.length || j === i) return;
         const has = pan.layers.some((x) => x.d != null);       // profondeurs reglees : elles restent rangees dans l'ordre

@@ -6,7 +6,7 @@ import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
 import { vecFrame, inkStroke, shadeOf, shadeShapes } from "./model.js";
 import { drawSvg, W as DRAW_W } from "./draw.js";
-import { sprite, preload, placement, layerBox, depthOf, blurOf, background, clamp, variantOf, pad3 } from "./model.js";
+import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const s = (tag, attrs = {}) => {
@@ -132,6 +132,9 @@ export class Editor {
           const item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
           if (!sp) return;
           const box = layerBox(bb, l, sp);
+          const gsd = groundShadow(l, box);                  // ombre portee : sous l'element
+          if (gsd) grp.append(s("ellipse", { cx: gsd.cx, cy: gsd.cy, rx: gsd.rx, ry: gsd.ry, fill: "#000000", opacity: gsd.a, "pointer-events": "none",
+                                             filter: this.blur(defs, gsd.blur + blurOf(pan, depthOf(pan, i), bb)) }));
           const vf = vecFrame(sp, () => this.render(true));
           if (vf) {                                          // dessin en traces : net a tout zoom, trait reglable
             const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc;
