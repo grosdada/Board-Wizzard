@@ -21,9 +21,21 @@ export const PATHS = { line: ["Ligne", "╱"], free: ["Tracé libre", "✎"], bl
                        polyline: ["Ligne brisée point par point", "⌇"] };
 const OPEN = new Set(["line", "free", "polyline"]);       // sans remplissage
 const MANY = new Set(["free", "blob", "poly", "polyline"]);
-const FILLS = { none: "Aucun", white: "Blanc", black: "Noir", color: "Couleur", tone: "Gris en trame", grad: "Dégradé en trame" };
+// Remplissage d'une forme : fon (remplie ou non), col (couleur, blanc par defaut), tr (trame posee par-dessus la couleur).
+const TRAMES = { none: "Sans trame", tone: "Trame", grad: "Trame en dégradé" };
+/** Remplissage d'une forme, anciennes formes comprises (fill : none | white | black | color | tone | grad). */
+export function fillOf(sh) {
+  const ok = (c) => (/^#[0-9a-f]{3,8}$/i.test(c || "") ? c : null);
+  if (sh.fon !== undefined) return { on: !!sh.fon, col: ok(sh.col) || "#ffffff", tr: TRAMES[sh.tr] ? sh.tr : "none" };
+  const f = sh.fill;
+  if (f === "none") return { on: false, col: "#ffffff", tr: "none" };
+  if (f === "black") return { on: true, col: "#111111", tr: "none" };
+  if (f === "color") return { on: true, col: ok(sh.col) || "#808080", tr: "none" };
+  if (f === "tone" || f === "grad") return { on: true, col: "#ffffff", tr: f };
+  return { on: true, col: "#ffffff", tr: "none" };
+}
 const FORMS = { points: "Points", lignes: "Lignes", croix: "Croisillons" };
-const DEF = { stroke: "#111111", sw: 1, fill: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, col: "#808080" };   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
+const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, col: "#ffffff" };   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
 
 function geom(sh, H) {
   const P = sh.p.map(([x, y]) => [x * W, y * H]);
@@ -71,9 +83,10 @@ export function drawSvg(draw, H, pre) {
   shapes.forEach((raw, i) => {
     const sh = Object.assign({}, DEF, raw), d = geom(sh, H), id = pre + "s" + i, tag = `data-shape="${sh.id}"`;
     if (!d) return;
-    const open = OPEN.has(sh.t), bx = boxOf(sh, H);
+    const open = OPEN.has(sh.t), bx = boxOf(sh, H), fl = fillOf(raw);
     let one = "";
-    if (!open && (sh.fill === "tone" || sh.fill === "grad")) {
+    if (!open && fl.on) one += `<path ${tag} d="${d}" fill="${fl.col}"/>`;          // la couleur, puis la trame par-dessus
+    if (!open && fl.on && fl.tr !== "none") {
       const s = Math.max(4, sh.dot), rot = `rotate(${f1(sh.ha)})`;
       const cell = (pid, grad) => `<pattern id="${pid}" width="${f1(s)}" height="${f1(s)}" patternUnits="userSpaceOnUse" patternTransform="${rot}${grad === "l2" ? " rotate(90)" : ""}"><rect width="${f1(s)}" height="${f1(s)}" fill="url(#${id}${grad === "l2" ? "l" : grad})"/></pattern>`;
       defs += `<radialGradient id="${id}r" cx="0.5" cy="0.5" r="0.72"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/></radialGradient>` +
@@ -85,21 +98,18 @@ export function drawSvg(draw, H, pre) {
       else if (sh.form === "croix") { defs += cell(id + "p", "l") + cell(id + "q", "l2"); cone = rect(`url(#${id}p)`) + rect(`url(#${id}q)`, ` style="mix-blend-mode:darken"`); }
       else { defs += cell(id + "p", "r"); cone = rect(`url(#${id}p)`); }
       let tone;
-      if (sh.fill === "grad") {
+      if (fl.tr === "grad") {
         const a = sh.ga * Math.PI / 180, dx = Math.cos(a) / 2, dy = Math.sin(a) / 2;
         defs += `<linearGradient id="${id}g" x1="${f1(0.5 - dx)}" y1="${f1(0.5 - dy)}" x2="${f1(0.5 + dx)}" y2="${f1(0.5 + dy)}"><stop offset="0" stop-color="${grey(sh.tone)}"/><stop offset="1" stop-color="${grey(sh.tone2)}"/></linearGradient>`;
         tone = `url(#${id}g)`;
       } else tone = grey(sh.tone);
       // moyenne du motif et du ton, puis seuil a mi-gris : noir la ou le motif est plus sombre que le ton demande
-      one += `<g ${tag} filter="url(#${pre}th)"><g clip-path="url(#${id}c)" style="isolation:isolate">${rect("#fff")}${cone}${rect(tone, ` opacity="0.5"`)}</g></g>`;
-    } else if (!open && sh.fill === "color") {
-      one += `<path ${tag} d="${d}" fill="${/^#[0-9a-f]{3,8}$/i.test(sh.col) ? sh.col : "#808080"}"/>`;
-    } else if (!open && (sh.fill === "white" || sh.fill === "black")) {
-      one += `<path ${tag} d="${d}" fill="${sh.fill === "white" ? "#ffffff" : "#111111"}"/>`;
+      // le blanc de la trame laisse voir la couleur dessous (multiplication), ses points noirs restent noirs
+      one += `<g ${tag} filter="url(#${pre}th)" style="mix-blend-mode:multiply"><g clip-path="url(#${id}c)" style="isolation:isolate">${rect("#fff")}${cone}${rect(tone, ` opacity="0.5"`)}</g></g>`;
     }
     if (sh.stroke !== "none" && sh.sw > 0) one += `<path ${tag} d="${d}" fill="none" stroke="${sh.stroke}" stroke-width="${f1(sh.sw * 4)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-    else if (open || sh.fill === "none") one += `<path ${tag} d="${d}" fill="none" stroke="#111111" stroke-opacity="0.001" stroke-width="12"/>`;
-    if (!open && sh.fill === "none") one += `<path ${tag} d="${d}" fill="#000" fill-opacity="0.001"/>`;    // attrapable a la souris
+    else if (open || !fl.on) one += `<path ${tag} d="${d}" fill="none" stroke="#111111" stroke-opacity="0.001" stroke-width="12"/>`;
+    if (!open && !fl.on) one += `<path ${tag} d="${d}" fill="#000" fill-opacity="0.001"/>`;    // attrapable a la souris
     if (sh.hand > 0) {                                     // trait a la main : un bruit doux deplace le contour, propre a chaque forme
       const amp = sh.hand * 3, pad = amp + sh.sw * 4 + 4, seed = [...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
       defs += `<filter id="${id}h" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">` +
@@ -189,9 +199,14 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     side.append(h("h4", "Trait à la main"), range("Tremblé", "hand", 0, 10, 0.1), range("Ondulation", "hw", 0.5, 12, 0.1),
       h("p.muted", "Tremblé à 0 : trait net. Ondulation courte = trait nerveux, longue = lignes qui flottent."));
     if (!open) {
-      side.append(pick("Remplissage", "fill", FILLS));
-      const fill = val("fill");
-      if (fill === "color") side.append(h("div.row.colrow", h("span", "Couleur"), swatch(val("col") || "#808080", (c) => set("col", c))));
+      const fl = fillOf(t || cur);
+      const write = (o) => { for (const tg of [t, cur]) if (tg) { tg.fon = o.on; tg.col = o.col; tg.tr = o.tr; delete tg.fill; } };
+      const setFill = (patch) => { write(Object.assign(fl, patch)); paint(); props(); };
+      side.append(h("div.row.fillrow",
+        h("label.row.check", { title: "Décoché : la forme n'est pas remplie, on voit à travers" }, h("input", { type: "checkbox", checked: fl.on, on: { change: (e) => setFill({ on: e.target.checked }) } }), "Remplissage"),
+        fl.on ? swatch(fl.col, (c) => { fl.col = c; write(fl); paint(); }) : "",
+        fl.on ? h("select", { title: "Trame posée par-dessus la couleur", on: { change: (e) => setFill({ tr: e.target.value }) } }, Object.entries(TRAMES).map(([v, n]) => h("option", { value: v, selected: fl.tr === v }, n))) : ""));
+      const fill = fl.on ? fl.tr : "none";
       if (fill === "tone" || fill === "grad") {
         side.append(h("h4", "Trame"), pick("Motif", "form", FORMS), range("Taille", "dot", 4, 60, 0.5), range("Angle de la trame", "ha", 0, 180, 1),
           range(fill === "grad" ? "Gris au départ" : "Gris", "tone", 0, 1, 0.01));

@@ -328,3 +328,8 @@ details.fold > summary:hover { opacity: 1; }
 .mt-timeline .mt-row { cursor: pointer; }
 
 .fold-in { margin: 2px 0 6px 6px; padding-left: 8px; border-left: 2px solid rgba(127, 127, 127, 0.35); }
+
+/* atelier de dessin : coche, pastille de couleur et trame sur une ligne */
+.fillrow { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.fillrow > label { flex: 0 0 auto; margin: 0; }
+.fillrow > select { flex: 1; min-width: 0; }
