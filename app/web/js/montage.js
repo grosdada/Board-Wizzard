@@ -11,7 +11,7 @@ import { h, modal, toast, history, upload, get, post } from "./api.js";
 import { MOUTHS, SETS, MODES, SIMPLE, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, frameToAngle, angleToFrame, bodyFill, wiggleFilter } from "./model.js";
-import { drawSvg, W } from "./draw.js";
+import { drawSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
 const CAM0 = { cx: 0.5, cy: 0.5, z: 1, rot: 0, dz: 0 };
@@ -79,7 +79,11 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     c.bl = valueAt(keysOf("bl"), { bl: c.bl ?? d.amount ?? 12 }, t, 0).bl;
     return c;
   };
-  const drawBg = pan.draw && (pan.draw.shapes || []).length ? drawSvg(pan.draw, H, pre) : "";
+  // formes dessinees sur le decor : dans le montage chacune a sa profondeur (forme.d, 1 = collee au decor), pour la
+  // parallaxe. Elles ne bougent qu'en profondeur ; leur dessin se regle dans « Dessiner le fond ».
+  const shapesOf = () => (pan.draw && pan.draw.shapes) || [];
+  const shapeCache = new Map();
+  const shapeSvg = (sh, i) => { const key = i + JSON.stringify(sh, (k, v) => (k === "d" ? undefined : v)); let x = shapeCache.get(key); if (!x) { if (shapeCache.size > 300) shapeCache.clear(); x = drawSvg({ shapes: [sh] }, H, `${pre}d${i}`); shapeCache.set(key, x); } return x; };
   /** Balisage SVG de la case a l'instant t. sel : calque a encadrer. again : rappele quand des traces finissent de charger. */
   function markup(t, sel, again) {
     const c = camAt(t), dofOn = !!(pan.dof && pan.dof.on), blurs = {};
@@ -94,16 +98,20 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     };
     let o = `<defs><clipPath id="${pre}clip"><rect width="${W}" height="${f1(H)}"/></clipPath></defs><rect width="${W}" height="${f1(H)}" fill="${pg.page.fill || "#fff"}"/>` +
       `<g clip-path="url(#${pre}clip)"><g transform="translate(${W / 2} ${f1(H / 2)}) rotate(${f1(-c.rot)}) scale(${f3(c.z)}) translate(${f1(-c.cx * W)} ${f1(-c.cy * H)})">`;
-    const bpar = anim.parallax ? (anim.pstr ?? 0.4) * 0.5 : 0, bdx = (c.cx - 0.5) * bpar * W, bdy = (c.cy - 0.5) * bpar * H;   // le fond suit un peu la camera
-    const kb = perspOf(1, c.dz);                             // le decor, tout au fond : il grossit a peine quand la camera avance
-    o += `<g transform="translate(${f1(bdx + c.cx * W)} ${f1(bdy + c.cy * H)}) scale(${f3(kb || 1)}) translate(${f1(-c.cx * W)} ${f1(-c.cy * H)})"${kb ? "" : ` display="none"`}><g${blur(1)}>`;
+    // un plan a la profondeur d : il glisse avec la parallaxe et grossit quand la camera avance (le decor, d = 1, a peine)
+    const plane = (d, inner) => {
+      const par = anim.parallax ? (anim.pstr ?? 0.4) * (d - 0.5) : 0, k = perspOf(d, c.dz);
+      return k ? `<g transform="translate(${f1((c.cx - 0.5) * par * W + c.cx * W)} ${f1((c.cy - 0.5) * par * H + c.cy * H)}) scale(${f3(k)}) translate(${f1(-c.cx * W)} ${f1(-c.cy * H)})"><g${blur(d)}>${inner}</g></g>` : "";
+    };
+    let bgIn = "";
+    { const o0 = o; o = "";
     if (bgInfo) {
       const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, pan.view), vf = vecFrame(bgInfo, again);
       if (vf) { const st = inkStroke(pan.bglw), bw = wiggleFilter(`${pre}wgb`, pan.bghand, pan.bgwave, vf.w, vf.h, 11); o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})">${bw}<path d="${vf.body}" fill="#fff"/><path d="${vf.ink}"${bw ? ` filter="url(#${pre}wgb)"` : ""} fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/></g>`; }
       else o += `<image href="${bgInfo.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/>`;
     }
-    o += "</g>" + (drawBg ? `<g${blur(0.9)}>${drawBg}</g>` : "") + "</g>";
-    pan.layers.forEach((l, li) => {
+    bgIn = o; o = o0 + plane(1, bgIn); }
+    const drawLayer = (l, li) => {
       const s = stateOf(l, t), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
       if (!sp) return;
       // parallaxe : quand la camera se deplace, le premier plan glisse plus que le fond (profondeur 0 = devant, 1 = fond)
@@ -127,7 +135,17 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
       if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l))}</g>`;   // lip sync : la bouche qui parle
       if (sel === l.id) o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
-    });
+    };
+    // formes du decor et elements, du plus loin au plus pres ; a profondeur egale, les formes passent derriere
+    const order = [];
+    shapesOf().forEach((sh, i) => order.push({ d: sh.d ?? 1, k: 0, i }));
+    pan.layers.forEach((l, i) => order.push({ d: depthOf(pan, i), k: 1, i }));
+    order.sort((a, b) => b.d - a.d || a.k - b.k || a.i - b.i);
+    for (const e of order) {
+      if (e.k) { drawLayer(pan.layers[e.i], e.i); continue; }
+      const sh = shapesOf()[e.i], b = sel === "s:" + sh.id ? boxOf(sh, H) : null;
+      o += plane(e.d, shapeSvg(sh, e.i) + (b ? `<rect x="${f1(b.x - 4)}" y="${f1(b.y - 4)}" width="${f1(b.w + 8)}" height="${f1(b.h + 8)}" class="mt-sel" transform="rotate(${f1(sh.r || 0)} ${f1(b.cx)} ${f1(b.cy)})"/>` : ""));
+    }
     return o + `</g></g><defs>${Object.values(blurs).join("")}</defs><rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
   }
   return { H, anim, markup, stateOf, camAt, nOf, itemOf, keysOf, angleOf };
@@ -177,6 +195,9 @@ export function openMontage(app, pid) {
   }
   // place de la camera sur le schema : au repos un peu sous le premier plan ; dz = 1 la pose sur le premier plan
   const camD = (dz) => (dz <= 1 ? -0.2 + 0.2 * dz : dz - 1), camDz = (d) => clamp(d <= 0 ? (d + 0.2) / 0.2 : d + 1, -2, 1.95);
+  const shapes = () => (pan.draw && pan.draw.shapes) || [];
+  const shapeOf = (id) => (typeof id === "string" && id.startsWith("s:") ? shapes().find((x) => "s:" + x.id === id) : null);
+  const shapeName = (sh, i) => `Forme ${i + 1} (${((PRIMS[sh.t] || PATHS[sh.t] || ["forme"])[0]).toLowerCase()})`;
   function topView() {
     const c = camAt(), yOf = (d) => H * (DY0 + (DY1 - DY0) * d), fs = Math.max(11, H * 0.03), camY = yOf(camD(c.dz || 0)), camX = c.cx * W, half = 0.5 / c.z * W;
     let o = `<rect width="${W}" height="${f1(H)}" fill="#f3f1ec"/>`;
@@ -189,6 +210,11 @@ export function openMontage(app, pid) {
     if (dof.on) o += `<line x1="0" x2="${W}" y1="${f1(yOf(c.fo))}" y2="${f1(yOf(c.fo))}" stroke="#16a34a" stroke-width="2.5"/>` +
       `<text x="${W - 6}" y="${f1(yOf(c.fo) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT · ${c.fo.toFixed(2)}</text>`;
     const th = H * 0.03;
+    shapes().forEach((sh, i) => {                           // formes du decor : des cartes plus fines, a glisser en profondeur seulement
+      const b = boxOf(sh, H), y = yOf(sh.d ?? 1), on = sel === "s:" + sh.id;
+      o += `<g data-shape="${sh.id}" style="cursor:ns-resize"><rect x="${f1(b.x)}" y="${f1(y - th * 0.3)}" width="${f1(Math.max(b.w, 14))}" height="${f1(th * 0.6)}" rx="${f1(th / 5)}" fill="${on ? "#e2603a" : "#9a7b2e"}" stroke="#fff" stroke-width="1.2" data-shape="${sh.id}"/>` +
+        (on || (sh.d ?? 1) < 0.999 ? `<text x="${f1(b.cx)}" y="${f1(y - th * 0.45)}" font-size="${f1(fs * 0.7)}" fill="${on ? "#b8431f" : "#7a6325"}" text-anchor="middle" data-shape="${sh.id}">${esc(shapeName(sh, i))} · ${(sh.d ?? 1).toFixed(2)}</text>` : "") + `</g>`;
+    });
     pan.layers.forEach((l, li) => {
       const st = stateOf(l), it = itemOf(l), sp = it && sprite(it, st.v, st.f);
       if (!sp) return;
@@ -237,6 +263,18 @@ export function openMontage(app, pid) {
                     // depliants ouverts ou fermes
   function props() {
     side.textContent = "";
+    const shp = shapeOf(sel);
+    if (shp) {                                             // forme du decor : seule sa profondeur se regle ici
+      const inp = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: shp.d ?? 1, on: { input: (e) => { shp.d = +e.target.value; out.textContent = shp.d.toFixed(2); paint(); } } }), out = h("output", (shp.d ?? 1).toFixed(2));
+      side.append(h("h4", shapeName(shp, shapes().indexOf(shp))),
+        h("label.row.range", { title: "1 = collée au décor. Plus près de 0, la forme se détache : elle glisse et grossit davantage quand la caméra bouge (parallaxe)." }, "Profondeur ⓘ", inp, out),
+        h("div.row.wrap", h("button.mini", { on: { click: () => { shp.d = 1; paint(); props(); } } }, "Recoller au décor"),
+          h("button.mini", { title: "Toutes les formes reviennent sur le décor", on: { click: () => { for (const x of shapes()) delete x.d; paint(); props(); } } }, "Tout recoller")),
+        h("div.muted", { title: "Dans le montage, une forme du décor ne se déplace qu'en profondeur. Sa place, sa taille et son dessin se règlent dans « Dessiner le fond »." }, "Forme du décor : profondeur seulement ⓘ"));
+      syncProps = () => { if (document.activeElement !== inp) inp.value = shp.d ?? 1; out.textContent = (shp.d ?? 1).toFixed(2); };
+      keyBar();
+      return;
+    }
     const isCam = !!CAMS[sel], l = isCam ? null : layerOf(sel);
     if (!isCam && !l) { sel = "cam"; return props(); }
     const cur = () => (isCam ? camAt() : stateOf(l));
@@ -313,6 +351,7 @@ export function openMontage(app, pid) {
   const keyBox = h("div.mt-keys");
   function keyBar() {
     keyBox.textContent = "";
+    if (shapeOf(sel)) { keyBox.append(h("span.muted", "Forme du décor : elle se place en profondeur, sans clés.")); return; }
     const k = near(sel), name = CAMS[sel] || (itemOf(layerOf(sel)) || {}).name || "élément";
     keyBox.append(
       h("button.mini", { title: "Aller à la clé précédente (Alt + ←). Piste choisie ; si elle n'a pas de clé, toutes les pistes.", on: { click: () => jumpKey(-1) } }, "◀◆"),
@@ -612,16 +651,19 @@ export function openMontage(app, pid) {
     stop();
     if (placing) { placeMouth(e); return; }
     const id = e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
-    sel = id || "cam"; selKey = null;
+    const shId = id ? null : (e.target.closest("[data-shape]") || {}).dataset?.shape, shp = shId ? shapeOf("s:" + shId) : null;
+    sel = id || (shp ? "s:" + shId : "cam"); selKey = null;
     const p = ptOf(e), c = camAt();
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
     if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: e.shiftKey, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
-    else vdrag = { id: "cam", p, c };                      // dans le vide : on deplace le cadre de la camera
+    else if (shp && depthView) vdrag = { id: sel, shape: shp, p, d: shp.d ?? 1 };   // carte d'une forme : elle ne glisse qu'en profondeur
+    else vdrag = { id: "cam", p, c };                      // dans le vide (ou sur une forme du decor, dans l'image) : on deplace le cadre de la camera
     paint(); lanes(); props();
   });
   svg.addEventListener("pointermove", (e) => {
     if (!vdrag) return;
     const p = ptOf(e), dx = p[0] - vdrag.p[0], dy = p[1] - vdrag.p[1];
+    if (vdrag.shape) { vdrag.shape.d = f3(clamp(vdrag.d - dy / (DY0 - DY1), 0, 1)); paint(); syncProps(); return; }
     if (depthView && vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx + dx), dz: f3(camDz(camD(vdrag.c.dz || 0) - dy / (DY0 - DY1))) });   // gauche / droite : le cadre ; haut / bas : la camera avance ou recule
     else if (depthView && !vdrag.turn) { setDepth(layerOf(vdrag.id), vdrag.d - dy / (DY0 - DY1)); change(vdrag.id, { x: f3(vdrag.s.x + dx) }); }
     else if (vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx - dx / vdrag.c.z), cy: f3(vdrag.c.cy - dy / vdrag.c.z) });
@@ -649,13 +691,14 @@ export function openMontage(app, pid) {
   function play() { if (t >= anim.dur - 0.01) t = 0; playing = true; playBtn.textContent = "⏸ Pause"; last = performance.now(); raf = requestAnimationFrame(tick); }
   function stop() { if (!playing) return; playing = false; voices(false); cancelAnimationFrame(raf); playBtn.textContent = "▶ Lecture"; paint(); lanes(); props(); }
   // Ctrl+Z / Ctrl+Y : les 5 dernieres actions (elements, cles, camera, profondeur de champ)
-  const hist = history(() => ({ layers: pan.layers, anim, dof }), (st) => {
+  const hist = history(() => ({ layers: pan.layers, anim, dof, draw: pan.draw || null }), (st) => {
+    if (st.draw) pan.draw = st.draw;
     pan.layers = st.layers;
     for (const k of Object.keys(anim)) delete anim[k];
     Object.assign(anim, st.anim);
     Object.assign(dof, st.dof);
     selKey = null; drag = null; vdrag = null; picked.clear(); t = Math.min(t, anim.dur);
-    if (!CAMS[sel] && !layerOf(sel)) sel = "cam";
+    if (!CAMS[sel] && !layerOf(sel) && !shapeOf(sel)) sel = "cam";
     dur.value = anim.dur;
     paint(); lanes(); props();
   });
@@ -685,6 +728,7 @@ export function openMontage(app, pid) {
     const real = pg.panels[pid] || (pg.panels[pid] = {});
     real.layers = pan.layers;
     real.dof = dof;
+    if (pan.draw) real.draw = pan.draw;                   // profondeur des formes du decor
     for (const id of Object.keys(anim.tracks)) if (!anim.tracks[id].length) delete anim.tracks[id];
     real.anim = anim;
     app.commit("montage"); app.editor.render(); app.refreshInspector();
