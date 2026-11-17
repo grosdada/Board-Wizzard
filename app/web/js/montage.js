@@ -14,11 +14,16 @@ import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, 
 import { drawSvg, W } from "./draw.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
-const CAM0 = { cx: 0.5, cy: 0.5, z: 1, rot: 0 };
+const CAM0 = { cx: 0.5, cy: 0.5, z: 1, rot: 0, dz: 0 };
+// Camera dans la profondeur : au repos elle est a CAM_BACK devant le premier plan (profondeur 0). dz l'avance : a 1 elle
+// atteint le premier plan, a 2 le decor. Un plan a la profondeur d grossit de (d + CAM_BACK) / (d + CAM_BACK - dz) :
+// ce qui est pres grossit plus vite que le fond, et ce que la camera a depasse disparait.
+export const CAM_BACK = 1;
+export const perspOf = (d, dz) => { const den = d + CAM_BACK - (dz || 0); return den <= 0.04 ? 0 : Math.min(60, (d + CAM_BACK) / den); };
 // doux : depart et arrivee amortis · lin : vitesse reguliere · fixe : pas d'intermediaire, on saute a la cle (paliers)
 export const EASES = { doux: "En douceur", lin: "Régulière", fixe: "Fixe (par paliers, sans intermédiaire)" };
 const ease = (u, e) => (e === "fixe" ? 0 : e === "lin" ? u : u * u * (3 - 2 * u));
-const NUM = ["x", "y", "s", "cx", "cy", "z", "rot", "fo", "bl", "lw", "shg", "shw", "sha"];
+const NUM = ["x", "y", "s", "cx", "cy", "z", "rot", "dz", "fo", "bl", "lw", "shg", "shw", "sha"];
 // mouvements de camera prets : [nom, depart, arrivee]
 export const MOVES = {
   "trav-d": ["Travelling vers la droite", { cx: 0.38, z: 1.35 }, { cx: 0.62, z: 1.35 }],
@@ -28,6 +33,8 @@ export const MOVES = {
   "pano-h": ["Panoramique vers le haut", { cy: 0.62, z: 1.35 }, { cy: 0.38, z: 1.35 }],
   "pano-b": ["Panoramique vers le bas", { cy: 0.38, z: 1.35 }, { cy: 0.62, z: 1.35 }],
   "zoom": ["Zoom avant rapide", { z: 1 }, { z: 2.4 }],
+  "dolly": ["Avancer dans la profondeur (les plans se détachent)", { dz: 0 }, { dz: 0.7 }],
+  "dolly-r": ["Reculer dans la profondeur", { dz: 0.7 }, { dz: 0 }],
   "dutch": ["Bascule (caméra qui penche)", { rot: -6, z: 1.25 }, { rot: 6, z: 1.25 }],
   "fixe": ["Plan fixe (retire le mouvement)", null, null],
 };
@@ -88,7 +95,8 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     let o = `<defs><clipPath id="${pre}clip"><rect width="${W}" height="${f1(H)}"/></clipPath></defs><rect width="${W}" height="${f1(H)}" fill="${pg.page.fill || "#fff"}"/>` +
       `<g clip-path="url(#${pre}clip)"><g transform="translate(${W / 2} ${f1(H / 2)}) rotate(${f1(-c.rot)}) scale(${f3(c.z)}) translate(${f1(-c.cx * W)} ${f1(-c.cy * H)})">`;
     const bpar = anim.parallax ? (anim.pstr ?? 0.4) * 0.5 : 0, bdx = (c.cx - 0.5) * bpar * W, bdy = (c.cy - 0.5) * bpar * H;   // le fond suit un peu la camera
-    o += `<g transform="translate(${f1(bdx)} ${f1(bdy)})"><g${blur(1)}>`;
+    const kb = perspOf(1, c.dz);                             // le decor, tout au fond : il grossit a peine quand la camera avance
+    o += `<g transform="translate(${f1(bdx + c.cx * W)} ${f1(bdy + c.cy * H)}) scale(${f3(kb || 1)}) translate(${f1(-c.cx * W)} ${f1(-c.cy * H)})"${kb ? "" : ` display="none"`}><g${blur(1)}>`;
     if (bgInfo) {
       const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, pan.view), vf = vecFrame(bgInfo, again);
       if (vf) { const st = inkStroke(pan.bglw); o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})"><path d="${vf.body}" fill="#fff"/><path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/></g>`; }
@@ -100,7 +108,9 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       if (!sp) return;
       // parallaxe : quand la camera se deplace, le premier plan glisse plus que le fond (profondeur 0 = devant, 1 = fond)
       const par = anim.parallax ? (anim.pstr ?? 0.4) * (depthOf(pan, li) - 0.5) : 0, bl = blur(depthOf(pan, li));
-      const box = layerBox(bb, Object.assign({}, l, s, { x: s.x + (c.cx - 0.5) * par, y: s.y + (c.cy - 0.5) * par }), sp), vf = vecFrame(sp, again);
+      const kp = perspOf(depthOf(pan, li), c.dz);
+      if (!kp) return;                                     // la camera l'a depasse
+      const box = layerBox(bb, Object.assign({}, l, s, { x: c.cx + (s.x - c.cx) * kp + (c.cx - 0.5) * par, y: c.cy + (s.y - c.cy) * kp + (c.cy - 0.5) * par, s: s.s * kp }), sp), vf = vecFrame(sp, again);
       const flip = l.flip ? `translate(${f1(2 * box.cx)} 0) scale(-1 1) ` : "";
       const gsd = groundShadow(l, box);                    // ombre portee : sous l'element
       if (gsd) o += `<ellipse cx="${f1(gsd.cx)}" cy="${f1(gsd.cy)}" rx="${f1(gsd.rx)}" ry="${f1(gsd.ry)}" fill="#000" opacity="${f3(gsd.a)}" style="pointer-events:none"${blur(depthOf(pan, li), gsd.blur)}/>`;
@@ -162,8 +172,10 @@ export function openMontage(app, pid) {
     l.d = f3(clamp(d, 0, 1));
     pan.layers.sort((a, b) => b.d - a.d);
   }
+  // place de la camera sur le schema : au repos un peu sous le premier plan ; dz = 1 la pose sur le premier plan
+  const camD = (dz) => (dz <= 1 ? -0.2 + 0.2 * dz : dz - 1), camDz = (d) => clamp(d <= 0 ? (d + 0.2) / 0.2 : d + 1, -2, 1.95);
   function topView() {
-    const c = camAt(), yOf = (d) => H * (DY0 + (DY1 - DY0) * d), fs = Math.max(11, H * 0.03), camY = H * 0.93, camX = c.cx * W, half = 0.5 / c.z * W;
+    const c = camAt(), yOf = (d) => H * (DY0 + (DY1 - DY0) * d), fs = Math.max(11, H * 0.03), camY = yOf(camD(c.dz || 0)), camX = c.cx * W, half = 0.5 / c.z * W;
     let o = `<rect width="${W}" height="${f1(H)}" fill="#f3f1ec"/>`;
     o += `<polygon points="${f1(camX)},${f1(camY)} ${f1(camX - half)},${f1(yOf(1))} ${f1(camX + half)},${f1(yOf(1))}" fill="#3b82f6" fill-opacity="0.09" stroke="#3b82f6" stroke-opacity="0.5" stroke-dasharray="6 5"/>`;
     for (const d of [0, 0.25, 0.5, 0.75, 1])
@@ -196,7 +208,7 @@ export function openMontage(app, pid) {
     let k = near(id);
     if (!k) {
       const l = layerOf(id), full = CAMS[id] ? camAt() : stateOf(l);
-      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot } : CAMS[id] ? { [id]: full[id] } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
+      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot, dz: full.dz || 0 } : CAMS[id] ? { [id]: full[id] } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
       if (!keys.length && t > 0.04) keys.push(Object.assign({ t: 0 }, base));     // premiere cle posee plus loin : on garde le depart
       k = Object.assign({ t: f3(t) }, base);
       keys.push(k); keys.sort((a, b) => a.t - b.t);
@@ -233,7 +245,8 @@ export function openMontage(app, pid) {
     };
     side.append(h("h4", isCam ? "🎥 Caméra" : (itemOf(l) ? itemOf(l).name : "Élément")));
     if (isCam) {
-      side.append(range("Cadre ↔", "cx", -0.5, 1.5, 0.005), range("Cadre ↕", "cy", -0.5, 1.5, 0.005), range("Zoom", "z", 0.4, 5, 0.01), range("Inclinaison", "rot", -45, 45, 0.5, (x) => Math.round(x) + "°"),
+      side.append(range("Cadre ↔", "cx", -0.5, 1.5, 0.005), range("Cadre ↕", "cy", -0.5, 1.5, 0.005), range("Zoom", "z", 0.4, 5, 0.01),
+        h("div", { title: "Avance ou recule la caméra dans la profondeur : ce qui est près grossit plus vite que le fond, et ce qu'elle dépasse disparaît. 1 = elle atteint le premier plan, 2 = le décor. Dans l'image : Alt + molette. Dans la vue « Profondeur » : glisser la caméra vers le haut." }, range("Avancer ⓘ", "dz", -2, 1.95, 0.01)), range("Inclinaison", "rot", -45, 45, 0.5, (x) => Math.round(x) + "°"),
         h("h4", { title: "Un mouvement prêt pose deux clés, au début et à la fin. Tu peux ensuite les régler ou en ajouter." }, "Mouvements prêts ⓘ"),
         h("select", { on: { change: (e) => { applyMove(e.target.value); e.target.value = ""; } } }, h("option", { value: "" }, "Choisir un mouvement…"), Object.entries(MOVES).map(([k, [name]]) => h("option", { value: k }, name))),
         h("h4", { title: "0 = tout devant, 1 = le décor. Quand le flou est coché, la mise au point et le flou ont chacun leur piste dans la timeline, avec leurs propres clés : la mise au point peut passer d'un personnage à l'autre. La vue « Profondeur » montre le plan net." }, "Profondeur de champ ⓘ"),
@@ -282,7 +295,7 @@ export function openMontage(app, pid) {
         Object.entries(it.variants).map(([k, vv]) => h("option", { value: k, selected: k === cur().v }, (vv.orbit ? "↻ " : "▫ ") + vv.label)))));
     }
     keyBar();
-    side.append(h("label.row.check", { title: "Dans l'image : glisser un élément le déplace, molette = taille, Maj + glisser = le faire tourner. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));
+    side.append(h("label.row.check", { title: "Dans l'image : glisser un élément le déplace, molette = taille, Maj + glisser = le faire tourner. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));
     syncProps = () => rows.forEach((f) => f());
   }
   // boutons de cle : juste au-dessus de la timeline
@@ -596,7 +609,7 @@ export function openMontage(app, pid) {
   svg.addEventListener("pointermove", (e) => {
     if (!vdrag) return;
     const p = ptOf(e), dx = p[0] - vdrag.p[0], dy = p[1] - vdrag.p[1];
-    if (depthView && vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx + dx) });
+    if (depthView && vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx + dx), dz: f3(camDz(camD(vdrag.c.dz || 0) - dy / (DY0 - DY1))) });   // gauche / droite : le cadre ; haut / bas : la camera avance ou recule
     else if (depthView && !vdrag.turn) { setDepth(layerOf(vdrag.id), vdrag.d - dy / (DY0 - DY1)); change(vdrag.id, { x: f3(vdrag.s.x + dx) }); }
     else if (vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx - dx / vdrag.c.z), cy: f3(vdrag.c.cy - dy / vdrag.c.z) });
     else if (vdrag.turn) { const n = nOf(layerOf(vdrag.id), vdrag.s.v); if (n) change(vdrag.id, { f: (((vdrag.s.f + Math.round((e.clientX - vdrag.sx) / 6)) % n) + n) % n }); }
@@ -606,7 +619,8 @@ export function openMontage(app, pid) {
   svg.addEventListener("wheel", (e) => {
     e.preventDefault();
     const k = Math.exp(-e.deltaY * 0.0015);
-    if (sel === "cam") change("cam", { z: f3(clamp(camAt().z * k, 0.4, 5)) });
+    if (e.altKey || (depthView && CAMS[sel])) change("cam", { dz: f3(clamp((camAt().dz || 0) - e.deltaY * 0.0012, -2, 1.95)) });   // Alt + molette : la camera avance ou recule
+    else if (sel === "cam") change("cam", { z: f3(clamp(camAt().z * k, 0.4, 5)) });
     else if (layerOf(sel)) change(sel, { s: f3(clamp(stateOf(layerOf(sel)).s * k, 0.05, 6)) });
   }, { passive: false });
 
