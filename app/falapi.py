@@ -1,8 +1,8 @@
 """Fournisseur fal.ai : memes quatre gestes que la machine locale (t2i, edit, matte, orbit), par la file fal.
 
 Ecrit d'apres la documentation publique de fal (schemas OpenAPI des modeles, novembre 2026) et le client d'Alive-Comics
-pour H3. NON TESTE ici faute de cle : l'envoi de fichier (storage/upload/initiate) et la video de masque BiRefNet
-sont a valider au premier essai reel. Les modeles se choisissent dans les reglages (fal.orbit, fal.edit, fal.t2i...).
+pour H3. Essaye avec une vraie cle le 17/11/2026 : cle, image (t2i), envoi de fichier et detourage d'image. Restent a
+valider : l'edition, l'orbite H3 et la video de masque BiRefNet. Les modeles se choisissent dans les reglages (fal.orbit, fal.edit, fal.t2i...).
 """
 
 import json
@@ -72,7 +72,7 @@ class FalProvider:
     def upload(self, path):
         path = Path(path)
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        res = _req("https://rest.fal.ai/storage/upload/initiate?storage_type=gcs", self.key,
+        res = _req("https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3", self.key,
                    {"file_name": path.name, "content_type": mime})
         _req(res["upload_url"], None, raw=path.read_bytes(), method="PUT", headers={"Content-Type": mime}, timeout=600)
         return res["file_url"]
@@ -167,6 +167,6 @@ class FalProvider:
 
 def test(key):
     """Verifie la cle sans rien depenser : demande d'envoi de fichier (aucun calcul)."""
-    _req("https://rest.fal.ai/storage/upload/initiate?storage_type=gcs", key,
+    _req("https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3", key,
          {"file_name": "test.txt", "content_type": "text/plain"})
     return True

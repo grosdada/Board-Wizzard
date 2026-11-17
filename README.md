@@ -59,7 +59,8 @@ et ffmpeg dans le PATH.
   Qwen-Image-Edit 2509 + LoRA Lightning, Z-Image Turbo.
 - **fal** : clé du poste dans les réglages, ou clé personnelle gardée dans le navigateur (jamais écrite côté serveur).
   Modèles au choix (orbite, édition, image). Sur fal l'orbite H3 + LoRA dure 5 s au minimum.
-  **Le code fal a été écrit d'après la documentation et n'a pas encore été essayé avec une vraie clé.**
+  Essayé avec une vraie clé : image, envoi de fichier, détourage. **Pas encore essayés sur fal : l'édition (poses,
+  Integrate), l'orbite H3 et son masque vidéo.**
 - Cible par tâche : auto (machines d'abord), machines seulement, fal seulement.
 
 ## Dossiers
