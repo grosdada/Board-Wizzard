@@ -268,7 +268,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       // poignee de rotation : au-dessus de la forme, elle tourne avec elle
       o += `<g transform="rotate(${f1(t.r || 0)} ${f1(b.cx)} ${f1(b.cy)})"><rect x="${f1(b.x - 6)}" y="${f1(top)}" width="${f1(b.w + 12)}" height="${f1(b.h + 12)}" class="draw-sel"/>` +
         `<line x1="${f1(b.cx)}" y1="${f1(top)}" x2="${f1(b.cx)}" y2="${f1(top - 30)}" class="draw-sel"/>` +
-        `<g class="draw-rot" data-rot="1" transform="translate(${f1(b.cx)} ${f1(top - 44)})"><circle r="15" data-rot="1"/><path d="M-7 -3A8 8 0 1 1 -5 6M-7 -3L-11 -8M-7 -3L-1 -4"/></g>${corners}</g>`;
+        `<g class="draw-rot" data-rot="1" transform="translate(${f1(b.cx)} ${f1(top - 44)})"><circle r="15" data-rot="1"/><path d="M-7 -3A8 8 0 1 1 -5 6M-7 -3L-11 -8M-7 -3L-1 -4"/></g>${corners}` +
+        // carre au coin bas droit : le glisser agrandit ou reduit toute la forme autour de son centre (Maj : en largeur seulement, Alt : en hauteur seulement)
+        `<g class="draw-scale" data-scale="1" transform="translate(${f1(b.x + b.w + 20)} ${f1(b.y + b.h + 20)})"><rect x="-11" y="-11" width="22" height="22" rx="4" data-scale="1"/><path d="M-5 -5L5 5M5 5H0M5 5V0M-5 -5H0M-5 -5V0" data-scale="1"/></g></g>`;
     }
     if (building) {                                        // forme point par point en cours
       const P = building.p.map(([x, y]) => [x * W, y * H]), last = hover ? [hover[0] * W, hover[1] * H] : P[P.length - 1];
@@ -320,7 +322,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
         h("button.mini.danger", { on: { click: () => { shapes.splice(shapes.indexOf(t), 1); sel = null; paint(); props(); } } }, "Supprimer")));
     }
     const tip = tool === "poly" || tool === "polyline" ? "Clique pour poser chaque point. Double-clic, Entrée ou clic sur le premier point : la forme se termine" + (tool === "poly" ? " et se ferme toute seule." : ".") + " Échap annule."
-      : "Choisis un outil puis glisse dans le cadre. « Sélection » : clic sur une forme pour la régler, glisser pour la déplacer, points ronds pour l'étirer, poignée ↻ pour la tourner (Maj : par crans de 15°). Suppr efface.";
+      : "Choisis un outil puis glisse dans le cadre. « Sélection » : clic sur une forme pour la régler, glisser pour la déplacer, carré ⤡ du coin pour l'agrandir, points ronds pour l'étirer, poignée ↻ pour la tourner (Maj : par crans de 15°). Suppr efface.";
     side.append(h("p.muted", tip));
   }
   function tools() {
@@ -338,7 +340,13 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       drop("Primitives", PRIMS, prim), drop("Tracés", PATHS, path),
       h("button.mini.danger", { type: "button", title: "Retirer toutes les formes", on: { click: () => { if (shapes.length && confirm("Effacer tout le dessin de ce fond ?")) { building = null; shapes.length = 0; sel = null; paint(); props(); } } } }, "Tout effacer"));
   }
-  const at = (e) => { const r = svg.getBoundingClientRect(); return [-ext.l + (e.clientX - r.left) / r.width * (1 + ext.l + ext.r), -ext.t + (e.clientY - r.top) / r.height * (1 + ext.t + ext.b)]; };
+  // point de la souris en fraction de la case, par la matrice du SVG : juste meme si l'image n'occupe pas tout son cadre a l'ecran
+  const at = (e) => {
+    const m = svg.getScreenCTM();
+    if (m) { const q = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()); return [q.x / W, q.y / H]; }
+    const r = svg.getBoundingClientRect();
+    return [-ext.l + (e.clientX - r.left) / r.width * (1 + ext.l + ext.r), -ext.t + (e.clientY - r.top) / r.height * (1 + ext.t + ext.b)];
+  };
   const centerOf = (t) => { const b = boxOf(t, H); return [b.cx / W, b.cy / H]; };
   // pointeur ramene dans le repere de la forme (avant sa rotation)
   const local = (t, p, c) => { if (!t.r) return p; const q = rotPt([p[0] * W, p[1] * H], [c[0] * W, c[1] * H], -t.r); return [q[0] / W, q[1] / H]; };
@@ -359,6 +367,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (tool === "select") {
       const t0 = target();
       if (e.target.dataset.rot && t0) { drag = { kind: "rot", c: centerOf(t0) }; return; }
+      if (e.target.dataset.scale && t0) { const c = centerOf(t0); drag = { kind: "scale", c, pts: t0.p.map((q) => q.slice()), d0: Math.hypot((p[0] - c[0]) * W, (p[1] - c[1]) * H) || 1 }; return; }
       if (e.target.dataset.pt != null && t0) { drag = { kind: "pt", i: +e.target.dataset.pt, c: centerOf(t0) }; return; }
       const id = e.target.dataset.shape || (e.target.closest("[data-shape]") || {}).dataset?.shape;
       sel = id || null; props(); paint();
@@ -385,6 +394,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       const inp = side.querySelector(".rot-in"), out = side.querySelector(".rot-out");
       if (inp) inp.value = t.r;
       if (out) out.textContent = t.r + "°";
+    } else if (drag.kind === "scale") {
+      const k = Math.max(0.03, Math.hypot((p[0] - drag.c[0]) * W, (p[1] - drag.c[1]) * H) / drag.d0), kx = e.altKey ? 1 : k, ky = e.shiftKey ? 1 : k;
+      t.p = drag.pts.map((q) => [drag.c[0] + (q[0] - drag.c[0]) * kx, drag.c[1] + (q[1] - drag.c[1]) * ky]);
     } else if (drag.kind === "pt") t.p[drag.i] = local(t, p, drag.c);
     else t.p = drag.pts.map((q) => [q[0] + p[0] - drag.start[0], q[1] + p[1] - drag.start[1]]);
     paint();

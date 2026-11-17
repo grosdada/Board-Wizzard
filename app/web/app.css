@@ -365,3 +365,11 @@ details.fold > summary:hover { opacity: 1; }
 /* atelier de dessin : panneau des lignes d'effet, sous l'image */
 .draw-fx { margin-top: 8px; }
 .draw-fx select { width: auto; }
+
+/* atelier de dessin : carre d'agrandissement de la forme choisie */
+.draw-scale { cursor: nwse-resize; }
+.draw-scale rect { fill: #e2603a; stroke: #fff; stroke-width: 2; }
+.draw-scale path { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+
+.menu button.star.blue { background: #2f7fd6; }
+.menu button.star.blue:hover { background: #4a95e6; }

@@ -359,7 +359,8 @@ class App {
 
   layerMenu(e) {
     const l = this.layer(); if (!l) return;
-    const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [{ label: "🎬 Montage (animer la case)…", star: true, click: () => openMontage(this, this.sel.panel) }];
+    const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [{ label: "🎬 Montage (animer la case)…", star: true, click: () => openMontage(this, this.sel.panel) },
+      { label: "✎ Dessiner le fond…", star: "blue", click: () => this.drawBackground(this.sel.panel) }];
     items.push({ head: "Pose" });
     // ↻ : orbite calculee, la pose tourne · ⏳ : orbite en calcul · ▫ : image fixe, pas d'orbite
     for (const [k, vv] of Object.entries(item?.variants || {})) items.push({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + vv.label, checked: k === l.v, click: () => this.setPose(l, k) });
@@ -380,10 +381,10 @@ class App {
   }
 
   panelMenu(e, pid, pt, g) {
-    const pan = this.curPanel(), items = [{ label: "🎬 Montage (animer la case)…", star: true, click: () => openMontage(this, pid) }, { head: "Bulle" }];
+    const pan = this.curPanel(), items = [{ label: "🎬 Montage (animer la case)…", star: true, click: () => openMontage(this, pid) },
+      { label: "✎ Dessiner le fond…", star: "blue", click: () => this.drawBackground(pid) }, { head: "Bulle" }];
     const rel = { x: (pt.x - g.bbox.x0) / g.bbox.w, y: (pt.y - g.bbox.y0) / g.bbox.h };
     for (const [t, [label]] of Object.entries(BUB)) items.push({ label, click: () => this.addBubble(t, rel), half: true });
-    items.push({ head: "Fond" }, { label: "✎ Dessiner le fond…", click: () => this.drawBackground(pid) });
     items.push({ head: "Indication" });
     for (const [t, [label, ico]] of Object.entries(MARKS)) items.push({ label: `${ico} ${label}`, half: true, click: () => (t === "free" ? this.armMark(t) : this.addMark(pid, t, [rel.x, rel.y])) });
     items.push({ head: "Banque" }, { label: "✨ Générer un élément ici…", click: () => this.generateHere(pid, rel) });
@@ -895,7 +896,7 @@ function menu(e, items) {
   for (const it of items) {
     if (it.head) { box.append(h("div.mhead", it.head)); continue; }
     if (it.note) { box.append(h("div.mnote", it.note)); continue; }
-    box.append(h("button" + (it.half ? ".half" : "") + (it.checked ? ".on" : "") + (it.danger ? ".danger" : "") + (it.star ? ".star" : ""),
+    box.append(h("button" + (it.half ? ".half" : "") + (it.checked ? ".on" : "") + (it.danger ? ".danger" : "") + (it.star ? ".star" : "") + (it.star === "blue" ? ".blue" : ""),
       { on: { click: () => { box.remove(); it.click(); } } }, it.checked ? "✓ " : "", it.label));
   }
   document.body.append(box);
