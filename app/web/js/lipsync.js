@@ -71,17 +71,22 @@ export function mouthSvg(shape, o = {}) {
 }
 export const mouthIcon = (shape, set) => `<svg viewBox="-56 -44 112 100" width="30" height="27">${mouthSvg(shape, { cache: false, set })}</svg>`;
 
-// Lip sync simple (par defaut) : deux bouches seulement. Fermee sur les silences et les levres jointes, ouverte des que
-// ca parle.
-export const MODES = { simple: "Simple : fermée, ouverte", detail: "Détaillé : neuf bouches" };
+// Lip sync simple (par defaut) : deux bouches seulement. Fermee sur les silences ; des que ca parle, elle alterne
+// ouverte et fermee (lip.flap battements par seconde, 4 par defaut) pour imiter le mouvement.
+export const MODES = { simple: "Simple : la bouche bat quand ça parle", detail: "Détaillé : neuf bouches" };
 export const SIMPLE = ["X", "A"];
 const simpleCache = new Map();
-export function simplify(cues) {
-  let out = simpleCache.get(cues);
+export function simplify(cues, rate = 4) {
+  const key = rate + "|" + cues;
+  let out = simpleCache.get(key);
   if (out) return out;
-  out = [...cues].map((c) => (c === "X" || c === "M" || c === "F" ? "X" : "A")).join("");
+  // tant que ca parle, la bouche bat : ouverte puis fermee, `rate` fois par seconde (12 images par seconde) ; chaque
+  // prise de parole commence bouche ouverte. Sur les silences elle reste fermee.
+  const period = Math.max(2, Math.round(12 / Math.max(0.5, rate))), open = Math.max(1, Math.min(period - 1, Math.ceil(period * 0.6)));
+  let n = 0;
+  out = [...cues].map((c) => { if (c === "X" || c === "M" || c === "F") { n = 0; return "X"; } return n++ % period < open ? "A" : "X"; }).join("");
   if (simpleCache.size > 200) simpleCache.clear();
-  simpleCache.set(cues, out);
+  simpleCache.set(key, out);
   return out;
 }
 /** Partie gardee de la voix : [debut, fin] en secondes dans le fichier (lip.in, lip.out : la decoupe). */
@@ -94,7 +99,7 @@ export function cueIndex(lip, t) { const v = voiceTime(lip, t), i = Math.floor(v
 export function cueAt(lip, t) {
   if (!lip || !lip.cues) return "X";
   const i = cueIndex(lip, t);
-  return (i >= 0 && (lip.mode === "detail" ? lip.cues : simplify(lip.cues))[i]) || "X";
+  return (i >= 0 && (lip.mode === "detail" ? lip.cues : simplify(lip.cues, lip.flap ?? 4))[i]) || "X";
 }
 
 /** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face). */
