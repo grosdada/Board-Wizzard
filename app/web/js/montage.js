@@ -49,7 +49,8 @@ export function valueAt(keys, base, t, n) {
   while (i < ks.length - 2 && ks[i + 1].t <= t) i++;
   const a = ks[i], b = ks[i + 1], u = ease((t - a.t) / Math.max(1e-6, b.t - a.t), b.e);
   const out = Object.assign({}, base, a);
-  for (const k of NUM) if (a[k] != null && b[k] != null) out[k] = a[k] + (b[k] - a[k]) * u;
+  // une cle posee avant qu'un reglage existe (ou sans lui) vaut la valeur de base : l'interpolation se fait quand meme
+  for (const k of NUM) { const av = a[k] ?? base[k], bv = b[k] ?? base[k]; if (av != null && bv != null) out[k] = av + (bv - av) * u; }
   if (a.f != null && b.f != null && b.e !== "fixe") {
     let d = b.f - a.f;
     if (n) { d = ((d % n) + n) % n; if (d > n / 2) d -= n; }      // l'orbite boucle : on tourne par le plus court chemin
