@@ -8,7 +8,7 @@
 //   tracks.fo : [{ t, fo (mise au point, 0 devant a 1 fond), e }]   ·   tracks.bl : [{ t, bl (force du flou), e }]
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { h, modal, toast, history, upload, get, post } from "./api.js";
-import { MOUTHS, SETS, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
+import { MOUTHS, SETS, MODES, SIMPLE, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, frameToAngle, angleToFrame, bodyFill, wiggleFilter } from "./model.js";
 import { drawSvg, W } from "./draw.js";
@@ -473,17 +473,19 @@ export function openMontage(app, pid) {
         plain("Taille", "s", 0.005, 0.2, 0.001, 0.035), plain("Position ↔", "x", 0, 1, 0.002, 0.5), plain("Position ↕", "y", 0, 1, 0.002, 0.13),
         h("div", { title: "Rayon de l'axe sur lequel la bouche tourne avec l'orbite : plus il est grand, plus la bouche part sur le côté quand le personnage tourne." }, plain("Axe de la tête ⓘ", "hw", 0, 0.15, 0.001, 0.03)),
         plain("Inclinaison", "r", -60, 60, 1, 0, (x) => Math.round(x) + "°"),
-        h("label.row", { title: "Le dessin des neuf bouches" }, "Jeu de bouches", h("select", { on: { change: (e) => { put("set", e.target.value); props(); } } }, Object.entries(SETS).map(([k, n]) => h("option", { value: k, selected: (lip.set || "dessin") === k }, n)))),
+        h("label.row", { title: "Simple : la bouche s'ouvre quand ça parle et se ferme sur les silences, ronde seulement sur un « o » ou un « ou » bien tenu. Détaillé : les neuf bouches." }, "Lip sync",
+          h("select", { on: { change: (e) => { put("mode", e.target.value); lanes(); props(); } } }, Object.entries(MODES).map(([k, n]) => h("option", { value: k, selected: (lip.mode || "simple") === k }, n)))),
+        h("label.row", { title: "Le dessin des bouches" }, "Jeu de bouches", h("select", { on: { change: (e) => { put("set", e.target.value); props(); } } }, Object.entries(SETS).map(([k, n]) => h("option", { value: k, selected: (lip.set || "dessin") === k }, n)))),
         fold("lipt", "Trait de la bouche", plain("Épaisseur", "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain("Tremblé", "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain("Ondulation", "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))),
         h("label.row.check", { title: "Une forme blanche derrière la bouche, pour couvrir celle du dessin" }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => { put("bg", e.target.checked); props(); } } }), "Masque blanc derrière"));
       if (lip.bg !== false) rows.push(fold("lipm", "Réglages du masque", plain("Largeur", "mw", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)), plain("Hauteur", "mh", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)),
         plain("Décalage ↔", "mx", -120, 120, 1, 0, (x) => String(Math.round(x))), plain("Décalage ↕", "my", -120, 120, 1, 0, (x) => String(Math.round(x))),
         h("label.row.check", { title: "Montre le masque en rose le temps de l'aligner" }, h("input", { type: "checkbox", checked: !!showMask, on: { change: (e) => { showMask = e.target.checked; paint(); } } }), "Voir le masque")));
       if (lip.cues) {
-        const force = (sh) => { const i = cueIndex(lip, t); if (i < 0) return toast("La tête de lecture est hors de la voix."); const c = lip.cues.split(""); c[i] = sh; if (i + 1 < c.length) c[i + 1] = sh; put("cues", c.join("")); props(); };
+        const simple = lip.mode !== "detail", force = (sh) => { const i = cueIndex(lip, t); if (i < 0) return toast("La tête de lecture est hors de la voix."); const c = lip.cues.split(""); for (let q = i; q < Math.min(c.length, i + (simple && sh === "O" ? 3 : 2)); q++) c[q] = sh; put("cues", c.join("")); props(); };
         rows.push(plain("Décalage (s)", "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2)),
           h("div.muted", { title: "Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée." }, `Bouche à cet instant ⓘ : ${MOUTHS[cueAt(lip, t)]}`),
-          h("div.row.wrap.mouths", Object.keys(MOUTHS).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); b.innerHTML = mouthIcon(k, lip.set); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));
+          h("div.row.wrap.mouths", (simple ? SIMPLE : Object.keys(MOUTHS)).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); b.innerHTML = mouthIcon(k, lip.set); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));
       }
     }
     return h("div", h("h4", { title: "Une voix importée ou enregistrée fait parler le personnage : le navigateur écoute le son et appelle la bonne bouche, sans calcul sur les machines." }, "🗣 Voix et bouche ⓘ"), fold("lip", "Réglages de la voix", ...rows));

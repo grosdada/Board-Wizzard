@@ -1,5 +1,6 @@
 // Lip sync sans calcul lourd : le navigateur ecoute la voix (volume et couleur du son, 12 fois par seconde) et appelle
 // une des neuf bouches dessinees au trait. Animation limitee : chaque bouche tient au moins deux images.
+//   lip.mode : "simple" (par defaut : fermee, ouverte, ronde, tirees des memes reperes) ou "detail" (les neuf bouches).
 //   calque.lip = { on, src (fichier son du storyboard), name, dur, fps, cues ("XXAAEEMM…", une lettre par image),
 //                  off (decalage en secondes), x, y (place de la bouche, fraction de la boite du personnage vu de face),
 //                  s (largeur, fraction de la hauteur), hw (rayon de l'axe de la tete, fraction de la hauteur), r (inclinaison),
@@ -66,6 +67,27 @@ export function mouthSvg(shape, o = {}) {
 }
 export const mouthIcon = (shape, set) => `<svg viewBox="-56 -44 112 100" width="30" height="27">${mouthSvg(shape, { cache: false, set })}</svg>`;
 
+// Lip sync simple (par defaut) : trois bouches seulement. Fermee sur les silences et les levres jointes, ouverte des que
+// ca parle, ronde seulement sur un « o » ou un « ou » bien tenu (au moins trois images, un quart de seconde).
+export const MODES = { simple: "Simple : fermée, ouverte, ronde", detail: "Détaillé : neuf bouches" };
+export const SIMPLE = ["X", "A", "O"];
+const simpleCache = new Map();
+export function simplify(cues) {
+  let out = simpleCache.get(cues);
+  if (out) return out;
+  const a = [...cues].map((c) => (c === "X" || c === "M" || c === "F" ? "X" : c === "O" || c === "U" ? "o" : "A"));
+  for (let i = 0; i < a.length;) {
+    if (a[i] !== "o") { i++; continue; }
+    let j = i; while (j < a.length && a[j] === "o") j++;
+    const v = j - i >= 3 ? "O" : "A";
+    for (let k = i; k < j; k++) a[k] = v;
+    i = j;
+  }
+  out = a.join("");
+  if (simpleCache.size > 200) simpleCache.clear();
+  simpleCache.set(cues, out);
+  return out;
+}
 /** Partie gardee de la voix : [debut, fin] en secondes dans le fichier (lip.in, lip.out : la decoupe). */
 export function voiceSpan(lip) { const a = Math.max(0, lip.in || 0), b = Math.min(lip.dur || 1e9, lip.out ?? lip.dur ?? 1e9); return [a, Math.max(a, b)]; }
 /** Instant dans le fichier son qui correspond a l'instant t du plan, ou -1 hors de la voix. */
@@ -76,7 +98,7 @@ export function cueIndex(lip, t) { const v = voiceTime(lip, t), i = Math.floor(v
 export function cueAt(lip, t) {
   if (!lip || !lip.cues) return "X";
   const i = cueIndex(lip, t);
-  return (i >= 0 && lip.cues[i]) || "X";
+  return (i >= 0 && (lip.mode === "detail" ? lip.cues : simplify(lip.cues))[i]) || "X";
 }
 
 /** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face). */
