@@ -143,9 +143,71 @@ def list_items():
     return sorted(out, key=lambda x: (x.get("kind", ""), x.get("name", "").lower()))
 
 
-# ---- dossiers de la banque : un chemin « Projet/Sous-dossier », propre a chaque onglet (personnages, decors, assets).
-# folders.json garde les dossiers encore vides : { "character": [...], "decor": [...], "asset": [...] }.
-FOLDER_KINDS = ("character", "decor", "asset")
+# ---- banque audio : les voix importees, enregistrees au micro ou generees. data/audio/index.json + les fichiers.
+AUDIO_EXT = (".webm", ".wav", ".mp3", ".m4a", ".ogg", ".oga", ".aac", ".flac", ".mp4")
+
+
+def list_audio():
+    try:
+        out = _read(_dir("audio") / "index.json")
+    except (OSError, ValueError):
+        out = []
+    return [a for a in out if isinstance(a, dict) and a.get("id")]
+
+
+def add_audio(body, name, source="import", text="", voice="", folder=""):
+    """Range un son dans la banque audio et rend sa fiche."""
+    ext = os.path.splitext(name or "")[1].lower()
+    if ext not in AUDIO_EXT:
+        ext = ".webm"
+    aid = "a%x%s" % (int(time.time() * 1000), uuid.uuid4().hex[:3])
+    with _lock:
+        _dir("audio").mkdir(parents=True, exist_ok=True)
+        (_dir("audio") / (aid + ext)).write_bytes(body)
+        label = re.sub(r"\.[a-z0-9]{2,5}$", "", (name or "voix").strip(), flags=re.I)[:80] or "voix"
+        entry = {"id": aid, "name": label, "file": aid + ext, "source": source or "import", "text": (text or "")[:2000],
+                 "voice": voice or "", "folder": _clean_folder(folder), "dur": 0, "created": int(time.time())}
+        _write(_dir("audio") / "index.json", list_audio() + [entry])
+    return entry
+
+
+def update_audio(aid, patch):
+    with _lock:
+        items = list_audio()
+        for a in items:
+            if a["id"] == aid:
+                for k in ("name", "folder", "dur"):
+                    if k in (patch or {}):
+                        a[k] = _clean_folder(patch[k]) if k == "folder" else (float(patch[k] or 0) if k == "dur" else str(patch[k])[:80])
+                _write(_dir("audio") / "index.json", items)
+                return a
+    raise KeyError(aid)
+
+
+def remove_audio(aid):
+    with _lock:
+        items = list_audio()
+        keep = [a for a in items if a["id"] != aid]
+        for a in items:
+            if a["id"] == aid:
+                try:
+                    safe(_dir("audio"), a["file"]).unlink()
+                except OSError:
+                    pass
+        _write(_dir("audio") / "index.json", keep)
+    return len(items) - len(keep)
+
+
+def audio_entry(aid):
+    for a in list_audio():
+        if a["id"] == aid:
+            return a
+    raise KeyError(aid)
+
+
+# ---- dossiers de la banque : un chemin « Projet/Sous-dossier », propre a chaque onglet (personnages, decors, assets,
+# audio). folders.json garde les dossiers encore vides : { "character": [...], "decor": [...], "asset": [...], "audio": [...] }.
+FOLDER_KINDS = ("character", "decor", "asset", "audio")
 
 
 def _clean_folder(name):
@@ -153,30 +215,36 @@ def _clean_folder(name):
     return "/".join(p for p in parts if p)[:120]
 
 
-def _empty_folders(items=None):
+def _foldered(kind=None):
+    """Tout ce qui se range en dossiers : (onglet, dossier, fonction qui change le dossier)."""
+    out = [(it.get("kind"), _clean_folder(it.get("folder", "")), (lambda f, i=it["id"]: mutate_item(i, lambda x: x.update(folder=f))))
+           for it in list_items()]
+    out += [("audio", _clean_folder(a.get("folder", "")), (lambda f, i=a["id"]: update_audio(i, {"folder": f}))) for a in list_audio()]
+    return [o for o in out if kind is None or o[0] == kind]
+
+
+def _empty_folders(things=None):
     try:
         extra = _read(_dir("bank") / "folders.json")
     except (OSError, ValueError):
         extra = {}
-    if isinstance(extra, list):                                   # ancienne liste commune aux trois onglets
-        used = {}
-        for it in (items if items is not None else list_items()):
-            used.setdefault(_clean_folder(it.get("folder", "")), set()).add(it.get("kind"))
+    if isinstance(extra, list):                                   # ancienne liste commune aux onglets
+        used = set(f for _, f, _ in (things if things is not None else _foldered()))
         old, extra = extra, {k: [] for k in FOLDER_KINDS}
         for f in old:
             if isinstance(f, str) and f and f not in used:        # dossier vide : on ne sait pas a qui il etait, on le garde partout
-                for k in FOLDER_KINDS:
+                for k in ("character", "decor", "asset"):
                     extra[k].append(f)
     return {k: [f for f in (extra.get(k) or []) if isinstance(f, str) and f] for k in FOLDER_KINDS}
 
 
 def list_folders():
     """Dossiers de chaque onglet : { type: [chemins] }."""
-    items = list_items()
-    seen = {k: set(v) for k, v in _empty_folders(items).items()}
-    for it in items:
-        if it.get("folder") and it.get("kind") in seen:
-            seen[it["kind"]].add(_clean_folder(it["folder"]))
+    things = _foldered()
+    seen = {k: set(v) for k, v in _empty_folders(things).items()}
+    for kind, f, _ in things:
+        if f and kind in seen:
+            seen[kind].add(f)
     for fs in seen.values():
         for f in list(fs):                                        # un sous-dossier fait exister ses parents
             parts = f.split("/")
@@ -209,9 +277,9 @@ def remove_folder(name, kind):
     parent = "/".join(name.split("/")[:-1])
     inside = lambda f: f == name or (f or "").startswith(name + "/")
     moved = 0
-    for it in list_items():
-        if it.get("kind") == kind and inside(_clean_folder(it.get("folder", ""))):
-            mutate_item(it["id"], lambda x: x.update(folder=parent))
+    for _, f, move in _foldered(kind):
+        if inside(f):
+            move(parent)
             moved += 1
     with _lock:
         extra = _empty_folders()
@@ -235,10 +303,9 @@ def rename_folder(name, to, kind):
     inside = lambda f: f == name or (f or "").startswith(name + "/")
     swap = lambda f: to + f[len(name):]
     moved = 0
-    for it in list_items():
-        f = _clean_folder(it.get("folder", ""))
-        if it.get("kind") == kind and inside(f):
-            mutate_item(it["id"], lambda x, f=f: x.update(folder=swap(f)))
+    for _, f, move in _foldered(kind):
+        if inside(f):
+            move(swap(f))
             moved += 1
     with _lock:
         extra = _empty_folders()

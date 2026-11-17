@@ -3,9 +3,10 @@
 import { h, get, post, put, del, upload, toast, modal } from "./api.js";
 import { sprite, preload, variantOf, AXES, nearestAxis, angleToFrame, frameToAngle } from "./model.js";
 
-const KINDS = [["character", "Personnages"], ["decor", "Décors"], ["asset", "Assets"]];
+const KINDS = [["character", "Personnages"], ["decor", "Décors"], ["asset", "Assets"], ["audio", "Audio"]];
+const SOURCES = { import: "importée", micro: "micro", elevenlabs: "ElevenLabs" };
 const STYLES = [["photo", "Photoréaliste"], ["dessin", "Dessin"], ["3d", "3D"]];
-const KIND_ONE = { character: "personnage", decor: "décor", asset: "asset" };
+const KIND_ONE = { character: "personnage", decor: "décor", asset: "asset", audio: "son" };
 
 export function target() { return localStorage.getItem("bw.target") || "auto"; }
 
@@ -20,6 +21,7 @@ export class Bank {
     host.addEventListener("dragleave", () => host.classList.remove("drop"));
     host.addEventListener("drop", (e) => {
       host.classList.remove("drop");
+      if (this.tab === "audio") { const snd = [...e.dataTransfer.files].filter((f) => /^(audio|video)\//.test(f.type)); if (snd.length) { e.preventDefault(); this.importAudio(snd); } return; }
       const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith("image/"));
       if (files.length) { e.preventDefault(); this.importDialog(files); }
     });
@@ -29,7 +31,8 @@ export class Bank {
   set folder(f) { this.folderBy[this.tab] = f || ""; localStorage.setItem("bw.folders", JSON.stringify(this.folderBy)); }
 
   async reload() {
-    const [items, extra] = await Promise.all([get("bank"), get("folders").catch(() => ({}))]);
+    const [items, extra, audio] = await Promise.all([get("bank"), get("folders").catch(() => ({})), get("audio").catch(() => [])]);
+    this.audio = (audio || []).map((a) => Object.assign(a, { kind: "audio" }));          // banque audio : voix importees, micro, generees
     this.app.bank = new Map(items.map((it) => [it.id, it]));
     this.extraFolders = extra && !Array.isArray(extra) ? extra : {};
     this.render();
@@ -41,12 +44,13 @@ export class Bank {
     if (this.folder && this.folder !== "·" && !folders.includes(this.folder)) this.folder = "";
     // un dossier montre aussi le contenu de ses sous-dossiers
     const inFolder = (it) => !this.folder || (this.folder === "·" ? !it.folder : it.folder === this.folder || (it.folder || "").startsWith(this.folder + "/"));
-    const items = [...app.bank.values()].filter((it) => it.kind === this.tab && inFolder(it) &&
-      (!this.query || (it.name + " " + (it.tags || []).join(" ")).toLowerCase().includes(this.query)));
-    const pick = h("input", { type: "file", accept: "image/*", multiple: true, style: { display: "none" },
-                              on: { change: (e) => { if (e.target.files.length) this.importDialog([...e.target.files]); e.target.value = ""; } } });
-    const grid = h("div.bank-grid", items.map((it) => this.card(it)));
-    if (!items.length) grid.append(h("p.muted.bank-empty", `Aucun ${KIND_ONE[this.tab]} pour l'instant. Glisse des images ici, ou « Générer ».`));
+    const isAudio = this.tab === "audio", pool = (k) => (k === "audio" ? this.audio || [] : [...app.bank.values()]);
+    const items = pool(this.tab).filter((it) => it.kind === this.tab && inFolder(it) &&
+      (!this.query || (it.name + " " + (it.tags || []).join(" ") + " " + (it.text || "")).toLowerCase().includes(this.query)));
+    const pick = h("input", { type: "file", accept: isAudio ? "audio/*,video/mp4,.webm" : "image/*", multiple: true, style: { display: "none" },
+                              on: { change: (e) => { if (e.target.files.length) (isAudio ? this.importAudio([...e.target.files]) : this.importDialog([...e.target.files])); e.target.value = ""; } } });
+    const grid = h("div.bank-grid" + (isAudio ? ".audio" : ""), items.map((it) => (isAudio ? this.audioCard(it) : this.card(it))));
+    if (!items.length) grid.append(h("p.muted.bank-empty", isAudio ? "Aucun son pour l'instant. Les voix importées, enregistrées au micro ou générées dans le montage arrivent ici ; tu peux aussi glisser des fichiers son." : `Aucun ${KIND_ONE[this.tab]} pour l'instant. Glisse des images ici, ou « Générer ».`));
     const search = h("input.search", { type: "search", placeholder: "Chercher…", value: this.query,
                                        on: { input: (e) => { this.query = e.target.value.toLowerCase(); this.renderGrid(); } } });
     const folderSel = h("select.folder", { title: `Dossiers de l'onglet ${KINDS.find(([k]) => k === this.tab)[1]} (un par projet, par exemple)`,
@@ -57,18 +61,19 @@ export class Bank {
     this.host.append(
       h("div.tabs", KINDS.map(([k, label]) => h("button" + (k === this.tab ? ".on" : ""), {
         on: { click: () => { this.tab = k; localStorage.setItem("bw.tab", k); this.render(); } } },
-        label, h("span.count", String([...app.bank.values()].filter((x) => x.kind === k && (k === this.tab ? inFolder(x) : true)).length))))),
+        label, h("span.count", String(pool(k).filter((x) => x.kind === k && (k === this.tab ? inFolder(x) : true)).length))))),
       h("div.bank-bar", folderSel,
         h("button.mini", { title: this.folder && this.folder !== "·" ? `Créer un sous-dossier dans « ${this.folder} »` : "Créer un dossier", on: { click: () => this.newFolder() } }, "＋ Dossier"),
         this.folder && this.folder !== "·" ? h("button.mini", { title: `Renommer le dossier « ${this.folder} »`, on: { click: () => this.renameFolder() } }, "✎") : "",
         this.folder && this.folder !== "·" ? h("button.mini.danger", { title: `Supprimer le dossier « ${this.folder} » (ses éléments ne sont pas supprimés)`, on: { click: () => this.deleteFolder() } }, "🗑") : ""),
-      h("div.bank-bar", search, h("button.mini", { title: "Importer des images", on: { click: () => pick.click() } }, "＋ Importer"),
-        h("button.mini", { title: "Générer à partir d'une description", on: { click: () => this.generateDialog() } }, "✨ Générer"), pick),
+      h("div.bank-bar", search, h("button.mini", { title: isAudio ? "Importer des fichiers son" : "Importer des images", on: { click: () => pick.click() } }, "＋ Importer"),
+        isAudio ? "" : h("button.mini", { title: "Générer à partir d'une description", on: { click: () => this.generateDialog() } }, "✨ Générer"), pick),
       grid);
     this.grid = grid;
   }
   folders(kind = this.tab) {          // dossiers d'un onglet : ceux de ses elements, ceux crees vides, et leurs parents
-    const all = new Set([...((this.extraFolders || {})[kind] || []), ...[...this.app.bank.values()].filter((it) => it.kind === kind).map((it) => it.folder).filter(Boolean)]);
+    const things = kind === "audio" ? this.audio || [] : [...this.app.bank.values()].filter((it) => it.kind === kind);
+    const all = new Set([...((this.extraFolders || {})[kind] || []), ...things.map((it) => it.folder).filter(Boolean)]);
     for (const f of [...all]) { const p = f.split("/"); for (let i = 1; i < p.length; i++) all.add(p.slice(0, i).join("/")); }
     return [...all].sort((a, b) => a.localeCompare(b, "fr"));
   }
@@ -94,7 +99,7 @@ export class Bank {
     toast(`Dossier renommé en « ${name} ».`);
   }
   async deleteFolder() {
-    const f = this.folder, n = [...this.app.bank.values()].filter((it) => it.kind === this.tab).filter((it) => it.folder === f || (it.folder || "").startsWith(f + "/")).length;
+    const f = this.folder, n = (this.tab === "audio" ? this.audio || [] : [...this.app.bank.values()].filter((it) => it.kind === this.tab)).filter((it) => it.folder === f || (it.folder || "").startsWith(f + "/")).length;
     const parent = f.split("/").slice(0, -1).join("/");
     if (!confirm(`Supprimer le dossier « ${f} » et ses sous-dossiers ?
 ` + (n ? `Ses ${n} élément(s) ne sont pas supprimés : ils vont dans ${parent ? "« " + parent + " »" : "« Sans dossier »"}.` : "Il est vide."))) return;
@@ -121,6 +126,39 @@ export class Bank {
     return `/bank/${it.id}/${v.ref}`;
   }
 
+  // ---- banque audio
+  async importAudio(files) {
+    const folder = this.folder && this.folder !== "·" ? this.folder : "";
+    let n = 0;
+    for (const f of files) {
+      try { await upload(`audio?name=${encodeURIComponent(f.name)}&source=import&folder=${encodeURIComponent(folder)}`, f); n++; }
+      catch (e) { toast(`${f.name} refusé : ${e.message}`, "error"); }
+    }
+    await this.reload();
+    if (n) toast(`${n} son${n > 1 ? "s" : ""} ajouté${n > 1 ? "s" : ""} à la banque audio.`);
+  }
+  playAudio(a, btn) {                 // un seul son a la fois ; recliquer l'arrete
+    const p = this.player || (this.player = new Audio());
+    const same = this.playing === a.id && !p.paused;
+    p.pause();
+    if (this.playBtn && this.playBtn.isConnected) this.playBtn.textContent = "▶";
+    if (same) { this.playing = null; return; }
+    p.src = `/audio/${a.file}`; p.currentTime = 0;
+    p.onloadedmetadata = () => { if (!a.dur && isFinite(p.duration)) { a.dur = +p.duration.toFixed(2); put("audio/" + a.id, { dur: a.dur }).catch(() => {}); } };
+    p.onended = () => { if (btn.isConnected) btn.textContent = "▶"; this.playing = null; };
+    p.play().catch((e) => toast("Lecture impossible : " + e.message, "error"));
+    this.playing = a.id; this.playBtn = btn; btn.textContent = "■";
+  }
+  audioCard(a) {
+    const play = h("button.mini.aplay", { title: "Écouter", on: { click: () => this.playAudio(a, play) } }, this.playing === a.id && this.player && !this.player.paused ? "■" : "▶");
+    const info = [a.dur ? a.dur.toFixed(1) + " s" : null, SOURCES[a.source] || a.source, a.voice || null].filter(Boolean).join(" · ");
+    return h("div.acard", { "data-name": (a.name + " " + (a.text || "")).toLowerCase(), title: a.text ? `« ${a.text} »` : a.name },
+      play,
+      h("div.ainfo", h("div.aname", a.name), h("div.ameta", info + (a.folder ? " · 📁 " + a.folder : ""))),
+      h("button.mini", { title: "Renommer", on: { click: async () => { const n = (prompt("Nom du son :", a.name) || "").trim(); if (n && n !== a.name) { await put("audio/" + a.id, { name: n }); this.reload(); } } } }, "✎"),
+      h("button.mini", { title: "Ranger dans un dossier de l'onglet Audio (vide = sans dossier)", on: { click: async () => { const f = prompt("Dossier (ex. Projet/Scène 1) :\n" + (this.folders("audio").join("\n") || "(aucun dossier pour l'instant)"), a.folder || ""); if (f !== null && f.trim() !== (a.folder || "")) { await put("audio/" + a.id, { folder: f.trim() }); this.reload(); } } } }, "📁"),
+      h("button.mini.danger", { title: "Retirer de la banque audio (les montages qui s'en servent gardent leur copie)", on: { click: async () => { if (!confirm(`Retirer « ${a.name} » de la banque audio ?`)) return; if (this.playing === a.id && this.player) this.player.pause(); await del("audio/" + a.id); this.reload(); } } }, "🗑"));
+  }
   card(it) {
     const vs = Object.values(it.variants || {}), orbits = vs.filter((v) => v.orbit).length;
     const busy = this.app.jobsFor(it.id);

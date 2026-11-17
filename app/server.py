@@ -217,6 +217,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(store.safe(WEB, "/".join(parts[1:])))
         if parts[0] == "bank" and len(parts) > 2:
             return self.send_file(store.safe(store.item_dir(parts[1]), "/".join(parts[2:])), "max-age=86400")
+        if parts[0] == "audio" and len(parts) == 2:                 # fichiers de la banque audio
+            return self.send_file(store.safe(store._dir("audio"), parts[1]), "max-age=86400")
         if parts[0] == "projects" and len(parts) > 2:
             return self.send_file(store.safe(store.project_dir(parts[1]), "/".join(parts[2:])), "max-age=86400")
         self.send_json({"error": "introuvable"}, 404)
@@ -254,6 +256,18 @@ class Handler(BaseHTTPRequestHandler):
             elif len(seg) == 3 and seg[2] == "cancel":
                 S.cancel(seg[1])
             return self.send_json({"ok": True})
+        if head == "audio":                                         # banque audio : voix importees, enregistrees, generees
+            if len(seg) == 1:
+                if method == "POST":
+                    if not body or len(body) > 80 * 1024 * 1024:
+                        raise ApiError("fichier son vide ou trop gros (80 Mo au plus)", 400)
+                    return self.send_json(store.add_audio(body, q.get("name", "voix.webm"), q.get("source", "import"), folder=q.get("folder", "")))
+                return self.send_json(store.list_audio())
+            if method == "PUT":
+                return self.send_json(store.update_audio(seg[1], data or {}))
+            if method == "DELETE":
+                return self.send_json({"removed": store.remove_audio(seg[1])})
+            return self.send_json(store.audio_entry(seg[1]))
         if head == "tts" and seg[1:] == ["voices"]:                 # voix ElevenLabs du compte
             try:
                 return self.send_json(eleven.voices((settings.load().get("elevenlabs") or {}).get("key")))
@@ -397,7 +411,16 @@ class Handler(BaseHTTPRequestHandler):
             dest = pdir / "assets" / ("voix_%d.mp3" % (time.time() * 1000))
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(mp3)
-            return self.send_json({"file": "assets/" + dest.name})
+            text = (d.get("text") or "").strip()
+            entry = store.add_audio(mp3, (d.get("name") or text[:40] or "voix") + ".mp3", "elevenlabs", text, d.get("voice_name") or "")
+            return self.send_json({"file": "assets/" + dest.name, "audio": entry["id"]})
+        if act == "audio-from" and method == "POST":               # reprendre un son de la banque audio dans ce storyboard
+            entry = store.audio_entry(d.get("id", ""))
+            src = store.safe(store._dir("audio"), entry["file"])
+            dest = pdir / "assets" / ("voix_%d%s" % (time.time() * 1000, src.suffix))
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(src.read_bytes())
+            return self.send_json({"file": "assets/" + dest.name, "name": entry["name"]})
         if act == "audio" and method == "POST":                    # voix d'un personnage (fichier importe ou micro)
             ext = Path(q.get("name", "voix.webm")).suffix.lower()
             if ext not in (".webm", ".wav", ".mp3", ".m4a", ".ogg", ".oga", ".aac", ".flac", ".mp4"):
@@ -407,7 +430,8 @@ class Handler(BaseHTTPRequestHandler):
             dest = pdir / "assets" / ("voix_%d%s" % (time.time() * 1000, ext))
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(body)
-            return self.send_json({"file": "assets/" + dest.name})
+            entry = store.add_audio(body, q.get("name", "voix" + ext), q.get("source", "import"))     # aussi dans la banque audio
+            return self.send_json({"file": "assets/" + dest.name, "audio": entry["id"]})
         if act == "flat" and method == "POST":                     # la case aplatie par le navigateur (PNG)
             panel = re.sub(r"[^\w-]", "", seg[2])
             rel = "flat/%s_%d.png" % (panel, time.time())

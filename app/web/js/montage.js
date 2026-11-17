@@ -7,7 +7,7 @@
 // Profondeur de champ : panel.dof = { on, focus, amount } comme dans la case. Deux pistes l'animent :
 //   tracks.fo : [{ t, fo (mise au point, 0 devant a 1 fond), e }]   ·   tracks.bl : [{ t, bl (force du flou), e }]
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
-import { h, modal, toast, history, upload, get, post } from "./api.js";
+import { h, modal, toast, history, upload, get, post, put } from "./api.js";
 import { MOUTHS, SETS, MODES, SIMPLE, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, frameToAngle, angleToFrame, bodyFill, wiggleFilter } from "./model.js";
@@ -413,7 +413,8 @@ export function openMontage(app, pid) {
   async function setVoice(l, blob, name, file) {           // un son arrive (fichier, micro ou voix generee) : on le range, on l'ecoute, on pose les bouches
     try {
       toast("Écoute de la voix…");
-      const [r, res] = await Promise.all([file ? { file } : upload(`projects/${app.project.id}/audio?name=${encodeURIComponent(name)}`, blob), blob.arrayBuffer().then((b) => analyse(b))]);
+      const [r, res] = await Promise.all([file ? (typeof file === "string" ? { file } : file) : upload(`projects/${app.project.id}/audio?name=${encodeURIComponent(name)}&source=${/^micro\./.test(name) ? "micro" : "import"}`, blob), blob.arrayBuffer().then((b) => analyse(b))]);
+      if (r.audio) { put("audio/" + r.audio, { dur: res.dur }).catch(() => {}); if (app.bankUI) app.bankUI.reload(); libAudio = null; }   // la voix est aussi rangee dans la banque audio
       const first = !l.lip || l.lip.x == null;
       l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { src: r.file, name, dur: res.dur, fps: res.fps, cues: res.cues });
       delete l.lip.in; delete l.lip.out;
@@ -424,7 +425,21 @@ export function openMontage(app, pid) {
     } catch (e) { toast("Voix refusée : " + e.message, "error"); }
   }
   // voix de synthese ElevenLabs : un texte, une voix du compte, et le son arrive comme une voix importee
-  let ttsVoices = null, ttsBusy = false;
+  let ttsVoices = null, ttsBusy = false, libAudio = null;
+  function libBox(l) {                                     // reprendre une voix deja rangee dans la banque audio
+    const pick = h("select", { title: "Les voix importées, enregistrées ou générées sont rangées dans l'onglet Audio de la banque", on: { change: async (e) => {
+      const id = e.target.value; e.target.value = "";
+      if (!id) return;
+      try {
+        const r = await post(`projects/${app.project.id}/audio-from`, { id });
+        await setVoice(l, await (await fetch(`/projects/${app.project.id}/${r.file}`)).blob(), r.name, r.file);
+      } catch (err) { toast("Son non repris : " + err.message, "error"); }
+    } } }, h("option", { value: "" }, libAudio ? (libAudio.length ? "📁 Prendre dans la banque audio…" : "Banque audio vide") : "Banque audio…"));
+    const fill = () => pick.append(...libAudio.map((a) => h("option", { value: a.id, title: a.text || "" }, (a.folder ? a.folder + " / " : "") + a.name + (a.dur ? ` · ${a.dur.toFixed(1)} s` : ""))));
+    if (libAudio) fill();
+    else get("audio").then((v) => { libAudio = v || []; pick.options[0].textContent = libAudio.length ? "📁 Prendre dans la banque audio…" : "Banque audio vide"; fill(); }).catch(() => {});
+    return pick;
+  }
   const tts = { text: "", voice: localStorage.getItem("bw.ttsVoice") || "" };
   function ttsBox(l) {
     const area = h("textarea", { rows: 3, placeholder: "Ce que dit le personnage…", style: { width: "100%", boxSizing: "border-box" }, on: { input: (e) => { tts.text = e.target.value; } } });
@@ -439,11 +454,11 @@ export function openMontage(app, pid) {
       if (!tts.voice) return toast("Choisis une voix.", "error");
       ttsBusy = true; go.disabled = true; go.textContent = "Génération…";
       try {
-        const r = await post(`projects/${app.project.id}/tts`, { text: tts.text.trim(), voice: tts.voice });
+        const vn = (ttsVoices || []).find((v) => v.id === tts.voice), label = `${vn ? vn.name : "voix"} : ${tts.text.trim().slice(0, 30)}`;
+        const r = await post(`projects/${app.project.id}/tts`, { text: tts.text.trim(), voice: tts.voice, voice_name: vn ? vn.name : "", name: label });
         const blob = await (await fetch(`/projects/${app.project.id}/${r.file}`)).blob();
-        const vn = (ttsVoices || []).find((v) => v.id === tts.voice);
         ttsBusy = false;
-        await setVoice(l, blob, `${vn ? vn.name : "voix"} : ${tts.text.trim().slice(0, 30)}`, r.file);
+        await setVoice(l, blob, label, r);
       } catch (e) { ttsBusy = false; toast("Voix non générée : " + e.message, "error"); if (go.isConnected) { go.disabled = false; go.textContent = "✨ Générer la voix"; } }
     } } }, ttsBusy ? "Génération…" : "✨ Générer la voix");
     return fold("tts", "✨ Générer une voix (ElevenLabs)", area, h("label.row", "Voix", pick), h("div.row", go), note);
@@ -496,7 +511,7 @@ export function openMontage(app, pid) {
     const micBtn = h("button.mini", { title: "Enregistre ta voix au micro ; clique encore pour arrêter", on: { click: () => micro(l, micBtn) } }, rec ? "■ Arrêter l'enregistrement" : "● Micro");
     const rows = [h("div.row.wrap", h("button.mini", { title: "Fichier son : wav, mp3, m4a, ogg, webm", on: { click: () => file.click() } }, lip.src ? "Changer la voix…" : "Importer une voix…"), micBtn, file,
       lip.src ? h("button.mini.danger", { title: "Retire la voix et ses bouches (la place de la bouche est gardée)", on: { click: () => { const a = players.get(l.id); if (a) a.pause(); players.delete(l.id); delete l.lip.src; delete l.lip.cues; delete l.lip.name; delete l.lip.dur; paint(); props(); } } }, "Retirer") : "")];
-    rows.push(ttsBox(l));
+    rows.push(libBox(l), ttsBox(l));
     if (lip.src) {
       const [va, vb] = voiceSpan(lip);
       rows.push(h("div.muted", { title: lip.name || "" }, `🔊 ${(lip.name || "voix").slice(0, 22)} · ${(vb - va).toFixed(1)} s` + (vb - va < (lip.dur || 0) - 0.01 ? ` sur ${(lip.dur || 0).toFixed(1)}` : "")),
@@ -516,9 +531,10 @@ export function openMontage(app, pid) {
         h("label.row", { title: "Simple : fermée sur les silences ; dès que ça parle, elle alterne ouverte et fermée. Détaillé : les neuf bouches." }, "Lip sync",
           h("select", { on: { change: (e) => { put("mode", e.target.value); lanes(); props(); } } }, Object.entries(MODES).map(([k, n]) => h("option", { value: k, selected: (lip.mode || "simple") === k }, n)))),
         lip.mode !== "detail" ? h("div", { title: "Nombre de battements de bouche par seconde pendant que ça parle" }, plain("Rythme ⓘ", "flap", 1.5, 6, 0.5, 4, (x) => (+x).toFixed(1) + " /s")) : "",
+        (lip.set || "capsule") === "capsule" ? h("div", { title: "Taille de la bouche ouverte, par rapport au trait de la bouche fermée" }, plain("Ouverture ↔ ⓘ", "ow", 0.15, 1.2, 0.01, 0.55, (x) => (+x).toFixed(2)), plain("Ouverture ↕", "oh", 0.2, 2.5, 0.01, 1, (x) => (+x).toFixed(2))) : "",
         h("label.row", { title: "Le dessin des bouches" }, "Jeu de bouches", h("select", { on: { change: (e) => { put("set", e.target.value); props(); } } }, Object.entries(SETS).map(([k, n]) => h("option", { value: k, selected: (lip.set || "capsule") === k }, n)))),
         fold("lipt", "Trait de la bouche", plain("Épaisseur", "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain("Tremblé", "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain("Ondulation", "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))),
-        h("label.row.check", { title: "Une forme blanche derrière la bouche, pour couvrir celle du dessin" }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => { put("bg", e.target.checked); props(); } } }), "Masque blanc derrière"));
+        h("label.row.check", { title: "Une forme derrière la bouche, pour couvrir celle du dessin. Elle prend la couleur choisie pour le personnage (blanc s'il n'en a pas)." }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => { put("bg", e.target.checked); props(); } } }), "Masque de peau"));
       if (lip.bg !== false) rows.push(fold("lipm", "Réglages du masque", plain("Largeur", "mw", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)), plain("Hauteur", "mh", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)),
         plain("Décalage ↔", "mx", -120, 120, 1, 0, (x) => String(Math.round(x))), plain("Décalage ↕", "my", -120, 120, 1, 0, (x) => String(Math.round(x))),
         h("label.row.check", { title: "Montre le masque en rose le temps de l'aligner" }, h("input", { type: "checkbox", checked: !!showMask, on: { change: (e) => { showMask = e.target.checked; paint(); } } }), "Voir le masque")));

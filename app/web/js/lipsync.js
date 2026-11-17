@@ -4,6 +4,7 @@
 //   calque.lip = { on, src (fichier son du storyboard), name, dur, fps, cues ("XXAAEEMM…", une lettre par image),
 //                  off (decalage en secondes), x, y (place de la bouche, fraction de la boite du personnage vu de face),
 //                  s (largeur, fraction de la hauteur), hw (rayon de l'axe de la tete, fraction de la hauteur), r (inclinaison),
+//                  ow, oh (largeur et hauteur de la bouche ouverte, jeu « trait et capsule »),
 //                  set (jeu de bouches : dessin | graphique), lw (epaisseur du trait), hand, wave (tremble du trait), bg (masque blanc), mw, mh, mx, my (son reglage) }
 // La bouche est accrochee a un axe vertical qui tourne avec l'orbite : de trois quarts elle glisse sur le cote et se
 // resserre, de dos elle disparait.
@@ -57,6 +58,10 @@ export function mouthSvg(shape, o = {}) {
   const lw = o.lw ?? 1;
   const set = SETMAP[o.set] || PLAIN;
   let d = set[shape] || set.X;
+  if (d === CAPSULE) {                                      // ouverture reglable : plus etroite que le trait par defaut
+    const w = 60 * (o.ow ?? 0.55), hh = 30 * (o.oh ?? 1);
+    d = `<rect x="${(-w / 2).toFixed(1)}" y="${(-hh / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${hh.toFixed(1)}" rx="${(Math.min(w, hh) / 2).toFixed(1)}" fill="#111" stroke="#111" stroke-width="3" stroke-linejoin="round"/>`;
+  }
   if (lw !== 1) d = d.replace(/stroke-width="([\d.]+)"/g, (m, v) => `stroke-width="${(v * lw).toFixed(2)}"`);
   let out = "";
   // le masque ne change pas d'une bouche a l'autre : une fois aligne sur le personnage, il le reste
@@ -111,7 +116,7 @@ export function lipMarkup(lip, box, flip, t, angle = 0, id = "", mask = "#ffffff
   let cx = box.x + (lip.x ?? 0.5) * box.w - Math.sin(angle) * (lip.hw ?? 0.03) * box.h;   // l'axe tourne : la bouche part sur le cote
   const cy = box.y + (lip.y ?? 0.13) * box.h;
   if (flip) cx = 2 * box.cx - cx;
-  const o = { cache: lip.bg !== false, lw: lip.lw, hand: lip.hand, wave: lip.wave, mw: lip.mw, mh: lip.mh, mx: lip.mx, my: lip.my, id, mask, set: lip.set };
+  const o = { cache: lip.bg !== false, lw: lip.lw, hand: lip.hand, wave: lip.wave, mw: lip.mw, mh: lip.mh, mx: lip.mx, my: lip.my, id, mask, set: lip.set, ow: lip.ow, oh: lip.oh };
   return `<g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)}) rotate(${((flip ? -1 : 1) * (lip.r || 0)).toFixed(1)}) scale(${(size / 100 * kx).toFixed(4)} ${(size / 100).toFixed(4)})" style="pointer-events:none">${mouthSvg(cueAt(lip, t), o)}</g>`;
 }
 
