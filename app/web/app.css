@@ -318,3 +318,6 @@ details.fold > summary:hover { opacity: 1; }
 /* entree vedette d'un menu (le montage) */
 .menu button.star { background: #e2603a; color: #fff; font-weight: 600; border-radius: 6px; margin: 2px 0 4px; }
 .menu button.star:hover { background: #f07348; }
+
+/* bouton plein ecran dans l'en-tete d'une fenetre, juste avant la croix */
+.modal > header .head-full { margin-left: auto; margin-right: 8px; white-space: nowrap; }

@@ -127,10 +127,11 @@ export function openDeck(app, deckId) {
     h("button.mini.danger", { title: "Supprime ce deck (les cases et leurs montages restent)", on: { click: () => { if (!confirm(`Supprimer le deck « ${deck.name} » ?`)) return; project.decks = project.decks.filter((d) => d !== deck); if (project.deckCur === deck.id) delete project.deckCur; app.commit("deck"); app.refreshTop(); done(); m.close(); toast("Deck supprimé."); } } }, "Supprimer ce deck"),
     h("span.muted", "Chaque changement est enregistré tout seul avec le storyboard."));
   const m = modal("Deck de montage", h("div.mt-editor.dk-editor", head2, h("div.mt-view", svg),
-    h("div.mt-bar", h("button.mini", { title: "Revenir au début", on: { click: () => { stop(); T = 0; sel = 0; refresh(); } } }, "⏮"), playBtn, clock, info, h("span.spacer"), fullBtn), track,
+    h("div.mt-bar", h("button.mini", { title: "Revenir au début", on: { click: () => { stop(); T = 0; sel = 0; refresh(); } } }, "⏮"), playBtn, clock, info), track,
     h("p.muted", "Maquette : les plans s'enchaînent en coupe franche, dans l'ordre de la bande. Les poignées aux deux bouts d'un plan le raccourcissent. Pas encore de transitions, de son ni d'export vidéo.")),
     [{ label: "Fermer", primary: true, click: done }]);
   m.box.classList.add("modal-wide", "modal-montage");
+  { const hd = m.box.querySelector("header"); fullBtn.classList.add("head-full"); hd.insertBefore(fullBtn, hd.querySelector("button.icon")); }   // plein ecran : en haut a droite, a cote de la croix
   return m;
 }
 

@@ -651,13 +651,14 @@ export function openMontage(app, pid) {
   const bar = h("div.mt-bar", h("button.mini", { title: "Revenir au début", on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn,
     h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), "En boucle"), clock,
     h("span.muted", { title: "Dans une piste : glisser trace un lasso qui prend les clés, Ctrl + clic en ajoute une. Les clés prises se déplacent ensemble et s'effacent avec Suppr. La règle des secondes déplace la tête de lecture." }, "Maj : aimant sur les clés · glisser : lasso ⓘ"),
-    h("span.spacer"), depthBtn, h("label.row", "Durée (s)", dur), fullBtn);
+    h("span.spacer"), depthBtn, h("label.row", "Durée (s)", dur));
   paint(); lanes(); props();
   const m = modal(`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, keyBox, tl),
     [{ label: "Annuler", click: done },
      { label: "Enregistrer le montage", click: () => { save(); toast("Montage enregistré."); } },
      { label: "Enregistrer et envoyer dans le deck ▸", primary: true, click: () => { save(); app.sendToDeck(pid); } }]);
   m.box.classList.add("modal-wide", "modal-montage");
+  { const hd = m.box.querySelector("header"); fullBtn.classList.add("head-full"); hd.insertBefore(fullBtn, hd.querySelector("button.icon")); }   // plein ecran : en haut a droite, a cote de la croix
   hist.watch(m.box);
   return m;
 }
