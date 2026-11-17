@@ -31,7 +31,7 @@ export function mouthSvg(shape, o = {}) {
   if (lw !== 1) d = d.replace(/stroke-width="([\d.]+)"/g, (m, v) => `stroke-width="${(v * lw).toFixed(2)}"`);
   let out = "";
   // le masque ne change pas d'une bouche a l'autre : une fois aligne sur le personnage, il le reste
-  if (o.cache !== false) out += `<ellipse cx="${(o.mx || 0).toFixed(1)}" cy="${(6 + (o.my || 0)).toFixed(1)}" rx="${(54 * (o.mw ?? 1)).toFixed(1)}" ry="${(38 * (o.mh ?? 1)).toFixed(1)}" fill="#fff"/>`;
+  if (o.cache !== false) out += `<ellipse cx="${(o.mx || 0).toFixed(1)}" cy="${(6 + (o.my || 0)).toFixed(1)}" rx="${(54 * (o.mw ?? 1)).toFixed(1)}" ry="${(38 * (o.mh ?? 1)).toFixed(1)}" fill="${o.mask || "#ffffff"}" data-mask="1"/>`;
   if (o.hand > 0 && o.id) {                                 // trait a la main : un bruit doux deplace le trace, different pour chaque bouche
     const seed = 3 + "XMAEOUFDL".indexOf(shape) * 7;
     out += `<filter id="${o.id}" filterUnits="userSpaceOnUse" x="-90" y="-80" width="180" height="170" color-interpolation-filters="sRGB">` +
@@ -42,15 +42,21 @@ export function mouthSvg(shape, o = {}) {
 }
 export const mouthIcon = (shape) => `<svg viewBox="-56 -44 112 100" width="30" height="27">${mouthSvg(shape, { cache: false })}</svg>`;
 
+/** Partie gardee de la voix : [debut, fin] en secondes dans le fichier (lip.in, lip.out : la decoupe). */
+export function voiceSpan(lip) { const a = Math.max(0, lip.in || 0), b = Math.min(lip.dur || 1e9, lip.out ?? lip.dur ?? 1e9); return [a, Math.max(a, b)]; }
+/** Instant dans le fichier son qui correspond a l'instant t du plan, ou -1 hors de la voix. */
+export function voiceTime(lip, t) { const [a, b] = voiceSpan(lip), tt = t - (lip.off || 0); return tt < 0 || tt >= b - a ? -1 : tt + a; }
+/** Numero de l'image de bouche a l'instant t, ou -1. */
+export function cueIndex(lip, t) { const v = voiceTime(lip, t), i = Math.floor(v * (lip.fps || 12)); return v < 0 || !lip.cues || i >= lip.cues.length ? -1 : i; }
 /** Lettre de la bouche a l'instant t. */
 export function cueAt(lip, t) {
   if (!lip || !lip.cues) return "X";
-  const i = Math.floor((t - (lip.off || 0)) * (lip.fps || 12));
-  return (i >= 0 && i < lip.cues.length && lip.cues[i]) || "X";
+  const i = cueIndex(lip, t);
+  return (i >= 0 && lip.cues[i]) || "X";
 }
 
 /** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face). */
-export function lipMarkup(lip, box, flip, t, angle = 0, id = "") {
+export function lipMarkup(lip, box, flip, t, angle = 0, id = "", mask = "#ffffff") {
   if (!lip || !lip.on) return "";
   const c = Math.cos(angle);
   if (c < -0.12) return "";                                 // de dos : la bouche est derriere la tete
@@ -58,7 +64,7 @@ export function lipMarkup(lip, box, flip, t, angle = 0, id = "") {
   let cx = box.x + (lip.x ?? 0.5) * box.w - Math.sin(angle) * (lip.hw ?? 0.03) * box.h;   // l'axe tourne : la bouche part sur le cote
   const cy = box.y + (lip.y ?? 0.13) * box.h;
   if (flip) cx = 2 * box.cx - cx;
-  const o = { cache: lip.bg !== false, lw: lip.lw, hand: lip.hand, wave: lip.wave, mw: lip.mw, mh: lip.mh, mx: lip.mx, my: lip.my, id };
+  const o = { cache: lip.bg !== false, lw: lip.lw, hand: lip.hand, wave: lip.wave, mw: lip.mw, mh: lip.mh, mx: lip.mx, my: lip.my, id, mask };
   return `<g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)}) rotate(${((flip ? -1 : 1) * (lip.r || 0)).toFixed(1)}) scale(${(size / 100 * kx).toFixed(4)} ${(size / 100).toFixed(4)})" style="pointer-events:none">${mouthSvg(cueAt(lip, t), o)}</g>`;
 }
 

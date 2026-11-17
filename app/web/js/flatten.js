@@ -3,7 +3,7 @@
 // mieux sur une image nette ; le flou reste un reglage d'affichage).
 import { loadImage } from "./api.js";
 import { drawImage } from "./draw.js";
-import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
+import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   const pg = app.page(), pan = pg.panels[g.id] || {}, bb = g.bbox;
@@ -58,7 +58,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     const vf = await vecReady(sp);
     if (vf) {                                              // dessin en traces : dessine en vectoriel, a la taille du canvas
       const box = layerBox(local, l, { w: vf.w, h: vf.h }), sc = Math.min(box.w / vf.w, box.h / vf.h);
-      const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, st = inkStroke(l.lw), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);
+      const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), st = inkStroke(l.lw, col), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);
       const body = new Path2D(vf.body), ink = new Path2D(vf.ink);
       cast(l, box);
       ctx.save();
@@ -66,15 +66,15 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       ctx.scale(kx, ky);
       if (l.flip) { ctx.translate(2 * (box.x + box.w / 2), 0); ctx.scale(-1, 1); }
       ctx.translate(tx, ty); ctx.scale(sc, sc);
-      ctx.fillStyle = "#ffffff"; ctx.fill(body);
+      ctx.fillStyle = col; ctx.fill(body);
       ctx.save(); ctx.clip(body);
-      const shd = shadeOf(l.sh, vf.h);
+      const shd = shadeOf(l.sh, vf.h, col);
       if (shd) {
         for (const pd of shadeShapes(l.sh, vf)) {                       // forme par forme
           const part = new Path2D(pd);
           ctx.save(); ctx.clip(part);
           ctx.fillStyle = shd.fill; ctx.fill(part);
-          ctx.translate(l.flip ? -shd.dx : shd.dx, shd.dy); ctx.fillStyle = "#ffffff"; ctx.fill(part);
+          ctx.translate(l.flip ? -shd.dx : shd.dx, shd.dy); ctx.fillStyle = col; ctx.fill(part);
           ctx.restore();
         }
       }

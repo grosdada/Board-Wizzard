@@ -46,16 +46,20 @@ export function vecReady(sp) { return new Promise((ok) => { const f = vecFrame(s
 /** Ombre graphique d'un dessin en traces, sans calcul : la silhouette moins elle-meme decalee vers la lumiere laisse
  *  un aplat gris du cote oppose. sh = { on, g (gris 0 = noir, 1 = blanc), w (largeur, en % de la hauteur), a (angle d'ou
  *  vient la lumiere, degres : 0 = droite, 90 = haut, 180 = gauche) }. Renvoie { fill, dx, dy } en unites du dessin, ou null. */
-export function shadeOf(sh, h) {
+/** Couleur unie d'un dessin en traces (l.col) : blanc par defaut. */
+export function bodyFill(l) { return l && /^#[0-9a-f]{6}$/i.test(l.col || "") ? l.col : "#ffffff"; }
+/** Ombre d'un dessin : la couleur du corps assombrie (un gris sur un corps blanc), decalee vers la lumiere. */
+export function shadeOf(sh, h, col = "#ffffff") {
   if (!sh || !sh.on) return null;
-  const g = Math.round(255 * clamp(sh.g ?? 0.72, 0, 1)), d = (sh.w ?? 5) / 100 * h, a = (sh.a ?? 135) * Math.PI / 180;
-  return { fill: `rgb(${g},${g},${g})`, dx: Math.cos(a) * d, dy: -Math.sin(a) * d };
+  const g = clamp(sh.g ?? 0.72, 0, 1), d = (sh.w ?? 5) / 100 * h, a = (sh.a ?? 135) * Math.PI / 180;
+  const c = [1, 3, 5].map((i) => Math.round(parseInt(col.slice(i, i + 2), 16) * g));
+  return { fill: `rgb(${c[0]},${c[1]},${c[2]})`, dx: Math.cos(a) * d, dy: -Math.sin(a) * d };
 }
 /** Formes a ombrer : toujours la silhouette entiere, plus les sh.k plus grandes formes fermees par le trait (0 = aucune :
  *  l'ombre rough, sur la silhouette seule ; les formes sont rangees de la plus grande a la plus petite). */
 export function shadeShapes(sh, vf) { return [vf.body].concat((vf.parts || []).slice(0, Math.max(0, Math.round((sh && sh.k) || 0)))); }
 /** Trait d'un dessin en traces : epaisseur ajoutee (lw > 0 : plus epais, < 0 : plus fin), en unites du dessin. */
-export function inkStroke(lw) { const t = +lw || 0; return { color: t >= 0 ? "#111111" : "#ffffff", width: Math.abs(t), outline: 0 }; }   // pas de contour de silhouette : il inventerait des traits la ou le dessin n'en a pas
+export function inkStroke(lw, col = "#ffffff") { const t = +lw || 0; return { color: t >= 0 ? "#111111" : col, width: Math.abs(t), outline: 0 }; }   // pas de contour de silhouette : il inventerait des traits la ou le dessin n'en a pas
 
 export function frameUrls(item, vid) {
   const v = variantOf(item, vid);

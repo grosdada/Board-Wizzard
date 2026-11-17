@@ -8,8 +8,9 @@
 //   tracks.fo : [{ t, fo (mise au point, 0 devant a 1 fond), e }]   ·   tracks.bl : [{ t, bl (force du flou), e }]
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { h, modal, toast, history, upload } from "./api.js";
-import { MOUTHS, mouthIcon, lipMarkup, analyse, locateMouth, cueAt } from "./lipsync.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, frameToAngle, angleToFrame } from "./model.js";
+import { MOUTHS, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
+import { swatch } from "./colors.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, frameToAngle, angleToFrame, bodyFill } from "./model.js";
 import { drawSvg, W } from "./draw.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
@@ -104,14 +105,14 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const gsd = groundShadow(l, box);                    // ombre portee : sous l'element
       if (gsd) o += `<ellipse cx="${f1(gsd.cx)}" cy="${f1(gsd.cy)}" rx="${f1(gsd.rx)}" ry="${f1(gsd.ry)}" fill="#000" opacity="${f3(gsd.a)}" style="pointer-events:none"${blur(depthOf(pan, li), gsd.blur)}/>`;
       if (vf) {
-        const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, st = inkStroke(s.lw);
-        const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h);
+        const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), st = inkStroke(s.lw, col);
+        const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h, col);
         let inner = "";
-        if (shd) shadeShapes(l.sh, vf).forEach((pd, i) => { inner += `<clipPath id="${pre}s-${l.id}-${i}"><path d="${pd}"/></clipPath><g clip-path="url(#${pre}s-${l.id}-${i})"><path d="${pd}" fill="${shd.fill}"/><path d="${pd}" fill="#fff" transform="translate(${f1(l.flip ? -shd.dx : shd.dx)} ${f1(shd.dy)})"/></g>`; });
-        o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})"><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="#fff" data-layer="${l.id}"/>` +
+        if (shd) shadeShapes(l.sh, vf).forEach((pd, i) => { inner += `<clipPath id="${pre}s-${l.id}-${i}"><path d="${pd}"/></clipPath><g clip-path="url(#${pre}s-${l.id}-${i})"><path d="${pd}" fill="${shd.fill}"/><path d="${pd}" fill="${col}" transform="translate(${f1(l.flip ? -shd.dx : shd.dx)} ${f1(shd.dy)})"/></g>`; });
+        o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})"><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="${col}" data-layer="${l.id}"/>` +
           `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
-      if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`)}</g>`;   // lip sync : la bouche qui parle
+      if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l))}</g>`;   // lip sync : la bouche qui parle
       if (sel === l.id) o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
     });
     return o + `</g></g><defs>${Object.values(blurs).join("")}</defs><rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
@@ -145,7 +146,7 @@ export function openMontage(app, pid) {
   // ------------------------------------------------------------------------------------------ visionneuse
   function paint() {
     svg.innerHTML = depthView ? topView() : scene.markup(t, playing ? null : sel, paint);
-    if (showMask && !playing) svg.querySelectorAll('g[style*="pointer-events:none"] > ellipse[fill="#fff"]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
+    if (showMask && !playing) svg.querySelectorAll('ellipse[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
   }
 
   // ------------------------------------------------------------------------------------------ vue de dessus (profondeur)
@@ -252,7 +253,10 @@ export function openMontage(app, pid) {
         side.append(h("label.row.range", { title: "0 = tout devant, 1 = au fond. Sert à la parallaxe, au flou de profondeur et à l'ordre des éléments." }, "Profondeur", inp, out));
       }
       if (sprite(it, cur().v, cur().f)?.vec) {
-        side.append(range("Trait", "lw", -2, 6, 0.1, (x) => (+x).toFixed(1)));
+        side.append(range("Trait", "lw", -2, 6, 0.1, (x) => (+x).toFixed(1)),
+          h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
+            swatch(l.col || "#ffffff", (c) => { l.col = c; paint(); }),
+            l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; paint(); props(); } } }, "Blanc") : ""));
         const sh = l.sh || {};
         side.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: e.target.checked }); paint(); props(); } } }), "Ombre"));
         if (sh.on) side.append(fold("sh", "Réglages de l'ombre", range("Gris", "shg", 0.2, 0.95, 0.01), range("Largeur", "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range("Lumière (angle)", "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
@@ -323,8 +327,8 @@ export function openMontage(app, pid) {
       if (!lip || !lip.src) continue;
       let a = players.get(l.id);
       if (!a || a.dataset.src !== lip.src) { if (a) a.pause(); a = new Audio(voiceUrl(lip)); a.dataset.src = lip.src; a.preload = "auto"; players.set(l.id, a); }
-      const want = t - (lip.off || 0);
-      if (!on || lip.on === false || want < 0 || want >= (lip.dur || 1e9)) { if (!a.paused) a.pause(); continue; }
+      const want = voiceTime(lip, t);
+      if (!on || want < 0) { if (!a.paused) a.pause(); continue; }
       if (a.paused) { try { a.currentTime = want; } catch (e) { /* pas encore charge */ } a.play().catch(() => {}); }
       else if (Math.abs(a.currentTime - want) > 0.25) a.currentTime = want;
     }
@@ -336,11 +340,20 @@ export function openMontage(app, pid) {
       const [r, res] = await Promise.all([upload(`projects/${app.project.id}/audio?name=${encodeURIComponent(name)}`, blob), blob.arrayBuffer().then((b) => analyse(b))]);
       const first = !l.lip || l.lip.x == null;
       l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { src: r.file, name, dur: res.dur, fps: res.fps, cues: res.cues });
+      delete l.lip.in; delete l.lip.out;
       if (first) await autoMouth(l, true);
       if ((l.lip.off || 0) + res.dur > anim.dur) { anim.dur = Math.min(60, Math.ceil(((l.lip.off || 0) + res.dur) * 2) / 2); dur.value = anim.dur; }
       hist.snap(); paint(); lanes(); props();
       toast(`Voix posée : ${res.dur.toFixed(1)} s, ${new Set(res.cues).size} bouches différentes.`);
     } catch (e) { toast("Voix refusée : " + e.message, "error"); }
+  }
+  function trimBlanks(l) {                                 // coupe le silence du debut et de la fin (d'apres les bouches trouvees)
+    const lip = l.lip, c = lip.cues || "", fps = lip.fps || 12, first = c.search(/[^X]/);
+    if (first < 0) return toast("Cette voix est muette : rien à garder.");
+    let last = c.length - 1; while (last > first && c[last] === "X") last--;
+    lip.in = f3(Math.max(0, first / fps - 0.06)); lip.out = f3(Math.min(lip.dur || 1e9, (last + 1) / fps + 0.12));
+    hist.snap(); paint(); lanes(); props();
+    toast(`Blancs coupés : ${(lip.out - lip.in).toFixed(1)} s gardées sur ${(lip.dur || 0).toFixed(1)}.`);
   }
   async function autoMouth(l, quiet) {                     // reperage automatique sur l'image de face
     const it = itemOf(l), st = stateOf(l), vv = it && variantOf(it, st.v);
@@ -382,7 +395,14 @@ export function openMontage(app, pid) {
     const micBtn = h("button.mini", { title: "Enregistre ta voix au micro ; clique encore pour arrêter", on: { click: () => micro(l, micBtn) } }, rec ? "■ Arrêter l'enregistrement" : "● Micro");
     const rows = [h("div.row.wrap", h("button.mini", { title: "Fichier son : wav, mp3, m4a, ogg, webm", on: { click: () => file.click() } }, lip.src ? "Changer la voix…" : "Importer une voix…"), micBtn, file,
       lip.src ? h("button.mini.danger", { title: "Retire la voix et ses bouches (la place de la bouche est gardée)", on: { click: () => { const a = players.get(l.id); if (a) a.pause(); players.delete(l.id); delete l.lip.src; delete l.lip.cues; delete l.lip.name; delete l.lip.dur; paint(); props(); } } }, "Retirer") : "")];
-    if (lip.src) rows.push(h("div.muted", { title: lip.name || "" }, `🔊 ${(lip.name || "voix").slice(0, 26)} · ${(lip.dur || 0).toFixed(1)} s`));
+    if (lip.src) {
+      const [va, vb] = voiceSpan(lip);
+      rows.push(h("div.muted", { title: lip.name || "" }, `🔊 ${(lip.name || "voix").slice(0, 22)} · ${(vb - va).toFixed(1)} s` + (vb - va < (lip.dur || 0) - 0.01 ? ` sur ${(lip.dur || 0).toFixed(1)}` : "")),
+        h("div.row.wrap",
+          h("button.mini", { title: "Retire le silence avant le premier son et après le dernier", on: { click: () => { trimBlanks(l); } } }, "✂ Couper les blancs"),
+          h("button.mini", { title: "Coupe la voix à la tête de lecture : ce qui vient après n'est plus joué", on: { click: () => { const v = voiceTime(lip, t); if (v < 0) return toast("Place la tête de lecture dans la voix."); put("out", f3(v)); lanes(); props(); } } }, "✂ Couper ici"),
+          vb - va < (lip.dur || 0) - 0.01 ? h("button.mini", { title: "Retrouve la voix entière", on: { click: () => { delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, "Entière") : ""));
+    }
     rows.push(h("label.row.check", { title: "Affiche la bouche dessinée sur le personnage" }, h("input", { type: "checkbox", checked: !!lip.on, on: { change: (e) => { put("on", e.target.checked); props(); } } }), "Bouche dessinée"));
     if (lip.on) {
       rows.push(h("div.row.wrap",
@@ -397,7 +417,7 @@ export function openMontage(app, pid) {
         plain("Décalage ↔", "mx", -120, 120, 1, 0, (x) => String(Math.round(x))), plain("Décalage ↕", "my", -120, 120, 1, 0, (x) => String(Math.round(x))),
         h("label.row.check", { title: "Montre le masque en rose le temps de l'aligner" }, h("input", { type: "checkbox", checked: !!showMask, on: { change: (e) => { showMask = e.target.checked; paint(); } } }), "Voir le masque")));
       if (lip.cues) {
-        const fps = lip.fps || 12, force = (sh) => { const i = Math.floor((t - (lip.off || 0)) * fps); if (i < 0 || i >= lip.cues.length) return toast("La tête de lecture est hors de la voix."); const c = lip.cues.split(""); c[i] = sh; if (i + 1 < c.length) c[i + 1] = sh; put("cues", c.join("")); props(); };
+        const force = (sh) => { const i = cueIndex(lip, t); if (i < 0) return toast("La tête de lecture est hors de la voix."); const c = lip.cues.split(""); c[i] = sh; if (i + 1 < c.length) c[i + 1] = sh; put("cues", c.join("")); props(); };
         rows.push(plain("Décalage (s)", "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2)),
           h("div.muted", { title: "Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée." }, `Bouche à cet instant ⓘ : ${MOUTHS[cueAt(lip, t)]}`),
           h("div.row.wrap.mouths", Object.keys(MOUTHS).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); b.innerHTML = mouthIcon(k); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));
@@ -420,7 +440,20 @@ export function openMontage(app, pid) {
     };
     row("cam", "Caméra", "🎥");
     if (dof.on) { row("fo", "Mise au point", "◎"); row("bl", "Flou", "◌"); }
-    for (const l of [...pan.layers].reverse()) row(l.id, itemOf(l) ? itemOf(l).name : "élément", "●");
+    for (const l of [...pan.layers].reverse()) {
+      const name = itemOf(l) ? itemOf(l).name : "élément";
+      row(l.id, name, "●");
+      const lip = l.lip;
+      if (lip && lip.src) {                                // la voix du personnage : un bloc a deplacer et a raccourcir par ses deux bouts
+        const [va, vb] = voiceSpan(lip), fps = lip.fps || 12, c = lip.cues || "", i0 = Math.floor(va * fps), i1 = Math.max(i0 + 1, Math.ceil(vb * fps));
+        let bars = "";
+        for (let i = i0; i < i1; i++) if (c[i] && c[i] !== "X") bars += `<rect x="${i - i0}" y="${c[i] === "M" ? 0.35 : "AOL".includes(c[i]) ? 0.05 : 0.2}" width="1.05" height="${c[i] === "M" ? 0.3 : "AOL".includes(c[i]) ? 0.9 : 0.6}"/>`;
+        const clip = h("div.mt-clip", { "data-clip": l.id, title: `${lip.name || "voix"} · glisser pour déplacer, tirer un bout pour raccourcir`, style: `left:${pct(lip.off || 0)};width:${pct(vb - va)}` },
+          h("span.dk-h.l", { "data-edge": "in" }), h("span.dk-h.r", { "data-edge": "out" }));
+        clip.insertAdjacentHTML("afterbegin", `<svg viewBox="0 0 ${i1 - i0} 1" preserveAspectRatio="none">${bars}</svg>`);
+        tl.append(h("div.mt-row.voice", h("div.mt-name", { title: `Voix de ${name}`, on: { click: () => { sel = l.id; selKey = null; paint(); lanes(); props(); } } }, "🔊 ", name), h("div.mt-lane", { "data-lane": l.id }, clip)));
+      }
+    }
     tl.append(h("div.mt-head", { style: `left:calc(var(--mt-name) + (100% - var(--mt-name)) * ${t / anim.dur})` }));
     clock.textContent = `${t.toFixed(2)} s / ${anim.dur.toFixed(1)} s`;
   }
@@ -444,6 +477,13 @@ export function openMontage(app, pid) {
     if (!lane || e.button !== 0) return;
     stop();
     try { tl.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+    const clipEl = e.target.closest(".mt-clip");
+    if (clipEl) {                                          // bloc de voix : le deplacer, ou le raccourcir par un bout
+      const l = layerOf(clipEl.dataset.clip), [va, vb] = voiceSpan(l.lip);
+      picked.clear(); selKey = null; sel = l.id;
+      drag = { kind: "clip", l, mode: e.target.dataset.edge || "move", x0: e.clientX, w: lane.getBoundingClientRect().width, off: l.lip.off || 0, a: va, b: vb };
+      return;
+    }
     if (e.target.__key) {
       const k = e.target.__key;
       if (e.ctrlKey || e.metaKey) {                        // Ctrl + clic : ajoute ou retire la cle de la selection
@@ -471,6 +511,13 @@ export function openMontage(app, pid) {
       tl.querySelectorAll(".key").forEach((d) => { const r = d.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         const inb = cx >= x && cx <= x + w && cy >= y && cy <= y + hh; d.classList.toggle("on", inb); if (inb) picked.add(d.__key); });
       return;
+    }
+    if (drag.kind === "clip") {
+      const lip = drag.l.lip, dt = (e.clientX - drag.x0) / drag.w * anim.dur;
+      if (drag.mode === "move") lip.off = f3(clamp(drag.off + dt, 0, anim.dur));
+      else if (drag.mode === "in") { const a = clamp(drag.a + dt, Math.max(0, drag.a - drag.off), drag.b - 0.1); lip.in = f3(a); lip.off = f3(drag.off + a - drag.a); }   // le son garde sa place, le debut recule
+      else lip.out = f3(clamp(drag.b + dt, drag.a + 0.1, lip.dur || 1e9));
+      paint(); lanes(); return;
     }
     if (drag.kind === "keys") {
       const dt = timeAt({ clientX: e.clientX }, tl.querySelector(".mt-lane")) - drag.t0;

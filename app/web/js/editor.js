@@ -4,7 +4,7 @@
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
-import { vecFrame, inkStroke, shadeOf, shadeShapes } from "./model.js";
+import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill } from "./model.js";
 import { drawSvg, W as DRAW_W } from "./draw.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 
@@ -138,15 +138,15 @@ export class Editor {
           const vf = vecFrame(sp, () => this.render(true));
           if (vf) {                                          // dessin en traces : net a tout zoom, trait reglable
             const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc;
-            const st = inkStroke(l.lw), tag = { "data-layer": l.id, "data-panel": g.id };
+            const col = bodyFill(l), st = inkStroke(l.lw, col), tag = { "data-layer": l.id, "data-panel": g.id };
             const gv = s("g", Object.assign({ class: "layer vlayer", transform: (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1) ` : "") + `translate(${tx} ${ty}) scale(${sc})`,
                                               filter: this.blur(defs, blurOf(pan, depthOf(pan, i), bb)) }, tag));
             const cid = "vc-" + g.id + "-" + l.id, clip = s("clipPath", { id: cid });
             clip.append(s("path", { d: vf.body }));
             defs.append(clip);
-            gv.append(s("path", Object.assign({ d: vf.body, fill: "#ffffff" }, tag)));
+            gv.append(s("path", Object.assign({ d: vf.body, fill: col }, tag)));
             const gi = s("g", { "clip-path": `url(#${cid})` });
-            const shd = shadeOf(l.sh, vf.h);
+            const shd = shadeOf(l.sh, vf.h, col);
             if (shd) {                                       // ombre : aplat gris, puis la silhouette decalee en blanc par-dessus
               const mv = `translate(${(l.flip ? -shd.dx : shd.dx).toFixed(2)} ${shd.dy.toFixed(2)})`;
               shadeShapes(l.sh, vf).forEach((pd, pi) => {                 // forme par forme : chaque zone fermee par le trait a son ombre
@@ -154,7 +154,7 @@ export class Editor {
                 pc.append(s("path", { d: pd }));
                 defs.append(pc);
                 const gp = s("g", { "clip-path": `url(#${pcid})`, "pointer-events": "none" });
-                gp.append(s("path", { d: pd, fill: shd.fill }), s("path", { d: pd, fill: "#ffffff", transform: mv }));
+                gp.append(s("path", { d: pd, fill: shd.fill }), s("path", { d: pd, fill: col, transform: mv }));
                 gi.append(gp);
               });
             }

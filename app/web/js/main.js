@@ -359,7 +359,7 @@ class App {
 
   layerMenu(e) {
     const l = this.layer(); if (!l) return;
-    const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [];
+    const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [{ label: "🎬 Montage (animer la case)…", star: true, click: () => openMontage(this, this.sel.panel) }];
     items.push({ head: "Pose" });
     // ↻ : orbite calculee, la pose tourne · ⏳ : orbite en calcul · ▫ : image fixe, pas d'orbite
     for (const [k, vv] of Object.entries(item?.variants || {})) items.push({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + vv.label, checked: k === l.v, click: () => this.setPose(l, k) });
@@ -380,7 +380,7 @@ class App {
   }
 
   panelMenu(e, pid, pt, g) {
-    const pan = this.curPanel(), items = [{ head: "Bulle" }];
+    const pan = this.curPanel(), items = [{ label: "🎬 Montage (animer la case)…", star: true, click: () => openMontage(this, pid) }, { head: "Bulle" }];
     const rel = { x: (pt.x - g.bbox.x0) / g.bbox.w, y: (pt.y - g.bbox.y0) / g.bbox.h };
     for (const [t, [label]] of Object.entries(BUB)) items.push({ label, click: () => this.addBubble(t, rel), half: true });
     items.push({ head: "Fond" }, { label: "✎ Dessiner le fond…", click: () => this.drawBackground(pid) });
@@ -388,8 +388,7 @@ class App {
     for (const [t, [label, ico]] of Object.entries(MARKS)) items.push({ label: `${ico} ${label}`, half: true, click: () => (t === "free" ? this.armMark(t) : this.addMark(pid, t, [rel.x, rel.y])) });
     items.push({ head: "Banque" }, { label: "✨ Générer un élément ici…", click: () => this.generateHere(pid, rel) });
     items.push({ head: "Case" }, { label: "Integrate (image unifiée)", click: () => this.integrate() },
-      { label: "Orbite de la case", click: () => this.panelOrbit() },
-      { label: "🎬 Montage (animer la case)…", click: () => openMontage(this, pid) });
+      { label: "Orbite de la case", click: () => this.panelOrbit() });
     if (pan.integrated || pan.orbit) {
       items.push({ head: "Afficher" }, { label: "Calques", checked: (pan.show || "layers") === "layers", click: () => this.setShow("layers") });
       if (pan.integrated) items.push({ label: "Image intégrée", checked: pan.show === "integrated", click: () => this.setShow("integrated") });
@@ -598,7 +597,10 @@ class App {
       const rs = range("Taille", l.s, 0.05, 12, 0.01, (x) => { l.s = x; }, "lscale");
       const rpx = range("Position ↔", l.x, -4, 5, 0.005, (x) => { l.x = x; }, "lmove"), rpy = range("Position ↕", l.y, -4, 8, 0.005, (x) => { l.y = x; }, "lmove");
       this.syncLayer = () => { for (const [r, v] of [[rs, l.s], [rpx, l.x], [rpy, l.y]]) { r.querySelector("input").value = v; r.querySelector("output").textContent = fmt(v); } };
-      if (sp && sp.vec) box.append(h("div", { title: "Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin." }, range("Trait ⓘ", l.lw || 0, -2, 6, 0.1, (x) => { l.lw = x; }, "lw")));
+      if (sp && sp.vec) box.append(h("div", { title: "Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin." }, range("Trait ⓘ", l.lw || 0, -2, 6, 0.1, (x) => { l.lw = x; }, "lw")),
+        h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
+          swatch(l.col || "#ffffff", (c) => { l.col = c; this.editor.render(true); this.commitSoon("col"); }),
+          l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; this.commit("col"); this.editor.render(); this.refreshInspector(); } } }, "Blanc") : ""));
       // dépliant : reste ouvert ou fermé d'un élément à l'autre
       const fold = (key, label, ...rows) => { this.folds = this.folds || { sh: true, gs: true };
         return h("details.fold", { open: !!this.folds[key], on: { toggle: (e) => { this.folds[key] = e.target.open; } } }, h("summary", label), ...rows); };
@@ -873,7 +875,7 @@ function menu(e, items) {
   for (const it of items) {
     if (it.head) { box.append(h("div.mhead", it.head)); continue; }
     if (it.note) { box.append(h("div.mnote", it.note)); continue; }
-    box.append(h("button" + (it.half ? ".half" : "") + (it.checked ? ".on" : "") + (it.danger ? ".danger" : ""),
+    box.append(h("button" + (it.half ? ".half" : "") + (it.checked ? ".on" : "") + (it.danger ? ".danger" : "") + (it.star ? ".star" : ""),
       { on: { click: () => { box.remove(); it.click(); } } }, it.checked ? "✓ " : "", it.label));
   }
   document.body.append(box);
