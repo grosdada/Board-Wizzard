@@ -43,6 +43,14 @@ export function vecFrame(sp, onReady) {
   return fr ? { w: e.data.w, h: e.data.h, body: fr.body, ink: fr.ink } : null;
 }
 export function vecReady(sp) { return new Promise((ok) => { const f = vecFrame(sp, () => ok(vecFrame(sp))); if (f || !sp || !sp.vec || (vecs.get(sp.vec) || {}).data === false) ok(f); }); }
+/** Ombre graphique d'un dessin en traces, sans calcul : la silhouette moins elle-meme decalee vers la lumiere laisse
+ *  un aplat gris du cote oppose. sh = { on, g (gris 0 = noir, 1 = blanc), w (largeur, en % de la hauteur), a (angle d'ou
+ *  vient la lumiere, degres : 0 = droite, 90 = haut, 180 = gauche) }. Renvoie { fill, dx, dy } en unites du dessin, ou null. */
+export function shadeOf(sh, h) {
+  if (!sh || !sh.on) return null;
+  const g = Math.round(255 * clamp(sh.g ?? 0.72, 0, 1)), d = (sh.w ?? 5) / 100 * h, a = (sh.a ?? 135) * Math.PI / 180;
+  return { fill: `rgb(${g},${g},${g})`, dx: Math.cos(a) * d, dy: -Math.sin(a) * d };
+}
 /** Trait d'un dessin en traces : epaisseur ajoutee (lw > 0 : plus epais, < 0 : plus fin), en unites du dessin. */
 export function inkStroke(lw) { const t = +lw || 0; return { color: t >= 0 ? "#111111" : "#ffffff", width: Math.abs(t), outline: 0 }; }   // pas de contour de silhouette : il inventerait des traits la ou le dessin n'en a pas
 

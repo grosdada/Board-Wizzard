@@ -2,7 +2,7 @@
 // de case. Les bulles n'y sont pas : elles restent par-dessus. sharp : sans le flou de profondeur (le modele travaille
 // mieux sur une image nette ; le flou reste un reglage d'affichage).
 import { loadImage } from "./api.js";
-import { sprite, placement, layerBox, depthOf, blurOf, background, vecReady, inkStroke } from "./model.js";
+import { sprite, placement, layerBox, depthOf, blurOf, background, vecReady, inkStroke, shadeOf } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   const pg = app.page(), pan = pg.panels[g.id] || {}, bb = g.bbox;
@@ -54,6 +54,11 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       ctx.translate(tx, ty); ctx.scale(sc, sc);
       ctx.fillStyle = "#ffffff"; ctx.fill(body);
       ctx.save(); ctx.clip(body);
+      const shd = shadeOf(l.sh, vf.h);
+      if (shd) {
+        ctx.fillStyle = shd.fill; ctx.fill(body);
+        ctx.save(); ctx.translate(l.flip ? -shd.dx : shd.dx, shd.dy); ctx.fillStyle = "#ffffff"; ctx.fill(body); ctx.restore();
+      }
       ctx.fillStyle = "#111111"; ctx.fill(ink, "evenodd");
       if (st.width > 0) { ctx.strokeStyle = st.color; ctx.lineWidth = st.width; ctx.lineJoin = "round"; ctx.stroke(ink); }
       ctx.restore();

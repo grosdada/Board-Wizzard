@@ -4,7 +4,7 @@
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
-import { vecFrame, inkStroke } from "./model.js";
+import { vecFrame, inkStroke, shadeOf } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, background, clamp, variantOf, pad3 } from "./model.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -132,6 +132,11 @@ export class Editor {
             defs.append(clip);
             gv.append(s("path", Object.assign({ d: vf.body, fill: "#ffffff" }, tag)));
             const gi = s("g", { "clip-path": `url(#${cid})` });
+            const shd = shadeOf(l.sh, vf.h);
+            if (shd) {                                       // ombre : aplat gris, puis la silhouette decalee en blanc par-dessus
+              gi.append(s("path", Object.assign({ d: vf.body, fill: shd.fill }, tag)));
+              gi.append(s("path", { d: vf.body, fill: "#ffffff", transform: `translate(${(l.flip ? -shd.dx : shd.dx).toFixed(2)} ${shd.dy.toFixed(2)})`, "pointer-events": "none" }));
+            }
             gi.append(s("path", Object.assign({ d: vf.ink, fill: "#111111", "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round" }, tag)));
             gv.append(gi);
             if (st.outline > 0) gv.append(s("path", { d: vf.body, fill: "none", stroke: "#111111", "stroke-width": st.outline, "pointer-events": "none" }));

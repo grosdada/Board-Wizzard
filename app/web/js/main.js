@@ -560,6 +560,13 @@ class App {
       this.syncLayer = () => { for (const [r, v] of [[rs, l.s], [rpx, l.x], [rpy, l.y]]) { r.querySelector("input").value = v; r.querySelector("output").textContent = fmt(v); } };
       if (sp && sp.vec) box.append(range("Trait", l.lw || 0, -2, 6, 0.1, (x) => { l.lw = x; }, "lw"),
         h("p.muted", "Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin."));
+      if (sp && sp.vec) {
+        const sh = l.sh || {}, put = (k, x) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135 }, l.sh, { [k]: x }); };
+        box.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), "Ombre (aplat gris, sans calcul)"));
+        if (sh.on) box.append(range("Gris de l'ombre", sh.g ?? 0.72, 0.2, 0.95, 0.01, (x) => put("g", x), "shade"),
+          range("Largeur de l'ombre", sh.w ?? 5, 0.5, 25, 0.1, (x) => put("w", x), "shade"),
+          range("Lumière (angle)", sh.a ?? 135, 0, 360, 1, (x) => put("a", x), "shade"));
+      }
       box.append(rs, rpx, rpy,
         range("Profondeur", depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"),
         h("div.row", h("button.mini" + (l.flip ? ".on" : ""), { on: { click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); this.refreshInspector(); } } }, "⇋ Miroir"),
