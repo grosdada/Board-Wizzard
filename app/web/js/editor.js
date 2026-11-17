@@ -4,7 +4,7 @@
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
-import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill, wiggleFilter } from "./model.js";
+import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, W as DRAW_W } from "./draw.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 
@@ -159,7 +159,7 @@ export class Editor {
           const vf = vecFrame(sp, () => this.render(true));
           if (vf) {                                          // dessin en traces : net a tout zoom, trait reglable
             const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc;
-            const col = bodyFill(l), st = inkStroke(l.lw, col), tag = { "data-layer": l.id, "data-panel": g.id };
+            const col = bodyFill(l), ink = inkFill(l), st = inkStroke(l.lw, col, ink), tag = { "data-layer": l.id, "data-panel": g.id };
             const gv = s("g", Object.assign({ class: "layer vlayer", transform: (l.rz ? `rotate(${l.rz} ${box.cx} ${box.y + box.h / 2}) ` : "") + (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1) ` : "") + `translate(${tx} ${ty}) scale(${sc})`,
                                               filter: this.blur(defs, blurOf(pan, depthOf(pan, i), bb)) }, tag));
             const cid = "vc-" + g.id + "-" + l.id, clip = s("clipPath", { id: cid });
@@ -183,7 +183,7 @@ export class Editor {
                 gi.append(gp);
               });
             }
-            gi.append(s("path", Object.assign({ d: vf.ink, fill: "#111111", "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round" }, tag)));
+            gi.append(s("path", Object.assign({ d: vf.ink, fill: ink, "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round" }, tag)));
             gw.append(gi);
             if (st.outline > 0) gv.append(s("path", { d: vf.body, fill: "none", stroke: "#111111", "stroke-width": st.outline, "pointer-events": "none" }));
             grp.append(gv);
@@ -240,14 +240,21 @@ export class Editor {
       const mcx = seen ? (vx0 + vx1) / 2 : clamp(box.cx, bb.x0 + r, bb.x1 - r), mcy = seen ? (vy0 + vy1) / 2 : clamp(box.y + box.h / 2, bb.y0 + r, bb.y1 - r);
       const scx = seen ? Math.max(vx1 - r, mcx + r * 2.4) : mcx + r * 2.4, scy = seen ? Math.min(vy0 + r, mcy - r * 2.4) : mcy - r * 2.4;
       const gh = s("g", { class: "lh" });
-      gh.append(s("rect", { x: box.x, y: box.y, width: box.w, height: box.h, class: "lh-box" }));
+      const lsel = app.layer(), rz = (lsel && lsel.rz) || 0, bcx = box.cx, bcy = box.y + box.h / 2;
+      this.rotCenter = { x: bcx, y: bcy };
+      gh.append(s("rect", { x: box.x, y: box.y, width: box.w, height: box.h, class: "lh-box", transform: rz ? `rotate(${rz} ${bcx} ${bcy})` : null }));
       gh.append(s("circle", { cx: box.cx, cy: box.y1, r: r * 0.5, class: "lh-foot" }));
       const mv = s("g", { class: "lh-grip", "data-h": "move", transform: `translate(${mcx} ${mcy})` });
       mv.append(s("circle", { r, "data-h": "move" }));
       mv.append(s("path", { d: `M ${-r * .6} 0 H ${r * .6} M 0 ${-r * .6} V ${r * .6}`, "data-h": "move" }));
       const sc = s("g", { class: "lh-grip", "data-h": "scale", transform: `translate(${scx} ${scy})` });
       sc.append(s("rect", { x: -r * .8, y: -r * .8, width: r * 1.6, height: r * 1.6, rx: r * .3, "data-h": "scale" }));
-      gh.append(mv, sc);
+      // ↻ : inclinaison (rotation dans le plan, autour du centre) ; a gauche de la croix, comme la taille est a droite
+      const rcx = seen ? Math.min(vx0 + r, mcx - r * 2.4) : mcx - r * 2.4;
+      const ro = s("g", { class: "lh-grip", "data-h": "rot", transform: `translate(${rcx} ${scy})` });
+      ro.append(s("circle", { r, "data-h": "rot" }));
+      ro.append(s("path", { d: "M-7 -3A8 8 0 1 1 -5 6M-7 -3L-11 -8M-7 -3L-1 -4", transform: `scale(${r / 15})`, "data-h": "rot" }));
+      gh.append(mv, sc, ro);
       svg.append(gh);
     }
     if (mhandles) {                                        // poignees de l'indication choisie
@@ -374,7 +381,8 @@ export class Editor {
     }
     if (t.dataset && t.dataset.h) {                        // poignee du calque choisi
       const g = this.geom.panels.find((x) => x.id === app.sel.panel), l = app.layer();
-      if (g && l) this.drag = { kind: t.dataset.h === "scale" ? "lscale" : "lmove", l, bb: g.bbox, start: pt, x: l.x, y: l.y, s: l.s };
+      if (g && l && t.dataset.h === "rot") { const c = this.rotCenter || { x: pt.x, y: pt.y + 1 }; this.drag = { kind: "lrot", l, c, a0: Math.atan2(pt.y - c.y, pt.x - c.x), rz: l.rz || 0 }; }
+      else if (g && l) this.drag = { kind: t.dataset.h === "scale" ? "lscale" : "lmove", l, bb: g.bbox, start: pt, x: l.x, y: l.y, s: l.s };
       e.preventDefault();
       return;
     }
@@ -435,6 +443,12 @@ export class Editor {
         const px = (r[0] - a[0]) * d.bb.w, py = (r[1] - a[1]) * d.bb.h;      // creux de la courbe : perpendiculaire, en pixels
         m.pts = [a, [mx + py * 0.22 / d.bb.w, my - px * 0.22 / d.bb.h], r];
       } else m.pts[1] = r;
+      return this.render(true);
+    }
+    if (d.kind === "lrot") {                               // inclinaison ; Maj : par crans de 15 degres
+      let rz = d.rz + (Math.atan2(pt.y - d.c.y, pt.x - d.c.x) - d.a0) * 180 / Math.PI;
+      rz = ((rz + 180) % 360 + 360) % 360 - 180;
+      d.l.rz = e.shiftKey ? Math.round(rz / 15) * 15 : Math.round(rz);
       return this.render(true);
     }
     if (d.kind === "lmove") {
@@ -498,6 +512,7 @@ export class Editor {
     }
     if (!d || !d.moved) return;
     this.render();
+    if (d.kind === "lrot") this.app.refreshInspector();
     this.app.commit(d.kind);
     this.app.refreshInspector();
   }

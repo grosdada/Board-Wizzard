@@ -11,7 +11,7 @@
 import { h, modal, toast, history, upload, get, post, put } from "./api.js";
 import { MOUTHS, SETS, MODES, SIMPLE, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, wiggleFilter } from "./model.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
@@ -127,7 +127,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       if (gsd) o += `<ellipse cx="${f1(gsd.cx)}" cy="${f1(gsd.cy)}" rx="${f1(gsd.rx)}" ry="${f1(gsd.ry)}" fill="#000" opacity="${f3(gsd.a)}" style="pointer-events:none"${blur(depthOf(pan, li), gsd.blur)}/>`;
       const o1 = o.length;
       if (vf) {
-        const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), st = inkStroke(s.lw, col);
+        const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), ink = inkFill(l), st = inkStroke(s.lw, col, ink);
         const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h, col);
         let inner = "";
         if (shd) shadeShapes(l.sh, vf).forEach((pd, i) => { inner += `<clipPath id="${pre}s-${l.id}-${i}"><path d="${pd}"/></clipPath><g clip-path="url(#${pre}s-${l.id}-${i})"><path d="${pd}" fill="${shd.fill}"/><path d="${pd}" fill="${col}" transform="translate(${f1(l.flip ? -shd.dx : shd.dx)} ${f1(shd.dy)})"/></g>`; });
@@ -135,7 +135,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         const boil = l.boil && l.boil.on ? l.boil : null;
         const lwf = wiggleFilter(`${pre}wg-${l.id}`, boil ? (boil.a ?? 2) : l.hand, l.wave, vf.w, vf.h, boil ? 5 + (Math.floor(t * (boil.v ?? 8)) % 4) * 13 : 5);
         o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})">${lwf}<g${lwf ? ` filter="url(#${pre}wg-${l.id})"` : ""}><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="${col}" data-layer="${l.id}"/>` +
-          `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g></g>`;
+          `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="${ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
       if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l))}</g>`;   // lip sync : la bouche qui parle
       if (sel === l.id) {
@@ -328,18 +328,10 @@ export function openMontage(app, pid) {
           h("label.row.check", { title: "Le trait tremble en boucle pendant la lecture, comme un dessin refait à chaque image" }, h("input", { type: "checkbox", checked: !!(l.boil && l.boil.on), on: { change: (e) => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: e.target.checked }); paint(); props(); } } }), "Animer le tremblé"),
           h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
             swatch(l.col || "#ffffff", (c) => { l.col = c; paint(); }),
-            l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; paint(); props(); } } }, "Blanc") : ""));
-        const sh = l.sh || {};
-        side.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: e.target.checked }); paint(); props(); } } }), "Ombre"));
-        if (sh.on) side.append(fold("sh", "Réglages de l'ombre", range("Gris", "shg", 0.2, 0.95, 0.01), range("Largeur", "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range("Lumière (angle)", "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
-          h("label.row.range", { title: "0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin, une par cran." }, "Formes détaillées ⓘ", h("input", { type: "range", min: 0, max: 8, step: 1, value: sh.k || 0, on: { input: (e) => { l.sh.k = +e.target.value; e.target.nextSibling.textContent = e.target.value; paint(); } } }), h("output", String(sh.k || 0)))));
-      }
-      {
-        const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); paint(); };
-        const plain = (label, k, min, max, def) => { const out = h("output", (gs[k] ?? def).toFixed(2)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.01, value: gs[k] ?? def, on: { input: (e) => { putg(k, +e.target.value); out.textContent = (+e.target.value).toFixed(2); } } }), out); };
-        side.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); props(); } } }), "Ombre portée"));
-        if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée", plain("Opacité", "a", 0.05, 1, 0.35), h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, plain("Flou ⓘ", "b", 0, 4, 1)), plain("Largeur", "w", 0.2, 2.5, 0.8), plain("Épaisseur", "h", 0.2, 4, 1),
-          h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, plain("Décalage ↔ ⓘ", "dx", -0.6, 0.6, 0), plain("Décalage ↕", "dy", -0.6, 0.6, 0))));
+            l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; paint(); props(); } } }, "Blanc") : ""),
+          h("div.row.colrow", { title: "Couleur du trait : tout ce qui est noir dans le dessin prend cette couleur." }, h("span", "Contour"),
+            swatch(l.ink || "#111111", (c) => { l.ink = c; paint(); }),
+            l.ink && l.ink.toLowerCase() !== "#111111" ? h("button.mini", { on: { click: () => { delete l.ink; paint(); props(); } } }, "Noir") : ""));
       }
       side.append(voiceBox(l));
       if (l.boil && l.boil.on && sprite(it, cur().v, cur().f)?.vec) {
@@ -353,6 +345,20 @@ export function openMontage(app, pid) {
         h("button.mini", { on: { click: () => move("top") } }, "Premier plan"), h("button.mini", { on: { click: () => move("bottom") } }, "Arrière-plan")));
       if (it && Object.keys(it.variants).length > 1) side.append(h("label.row", "Pose", h("select", { on: { change: (e) => { const vv = variantOf(it, e.target.value); preload(it, e.target.value); change(sel, { v: e.target.value, f: vv && vv.orbit ? Math.min(cur().f, vv.orbit.n - 1) : 0 }); props(); } } },
         Object.entries(it.variants).map(([k, vv]) => h("option", { value: k, selected: k === cur().v }, (vv.orbit ? "↻ " : "▫ ") + vv.label)))));
+      // ombre et ombre portee : en dernier, apres la profondeur et le reste
+      if (sprite(it, cur().v, cur().f)?.vec) {
+        const sh = l.sh || {};
+        side.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: e.target.checked }); paint(); props(); } } }), "Ombre"));
+        if (sh.on) side.append(fold("sh", "Réglages de l'ombre", range("Gris", "shg", 0.2, 0.95, 0.01), range("Largeur", "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range("Lumière (angle)", "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
+          h("label.row.range", { title: "0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin, une par cran." }, "Formes détaillées ⓘ", h("input", { type: "range", min: 0, max: 8, step: 1, value: sh.k || 0, on: { input: (e) => { l.sh.k = +e.target.value; e.target.nextSibling.textContent = e.target.value; paint(); } } }), h("output", String(sh.k || 0)))));
+      }
+      {
+        const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); paint(); };
+        const plain = (label, k, min, max, def) => { const out = h("output", (gs[k] ?? def).toFixed(2)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.01, value: gs[k] ?? def, on: { input: (e) => { putg(k, +e.target.value); out.textContent = (+e.target.value).toFixed(2); } } }), out); };
+        side.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); props(); } } }), "Ombre portée"));
+        if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée", plain("Opacité", "a", 0.05, 1, 0.35), h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, plain("Flou ⓘ", "b", 0, 4, 1)), plain("Largeur", "w", 0.2, 2.5, 0.8), plain("Épaisseur", "h", 0.2, 4, 1),
+          h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, plain("Décalage ↔ ⓘ", "dx", -0.6, 0.6, 0), plain("Décalage ↕", "dy", -0.6, 0.6, 0))));
+      }
     }
     keyBar();
     side.append(h("label.row.check", { title: "Dans l'image, sur un élément : glisser = le faire tourner (orbite) ; glisser la croix ✥ au milieu = le déplacer (ou Maj + glisser) ; glisser la pastille ↻ au-dessus = le pencher (Maj : crans de 15°) ; molette = taille ; clic droit = son menu (pose, axe, ordre, ombres…). Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));

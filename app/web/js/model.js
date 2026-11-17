@@ -68,7 +68,9 @@ export function shadeOf(sh, h, col = "#ffffff") {
  *  l'ombre rough, sur la silhouette seule ; les formes sont rangees de la plus grande a la plus petite). */
 export function shadeShapes(sh, vf) { return [vf.body].concat((vf.parts || []).slice(0, Math.max(0, Math.round((sh && sh.k) || 0)))); }
 /** Trait d'un dessin en traces : epaisseur ajoutee (lw > 0 : plus epais, < 0 : plus fin), en unites du dessin. */
-export function inkStroke(lw, col = "#ffffff") { const t = +lw || 0; return { color: t >= 0 ? "#111111" : col, width: Math.abs(t), outline: 0 }; }   // pas de contour de silhouette : il inventerait des traits la ou le dessin n'en a pas
+export function inkStroke(lw, col = "#ffffff", ink = "#111111") { const t = +lw || 0; return { color: t >= 0 ? ink : col, width: Math.abs(t), outline: 0 }; }
+/** Couleur du trait d'un dessin en traces (l.ink) : noir par defaut. Tout ce qui est noir dans le dessin la prend. */
+export function inkFill(l) { return l && /^#[0-9a-f]{6}$/i.test(l.ink || "") ? l.ink : "#111111"; }   // pas de contour de silhouette : il inventerait des traits la ou le dessin n'en a pas
 
 export function frameUrls(item, vid) {
   const v = variantOf(item, vid);

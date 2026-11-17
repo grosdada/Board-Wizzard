@@ -3,7 +3,7 @@
 // mieux sur une image nette ; le flou reste un reglage d'affichage).
 import { loadImage } from "./api.js";
 import { drawImage } from "./draw.js";
-import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
+import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   const pg = app.page(), pan = pg.panels[g.id] || {}, bb = g.bbox;
@@ -59,7 +59,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     const vf = await vecReady(sp);
     if (vf) {                                              // dessin en traces : dessine en vectoriel, a la taille du canvas
       const box = layerBox(local, l, { w: vf.w, h: vf.h }), sc = Math.min(box.w / vf.w, box.h / vf.h);
-      const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), st = inkStroke(l.lw, col), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);
+      const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), inkc = inkFill(l), st = inkStroke(l.lw, col, inkc), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);
       const body = new Path2D(vf.body), ink = new Path2D(vf.ink);
       cast(l, box);
       ctx.save();
@@ -80,7 +80,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
           ctx.restore();
         }
       }
-      ctx.fillStyle = "#111111"; ctx.fill(ink, "evenodd");
+      ctx.fillStyle = inkc; ctx.fill(ink, "evenodd");
       if (st.width > 0) { ctx.strokeStyle = st.color; ctx.lineWidth = st.width; ctx.lineJoin = "round"; ctx.stroke(ink); }
       ctx.restore();
       if (st.outline > 0) { ctx.strokeStyle = "#111111"; ctx.lineWidth = st.outline; ctx.stroke(body); }

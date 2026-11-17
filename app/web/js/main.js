@@ -604,7 +604,14 @@ class App {
         fold("wig", "Tremblé du trait", range("Tremblé", l.hand || 0, 0, 10, 0.1, (x) => { l.hand = x; }, "hand"), range("Ondulation", l.wave ?? 4, 0.5, 12, 0.1, (x) => { l.wave = x; }, "hand")),
         h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
           swatch(l.col || "#ffffff", (c) => { l.col = c; this.editor.render(true); this.commitSoon("col"); }),
-          l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; this.commit("col"); this.editor.render(); this.refreshInspector(); } } }, "Blanc") : ""));
+          l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; this.commit("col"); this.editor.render(); this.refreshInspector(); } } }, "Blanc") : ""),
+        h("div.row.colrow", { title: "Couleur du trait : tout ce qui est noir dans le dessin prend cette couleur." }, h("span", "Contour"),
+          swatch(l.ink || "#111111", (c) => { l.ink = c; this.editor.render(true); this.commitSoon("ink"); }),
+          l.ink && l.ink.toLowerCase() !== "#111111" ? h("button.mini", { on: { click: () => { delete l.ink; this.commit("ink"); this.editor.render(); this.refreshInspector(); } } }, "Noir") : ""));
+      box.append(range("Inclinaison", l.rz || 0, -180, 180, 1, (x) => { l.rz = x; }, "rz"));
+      box.append(rs, rpx, rpy,
+        range("Profondeur", depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"));
+      // ombre et ombre portee : en dernier, apres la profondeur
       if (sp && sp.vec) {
         const sh = l.sh || {}, put = (k, x) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135 }, l.sh, { [k]: x }); };
         box.append(h("label.row.check", { title: "Un aplat gris posé sur le dessin, du côté opposé à la lumière. Sans calcul." }, h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), "Ombre"));
@@ -622,9 +629,7 @@ class App {
           h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, range("Décalage ↔ ⓘ", gs.dx || 0, -0.6, 0.6, 0.005, (x) => putg("dx", x), "cast"), range("Décalage ↕", gs.dy || 0, -0.6, 0.6, 0.005, (x) => putg("dy", x), "cast")),
           range("Largeur", gs.w ?? 0.8, 0.2, 2.5, 0.01, (x) => putg("w", x), "cast")));
       }
-      box.append(range("Inclinaison", l.rz || 0, -180, 180, 1, (x) => { l.rz = x; }, "rz"));
-      box.append(rs, rpx, rpy,
-        range("Profondeur", depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"),
+      box.append(
         h("div.row", h("button.mini" + (l.flip ? ".on" : ""), { on: { click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); this.refreshInspector(); } } }, "⇋ Miroir"),
           h("button.mini", { on: { click: () => this.order(l, "up") } }, "Avancer"), h("button.mini", { on: { click: () => this.order(l, "down") } }, "Reculer"),
           h("button.mini", { on: { click: () => this.duplicate(l) } }, "Dupliquer"),

@@ -359,3 +359,5 @@ details.fold > summary:hover { opacity: 1; }
 /* une case agrandie a toute la feuille (double-clic) */
 .center .focus-back { position: absolute; left: 10px; top: 8px; z-index: 6; }
 .center.focused .page-wrap { box-shadow: none; }
+
+.lh-grip[data-h=rot] { cursor: grab; }
