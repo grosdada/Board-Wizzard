@@ -221,9 +221,9 @@ export function openMontage(app, pid) {
     if (dof.on) o += `<line x1="0" x2="${W}" y1="${f1(yOf(c.fo))}" y2="${f1(yOf(c.fo))}" stroke="#16a34a" stroke-width="2.5"/>` +
       `<text x="${W - 6}" y="${f1(yOf(c.fo) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT · ${c.fo.toFixed(2)}</text>`;
     const th = H * 0.03;
-    shapes().forEach((sh, i) => {                           // formes du decor : des cartes plus fines, a glisser en profondeur seulement
+    shapes().forEach((sh, i) => {                           // formes du decor : des cartes plus fines, a glisser en profondeur et en travers
       const b = boxOf(sh, H), y = yOf(sh.d ?? 1), on = sel === "s:" + sh.id;
-      o += `<g data-shape="${sh.id}" style="cursor:ns-resize"><rect x="${f1(b.x)}" y="${f1(y - th * 0.3)}" width="${f1(Math.max(b.w, 14))}" height="${f1(th * 0.6)}" rx="${f1(th / 5)}" fill="${on ? "#e2603a" : "#9a7b2e"}" stroke="#fff" stroke-width="1.2" data-shape="${sh.id}"/>` +
+      o += `<g data-shape="${sh.id}" style="cursor:move"><rect x="${f1(b.x)}" y="${f1(y - th * 0.3)}" width="${f1(Math.max(b.w, 14))}" height="${f1(th * 0.6)}" rx="${f1(th / 5)}" fill="${on ? "#e2603a" : "#9a7b2e"}" stroke="#fff" stroke-width="1.2" data-shape="${sh.id}"/>` +
         (on || (sh.d ?? 1) < 0.999 ? `<text x="${f1(b.cx)}" y="${f1(y - th * 0.45)}" font-size="${f1(fs * 0.7)}" fill="${on ? "#b8431f" : "#7a6325"}" text-anchor="middle" data-shape="${sh.id}">${esc(shapeName(sh, i))} · ${(sh.d ?? 1).toFixed(2)}</text>` : "") + `</g>`;
     });
     pan.layers.forEach((l, li) => {
@@ -281,7 +281,7 @@ export function openMontage(app, pid) {
         h("label.row.range", { title: "1 = collée au décor. Plus près de 0, la forme se détache : elle glisse et grossit davantage quand la caméra bouge (parallaxe)." }, "Profondeur ⓘ", inp, out),
         h("div.row.wrap", h("button.mini", { on: { click: () => { shp.d = 1; paint(); props(); } } }, "Recoller au décor"),
           h("button.mini", { title: "Toutes les formes reviennent sur le décor", on: { click: () => { for (const x of shapes()) delete x.d; paint(); props(); } } }, "Tout recoller")),
-        h("div.muted", { title: "Dans le montage, une forme du décor ne se déplace qu'en profondeur. Sa place, sa taille et son dessin se règlent dans « Dessiner le fond »." }, "Forme du décor : profondeur seulement ⓘ"));
+        h("div.muted", { title: "Dans la vue « Profondeur », glisser la carte d'une forme la déplace en profondeur (haut / bas) et en travers (gauche / droite). Sa hauteur, sa taille et son dessin se règlent dans « Dessiner le fond »." }, "Forme du décor : profondeur et place en travers ⓘ"));
       syncProps = () => { if (document.activeElement !== inp) inp.value = shp.d ?? 1; out.textContent = (shp.d ?? 1).toFixed(2); };
       keyBar();
       return;
@@ -730,7 +730,14 @@ export function openMontage(app, pid) {
   tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); setKey(sel, {}); paint(); lanes(); props(); } });
 
   // ------------------------------------------------------------------------------------------ gestes dans l'image
-  const ptOf = (e) => { const r = svg.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+  // point de la souris en fraction de l'image. On passe par la matrice du SVG : son cadre a l'ecran peut etre plus grand
+  // que l'image (bandes sur les cotes), et une simple regle de trois sur le cadre fausserait les gestes.
+  const ptOf = (e) => {
+    const m = svg.getScreenCTM();
+    if (!m) { const r = svg.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; }
+    const q = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+    return [q.x / W, q.y / H];
+  };
   let vdrag = null;
   svg.addEventListener("pointerdown", (e) => {
     stop();
@@ -742,14 +749,19 @@ export function openMontage(app, pid) {
     if (e.button === 2) { vdrag = null; paint(); lanes(); props(); return; }       // clic droit : on choisit, le menu s'ouvre (contextmenu)
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
     if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: !depthView && e.button === 0 && !e.shiftKey && !e.target.closest("[data-move]") && nOf(layerOf(id), s.v) > 0, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
-    else if (shp && depthView) vdrag = { id: sel, shape: shp, p, d: shp.d ?? 1 };   // carte d'une forme : elle ne glisse qu'en profondeur
+    else if (shp && depthView) vdrag = { id: sel, shape: shp, p, d: shp.d ?? 1, p0: shp.p.map((q) => q.slice()) };   // carte d'une forme : en profondeur, et de gauche a droite
     else vdrag = { id: "cam", p, c };                      // dans le vide (ou sur une forme du decor, dans l'image) : on deplace le cadre de la camera
     paint(); lanes(); props();
+    if (vdrag) vdrag.p = ptOf(e);                          // le panneau de droite vient de changer : l'image a pu bouger a l'ecran
   });
   svg.addEventListener("pointermove", (e) => {
     if (!vdrag) return;
     const p = ptOf(e), dx = p[0] - vdrag.p[0], dy = p[1] - vdrag.p[1];
-    if (vdrag.shape) { vdrag.shape.d = f3(clamp(vdrag.d - dy / (DY0 - DY1), 0, 1)); paint(); syncProps(); return; }
+    if (vdrag.shape) {                                      // haut / bas : sa profondeur ; gauche / droite : sa place en travers
+      vdrag.shape.d = f3(clamp(vdrag.d - dy / (DY0 - DY1), 0, 1));
+      vdrag.shape.p = vdrag.p0.map(([x, y]) => [+(x + dx).toFixed(4), y]);
+      paint(); syncProps(); return;
+    }
     if (depthView && vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx + dx), dz: f3(camDz(camD(vdrag.c.dz || 0) - dy / (DY0 - DY1))) });   // gauche / droite : le cadre ; haut / bas : la camera avance ou recule
     else if (depthView && !vdrag.turn) { setDepth(layerOf(vdrag.id), vdrag.d - dy / (DY0 - DY1)); change(vdrag.id, { x: f3(vdrag.s.x + dx) }); }
     else if (vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx - dx / vdrag.c.z), cy: f3(vdrag.c.cy - dy / vdrag.c.z) });
