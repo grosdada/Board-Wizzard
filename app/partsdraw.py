@@ -190,7 +190,7 @@ def visage(seed=1, **kw):
         w0 = half(y0)
         yb = chin + 36 * p["dbl"]
         arc = [(CX - w0, y0), (CX - w0 * 0.8, yb - 30), (CX - w0 * 0.38, yb - 4), (CX, yb), (CX + w0 * 0.38, yb - 4), (CX + w0 * 0.8, yb - 30), (CX + w0, y0)]
-        c.white(arc)
+        c.white([tuple(q) for q in smooth(arc)], curved=False)
         c.line(arc, p["trait"] * 0.85, ends=(0.5, 0.5), wob=1.2)
     c.white(pts, curved=False)
     c.line(pts + pts[:1], p["trait"], ends=(1, 1), wob=1.3, straight=True)
@@ -216,6 +216,15 @@ VISAGE_VARIANTES = [
     ("Émacié", dict(wf=470, wc=480, wj=380, wch=140, chin=905, ja=0.9, joue=-26, jy=750)),
     ("Double menton", dict(wf=500, wc=570, wj=540, wch=230, chin=850, ja=0.0, dbl=1.0, joue=16, jy=710)),
     ("Menton à fossette", dict(wj=470, wch=260, ja=0.7, cs="fossette", chin=890, jy=750)),
+
+    ("Carré court", dict(wf=540, wc=560, wj=540, wch=360, chin=805, ja=0.9, cs="carre", jy=715)),
+    ("Rectangulaire", dict(top=120, wf=470, wc=470, wj=460, wch=300, chin=925, ja=0.9, cs="carre", jy=800)),
+    ("Oblong arrondi", dict(top=120, wf=450, wc=460, wj=440, wch=250, chin=930, ja=0.0, jy=730)),
+    ("Trapèze, mâchoire écartée", dict(wf=430, wc=500, wj=590, wch=330, chin=870, ja=1.0, cs="carre", jy=790)),
+    ("Cœur", dict(wf=560, wc=560, wj=430, wch=70, chin=885, ja=0.2, cs="pointu", joue=16, jy=680)),
+    ("Menton pointu en V", dict(wf=490, wc=510, wj=470, wch=30, chin=910, ja=1.0, cs="pointu", jy=640)),
+    ("Crâne large, bas étroit", dict(top=130, wf=580, wc=500, wj=350, wch=150, chin=880, ja=0.3, crane=1.15, jy=720)),
+    ("Front fuyant, crâne pointu", dict(top=110, wf=440, wc=520, wj=460, wch=200, chin=880, crane=0.72, ja=0.4)),
 ]
 
 
@@ -227,6 +236,7 @@ YEUX = dict(w=104,            # longueur de la fente
             tilt=0,           # coin externe : < 0 remonte (bride), > 0 tombe
             peak=0.45,        # ou la paupiere superieure est la plus haute (0 = coin interne, 1 = coin externe)
             low=0.42,         # courbure de la paupiere inferieure (part de l'ouverture)
+            arc=0.58,         # hauteur de l'arc de la paupiere superieure (part de l'ouverture)
             pli=14,           # hauteur de paupiere visible au-dessus de l'oeil (0 = paupiere sans pli)
             hood=0,           # paupiere tombante : le pli descend sur le coin externe (0 a 1)
             iris=23,          # rayon de l'iris
@@ -246,7 +256,8 @@ def _oeil(c, p, cx, side):
     xi, xo = cx - side * w / 2, cx + side * w / 2
     yi, yo = y + 4, y + p["tilt"]
     pk = xi + side * w * p["peak"]
-    up = [(xi, yi), (xi + side * w * 0.14, y - h * 0.34), (pk, y - h * 0.58), (xi + side * w * 0.78, y - h * 0.36 + p["tilt"] * 0.6), (xo, yo)]
+    ar = p["arc"]
+    up = [(xi, yi), (xi + side * w * 0.14, y - h * ar * 0.6), (pk, y - h * ar), (xi + side * w * 0.78, y - h * ar * 0.62 + p["tilt"] * 0.6), (xo, yo)]
     lo = [(xo, yo), (xi + side * w * 0.72, y + h * p["low"] + p["tilt"] * 0.5), (xi + side * w * 0.42, y + h * (p["low"] + 0.06)), (xi + side * w * 0.14, y + h * p["low"] * 0.7), (xi, yi)]
     opening = [tuple(q) for q in smooth(up)] + [tuple(q) for q in smooth(lo)][1:-1]      # l'ouverture exacte, entre les deux paupieres
     c.white(opening, curved=False)
@@ -267,14 +278,14 @@ def _oeil(c, p, cx, side):
     c.line([(xi, yi), (xi - side * 9, yi + 5)], 2.4, ends=(0.8, 0.2), straight=True, wob=0)      # caroncule
     if p["pli"] > 0:
         d, hd = p["pli"], p["hood"]
-        pli = [(xi + side * w * 0.08, y - h * 0.3 - d * 0.5), (pk, y - h * 0.58 - d), (xi + side * w * 0.8, y - h * 0.36 - d * (1 - hd) + p["tilt"] * 0.6),
+        pli = [(xi + side * w * 0.08, y - h * ar * 0.52 - d * 0.5), (pk, y - h * ar - d), (xi + side * w * 0.8, y - h * ar * 0.62 - d * (1 - hd) + p["tilt"] * 0.6),
                (xo + side * w * 0.06 * (1 + hd), yo - d * 0.5 * (1 - hd) + hd * 7)]
         c.line(pli, 2.6 + hd * 1.6, ends=(0.2, 0.3), wob=0.6)
     if p["cils"]:
         L = 7 if p["cils"] == 1 else 14
         for i in range(7):
             t = 0.42 + 0.58 * i / 6
-            q = smooth(up)[int(t * (len(smooth(up)) - 1))]
+            q = smooth(up)[int(t * (len(smooth(up)) - 1))]   # le long de la paupiere superieure
             c.line([(q[0], q[1]), (q[0] + side * L * (0.35 + 0.65 * t), q[1] - L * (1.05 - 0.5 * t))], 2.0, ends=(1, 0.2), straight=True, wob=0)
     for i in range(int(p["poche"])):              # poches
         yy = y + h * p["low"] + 15 + i * 12
@@ -307,6 +318,13 @@ YEUX_VARIANTES = [
     ("Longs cils", dict(w=120, h=52, tilt=-6, cils=2, pli=18, iris=25)),
     ("Dissymétriques", dict(h=46, w=108, g=dict(h=26, w=92, y=492, pli=22, hood=0.6))),
     ("Strabisme convergent", dict(dx=-14, h=46, w=100, pli=11, g=dict(dx=14))),
+
+    ("Grands iris", dict(w=112, h=54, iris=36, pup=15, dy=0, pli=10, arc=0.55)),
+    ("Paupière découverte, pli haut", dict(w=106, h=40, pli=34, sup=5.5)),
+    ("Dessus plat, dessous courbe", dict(w=110, h=40, arc=0.14, low=0.8, pli=10, dy=6, peak=0.5)),
+    ("Dessus arqué, dessous plat", dict(w=104, h=44, arc=0.9, low=0.08, pli=13, dy=-12, iris=22)),
+    ("Triangulaires", dict(w=110, h=42, peak=0.22, arc=0.72, tilt=8, pli=9)),
+    ("Cernés", dict(w=92, h=30, cerne=1, pli=22, poche=0, dy=-5, sup=7)),
 ]
 
 
@@ -423,6 +441,11 @@ NEZ_VARIANTES = [
     ("Ailes charnues", dict(sillon=1, wa=158, ah=62, tw=70, trait=5.4)),
     ("Petit bouton", dict(top=555, base=608, wr=24, wm=28, tw=46, th=30, wa=80, ah=32, cote=0.35, drop=-5)),
     ("Grand nez fort", dict(top=430, base=660, wr=44, wm=56, bump=9, tw=96, th=56, wa=182, ah=70, sillon=1, trait=5.6, cote=1.0)),
+
+    ("Racine large, pointe fine", dict(wr=70, wm=48, tw=40, th=34, wa=92, ah=40, fl=-1, nar="fente", cote=1.0)),
+    ("Narines pincées", dict(wa=86, ah=50, fl=-1, nar="fente", tw=54, wr=26, wm=30, drop=-6)),
+    ("Sous-cloison découverte", dict(col=1.7, drop=-7, nar="fente", wa=120, tw=64)),
+    ("Écrasé", dict(top=545, base=625, wr=64, wm=80, tw=110, th=34, wa=200, ah=44, fl=1, cote=0.3, nar="rond", drop=-5)),
 ]
 
 
@@ -497,11 +520,16 @@ BOUCHE_VARIANTES = [
     ("Sans lèvres, simple trait", dict(up=2, lo=2, w=200, onde=1, sous=0, trait=5.4)),
     ("Arc de Cupidon marqué", dict(up=27, bow=17, pk=0.28, lo=31)),
     ("Lèvre supérieure plate", dict(up=24, bow=0, pk=0.5, lo=22, onde=0, w=172, plein=0.75)),
-    ("Commissures tombantes", dict(coins=17, up=15, lo=24, plis=1)),
-    ("Commissures relevées", dict(coins=-11, up=18, lo=28, onde=6)),
+    ("Coins tombants", dict(coins=13, up=15, lo=24, onde=2)),
+    ("Coins montants", dict(coins=-9, up=18, lo=28, onde=6)),
     ("De travers", dict(tilt=11, up=17, lo=26)),
-    ("Pincée, ridée", dict(w=150, up=9, lo=11, bow=2, rides=6, plis=1, sous=0)),
+    ("Ridée", dict(w=150, up=10, lo=12, bow=2, rides=6, sous=0)),
     ("Lèvre inférieure pendante", dict(up=14, lo=52, w=180, plein=0.9, coins=4)),
+
+    ("Pleine, lèvres égales", dict(up=32, lo=32, bow=8, w=180, plein=0.85)),
+    ("Fente droite stricte", dict(up=13, lo=17, bow=2, onde=0, w=176, plein=0.9, haut=1.0)),
+    ("En losange", dict(w=150, up=30, lo=40, bow=6, pk=0.12, plein=0.85)),
+    ("Bord flou", dict(up=18, lo=26, haut=0.3, plein=0.25, sous=0, trait=4.2)),
 ]
 
 
@@ -583,6 +611,13 @@ SOURCILS_VARIANTES = [
     ("Épais au début, queue fine", dict(ep=24, tin=1.0, tout=0.05, arc=12, L=130)),
     ("Arrondis en demi-lune", dict(ep=11, arc=30, pk=0.5, tilt=30, y=424, L=120)),
     ("Inégaux", dict(ep=14, arc=12, g=dict(y=402, arc=22, tilt=12))),
+
+    ("Linéaires", dict(ep=4, arc=1, tilt=0, tin=1.0, tout=0.7, L=126, y=424)),
+    ("Arc haut, épais", dict(ep=20, arc=34, pk=0.5, tilt=26, tout=0.5, y=430, L=126)),
+    ("Anguleux au tiers externe", dict(ep=13, arc=24, angle=1.0, pk=0.72, tilt=14, y=430)),
+    ("Queue épaisse", dict(ep=20, tin=0.25, tout=0.95, arc=8, L=124)),
+    ("Très longs", dict(L=176, ep=13, arc=16, pk=0.5, tilt=34, ecart=54)),
+    ("En virgule", dict(L=74, ep=24, tin=1.0, tout=0.04, arc=5, pk=0.3, tilt=14, ecart=74)),
 ]
 
 
@@ -634,6 +669,10 @@ OREILLE_VARIANTES = [
     ("Large en haut, lobe étroit", dict(haut=1.3, out=56, lobe_w=0.3)),
     ("Étroite et longue", dict(out=30, h=200, top=420)),
     ("Lobe large et charnu", dict(lobe_w=0.85, out=52, lobe="long", h=186)),
+
+    ("Ronde large", dict(h=132, out=86, top=450, haut=1.0, lobe_w=0.7)),
+    ("Sans lobe", dict(lobe="attache", h=140, out=40, lobe_w=0.25, top=445)),
+    ("Décollée du haut", dict(haut=1.7, out=46, lobe_w=0.22, h=176)),
 ]
 
 
@@ -724,6 +763,11 @@ MOUSTACHE_VARIANTES = [
     ("Fu Manchu", dict(pts=[(10, 8), (64, 10), (96, 60), (100, 210)], ep=[8, 9, 8, 4], edge=0.3, dens=0.4)),
     ("Clairsemée", dict(clair=1, pts=[(4, 2), (56, 6), (100, 20)], ep=[24, 22, 10])),
     ("Pyramide", dict(pts=[(2, 0), (40, 12), (84, 34)], ep=[16, 30, 12])),
+
+    ("Trapèze", dict(pts=[(0, 6), (50, 8), (96, 12)], ep=[40, 42, 44], edge=0.5)),
+    ("Petit guidon", dict(pts=[(4, 4), (40, 10), (72, 6), (88, -12)], ep=[18, 16, 8, 3], edge=0.4)),
+    ("Large, broussailleuse", dict(pts=[(4, 6), (80, 14), (150, 34)], ep=[44, 44, 26], edge=3.0, dens=1.4)),
+    ("Pinceau", dict(pts=[(0, 14), (46, 16), (84, 24)], ep=[50, 46, 22], edge=0.8)),
 ]
 
 
@@ -774,6 +818,10 @@ def barbe(seed=1, **kw):
         if z == "favoris":
             E([(CX - hw + 60, 480), (CX - hw + 70, 1000), (CX + hw - 70, 1000), (CX + hw - 60, 480)])
             d.rectangle([0, (jy + 6) * SS, F * SS, FH * SS], fill=0)
+    if z == "cou":                                 # sous la machoire et sur le cou seulement
+        P([(CX - hw * 0.8, chin - 30), (CX - hw * 0.7, chin + 60 + p["long"]), (CX, chin + 96 + p["long"]), (CX + hw * 0.7, chin + 60 + p["long"]), (CX + hw * 0.8, chin - 30), (CX, chin + 30)])
+    if z == "touffe":                              # petite tache sur la pointe du menton
+        P([(CX - 34, chin - 46), (CX - 40, chin - 6), (CX, chin + 14 + p["long"]), (CX + 40, chin - 6), (CX + 34, chin - 46), (CX, chin - 56)])
     if z in ("bouc", "ancre", "barbiche", "mouche"):
         if z == "bouc":                            # cercle autour de la bouche, menton compris
             P([(CX - 96, 668), (CX - 108, 760), (CX - 78, chin - 6 + p["long"] * 0.6), (CX, bot + 6), (CX + 78, chin - 6 + p["long"] * 0.6), (CX + 108, 760), (CX + 96, 668), (CX, 646)])
@@ -810,6 +858,11 @@ BARBE_VARIANTES = [
     ("Favoris", dict(zone="favoris", haut=470, ep=30)),
     ("Basse, sous la mâchoire", dict(joue=-0.5, ep=50, long=30, haut=640)),
     ("Haute sur les joues", dict(joue=1.0, ep=40, long=30, dens=1.2)),
+
+    ("Jugulaire", dict(zone="collier", ep=8, haut=500, joue=0.5)),
+    ("Très longue", dict(long=330, ep=64, joue=0.7, dens=1.4)),
+    ("Barbe de cou", dict(zone="cou")),
+    ("Touffe de menton", dict(zone="touffe")),
 ]
 
 
