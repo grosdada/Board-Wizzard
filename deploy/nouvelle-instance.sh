@@ -17,7 +17,7 @@ MDP="$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')"
 umask 077
 cat > "$DIR/state/local_settings.json" <<EOF
 {
- "server": {"host": "0.0.0.0", "port": 8795, "password": "$MDP"},
+ "server": {"host": "0.0.0.0", "port": 8795, "password": "$MDP", "lock_settings": true},
  "workers": [],
  "qbuilder_settings": "",
  "render": {"target": "fal"}
