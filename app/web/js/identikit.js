@@ -3,7 +3,7 @@
 // Les elements viennent de la banque d'elements (data/parts, /api/parts) ; on peut en dessiner de nouveaux dans l'atelier.
 // Le visage monte part dans la banque comme une image a part entiere.
 import { tt, tr } from "./i18n.js";
-import { h, get, del, upload, toast, modal, history } from "./api.js";
+import { h, get, del, upload, toast, modal, history, put as apiPut } from "./api.js";
 import { openDrawEditor, drawImage } from "./draw.js";
 
 const S = 1000;                                  // cote de la feuille, en unites
@@ -166,19 +166,16 @@ export async function openIdentikit(bankUI) {
       range(tt("Rotation"), "rot", -180, 180, 1),
       h("div.row.wrap", h("button.mini", { on: { click: () => { l.flip = !l.flip; paint(); } } }, tt("⇋ Miroir")),
         h("button.mini", { title: tt("Remet la taille et la place de départ"), on: { click: () => { home(l); paint(); props(); } } }, tt("↺ Place de départ")),
+        h("button.mini", { title: tt("Éditer cet élément dans l'éditeur de dessin"), on: { click: () => editPart(l.cat, itemOf(l)) } }, tt("✏ Éditer")),
         SPLIT.has(l.cat) && !l.half ? h("button.mini", { title: tt("Coupe la paire en deux : chaque côté se place, se règle et se retire séparément (un œil plus haut que l'autre…)"), on: { click: () => split(l) } }, tt("✂ Séparer")) : null,
         l.half ? h("button.mini", { title: tt("Remet la paire entière, à sa place de départ"), on: { click: () => join(l) } }, tt("⧉ Réunir")) : null,
         h("button.mini.danger", { title: tt("Ou touche Suppr"), on: { click: removeSel } }, tt("Retirer du visage"))));
   };
-  // place de depart d'un calque : celle de son element (p0), sinon celle de la categorie ; le jumeau d'une oreille garde son miroir
-  const halfOff = (l, p) => (l.half ? (l.half === "l" ? -1 : 1) * p[2] / 4 : 0);      // une moitie se place a un quart de la largeur
-  const home = (l) => { const p = l.p0 || PLACE[l.cat] || [500, 500, 300]; Object.assign(l, { x: p[0] + halfOff(l, p), y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: !!l.twin }); };
-  const put = async (cat, it, quiet) => {
-    const r = await ratioOf(it.file, it.t);
+  // remplacer l'element d'un calque par un autre (meme categorie, ou le meme refait) : place du nouveau si le calque n'a
+  // pas ete touche, sinon son decalage et son echelle sont gardes
+  const swapper = (cat, it, r) => {
     const spot = (twin) => { const p = it.place || PLACE[cat] || [500, 500, 300]; return twin ? [S - p[0], p[1], p[2]] : [p[0], p[1], p[2]]; };
-    const fresh = (twin) => { const p = spot(twin); return { n: uidN++, cat, id: it.id, name: it.name, file: it.file, t: it.t || 0, cap: it.cap || null, r,
-      x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: twin, twin, p0: p }; };
-    const swapIn = (l) => {                         // meme categorie : le nouvel element prend la place de l'ancien
+    const swapIn = (l) => {
       const p = spot(!!(l.twin && it.pair)), old = l.p0 || PLACE[cat] || [l.x, l.y, l.w];
       const ox = old[0] + halfOff(l, old), nx = p[0] + halfOff(l, p);             // une moitie : par rapport a la place de sa moitie
       if (l.x === ox && l.y === old[1] && l.w === old[2] && l.kx === 1 && l.ky === 1) Object.assign(l, { x: nx, y: p[1], w: p[2] });
@@ -186,6 +183,16 @@ export async function openIdentikit(bankUI) {
       if (!it.pair && l.twin) l.flip = false;
       Object.assign(l, { id: it.id, name: it.name, file: it.file, t: it.t || 0, cap: it.cap || null, r, p0: p, twin: !!(l.twin && it.pair) });
     };
+    return { spot, swapIn };
+  };
+  // place de depart d'un calque : celle de son element (p0), sinon celle de la categorie ; le jumeau d'une oreille garde son miroir
+  const halfOff = (l, p) => (l.half ? (l.half === "l" ? -1 : 1) * p[2] / 4 : 0);      // une moitie se place a un quart de la largeur
+  const home = (l) => { const p = l.p0 || PLACE[l.cat] || [500, 500, 300]; Object.assign(l, { x: p[0] + halfOff(l, p), y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: !!l.twin }); };
+  const put = async (cat, it, quiet) => {
+    const r = await ratioOf(it.file, it.t);
+    const { spot, swapIn } = swapper(cat, it, r);
+    const fresh = (twin) => { const p = spot(twin); return { n: uidN++, cat, id: it.id, name: it.name, file: it.file, t: it.t || 0, cap: it.cap || null, r,
+      x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: twin, twin, p0: p }; };
     let l;
     if (it.pair) {                                  // oreilles : l'image est celle de droite ; deux calques, le jumeau en miroir
       const ears = layers.filter((x) => x.cat === cat), mine = userSel && ears.find((x) => x.n === sel);
@@ -210,6 +217,7 @@ export async function openIdentikit(bankUI) {
     grid.textContent = "";
     grid.append(...cur.items.map((it) => h("button.idk-el", { "data-id": it.id, title: it.name + (it.mine ? tt(" (dessiné ici)") : ""), on: { click: () => put(cur.key, it) } },
       h("img", { src: `/parts/${it.file}?t=${it.t || 0}`, loading: "lazy", alt: "" }), h("span", it.name),
+      h("b.edit", { title: it.mine && it.editable ? tt("Éditer ce dessin (ses formes se rouvrent)") : tt("Éditer : retoucher par-dessus cette image ; donne un nouvel élément, l'original reste"), on: { click: (e) => { e.stopPropagation(); editPart(cur.key, it); } } }, "✏"),
       h("i", { title: tt("Retirer cet élément de la banque (il est mis de côté, pas détruit)"), on: { click: async (e) => {
         e.stopPropagation();
         if (!confirm(tt`Retirer « ${it.name} » de la banque d'éléments ?`)) return;
@@ -220,6 +228,52 @@ export async function openIdentikit(bankUI) {
     if (!cur.items.length) grid.prepend(h("p.muted", tt("Aucun élément dans cette catégorie pour l'instant.")));
     marks();
   };
+  const pngOf = async (d, under) => {
+    const c = document.createElement("canvas"); c.width = c.height = 768;
+    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 768, 768);
+    if (under) {                                    // l'image retouchee, a sa place, sous le dessin
+      const u = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = under.url; });
+      if (u) x.drawImage(u, under.x * 768, under.y * 768, under.w * 768, under.h * 768);
+    }
+    const im = d.shapes.length ? await drawImage(d, 768, 768) : null;
+    if (d.shapes.length && !im) return null;
+    if (im) x.drawImage(im, 0, 0, 768, 768);
+    return new Promise((ok) => c.toBlob(ok, "image/png"));
+  };
+  const PAIRCATS = ["yeux", "sourcils", "oreilles", "moustache", "lunettes"];
+  // editer un element : un dessin de l'atelier se rouvre avec ses formes et se remplace ; un element de la banque (ou un
+  // ancien dessin sans formes) s'ouvre en fond dans le cadre et donne un NOUVEL element, l'original reste intact
+  const editPart = async (catKey, it) => {
+    const cat = cats.find((c) => c.key === catKey);
+    if (!cat || !it) return;
+    let meta = null;
+    if (it.mine && it.editable) { try { meta = await get(`parts/${catKey}/${it.id}`); } catch (e) { meta = null; } }
+    const own = !!(meta && Array.isArray(meta.shapes) && meta.shapes.length), pair = !!(it.pair || (meta && meta.pair));
+    const r = await ratioOf(it.file, it.t), p = it.place || PLACE[catKey] || [500, 500, 300];
+    const under = own ? (meta.under || null) : { url: `/parts/${it.file}?t=${it.t || 0}`, x: (p[0] - p[2] / 2) / S, y: (p[1] - p[2] * r / 2) / S, w: p[2] / S, h: p[2] * r / S };
+    openDrawEditor({ draw: { shapes: own ? meta.shapes : [] }, ratio: 1, backdrop: null, under, axis: PAIRCATS.includes(catKey),
+      title: tt`Éditer : ${it.name}`, saveLabel: own ? tt("Enregistrer l'élément") : tt("Enregistrer comme nouvel élément"),
+      onSave: async (d) => {
+        let nm = it.name;
+        if (!own) { nm = (prompt(tt("Nom du nouvel élément (l'original reste dans la banque) :"), tt`${it.name} (retouché)`) || "").trim(); if (!nm) return; }
+        const blob = await pngOf(d, under);
+        if (!blob) return toast(tt("Le dessin n'a pas pu être converti en image."), "error");
+        try {
+          const q = new URLSearchParams({ name: nm });
+          if (own) q.set("replace", it.id);
+          const nu = await upload(`parts/${catKey}?${q}`, blob);
+          await apiPut(`parts/${catKey}/${nu.id}`, { shapes: d.shapes, under, pair });
+          nu.editable = true; nu.pair = pair;
+          const i = cat.items.findIndex((x) => x.id === nu.id);
+          if (i >= 0) cat.items[i] = nu; else cat.items.push(nu);
+          const nr = await ratioOf(nu.file, nu.t), { swapIn } = swapper(catKey, nu, nr);
+          layers.filter((l) => l.cat === catKey && l.id === it.id).forEach(swapIn);   // les calques passent a l'element edite
+          brickSig = ""; cur = cat; showCat(); paint(); props(); hist.snap();
+          toast(own ? tt`« ${nm} » est mis à jour.` : tt`« ${nm} » est ajouté à la banque d'éléments ; l'original n'a pas changé.`);
+        } catch (e) { toast(tt("Élément refusé : ") + e.message, "error"); }
+      } });
+  };
+  const itemOf = (l) => (cats.find((c) => c.key === l.cat) || { items: [] }).items.find((x) => x.id === l.id) || { id: l.id, name: l.name, file: l.file, t: l.t, mine: false, place: l.p0 };
   const drawOne = () => {
     const cat = cur;
     openDrawEditor({ draw: null, ratio: 1, backdrop: null, title: tt`Dessiner : ${cat.label}`, saveLabel: tt("Ajouter à la banque d'éléments"),
@@ -233,7 +287,8 @@ export async function openIdentikit(bankUI) {
         const c = document.createElement("canvas"); c.width = c.height = 768;
         const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 768, 768); x.drawImage(im, 0, 0, 768, 768);
         const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
-        try { const it = await upload(`parts/${cat.key}?name=${encodeURIComponent(nm)}`, blob); cat.items.push(it); cur = cat; showCat(); put(cat.key, it); }
+        try { const it = await upload(`parts/${cat.key}?name=${encodeURIComponent(nm)}`, blob); await apiPut(`parts/${cat.key}/${it.id}`, { shapes: d.shapes, under: null });
+          it.editable = true; cat.items.push(it); cur = cat; showCat(); put(cat.key, it); }
         catch (e) { toast(tt("Élément refusé : ") + e.message, "error"); }
       } });
   };
@@ -288,6 +343,7 @@ export async function openIdentikit(bankUI) {
     const swap = (o) => { [l.n, o.n] = [o.n, l.n]; sel = l.n; paint(); props(); };
     const items = [[tt("⇋ Miroir"), () => { l.flip = !l.flip; paint(); }],
       [tt("↺ Place de départ"), () => { home(l); paint(); props(); }],
+      [tt("✏ Éditer"), () => editPart(l.cat, itemOf(l))],
       SPLIT.has(l.cat) && !l.half ? [tt("✂ Séparer"), () => split(l)] : null,
       l.half ? [tt("⧉ Réunir"), () => join(l)] : null,
       i < same.length - 1 ? [tt("▲ Monter d'un cran"), () => swap(same[i + 1])] : null,

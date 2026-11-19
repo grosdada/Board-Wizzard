@@ -177,6 +177,15 @@ def index():
                        "mine": pid not in names, "t": int(f.stat().st_mtime)}
                 if cat in CAPPED:                                   # cheveux, couvre-chef : ce qui depasse au-dessus est cache
                     row["cap"] = _cap(cat, f)
+                if row["mine"]:                                     # dessine dans l'atelier : nom, place et formes dans <id>.json
+                    meta = _meta(cat, pid)
+                    if meta.get("name"):
+                        row["name"] = meta["name"]
+                    if meta.get("place"):
+                        row["place"] = meta["place"]
+                    row["editable"] = bool(meta.get("shapes"))
+                    if meta.get("pair"):
+                        row["pair"] = True                          # retouche d'une oreille : reste une paire
                 if pid in places:                                   # place et largeur vraies dans le cadre 1000 x 1000 de l'atelier
                     row["place"] = places[pid]
                     if cat in PAIRED:
@@ -298,21 +307,66 @@ def _save(idx):
     return None                                                     # (ancien index.json : plus utilise)
 
 
-def add_drawn(cat, name, png_bytes):
-    """Range un element dessine a la main dans l'atelier (PNG, trait sur blanc)."""
+def _meta(cat, pid):
+    """Ce qu'on garde d'un element dessine dans l'atelier : {name, place, shapes, under} (data/parts/<cat>/<id>.json)."""
+    try:
+        return json.loads((ROOT / cat / (pid + ".json")).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _check(cat, pid):
+    if cat not in CATEGORIES or not store.re.fullmatch(r"[a-z0-9-]{1,60}", pid or ""):
+        raise ValueError("élément inconnu")
+
+
+def add_drawn(cat, name, png_bytes, replace=None):
+    """Range un element dessine a la main dans l'atelier (PNG, trait sur blanc, cadre de l'atelier). replace : id d'un
+    element dessine a remplacer (meme id : les visages ou il est pose le suivent). Garde sa place dans le cadre."""
     if cat not in CATEGORIES:
         raise ValueError("catégorie inconnue : %s" % cat)
-    pid = slug(name or "dessin")
-    base, i = pid, 2
-    while (ROOT / cat / (pid + ".png")).exists():
-        pid, i = "%s-%d" % (base, i), i + 1
+    if replace:
+        _check(cat, replace)
+        if not (ROOT / cat / (replace + ".png")).exists():
+            raise ValueError("élément inconnu")
+        pid = replace
+    else:
+        pid = slug(name or "dessin")
+        base, i = pid, 2
+        while (ROOT / cat / (pid + ".png")).exists():
+            pid, i = "%s-%d" % (base, i), i + 1
     tmp = Path(tempfile.mkdtemp(prefix="bwpart_"))
+    box = {}
     try:
         (tmp / "in.png").write_bytes(png_bytes)
-        cut(tmp / "in.png", ROOT / cat / (pid + ".png"), CATEGORIES[cat][1])
+        cut(tmp / "in.png", ROOT / cat / (pid + ".png"), CATEGORIES[cat][1], box=box)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    k = 1000.0 / box["src"][0]                                      # l'image recue couvre le cadre 1000 x 1000 de l'atelier
+    meta = _meta(cat, pid) if replace else {}
+    meta.update(name=(name or meta.get("name") or pid), place=[round((box["x0"] + box["x1"]) / 2 * k, 1),
+                                                                round((box["y0"] + box["y1"]) / 2 * k, 1), round((box["x1"] - box["x0"]) * k)])
+    (ROOT / cat / (pid + ".json")).write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     return next(r for r in index()[cat] if r["id"] == pid)
+
+
+def drawn(cat, pid):
+    """Formes d'un element dessine dans l'atelier, pour le rouvrir dans l'editeur."""
+    _check(cat, pid)
+    return _meta(cat, pid)
+
+
+def save_shapes(cat, pid, shapes, under=None, pair=False):
+    """Garde les formes (et l'image de fond d'une retouche) d'un element dessine, a cote de son PNG."""
+    _check(cat, pid)
+    if not (ROOT / cat / (pid + ".png")).exists():
+        raise ValueError("élément inconnu")
+    meta = _meta(cat, pid)
+    meta["shapes"] = shapes if isinstance(shapes, list) else []
+    meta["under"] = under if isinstance(under, dict) else None
+    meta["pair"] = bool(pair)
+    (ROOT / cat / (pid + ".json")).write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    return {"ok": True}
 
 
 def catalogue():
@@ -320,7 +374,7 @@ def catalogue():
     return [{"key": c, "label": v[0], "items": idx.get(c, [])} for c, v in CATEGORIES.items()]
 
 
-def cut(png, dest, full, size=512):
+def cut(png, dest, full, size=512, box=None):
     """Image generee (trait noir sur blanc) -> element rogne sur fond transparent. full : le blanc enferme reste blanc."""
     g = np.asarray(Image.open(png).convert("L")).astype(np.float32)
     a = np.clip((235.0 - g) / 150.0, 0, 1)                           # le blanc du papier disparait, le trait reste
@@ -345,6 +399,8 @@ def cut(png, dest, full, size=512):
     ink = np.where(ink > 200, 255, ink)                             # le papier : blanc franc
     im = Image.fromarray(np.dstack([ink, ink, ink, alpha]))
     im = im.crop((int(x0), int(y0), int(x1), int(y1)))
+    if box is not None:                                             # ou etait l'element dans l'image recue
+        box.update(x0=int(x0), y0=int(y0), x1=int(x1), y1=int(y1), src=(g.shape[1], g.shape[0]))
     im.thumbnail((size, size), Image.LANCZOS)
     Path(dest).parent.mkdir(parents=True, exist_ok=True)
     im.save(dest)
@@ -523,6 +579,9 @@ def remove(cat, pid):
     if f.exists():                                                  # mis de cote, pas detruit
         (ROOT / "_retires" / cat).mkdir(parents=True, exist_ok=True)
         shutil.move(str(f), str(ROOT / "_retires" / cat / f.name))
+        meta = ROOT / cat / (pid + ".json")
+        if meta.exists():
+            shutil.move(str(meta), str(ROOT / "_retires" / cat / meta.name))
 
 
 def sheet(cat, dest, cols=6, cell=220):

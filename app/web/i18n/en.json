@@ -1181,7 +1181,18 @@
   "Remet la paire entière, à sa place de départ": "Puts the whole pair back, at its starting place",
   "⧉ Réunir": "⧉ Rejoin",
   "Rien à retourner : dessine d'abord une forme.": "Nothing to flip: draw a shape first.",
-  "Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite": "Adds a left-right mirrored copy (around the middle of the frame) of the whole drawing, or only of the shape selected with the Selection tool: an eye drawn on the left gives its twin on the right"
+  "Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite": "Adds a left-right mirrored copy (around the middle of the frame) of the whole drawing, or only of the shape selected with the Selection tool: an eye drawn on the left gives its twin on the right",
+  "Éditer cet élément dans l'éditeur de dessin": "Edit this part in the drawing editor",
+  "✏ Éditer": "✏ Edit",
+  "Éditer ce dessin (ses formes se rouvrent)": "Edit this drawing (its shapes reopen)",
+  "Éditer : retoucher par-dessus cette image ; donne un nouvel élément, l'original reste": "Edit: retouch over this image; gives a new part, the original stays",
+  "Éditer : {0}": "Edit: {0}",
+  "Enregistrer l'élément": "Save the part",
+  "Enregistrer comme nouvel élément": "Save as a new part",
+  "Nom du nouvel élément (l'original reste dans la banque) :": "Name of the new part (the original stays in the bank):",
+  "{0} (retouché)": "{0} (retouched)",
+  "« {0} » est mis à jour.": "« {0} » is updated.",
+  "« {0} » est ajouté à la banque d'éléments ; l'original n'a pas changé.": "« {0} » is added to the parts bank; the original has not changed."
  },
  "server": {
   "Parle": "Speaks",

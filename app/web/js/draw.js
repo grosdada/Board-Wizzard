@@ -180,7 +180,7 @@ export function drawImage(draw, wpx, hpx) {
 
 // ------------------------------------------------------------------------------------------------ l'atelier
 /** Ouvre l'atelier de dessin pour une case. ratio = hauteur / largeur ; backdrop : url du decor a montrer dessous. */
-export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = tt("Enregistrer le fond"), axis = false }) {
+export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = tt("Enregistrer le fond"), axis = false, under = null }) {
   const H = W * ratio;
   const shapes = JSON.parse(JSON.stringify((draw && draw.shapes) || []));
   let tool = "rect", prim = "rect", path = "free", sel = null, drag = null, building = null, hover = null;
@@ -198,7 +198,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const x0 = -ext.l * W, y0 = -ext.t * H, ww = W * (1 + ext.l + ext.r), hh = H * (1 + ext.t + ext.b), big = ext.l + ext.r + ext.t + ext.b > 0;
     svg.setAttribute("viewBox", `${f1(x0)} ${f1(y0)} ${f1(ww)} ${f1(hh)}`);
     back.innerHTML = `<rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(ww)}" height="${f1(hh)}" fill="${big ? "#ebe8e0" : "#ffffff"}"/><rect width="${W}" height="${f1(H)}" fill="#ffffff"/>` +
-      (backdrop ? `<image href="${backdrop}" width="${W}" height="${f1(H)}" preserveAspectRatio="xMidYMid slice" opacity="0.35"/>` : "");
+      (backdrop ? `<image href="${backdrop}" width="${W}" height="${f1(H)}" preserveAspectRatio="xMidYMid slice" opacity="0.35"/>` : "") +
+      // retouche d'une image : elle est posee a sa place dans le cadre, pleinement visible, et on dessine par-dessus
+      (under ? `<image href="${under.url}" x="${f1(under.x * W)}" y="${f1(under.y * H)}" width="${f1(under.w * W)}" height="${f1(under.h * H)}" preserveAspectRatio="none"/>` : "");
     const k = ww / W;                                       // le cadre de la case reste lisible quand on dezoome
     guide.innerHTML = (big ? `<rect width="${W}" height="${f1(H)}" fill="none" stroke="#e2603a" stroke-width="${f1(2.5 * k)}" stroke-dasharray="${f1(12 * k)} ${f1(8 * k)}"/>` +
       tt`<text x="${f1(6 * k)}" y="${f1(-6 * k)}" font-size="${f1(15 * k)}" fill="#e2603a">la case</text>` : "") +
@@ -461,7 +463,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   tools(); props(); paint();
   const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, ghostBar, extBar, h("div.draw-frame", svg), fxBox), side),
     [{ label: tt("Annuler"), click: done },
-     { label: saveLabel, primary: true, click: () => { finish(true); done(); onSave(Object.assign({ shapes }, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null)); toast(tt("Fond dessiné enregistré.")); } }]);
+     { label: saveLabel, primary: true, click: () => { finish(true); done(); onSave(Object.assign({ shapes }, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null)); if (saveLabel === tt("Enregistrer le fond")) toast(tt("Fond dessiné enregistré.")); } }]);   // ailleurs, l'appelant dit lui-meme ce qui est fait
   m.box.classList.add("modal-wide");
   hist.watch(m.box);
   return m;

@@ -450,7 +450,11 @@ class Handler(BaseHTTPRequestHandler):
             if len(seg) == 2 and method == "POST":                  # un element dessine a la main : corps brut = le PNG
                 if not body:
                     raise ApiError("dessin manquant")
-                return self.send_json(parts.add_drawn(seg[1], q.get("name", ""), body))
+                return self.send_json(parts.add_drawn(seg[1], q.get("name", ""), body, replace=q.get("replace") or None))
+            if len(seg) == 3 and method == "GET":                   # formes d'un element dessine, pour l'editer
+                return self.send_json(parts.drawn(seg[1], seg[2]))
+            if len(seg) == 3 and method == "PUT":
+                return self.send_json(parts.save_shapes(seg[1], seg[2], (data or {}).get("shapes"), (data or {}).get("under"), bool((data or {}).get("pair"))))
             if len(seg) == 3 and method == "DELETE":
                 parts.remove(seg[1], seg[2])
                 return self.send_json({"ok": True})
