@@ -453,3 +453,10 @@ details.fold > summary:hover { opacity: 1; }
 .modal.idk-box { width: min(1180px, 96vw); }
 
 p.error { color: var(--err); margin: 4px 0 0; min-height: 1.2em; }
+
+.guestsbox { margin-top: 6px; }
+.guests { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.row.guest { gap: 8px; align-items: center; }
+.row.guest .gname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.row.guest > select { flex: 0 0 auto; max-width: none; }
+.row.guest > input[type=text] { flex: 1; max-width: none; }

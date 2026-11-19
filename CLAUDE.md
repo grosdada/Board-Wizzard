@@ -53,6 +53,10 @@ souris. Sœur d'Alive-Comics (même découpage, mêmes bulles, même client Comf
 - **Retouches d'orbite** (`app/retouch.py`) : lasso vider / remplir, vider une zone, zones suspectes, dédoublonnage.
   Le rebouchage (`sprites.fill_holes`) rend opaque tout l'intérieur d'un dessin et ne referme plus les angles serrés.
 - **Objets tout faits** (`app/procedural.py`) : boîtes et cylindres rendus au trait, orbite de 72 images sans calcul.
+- **Comptes** (`app/accounts.py`) : l'admin est celui qui connaît `server.password` (nom vide à la connexion) ; il crée des
+  invités dans Réglages > Mon compte (`accounts` de `local_settings.json`, mots de passe hachés). Un invité ne peut ni
+  changer les réglages ni gérer les comptes ; seul un invité VIP a la bibliothèque en ligne. Sans mot de passe
+  d'application, tout le monde est admin. Tester sur une copie de `app/` hors du dépôt (les réglages sont à la racine).
 - **Paquets** (`app/packs.py`) : un élément entier dans un `.bwpack` ; bibliothèque en ligne = un dossier de paquets
   servi en HTTPS avec identifiant et mot de passe.
 

@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import jobs, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
+from . import accounts, jobs, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"
 VERSION = "0.1"
@@ -131,15 +131,29 @@ class Handler(BaseHTTPRequestHandler):
         pw = settings.load()["server"].get("password") or ""
         return hashlib.sha256(("bw:" + pw).encode()).hexdigest() if pw else ""
 
-    def _allowed(self):
+    def _who(self):
+        """Qui parle : {"role": "admin"}, {"role": "guest", "id", "name", "vip"}, ou None (pas connecte). Sans mot de passe
+        d'application, tout le monde est admin."""
         tok = self._token()
         if not tok:
-            return True
+            return {"role": "admin", "name": "", "vip": True}
         m = re.search(r"(?:^|;\s*)bw=([0-9a-f]{64})", self.headers.get("Cookie") or "")
-        return bool(m and hmac.compare_digest(m.group(1), tok))
+        if not m:
+            return None
+        if hmac.compare_digest(m.group(1), tok):
+            return {"role": "admin", "name": "", "vip": True}
+        acc = accounts.by_token(m.group(1))
+        if acc:
+            return {"role": "guest", "id": acc["id"], "name": acc["name"], "vip": bool(acc.get("vip"))}
+        return None
 
-    def _check(self, pw):
-        """Verifie le mot de passe, avec le frein aux essais. Rend True, ou repond l'erreur et rend False."""
+    def _admin(self):
+        if (self.me or {}).get("role") != "admin":
+            raise ApiError("réservé à l'administrateur", 403)
+
+    def _check(self, name, pw):
+        """Verifie un nom et un mot de passe, avec le frein aux essais. Nom vide (ou « admin ») : l'administrateur ; sinon
+        un invite. Rend le compte ({"role": ...}), ou repond l'erreur et rend None."""
         good = settings.load()["server"].get("password") or ""
         ip = (self.headers.get("X-Forwarded-For") or self.client_address[0]).split(",")[0].strip()
         now = time.time()
@@ -147,41 +161,54 @@ class Handler(BaseHTTPRequestHandler):
             n, until = _FAILS.get(ip, (0, 0))
             if now < until:
                 self.send_json({"error": "trop d'essais : réessayer dans %d s" % int(until - now + 1)}, 429)
-                return False
-        if not good or not hmac.compare_digest(str(pw).encode(), good.encode()):
+                return None
+        name, pw, who = str(name or "").strip(), str(pw or ""), None
+        if good and name.casefold() in ("", "admin"):
+            if hmac.compare_digest(pw.encode(), good.encode()):
+                who = {"role": "admin"}
+        elif good:
+            acc = accounts.find(name)
+            if acc and accounts.verify(acc, pw):
+                who = {"role": "guest", "id": acc["id"]}
+        if not who:
             with _FAILS_LOCK:
                 n += 1
                 _FAILS[ip] = (n, now + min(3600, 30 * 2 ** (n - 5)) if n >= 5 else 0)
                 if len(_FAILS) > 5000:
                     _FAILS.clear()
             time.sleep(1)
-            self.send_json({"error": "mot de passe refusé"}, 403)
-            return False
+            self.send_json({"error": "nom ou mot de passe refusé"}, 403)
+            return None
         with _FAILS_LOCK:
             _FAILS.pop(ip, None)
-        return True
+        return who
 
-    def _send_cookie(self):
+    def _send_cookie(self, who, clear=False):
+        """Pose le cookie de session du compte donne (admin ou invite), ou l'efface."""
+        tok = ""
+        if not clear:
+            tok = self._token() if who["role"] == "admin" else accounts.token(next(a for a in accounts._all() if a["id"] == who["id"]))
         body = b'{"ok": true}'
         secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") or "").lower() == "https" else ""
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Set-Cookie", "bw=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000%s" % (self._token(), secure))
+        self.send_header("Set-Cookie", "bw=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=%d%s" % (tok, 0 if clear else 2592000, secure))
         self.end_headers()
         self.wfile.write(body)
 
     def _login(self, body):
         try:
-            pw = json.loads(body.decode("utf-8") or "{}").get("password", "")
+            d = json.loads(body.decode("utf-8") or "{}")
         except ValueError:
-            pw = ""
-        if self._check(pw):
-            self._send_cookie()
+            d = {}
+        who = self._check(d.get("name"), d.get("password"))
+        if who:
+            self._send_cookie(who)
 
     def _password(self, data):
-        """Mon compte : changer le mot de passe de l'application. Il faut donner l'actuel ; reste possible quand les
-        reglages sont verrouilles (instance en ligne). Les autres navigateurs connectes devront se reconnecter."""
+        """Mon compte : chacun change son propre mot de passe, en donnant l'actuel. Reste possible quand les reglages sont
+        verrouilles (instance en ligne). Les autres navigateurs du meme compte devront se reconnecter."""
         data = data or {}
         new = str(data.get("new") or "")
         good = settings.load()["server"].get("password") or ""
@@ -189,13 +216,37 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError("le nouveau mot de passe doit faire au moins 8 caractères", 400)
         if new.startswith("••"):
             raise ApiError("ce mot de passe ne peut pas commencer par des points", 400)
+        me = self.me
+        if me["role"] == "guest":
+            who = self._check(me["name"], data.get("old"))
+            if not who:
+                return
+            accounts.update(me["id"], password=new)
+            return self._send_cookie(who)
         if good:
-            if not self._check(data.get("old") or ""):
+            if not self._check("", data.get("old")):
                 return
         elif settings.load()["server"].get("lock_settings"):
             raise ApiError("sur cette instance, le premier mot de passe se met dans local_settings.json", 403)
-        settings.save({"server": {"password": new}})
-        self._send_cookie()
+        settings.save({"server": {"password": new}}, trusted=True)
+        self._send_cookie({"role": "admin"})
+
+    def _accounts(self, method, seg, data):
+        """Comptes invites, geres par l'admin : liste, creation (mot de passe tire au hasard, montre une seule fois),
+        changement de type ou nouveau mot de passe, suppression."""
+        self._admin()
+        if not (settings.load()["server"].get("password") or ""):
+            raise ApiError("il faut d'abord mettre un mot de passe à l'application : sans lui, tout le monde est administrateur", 400)
+        data = data or {}
+        if method == "POST" and len(seg) == 1:
+            acc, pw = accounts.create(data.get("name"), data.get("vip"))
+            return self.send_json({"account": acc, "password": pw})
+        if method == "PUT" and len(seg) == 2:
+            pw = accounts.update(seg[1], vip=data.get("vip") if "vip" in data else None, reset=bool(data.get("reset")))
+            return self.send_json({"accounts": accounts.public(), "password": pw})
+        if method == "DELETE" and len(seg) == 2:
+            accounts.remove(seg[1])
+        return self.send_json({"accounts": accounts.public()})
 
     # ---------------------------------------------------------------- aiguillage
     def do_GET(self):
@@ -228,11 +279,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/login" and method == "POST":
                 return self._login(body)
-            if path == "/login" or (not self._allowed() and not path.startswith("/api/")):
-                if self._allowed():
+            self.me = self._who()
+            if path == "/api/logout" and method == "POST":
+                return self._send_cookie(None, clear=True)
+            if path == "/login" or (not self.me and not path.startswith("/api/")):
+                if self.me:
                     return self.redirect("/")
                 return self.send_file(WEB / "login.html")
-            if not self._allowed():
+            if not self.me:
                 return self.send_json({"error": "connexion requise"}, 401)
             if method == "GET" and not path.startswith("/api/"):
                 return self.static(path)
@@ -257,9 +311,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def import_pack(self, length, q):
         """Recoit un paquet .bwpack sur le disque local, morceau par morceau, puis le verse dans la banque."""
-        if not self._allowed() or length <= 0 or length > MAX_PACK:
+        self.me = self._who()
+        if not self.me or length <= 0 or length > MAX_PACK:
             self.close_connection = True
-            return self.send_json({"error": "connexion requise" if not self._allowed() else "paquet vide ou trop lourd"}, 413 if self._allowed() else 401)
+            return self.send_json({"error": "connexion requise" if not self.me else "paquet vide ou trop lourd"}, 413 if self.me else 401)
         tmp = Path(tempfile.mkdtemp(prefix="bwpack_"))
         try:
             left = length
@@ -312,17 +367,24 @@ class Handler(BaseHTTPRequestHandler):
         head = seg[0]
         S = jobs.SCHEDULER
         if head == "info":
-            return self.send_json({"version": VERSION, "settings": settings.public(), "poses": poses.catalogue(),
+            return self.send_json({"version": VERSION, "settings": settings.public(self.me["vip"]), "poses": poses.catalogue(),
+                                   "me": {"role": self.me["role"], "name": self.me.get("name") or "", "vip": self.me["vip"],
+                                          "password": bool(settings.load()["server"].get("password"))},
                                    "axes": sprites.AXES})
         if head == "password" and method == "POST":
             return self._password(data)
+        if head == "accounts":
+            return self._accounts(method, seg, data)
         if head == "settings":
             if method == "PUT":
-                if settings.load()["server"].get("lock_settings"):
+                self._admin()
+                d = data or {}                                       # le moteur d'Integrate reste reglable sur une instance verrouillee
+                engine_only = set(d) == {"render"} and set(d["render"] or {}) == {"integrate_engine"}
+                if settings.load()["server"].get("lock_settings") and not engine_only:
                     raise ApiError("sur cette instance, les réglages se changent dans local_settings.json, pas depuis l'interface", 403)
                 settings.save(data or {})
                 S.caps.clear()
-            return self.send_json(settings.public())
+            return self.send_json(settings.public(self.me["vip"]))
         if head == "workers":
             if q.get("fresh"):
                 S.caps.clear()
@@ -392,6 +454,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(procedural.create(d.get("key", ""), d.get("params") or {}, (d.get("name") or "").strip(), d.get("folder", "")))
             return self.send_json(procedural.catalogue())
         if head == "library":                                       # bibliotheque en ligne de personnages
+            if not self.me["vip"]:
+                raise ApiError("la bibliothèque en ligne est réservée aux comptes VIP", 403)
             if seg[1:2] == ["thumb"] and len(seg) == 3:
                 img = packs.library_thumb(seg[2])
                 self.send_response(200)

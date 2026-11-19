@@ -37,6 +37,9 @@ DEFAULTS = {
     "elevenlabs": {"key": "", "model": "eleven_multilingual_v2"},      # voix de synthese du montage (lip sync)
     # bibliotheque en ligne de personnages (dossier de paquets .bwpack servi en HTTPS, voir app/packs.py)
     "library": {"url": "", "user": "", "password": ""},
+    # comptes invites : [{id, name, vip, salt, hash, created}] ; geres par l'admin (Reglages > Mon compte), jamais envoyes
+    # au navigateur. vip = acces a la bibliotheque en ligne.
+    "accounts": [],
     "render": {
         "target": "auto",                # local | fal | auto (machines d'abord, fal si aucune)
         "orbit_length": 73,              # images a 24 i/s, forme 17k+5 : 73 = 3 s, 124 = 5,2 s
@@ -66,7 +69,13 @@ def load():
     return _merge(DEFAULTS, raw)
 
 
-def save(patch):
+def save(patch, trusted=False):
+    """Enregistre des reglages. Venant de l'interface (trusted=False), ni le bloc server ni les comptes ne passent :
+    le mot de passe et les invites ont leurs propres routes."""
+    patch = dict(patch or {})
+    patch.pop("accounts", None)
+    if not trusted:
+        patch.pop("server", None)
     with _lock:
         try:
             raw = json.loads(FILE.read_text(encoding="utf-8"))
@@ -87,6 +96,19 @@ def save(patch):
         tmp.write_text(json.dumps(raw, indent=1, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, FILE)
     return load()
+
+
+def set_accounts(accounts):
+    """Remplace d'un bloc la liste des comptes invites."""
+    with _lock:
+        try:
+            raw = json.loads(FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raw = {}
+        raw["accounts"] = accounts
+        tmp = FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(raw, indent=1, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, FILE)
 
 
 def workers():
@@ -112,8 +134,13 @@ def workers():
     return out
 
 
-def public():
+def public(library=True):
+    """Reglages envoyes au navigateur : cles et mots de passe masques, comptes retires ; library=False retire aussi la
+    bibliotheque en ligne (invite sans acces)."""
     s = load()
+    s.pop("accounts", None)
+    if not library:
+        s["library"] = {"url": "", "user": "", "password": ""}
     key = s["fal"].get("key") or ""
     s["fal"]["key"] = ("••••" + key[-4:]) if key else ""
     ekey = (s.get("elevenlabs") or {}).get("key") or ""

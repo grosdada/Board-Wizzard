@@ -43,5 +43,8 @@ find /home/claude/backups -name 'bw-*.tgz' -mtime +7 -delete
   qu'elles ne sont pas refaites avec une planche à nous.
 - Envoi d'un gros paquet `.bwpack` : Traefik coupe une lecture au bout de 60 s par défaut ; pour copier une banque,
   passer par rsync vers `state/data/` plutôt que par l'interface.
-- Toute personne connectée à une instance peut en changer les réglages, mot de passe compris : une instance = une
-  personne ou un groupe de confiance.
+- Comptes : celui qui a le mot de passe de l'instance en est l'administrateur (nom vide à la connexion). Dans
+  Réglages > Mon compte il change son mot de passe et crée des invités (nom + mot de passe tiré au hasard, montré une
+  seule fois). Un invité utilise toute l'application sur la même banque et les mêmes storyboards, sans toucher aux
+  réglages ni aux comptes ; un invité VIP a en plus la bibliothèque en ligne. Pour des données séparées, il faut
+  toujours une instance par personne.

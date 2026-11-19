@@ -777,7 +777,7 @@ class App {
         const sh = l.sh || {}, put = (k, x) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135 }, l.sh, { [k]: x }); };
         box.append(h("label.row.check", { title: "Un aplat gris posé sur le dessin, du côté opposé à la lumière. Sans calcul." }, h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), "Ombre"));
         if (sh.on) box.append(fold("sh", "Réglages de l'ombre",
-          h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu d'assombrir la couleur du corps" }, h("input", { type: "checkbox", checked: !!sh.ink, on: { change: (e) => { put("ink", e.target.checked); this.editor.render(true); this.commit("shade"); } } }), "Couleur du contour"),
+          h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu d'assombrir la couleur du corps" }, h("input", { type: "checkbox", checked: !!sh.ink, on: { change: (e) => { put("ink", e.target.checked); this.editor.render(true); this.commit("shade"); } } }), "Cloner la couleur de contour"),
           range("Gris", sh.g ?? 0.72, 0.2, 0.95, 0.01, (x) => put("g", x), "shade"),
           range("Largeur", sh.w ?? 5, 0.5, 25, 0.1, (x) => put("w", x), "shade"),
           range("Lumière (angle)", sh.a ?? 135, 0, 360, 1, (x) => put("a", x), "shade"),
@@ -787,7 +787,7 @@ class App {
         const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); };
         box.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); this.commit("cast"); this.editor.render(); this.refreshInspector(); } } }), "Ombre portée"));
         if (gs.on) box.append(fold("gs", "Réglages de l'ombre portée",
-          h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu du noir" }, h("input", { type: "checkbox", checked: !!gs.ink, on: { change: (e) => { putg("ink", e.target.checked); this.editor.render(true); this.commit("cast"); } } }), "Couleur du contour"),
+          h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu du noir" }, h("input", { type: "checkbox", checked: !!gs.ink, on: { change: (e) => { putg("ink", e.target.checked); this.editor.render(true); this.commit("cast"); } } }), "Cloner la couleur de contour"),
           range("Opacité", gs.a ?? 0.35, 0.05, 1, 0.01, (x) => putg("a", x), "cast"),
           h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, range("Flou ⓘ", gs.b ?? 1, 0, 4, 0.05, (x) => putg("b", x), "cast")),
           range("Épaisseur", gs.h ?? 1, 0.2, 4, 0.05, (x) => putg("h", x), "cast"),
@@ -875,7 +875,9 @@ class App {
     engine.addEventListener("change", async () => {
       let v = engine.value;
       if (v === "+") { const m = (prompt("Identifiant du modèle d'édition sur fal (il doit accepter plusieurs images en « image_urls ») :", "fal-ai/") || "").trim(); if (!m || m === "fal-ai/") { engine.value = engNow; return; } v = "fal:" + m; }
-      await put("settings", { render: { integrate_engine: v } }); this.info = await get("info");
+      try { await put("settings", { render: { integrate_engine: v } }); }
+      catch (e) { engine.value = engNow; return toast("Moteur d'Integrate non changé : " + e.message + ".", "error"); }
+      this.info = await get("info");
       toast("Moteur d'Integrate enregistré : " + (v ? v.replace(/^fal:/, "fal · ") : "automatique") + "."); this.refreshInspector();
     });
     box.append(h("h4", "Image finale"), h("label.row", "Rendu", style), h("label.row", "Moteur", engine), extra,
@@ -963,7 +965,16 @@ class App {
 
   // ---------------------------------------------------------------- reglages
   async settingsDialog() {
-    const s = await get("settings"), ws = await get("workers?fresh=1").catch(() => []);
+    // la fenetre s'ouvre des que les reglages sont lus ; l'etat des machines arrive ensuite (une machine injoignable
+    // peut faire attendre longtemps)
+    let s;
+    try { s = await get("settings"); }
+    catch (e) { toast("Réglages illisibles : " + (e.message || e), "error"); return; }
+    const wbox = h("div.wstatus", h("p.muted", "Recherche des machines…"));
+    get("workers?fresh=1").catch(() => []).then((ws) => {
+      wbox.replaceChildren(...(ws.length ? ws.map((w) => h("div", h("span.dot." + (w.online ? (w.orbit ? "ok" : "wait") : "err")), ` ${w.name} · ${w.online ? (w.gpu || "en ligne") : "injoignable"}`,
+        w.online ? h("span.muted", " · " + ["orbit", "matte", "edit", "t2i"].map((c) => (w[c] ? "✓ " : "✗ ") + ({ orbit: "orbite", matte: "détourage", edit: "édition", t2i: "image" })[c]).join("  ")) : null)) : [h("p.muted", "Aucune machine déclarée.")]));
+    });
     const f = (v, ph, type = "text") => h("input", { type, value: v ?? "", placeholder: ph || "", autocomplete: type === "password" ? "new-password" : "off" });
     const workers = h("textarea", { rows: 4, placeholder: "HITCHCOCK | http://192.168.1.60:8188" }, (s.workers || []).map((w) => `${w.name} | ${w.url}`).join("\n"));
     const qb = f(s.qbuilder_settings, "…\\Workflows-Q-Builder\\local_settings.json");
@@ -980,12 +991,12 @@ class App {
     const el = s.elevenlabs || {}, ekey = secret(el.key, "clé ElevenLabs du poste"), emodel = f(el.model || "eleven_multilingual_v2");
     const fres = h("select", [["480P", "480P · le moins cher (≈ 0,31 $ l'orbite de 5 s)"], ["768P", "768P (≈ 0,375 $)"], ["2K", "2K"], ["4K", "4K"]].map(([v, t]) => h("option", { value: v, selected: v === (s.fal.orbit_resolution || "768P") }, t)));
     const fcon = h("input", { type: "number", min: 1, max: 20, step: 1, value: s.fal.concurrency || 3 });
-    const locked = !!s.server.lock_settings;
+    const me = (this.info && this.info.me) || { role: "admin", vip: true, password: !!s.server.password }, guest = me.role === "guest";
+    const locked = !!s.server.lock_settings || guest;                // un invite ne change que ce qui reste dans son navigateur
     const lib = s.library || {}, lurl = f(lib.url || "", "https://…/bibliotheque"), luser = f(lib.user || "", "identifiant"), lpw = secret(lib.password, "mot de passe de la bibliothèque");
     modal("Réglages", h("div.form.settings",
       h("h4", "Machines ComfyUI"),
-      h("div.wstatus", ws.length ? ws.map((w) => h("div", h("span.dot." + (w.online ? (w.orbit ? "ok" : "wait") : "err")), ` ${w.name} · ${w.online ? (w.gpu || "en ligne") : "injoignable"}`,
-        w.online ? h("span.muted", " · " + ["orbit", "matte", "edit", "t2i"].map((c) => (w[c] ? "✓ " : "✗ ") + ({ orbit: "orbite", matte: "détourage", edit: "édition", t2i: "image" })[c]).join("  ")) : null)) : h("p.muted", "Aucune machine déclarée.")),
+      wbox,
       h("label.col", "Une machine par ligne : nom | adresse", workers),
       h("label.col", "Réglages de Workflows Q-builder (ses machines sont reprises)", qb),
       h("h4", "Calcul"), h("label.row", "Durée d'une orbite", len), h("label.row", "Où calculer par défaut", tgt),
@@ -998,9 +1009,13 @@ class App {
       h("h4", { title: "Un dossier de personnages tout faits, hébergé en ligne et protégé par un mot de passe. On y pioche depuis la banque : bouton « 📦 Paquets »." }, "Bibliothèque en ligne ⓘ"),
       h("label.row", "Adresse", lurl), h("label.row", "Identifiant", luser), h("div.row.keyrow", h("span", "Mot de passe"), lpw, paste(lpw)),
       h("h4", "Mon compte"),
-      h("div.row", h("span", s.server.password ? "L'application est protégée par un mot de passe." : "L'application n'a pas de mot de passe."),
-        h("button.mini", { type: "button", on: { click: () => this.passwordDialog(!!s.server.password) } }, s.server.password ? "🔑 Changer le mot de passe…" : "🔑 Mettre un mot de passe…")),
-      locked ? h("p.muted", "Instance en ligne : les autres réglages de cette page sont verrouillés. Les clés fal et ElevenLabs « de ce navigateur » et le mot de passe restent modifiables.") : null,
+      h("div.row.wrap", h("span", !me.password ? "L'application n'a pas de mot de passe : tout le monde est administrateur."
+          : guest ? `Connecté : ${me.name} · invité${me.vip ? " VIP (bibliothèque en ligne comprise)" : ""}` : "Connecté : administrateur"),
+        h("button.mini", { type: "button", on: { click: () => this.passwordDialog(me.password) } }, me.password ? "🔑 Changer mon mot de passe…" : "🔑 Mettre un mot de passe…"),
+        me.password ? h("button.mini", { type: "button", title: "Ferme la session dans ce navigateur", on: { click: async () => { await post("logout", {}); location.href = "/login"; } } }, "⏻ Se déconnecter") : null),
+      locked ? h("p.muted", guest ? "Compte invité : les réglages de cette page sont ceux de l'administrateur. Tu peux seulement donner tes clés « de ce navigateur » et changer ton mot de passe."
+        : "Instance en ligne : les autres réglages de cette page sont verrouillés. Les clés fal et ElevenLabs « de ce navigateur » et le mot de passe restent modifiables.") : null,
+      !guest && me.password ? this.guestsBox() : null,
       h("p.muted", `Données (banque et storyboards) : ${s.data}`)),
       [{ label: "Annuler" }, { label: "Enregistrer", primary: true, click: async () => {
         if (myKey.value.trim()) localStorage.setItem("bw.falKey", myKey.value.trim()); else localStorage.removeItem("bw.falKey");
@@ -1013,6 +1028,46 @@ class App {
                                 library: { url: lurl.value.trim(), user: luser.value.trim(), password: lpw.value } });
         this.info = await get("info"); toast("Réglages enregistrés."); this.pollWorkers();
       } }]);
+  }
+
+  // comptes invites, geres par l'admin : un invite travaille sur la meme banque et les memes storyboards, sans toucher aux
+  // reglages ; un invite VIP a en plus la bibliotheque en ligne
+  guestsBox() {
+    const list = h("div.guests", h("p.muted", "Chargement…"));
+    const shown = (name, pw, what) => {                              // le mot de passe n'est lisible qu'a cet instant
+      const out = h("input", { type: "text", readOnly: true, value: pw, on: { focus: (e) => e.target.select() } });
+      modal(what, h("div.form", h("label.row", "Nom d'invité", h("input", { type: "text", readOnly: true, value: name })),
+        h("div.row.keyrow", h("span", "Mot de passe"), out, h("button.mini", { type: "button", on: { click: async () => {
+          try { await navigator.clipboard.writeText(`Nom : ${name}\nMot de passe : ${pw}`); toast("Nom et mot de passe copiés."); } catch (e) { out.focus(); toast("Copie refusée par le navigateur : sélectionne le texte et copie-le.", "error"); } } } }, "Copier")),
+        h("p.muted", "Note-le maintenant : il ne sera plus jamais affiché. L'invité se connecte à la même adresse que toi, avec ce nom et ce mot de passe, et peut ensuite le changer dans ses réglages.")), [{ label: "C'est noté", primary: true }]);
+    };
+    const draw = (accs) => {
+      list.replaceChildren(...(accs.length ? accs.map((a) => {
+        const kind = h("select", { title: "Invité : toute l'application sauf la bibliothèque en ligne. VIP : la bibliothèque en ligne aussi.", on: { change: async () => {
+          try { draw((await put("accounts/" + a.id, { vip: kind.value === "vip" })).accounts); toast(`${a.name} : ${kind.value === "vip" ? "invité VIP" : "invité"}.`); } catch (e) { toast(e.message, "error"); } } } },
+          h("option", { value: "guest", selected: !a.vip }, "Invité"), h("option", { value: "vip", selected: !!a.vip }, "Invité VIP"));
+        return h("div.row.guest", h("span.gname", a.name), kind,
+          h("button.mini", { type: "button", title: "Tire un nouveau mot de passe pour cet invité : l'ancien ne marche plus", on: { click: async () => {
+            if (!confirm(`Donner un nouveau mot de passe à « ${a.name} » ? L'ancien ne marchera plus.`)) return;
+            try { const r = await put("accounts/" + a.id, { reset: true }); draw(r.accounts); shown(a.name, r.password, "Nouveau mot de passe"); } catch (e) { toast(e.message, "error"); } } } }, "🔑 Nouveau mot de passe"),
+          h("button.mini", { type: "button", title: "Supprime ce compte : l'invité est déconnecté tout de suite", on: { click: async () => {
+            if (!confirm(`Supprimer le compte de « ${a.name} » ?`)) return;
+            try { draw((await del("accounts/" + a.id)).accounts); toast(`Compte de ${a.name} supprimé.`); } catch (e) { toast(e.message, "error"); } } } }, "✕ Supprimer"));
+      }) : [h("p.muted", "Aucun invité pour l'instant.")]));
+    };
+    get("accounts").then((r) => draw(r.accounts)).catch((e) => { list.replaceChildren(h("p.muted", e.message)); });
+    const name = h("input", { type: "text", placeholder: "nom de l'invité", maxLength: 40, autocomplete: "off" });
+    const type = h("select", h("option", { value: "guest" }, "Invité"), h("option", { value: "vip" }, "Invité VIP"));
+    const add = async () => {
+      if (!name.value.trim()) return toast("Donne un nom à l'invité.", "error");
+      try { const r = await post("accounts", { name: name.value, vip: type.value === "vip" }); name.value = ""; draw((await get("accounts")).accounts); shown(r.account.name, r.password, "Compte invité créé"); }
+      catch (e) { toast(e.message, "error"); }
+    };
+    name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
+    return h("div.guestsbox",
+      h("h4", { title: "Un invité utilise toute l'application (même banque, mêmes storyboards) mais ne touche ni aux réglages ni aux comptes. Un invité VIP a en plus accès à la bibliothèque en ligne." }, "Comptes invités ⓘ"),
+      list, h("div.row.guest", name, type, h("button.mini", { type: "button", on: { click: add } }, "＋ Créer l'invité")),
+      h("p.muted", "Invité : toute l'application, sans la bibliothèque en ligne. Invité VIP : avec la bibliothèque en ligne. Les invités travaillent sur ta banque et tes storyboards et peuvent les modifier."));
   }
 
   // mon compte : changer le mot de passe de l'application (l'actuel est demande)

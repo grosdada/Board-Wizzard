@@ -9,21 +9,25 @@ body { margin: 0; min-height: 100vh; display: grid; place-items: center; backgro
 form { width: min(360px, 90vw); background: #1c1c1c; border: 1px solid #313131; border-radius: 12px; padding: 26px; }
 h1 { margin: 0 0 16px; font-size: 18px; letter-spacing: .08em; } h1 b { color: #8fd0c4; }
 input, button { width: 100%; box-sizing: border-box; padding: 11px 12px; border-radius: 8px; font: inherit; }
-input { background: #141414; color: inherit; border: 1px solid #3a3a3a; }
+input { margin-bottom: 8px; background: #141414; color: inherit; border: 1px solid #3a3a3a; }
 button { margin-top: 12px; background: #8fd0c4; color: #0e1b19; border: 0; font-weight: 600; cursor: pointer; }
 p { color: #f07a5d; min-height: 1.2em; margin: 10px 0 0; font-size: 13px; }
 </style>
 </head>
 <body>
 <form id="f"><h1>BOARD<b>WIZZARD</b></h1>
-<input id="pw" type="password" placeholder="Mot de passe" autofocus required>
+<input id="nm" type="text" placeholder="Nom d'invité (vide pour l'administrateur)" autocomplete="username" autocapitalize="none" spellcheck="false">
+<input id="pw" type="password" placeholder="Mot de passe" autocomplete="current-password" autofocus required>
 <button>Entrer</button><p id="msg"></p></form>
 <script>
 document.getElementById("f").addEventListener("submit", async (e) => {
   e.preventDefault();
   const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ password: document.getElementById("pw").value }) });
-  if (r.ok) location.href = "/"; else document.getElementById("msg").textContent = "Mot de passe refusé.";
+                                        body: JSON.stringify({ name: document.getElementById("nm").value, password: document.getElementById("pw").value }) });
+  if (r.ok) { location.href = "/"; return; }
+  let t = "Nom ou mot de passe refusé.";
+  try { const j = await r.json(); if (r.status === 429 && j.error) t = j.error; } catch (err) { /* message par defaut */ }
+  document.getElementById("msg").textContent = t;
 });
 </script>
 </body>

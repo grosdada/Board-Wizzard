@@ -231,6 +231,8 @@ export class Bank {
         h("button.mini", { on: { click: () => pick.click() } }, "⬆ Importer un paquet…"), pick),
       h("h4", "Bibliothèque en ligne"), libBox), [{ label: "Fermer" }]);
     m.box.classList.add("wide");
+    const vip = this.app.info?.me?.vip !== false;                    // invite sans acces : on ne demande meme pas
+    if (!vip) { libBox.textContent = ""; libBox.append(h("p.muted", "La bibliothèque en ligne est réservée aux comptes VIP : demande l'accès à l'administrateur.")); return; }
     get("library").then((idx) => {
       const rows = idx.items.map((e) => ({ e, box: h("input", { type: "checkbox" }) }));
       const go = h("button.primary", "Importer la sélection");
