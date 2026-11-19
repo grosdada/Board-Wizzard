@@ -42,8 +42,11 @@ def voices(key):
     for v in data.get("voices") or []:
         lab = v.get("labels") or {}
         info = " · ".join(x for x in (lab.get("gender"), lab.get("age"), lab.get("accent"), lab.get("language")) if x)
-        out.append({"id": v.get("voice_id"), "name": v.get("name") or "voix", "info": info})
-    return sorted(out, key=lambda v: v["name"].lower())
+        empty = v.get("category") == "cloned" and v.get("samples") == []      # voix clonee creee sans echantillon : inutilisable
+        if empty:
+            info = "sans échantillon : inutilisable"
+        out.append({"id": v.get("voice_id"), "name": v.get("name") or "voix", "info": info, "empty": empty})
+    return sorted(out, key=lambda v: (v["empty"], v["name"].lower()))
 
 
 def speak(key, voice, text, model="eleven_multilingual_v2"):
@@ -53,5 +56,11 @@ def speak(key, voice, text, model="eleven_multilingual_v2"):
         raise ElevenError("texte vide")
     if not voice:
         raise ElevenError("aucune voix choisie")
-    return _call(key, "/text-to-speech/%s?output_format=mp3_44100_128" % voice,
-                 {"text": text[:5000], "model_id": model or "eleven_multilingual_v2"})
+    try:
+        return _call(key, "/text-to-speech/%s?output_format=mp3_44100_128" % voice,
+                     {"text": text[:5000], "model_id": model or "eleven_multilingual_v2"})
+    except ElevenError as e:
+        if "contains no samples" in str(e):                         # voix clonee vide, creee sans enregistrement
+            raise ElevenError("cette voix est une voix clonée restée vide (aucun enregistrement dedans) : choisis-en une autre, "
+                              "ou ajoute-lui un échantillon sur elevenlabs.io") from None
+        raise
