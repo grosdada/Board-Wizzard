@@ -16,7 +16,10 @@ DATA = Path(os.environ.get("BW_DATA") or ROOT / "data")
 _lock = threading.Lock()
 
 DEFAULTS = {
-    "server": {"host": "127.0.0.1", "port": 8795},
+    # password : mot de passe d'acces a l'application (vide = pas de mot de passe).
+    # lock_settings : sur une instance partagee, les reglages du poste (machines, mots de passe, bibliotheque, cles) ne
+    # se changent plus depuis l'interface, seulement dans local_settings.json. Chacun garde sa cle fal dans son navigateur.
+    "server": {"host": "127.0.0.1", "port": 8795, "password": "", "lock_settings": False},
     # machines ComfyUI : [{"name": "...", "url": "http://ip:8188", "enabled": true}]
     "workers": [],
     # reglages de Workflows Q-builder : ses machines (comfy_nodes) sont reprises telles quelles

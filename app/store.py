@@ -118,7 +118,7 @@ def _history(pid):
         now = time.time()
         if old and now - old[-1].stat().st_mtime < HISTORY_EVERY:
             return
-        shutil.copy2(cur, h / (time.strftime("%Y%m%d-%H%M%S") + ".json"))
+        shutil.copyfile(cur, h / (time.strftime("%Y%m%d-%H%M%S") + ".json"))      # copyfile : la copie porte l'heure de la copie
         for f in old[:max(0, len(old) + 1 - HISTORY_KEEP)]:
             f.unlink(missing_ok=True)
     except OSError:

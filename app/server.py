@@ -58,6 +58,9 @@ def merge_project(new, old):
     return new
 
 
+_FAILS, _FAILS_LOCK = {}, threading.Lock()                     # essais de mot de passe rates, par adresse : (nombre, attente jusqu'a)
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "BoardWizzard/" + VERSION
@@ -141,14 +144,28 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             pw = ""
         good = settings.load()["server"].get("password") or ""
+        ip = (self.headers.get("X-Forwarded-For") or self.client_address[0]).split(",")[0].strip()
+        now = time.time()
+        with _FAILS_LOCK:                                           # frein aux essais : apres 5 erreurs, attente qui double
+            n, until = _FAILS.get(ip, (0, 0))
+            if now < until:
+                return self.send_json({"error": "trop d'essais : réessayer dans %d s" % int(until - now + 1)}, 429)
         if not good or not hmac.compare_digest(pw.encode(), good.encode()):
+            with _FAILS_LOCK:
+                n += 1
+                _FAILS[ip] = (n, now + min(3600, 30 * 2 ** (n - 5)) if n >= 5 else 0)
+                if len(_FAILS) > 5000:
+                    _FAILS.clear()
             time.sleep(1)
             return self.send_json({"error": "mot de passe refusé"}, 403)
+        with _FAILS_LOCK:
+            _FAILS.pop(ip, None)
         body = b'{"ok": true}'
+        secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") or "").lower() == "https" else ""
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Set-Cookie", "bw=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000" % self._token())
+        self.send_header("Set-Cookie", "bw=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000%s" % (self._token(), secure))
         self.end_headers()
         self.wfile.write(body)
 
@@ -271,6 +288,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "axes": sprites.AXES})
         if head == "settings":
             if method == "PUT":
+                if settings.load()["server"].get("lock_settings"):
+                    raise ApiError("sur cette instance, les réglages se changent dans local_settings.json, pas depuis l'interface", 403)
                 settings.save(data or {})
                 S.caps.clear()
             return self.send_json(settings.public())
