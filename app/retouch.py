@@ -176,10 +176,10 @@ def punch(item_id, variant, frame, x, y, spread=True):
     _cut(d, path(f0), im, first, ink, step)
     done = [f0]
     if spread:
-        for step in (1, -1):                                        # la meme zone, d'image en image, tant qu'elle existe
+        for sens in (1, -1):                                        # la meme zone, d'image en image, tant qu'elle existe
             prev, f = first, f0
             for _ in range(n - 1):
-                f = (f + step) % n
+                f = (f + sens) % n
                 if f in done:
                     break
                 im2, lab2, stats2, total2, ink2 = _zones(path(f))
