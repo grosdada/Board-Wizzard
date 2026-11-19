@@ -25,8 +25,8 @@ const PAGE0 = { format: "story", width: 2400, height: 1500, bg: "#ffffff", fill:
 const LAYOUTS = [
   ...PRESETS.filter((p) => ["plein", "2x2", "3x3", "g3", "col2", "action"].includes(p.id)),
   { id: "2x3", label: tt("6 cases (2 rangées)"), make: (L) => transpose(PRESETS.find((p) => p.id === "3x2").make(L)) },
-  { id: "1x3", label: "3 colonnes", make: (L) => transpose(PRESETS.find((p) => p.id === "3b").make(L)) },
-  { id: "1x2", label: "2 colonnes", make: (L) => transpose(PRESETS.find((p) => p.id === "2b").make(L)) },
+  { id: "1x3", label: tt("3 colonnes"), make: (L) => transpose(PRESETS.find((p) => p.id === "3b").make(L)) },
+  { id: "1x2", label: tt("2 colonnes"), make: (L) => transpose(PRESETS.find((p) => p.id === "2b").make(L)) },
   { id: "2x4", label: tt("8 cases"), make: (L) => transpose(PRESETS.find((p) => p.id === "3x2").make(() => transpose(PRESETS.find((q) => q.id === "2b").make(L)))) },
   ...PRESETS.filter((p) => ["2b", "3b", "3x2"].includes(p.id)),
 ];
@@ -380,7 +380,7 @@ class App {
       { label: tt("✎ Dessiner le fond…"), star: "blue", click: () => this.drawBackground(this.sel.panel) }];
     items.push({ head: tt("Pose") });
     // ↻ : orbite calculee, la pose tourne · ⏳ : orbite en calcul · ▫ : image fixe, pas d'orbite
-    for (const [k, vv] of Object.entries(item?.variants || {})) items.push({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + vv.label, checked: k === l.v, click: () => this.setPose(l, k) });
+    for (const [k, vv] of Object.entries(item?.variants || {})) items.push({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + tr(vv.label), checked: k === l.v, click: () => this.setPose(l, k) });
     items.push({ note: tt("↻ orbite prête · ⏳ en calcul · ▫ image fixe") });
     items.push({ label: tt("📍 Montrer dans la banque"), click: () => this.bankUI.reveal(l.item) });
     items.push({ label: tt("Générer d'autres poses…"), click: () => this.bankUI.openItem(l.item) });
@@ -961,7 +961,7 @@ class App {
       this.el.workers.textContent = "";
       this.el.workers.append(...ws.map((w) => h("span.dot." + (!w.online ? "err" : w.busy || w.load ? "busy" : w.orbit ? "ok" : "wait"),
         { title: `${w.name} : ${!w.online ? tt("injoignable") : (w.busy || w.load ? tt("occupée") : tt("prête"))}${w.missing?.length ? " · manque : " + w.missing.join(", ") : ""}${w.gpu ? " · " + w.gpu : ""}` })),
-        h("span.muted", ws.length ? `${ws.filter((w) => w.online).length}/${ws.length} machines` : (this.info.settings.fal.key || localStorage.getItem("bw.falKey") ? "fal" : tt("aucune machine"))));
+        h("span.muted", ws.length ? tt`${ws.filter((w) => w.online).length}/${ws.length} machines` : (this.info.settings.fal.key || localStorage.getItem("bw.falKey") ? "fal" : tt("aucune machine"))));
     } catch (e) { /* plus tard */ }
     setTimeout(() => this.pollWorkers(), 20000);
   }
@@ -982,7 +982,7 @@ class App {
     const workers = h("textarea", { rows: 4, placeholder: "HITCHCOCK | http://192.168.1.60:8188" }, (s.workers || []).map((w) => `${w.name} | ${w.url}`).join("\n"));
     const qb = f(s.qbuilder_settings, tt("…\\Workflows-Q-Builder\\local_settings.json"));
     const len = h("select", [[73, tt("3 s (73 images)")], [90, "3,75 s"], [107, "4,5 s"], [124, tt("5,2 s (124 images)")]].map(([v, t]) => h("option", { value: v, selected: v === s.render.orbit_length }, t)));
-    const tgt = h("select", [["auto", tt("Auto : machines d'abord, fal sinon")], ["local", tt("Machines seulement")], ["fal", "fal seulement"]].map(([v, t]) => h("option", { value: v, selected: v === s.render.target }, t)));
+    const tgt = h("select", [["auto", tt("Auto : machines d'abord, fal sinon")], ["local", tt("Machines seulement")], ["fal", tt("fal seulement")]].map(([v, t]) => h("option", { value: v, selected: v === s.render.target }, t)));
     // champ secret : toujours masque, jamais propose par l'historique du navigateur, avec un bouton pour coller
     const secret = (v, ph) => h("input", { type: "password", value: v ?? "", placeholder: ph || "", autocomplete: "new-password", name: "bw-" + uid(), spellcheck: "false", "data-lpignore": "true", "data-1p-ignore": "true" });
     const paste = (inp) => h("button.mini", { type: "button", title: tt("Coller le contenu du presse-papiers dans ce champ"), on: { click: async (e) => {
@@ -996,7 +996,7 @@ class App {
     const fcon = h("input", { type: "number", min: 1, max: 20, step: 1, value: s.fal.concurrency || 3 });
     const me = (this.info && this.info.me) || { role: "admin", vip: true, password: !!s.server.password }, guest = me.role === "guest";
     const locked = !!s.server.lock_settings || guest;                // un invite ne change que ce qui reste dans son navigateur
-    const lib = s.library || {}, lurl = f(lib.url || "", "https://…/bibliotheque"), luser = f(lib.user || "", tt("identifiant")), lpw = secret(lib.password, tt("mot de passe de la bibliothèque"));
+    const lib = s.library || {}, lurl = f(lib.url || "", tt("https://…/bibliotheque")), luser = f(lib.user || "", tt("identifiant")), lpw = secret(lib.password, tt("mot de passe de la bibliothèque"));
     modal(tt("Réglages"), h("div.form.settings",
       h("h4", tt("Machines ComfyUI")),
       wbox,

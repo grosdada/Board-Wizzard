@@ -25,3 +25,11 @@ English
 login.html: Français
 main.js: EN
 main.js: FR
+# Bibliotheque des bulles : polices CSS et fragments techniques
+alive-bubbles.js: "Comic Neue", "Comic Sans MS", "Chalkboard SE", "Comic Sans", sans-serif
+alive-bubbles.js: "Segoe Print", "Bradley Hand", "Marker Felt", "Noteworthy", "Comic Sans MS", cursive
+alive-bubbles.js: "Courier New", Courier, "Liberation Mono", monospace
+alive-bubbles.js: Georgia, "Times New Roman", Times, serif
+alive-bubbles.js: "Trebuchet MS", "Segoe UI", Arial, Helvetica, sans-serif
+alive-bubbles.js: Impact, "Haettenschweiler", "Arial Black", "Arial Narrow Bold", sans-serif
+alive-bubbles.js:  ed on

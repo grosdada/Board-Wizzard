@@ -223,7 +223,7 @@
         const it = { b, node, bin, svg, txt, on: ctl.edit, timer: null, tip: null };
         if (ctl.edit) {
           it.tip = document.createElement("div"); it.tip.className = "ac-btip"; it.tip.dataset.id = b.id || ""; root.append(it.tip);
-          it.base = document.createElement("div"); it.base.className = "ac-btip base"; it.base.dataset.id = b.id || ""; it.base.title = "Base de la queue"; root.append(it.base);
+          it.base = document.createElement("div"); it.base.className = "ac-btip base"; it.base.dataset.id = b.id || ""; it.base.title = (window.BW_tt || String)("Base de la queue"); root.append(it.base);
         }
         items.push(it);
       }

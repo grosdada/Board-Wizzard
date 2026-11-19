@@ -234,7 +234,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
         h("select", { on: { change: (e) => { fx.type = e.target.value; fxPaint(); fxUi(); } } }, Object.entries(FX_TYPES).map(([k, n]) => h("option", { value: k, selected: fx.type === k }, n))),
         h("span.row.colrow", { title: tt("Couleur des lignes (les bandes)") }, tt("Lignes"), swatch(fx.col || "#111111", (c) => { fx.col = c; fxPaint(); })),
         h("label.row.check", { title: tt("Décoché : fond transparent, on voit le décor entre les lignes. Coché : un fond de couleur derrière les lignes.") }, h("input", { type: "checkbox", checked: !!fx.bgon, on: { change: (e) => { fx.bgon = e.target.checked; if (!fx.bg) fx.bg = "#ffffff"; fxPaint(); fxUi(); } } }), tt("Fond")),
-        fx.bgon ? swatch(fx.bg || "#ffffff", (c) => { fx.bg = c; fxPaint(); }) : h("span.muted", "transparent"),
+        fx.bgon ? swatch(fx.bg || "#ffffff", (c) => { fx.bg = c; fxPaint(); }) : h("span.muted", tt("transparent")),
         h("button.mini", { type: "button", title: tt("Un autre tirage des mêmes lignes"), on: { click: () => { fx.seed = 1 + Math.floor(Math.random() * 9999); fxPaint(); } } }, "🎲")));
     if (!fx.on) return;
     fxBox.append(rg(tt("Nombre"), "n", 8, 400, 1), rg(tt("Épaisseur"), "w", 0.2, 80, 0.1, tt("Tout à droite, les lignes se rejoignent et couvrent tout de noir")), rg(tt("Irrégularité"), "vari", 0, 1, 0.01));

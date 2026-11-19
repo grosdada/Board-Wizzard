@@ -312,8 +312,8 @@ function cols(n, mk) {
 
 export const PRESETS = [
   { id: "plein", label: tt("Pleine page"), make: (L) => L() },
-  { id: "2b", label: "2 bandes", make: (L) => rows(2, L) },
-  { id: "3b", label: "3 bandes", make: (L) => rows(3, L) },
+  { id: "2b", label: tt("2 bandes"), make: (L) => rows(2, L) },
+  { id: "3b", label: tt("3 bandes"), make: (L) => rows(3, L) },
   { id: "2x2", label: tt("4 cases"), make: (L) => rows(2, () => cols(2, L)) },
   { id: "3x2", label: tt("6 cases"), make: (L) => rows(3, () => cols(2, L)) },
   { id: "3x3", label: tt("9 cases"), make: (L) => rows(3, () => cols(3, L)) },

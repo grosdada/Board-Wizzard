@@ -1090,7 +1090,27 @@
   "personnage": "character",
   "asset": "asset",
   "son": "sound",
-  "Passer l'interface en anglais": "Switch the interface to French"
+  "Passer l'interface en anglais": "Switch the interface to French",
+  "Rose": "Pink",
+  "Manuscrite": "Handwritten",
+  "Machine à écrire": "Typewriter",
+  "Classique": "Classic",
+  "Moderne": "Modern",
+  "Chuchotement": "Whisper",
+  "Pop": "Pop",
+  "Fondu": "Fade",
+  "Montée": "Rise",
+  "Secousse": "Shake",
+  "Base de la queue": "Tail base",
+  "{0} var.": "{0} var.",
+  "2 bandes": "2 rows",
+  "3 bandes": "3 rows",
+  "3 colonnes": "3 columns",
+  "2 colonnes": "2 columns",
+  "{0}/{1} machines": "{0}/{1} machines",
+  "transparent": "transparent",
+  "fal seulement": "fal only",
+  "https://…/bibliotheque": "https://…/library"
  },
  "server": {
   "Parle": "Speaks",
@@ -1424,6 +1444,7 @@
   "dossier ou onglet inconnu": "unknown folder or tab",
   "un dossier ne peut pas aller dans lui-meme": "a folder cannot go inside itself",
   "type inconnu": "unknown type",
-  "ce personnage est deja un assemblage : choisir un corps": "this character is already an assembly: choose a body"
+  "ce personnage est deja un assemblage : choisir un corps": "this character is already an assembly: choose a body",
+  "Base": "Base"
  }
 }

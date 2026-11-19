@@ -195,7 +195,7 @@ export class Bank {
       it.face ? portraitThumb(h("div.card-svg"), it) : h("img", { src: this.thumb(it, this.cover(it)), loading: "lazy", draggable: false, alt: "" }),
       h("div.card-name", it.name),
       h("div.card-meta", orbits ? h("span.b.ok", { title: tt("orbites prêtes") }, "↻ " + orbits) : h("span.b", tt("fixe")),
-        vs.length > 1 ? h("span.b", vs.length - 1 + " var.") : null,
+        vs.length > 1 ? h("span.b", tt`${vs.length - 1} var.`) : null,
         busy ? h("span.b.busy", { title: tt("en calcul") }, "⏳ " + busy) : null));
     return c;
   }

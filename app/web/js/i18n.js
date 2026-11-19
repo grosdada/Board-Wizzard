@@ -58,6 +58,14 @@ export function tr(msg) {
   return trs(String(msg));
 }
 
+// bibliotheque des bulles (lib/alive-bubbles.js, script classique charge avant) : ses noms affiches suivent la langue
+window.BW_tt = tt;
+if (LANG !== "fr" && window.AliveBubbles) {
+  const A = window.AliveBubbles;
+  for (const o of [A.COLOR_NAMES, A.TYPES, A.ANIMS]) for (const k of Object.keys(o || {})) o[k] = tt(o[k]);
+  for (const k of Object.keys(A.FONTS || {})) A.FONTS[k][0] = tt(A.FONTS[k][0]);
+}
+
 /** Change de langue : laisse partir l'enregistrement en attente, puis recharge la page. */
 export function setLang(lang) {
   try { localStorage.setItem("bw.lang", lang); } catch (e) { /* navigateur sans stockage : on reste */ }

@@ -444,7 +444,7 @@ export function openMontage(app, pid) {
     items.push({ label: tt("◆ Poser une clé ici"), click: () => { setKey(l.id, {}); paint(); lanes(); props(); } });
     if (it && Object.keys(it.variants).length > 1) {
       items.push({ head: tt("Pose") });
-      for (const [k, v] of Object.entries(it.variants)) items.push({ label: (v.orbit ? "↻ " : "▫ ") + v.label, checked: k === st.v, click: () => { preload(it, k); change(l.id, { v: k, f: v.orbit ? Math.min(st.f, v.orbit.n - 1) : 0 }); props(); } });
+      for (const [k, v] of Object.entries(it.variants)) items.push({ label: (v.orbit ? "↻ " : "▫ ") + tr(v.label), checked: k === st.v, click: () => { preload(it, k); change(l.id, { v: k, f: v.orbit ? Math.min(st.f, v.orbit.n - 1) : 0 }); props(); } });
       items.push({ note: tt("↻ orbite prête · ▫ image fixe") });
     }
     if (vv && vv.orbit && vv.orbit.n) {

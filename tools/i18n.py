@@ -166,10 +166,12 @@ TAG = re.compile(r"<[^<>]*>")
 
 def frenchy(text):
     t = TAG.sub(" ", text)
-    t = re.sub(r"\{\d+\}", " ", t)
+    t = re.sub(r"\{\d+\}|var\(--[\w\-]+\)", " ", t)
     if not re.search(r"[A-Za-zÀ-ÖØ-öø-ÿœŒ]", t):
         return False
     if TECH.match(text.strip()):
+        return False
+    if re.match(r"\s*[.#@a-z][\w\-., :>#\[\]=\"()*]*\{", text) and ";" in text:   # feuille de style
         return False
     if re.search(r"[À-ÖØ-öø-ÿœŒ«»…]", t):
         return True
@@ -181,7 +183,8 @@ def frenchy(text):
 
 
 MORE = set("""fixe automatique erreur injoignable chargement connexion requise identifiant ouverte neutre arques
-droits grand grands court long attention invite valider oui non bonjour""".split())
+droits grand grands court long attention invite valider oui non bonjour
+colonnes colonne bandes bande var cases images seulement machines""".split())
 
 
 def wrapped(src, lit):
@@ -242,7 +245,7 @@ def shown(s):
     return bool(re.search(r"[A-Za-zÀ-ÿ]{2}", re.sub(r"%[sd]|%\.\d+f", "", s)))
 
 
-SHOWN = {"progress", "error", "title", "message", "info"}
+SHOWN = {"progress", "error", "title", "message", "info", "label"}
 
 
 def fmt_of(node):
@@ -284,6 +287,14 @@ def main():
                     problems.append("%s:%d  sans traduction : %r" % (f.name, lit["line"], k))
             elif frenchy(k) and k not in ignore and "%s: %s" % (f.name, k) not in ignore:
                 problems.append("%s:%d  texte non entoure : %r" % (f.name, lit["line"], k))
+    for f in sorted((WEB / "lib").glob("*.js")):              # bibliotheque des bulles : ses textes se traduisent par i18n.js
+        src = f.read_text(encoding="utf-8")
+        for lit in lex(src):
+            k = key_of(lit)
+            if frenchy(k) and k not in ignore and "%s: %s" % (f.name, k) not in ignore:
+                used.add(k)
+                if k not in ui:
+                    problems.append("lib/%s:%d  sans traduction : %r" % (f.name, lit["line"], k))
     css = (WEB / "app.css").read_text(encoding="utf-8")
     for m in re.finditer(r"content:\s*\"([^\"]*)\"", css):
         if frenchy(m.group(1)) and m.group(1) not in ignore:
