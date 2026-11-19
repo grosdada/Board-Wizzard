@@ -7,6 +7,9 @@
   python tools/parts.py planches                      planches de controle dans data/qa/parts/<categorie>.jpg
   python tools/parts.py retirer nez aquilin           enleve un element rate
   python tools/parts.py redecouper visage nez         refait la decoupe depuis les images d'origine, sans regenerer
+  python tools/parts.py dessiner yeux nez             trace les categories par le calcul (app/partsdraw.py), les controle
+                                                      (zone, paires, elements trop semblables) et ne les range que si tout
+                                                      est bon ; sans nom : toutes les categories tracees. --controle : sans ranger
 
 Si data/parts/style.png existe, les elements sont dessines dans le trait de cette planche (modele d'edition) ; sinon
 par le modele d'image seul. L'image d'origine de chaque element est gardee dans data/parts/_brut/.
@@ -22,13 +25,14 @@ from app import falapi, jobs, parts, settings  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("action", choices=["liste", "generer", "planches", "retirer", "redecouper"])
+    ap.add_argument("action", choices=["liste", "generer", "planches", "retirer", "redecouper", "dessiner"])
     ap.add_argument("noms", nargs="*")
     ap.add_argument("--seul", default="")
     ap.add_argument("--graine", type=int, default=11)
     ap.add_argument("--refaire", action="store_true")
     ap.add_argument("--machine", type=int, default=1)
     ap.add_argument("--fal", action="store_true")
+    ap.add_argument("--controle", action="store_true")
     a = ap.parse_args()
     idx = parts.index()
     if a.action == "liste":
@@ -38,6 +42,21 @@ def main():
     if a.action == "retirer":
         parts.remove(a.noms[0], parts.slug(a.noms[1]))
         return
+    if a.action == "dessiner":
+        from app import partsdraw
+        ok = True
+        for c in [c for c in (a.noms or partsdraw.CATEGORIES) if c in partsdraw.CATEGORIES]:
+            if a.controle:
+                fn, var = partsdraw.CATEGORIES[c]
+                bad = parts.check_drawn(c, [(n,) + fn(seed=i + 1, **kw) for i, (n, kw) in enumerate(var)])
+                n = 0
+            else:
+                n, bad = parts.draw_bank(c)
+            print("%-10s %s" % (c, ("%d élément(s) rangé(s)" % n) if n else ("contrôle bon" if not bad else "REFUSÉ")), flush=True)
+            for b in bad:
+                ok = False
+                print("     -", b, flush=True)
+        sys.exit(0 if ok else 1)
     cats = [c for c in (a.noms or parts.CATEGORIES) if c in parts.CATEGORIES]
     if a.action == "redecouper":                                    # sans regenerer : depuis les images d'origine
         for c in cats:

@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter
 
-from . import settings, sprites, store
+from . import partsdraw, settings, sprites, store
 
 ROOT = settings.DATA / "parts"
 STYLE = ("Hand-drawn with a black felt-tip pen: bold, slightly irregular confident line, a few flat solid black areas, "
@@ -163,17 +163,135 @@ def index():
     elements ajoutes a la main (dessines dans l'atelier)."""
     out = {}
     for cat, (_, _, _, els) in CATEGORIES.items():
+        if cat in partsdraw.CATEGORIES:                             # categorie tracee par le calcul : ses noms et ses places
+            els = [(n, "") for n, _ in partsdraw.CATEGORIES[cat][1]]
         names = {slug(n): n for n, _ in els}
         order = list(names)
         d = ROOT / cat
+        places = _places(cat)
         rows = []
         if d.is_dir():
             for f in d.glob("*.png"):
                 pid = f.stem
-                rows.append({"id": pid, "name": names.get(pid) or pid.replace("-", " ").capitalize(), "file": "%s/%s.png" % (cat, pid),
-                             "mine": pid not in names, "t": int(f.stat().st_mtime)})
+                row = {"id": pid, "name": names.get(pid) or pid.replace("-", " ").capitalize(), "file": "%s/%s.png" % (cat, pid),
+                       "mine": pid not in names, "t": int(f.stat().st_mtime)}
+                if cat in CAPPED:                                   # cheveux, couvre-chef : ce qui depasse au-dessus est cache
+                    row["cap"] = _cap(cat, f)
+                if pid in places:                                   # place et largeur vraies dans le cadre 1000 x 1000 de l'atelier
+                    row["place"] = places[pid]
+                    if cat in PAIRED:
+                        row["pair"] = True                          # une seule oreille : l'atelier pose sa jumelle en miroir
+                rows.append(row)
         out[cat] = sorted(rows, key=lambda r: (order.index(r["id"]) if r["id"] in order else 999, r["id"]))
     return out
+
+
+CAPPED = {"cheveux", "couvre-chef"}
+_CAPS = {}
+
+
+def _cap(cat, f, n=48):
+    """Profil du dessus d'une coupe de cheveux ou d'un couvre-chef : n hauteurs (part de la hauteur de l'image, 0 = haut)
+    regulierement espacees sur sa largeur. L'atelier cache tout ce qui se trouve au-dessus de ce profil dans les calques du
+    dessous (le crane ne depasse plus au-dessus de la coupe, meme si on la descend). Garde en memoire par date du fichier."""
+    key = (str(f), f.stat().st_mtime)
+    if key not in _CAPS:
+        a = np.asarray(Image.open(f).convert("RGBA"))[..., 3] > 60
+        h, w = a.shape
+        top = np.where(a.any(axis=0), a.argmax(axis=0), -1).astype(float)
+        out = []
+        for i in range(n):
+            x0, x1 = int(i * w / n), max(int(i * w / n) + 1, int((i + 1) * w / n))
+            seg = top[x0:x1]
+            seg = seg[seg >= 0]
+            out.append(round(float(seg.min()) / h, 4) if len(seg) else None)
+        _CAPS[key] = out
+    return _CAPS[key]
+
+
+PAIRED = {"oreilles"}
+# ou l'encre d'une categorie a le droit de se trouver, dans le cadre de l'atelier (x0, y0, x1, y1) : controle a la fabrication
+ZONES = {"visage": (150, 60, 850, 1000), "yeux": (270, 390, 730, 580), "sourcils": (250, 340, 750, 500), "nez": (360, 400, 640, 700),
+         "bouche": (330, 640, 670, 800), "oreilles": (690, 360, 900, 720), "moustache": (300, 560, 700, 900), "barbe": (200, 420, 800, 1300),
+         "lunettes": (180, 380, 820, 720)}
+
+
+def _places(cat):
+    try:
+        return json.loads((ROOT / cat / "places.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _frame(im, place):
+    """L'encre d'un element, remise a sa place dans le cadre 1000 x 1000 (masque booleen)."""
+    a = np.asarray(im.convert("RGBA"))
+    ink = (a[..., 3] > 60) & (a[..., 0] < 128)
+    out = np.zeros((partsdraw.FH, partsdraw.F), bool)
+    x0, y0 = int(round(place[0] - im.width / 2)), int(round(place[1] - im.height / 2))
+    out[max(0, y0):y0 + im.height, max(0, x0):x0 + im.width] = ink[max(0, -y0):, max(0, -x0):][:partsdraw.FH - max(0, y0), :partsdraw.F - max(0, x0)]
+    return out
+
+
+def check_drawn(cat, drawn, same=0.80):
+    """Controle d'une categorie tracee, avant de la ranger. drawn : [(nom, image, place)]. Rend la liste des defauts
+    (vide = bon) : encre hors de la zone de la categorie, element vide, paire incomplete, oreille des deux cotes, et
+    surtout deux elements trop semblables (c'est ce qui rendait l'ancienne banque inutilisable)."""
+    from PIL import ImageFilter as F_
+    bad, masks = [], []
+    x0, y0, x1, y1 = ZONES[cat]
+    for name, im, place in drawn:
+        m = _frame(im, place)
+        if m.sum() < 150:
+            bad.append("%s : vide" % name)
+        outside = m.copy()
+        outside[y0:y1, x0:x1] = False
+        if outside.sum() > 0.01 * max(1, m.sum()):
+            bad.append("%s : de l'encre hors de la zone de la catégorie (%d px)" % (name, outside.sum()))
+        left, right = m[:, :500].sum(), m[:, 500:].sum()
+        if cat in ("yeux", "sourcils") and min(left, right) < 0.25 * max(left, right):
+            bad.append("%s : il manque un côté de la paire" % name)
+        if cat in PAIRED and left > 0:
+            bad.append("%s : l'oreille déborde de l'autre côté" % name)
+        dens = np.asarray(Image.fromarray((m * 255).astype(np.uint8)).filter(F_.GaussianBlur(5)), dtype=np.float32)
+        masks.append((name, dens))                                  # densite d'encre : forme ET matiere (plein, clairseme)
+    for i in range(len(masks)):
+        for j in range(i + 1, len(masks)):
+            a, b = masks[i][1], masks[j][1]
+            iou = np.minimum(a, b).sum() / max(1.0, np.maximum(a, b).sum())
+            if iou > same:
+                bad.append("%s et %s : trop semblables (%.0f %% de recouvrement)" % (masks[i][0], masks[j][0], iou * 100))
+    return bad
+
+
+def draw_bank(cat, force=False):
+    """Fabrique une categorie par le calcul (app/partsdraw.py) et la range, apres controle. Les anciens elements de la
+    categorie (sauf ceux dessines a la main dans l'atelier) partent dans data/parts/_ancien. Rend (nombre, defauts) ; si le
+    controle trouve un defaut, rien n'est range (sauf force)."""
+    fn, variants = partsdraw.CATEGORIES[cat]
+    drawn = []
+    for i, (name, kw) in enumerate(variants):
+        im, place = fn(seed=i + 1, **kw)
+        drawn.append((name, im, place))
+    bad = check_drawn(cat, drawn)
+    if bad and not force:
+        return 0, bad
+    d = ROOT / cat
+    d.mkdir(parents=True, exist_ok=True)
+    old_names = {slug(n) for n, _ in CATEGORIES[cat][3]}
+    places = _places(cat)
+    keep = ROOT / "_ancien" / ("%s-%s" % (cat, time.strftime("%Y%m%d-%H%M%S")))
+    for f in list(d.glob("*.png")):
+        if f.stem in old_names or f.stem in places:                 # element d'une banque precedente (pas un dessin de l'atelier)
+            keep.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(f), str(keep / f.name))
+    new = {}
+    for name, im, place in drawn:
+        pid = slug(name)
+        im.save(d / (pid + ".png"))
+        new[pid] = place
+    (d / "places.json").write_text(json.dumps(new, ensure_ascii=False, indent=1), encoding="utf-8")
+    return len(drawn), bad
 
 
 def _save(idx):
