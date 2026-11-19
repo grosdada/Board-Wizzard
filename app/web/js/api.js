@@ -1,4 +1,5 @@
 // Appels au serveur local + petit utilitaire DOM.
+import { tt, tr } from "./i18n.js";
 
 export async function api(method, path, body, raw) {
   const opt = { method, headers: {} };
@@ -7,9 +8,9 @@ export async function api(method, path, body, raw) {
   if (raw !== undefined) { opt.body = raw; opt.headers["Content-Type"] = "application/octet-stream"; }
   else if (body !== undefined) { opt.body = JSON.stringify(body); opt.headers["Content-Type"] = "application/json"; }
   const r = await fetch("/api/" + path, opt);
-  if (r.status === 401) { location.href = "/login"; throw new Error("connexion requise"); }
+  if (r.status === 401) { location.href = "/login"; throw new Error(tt("connexion requise")); }
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) { const err = new Error(data.error || ("erreur " + r.status)); err.status = r.status; err.data = data; throw err; }
+  if (!r.ok) { const err = new Error(tr(data.error) || (tt("erreur ") + r.status)); err.status = r.status; err.data = data; throw err; }
   return data;
 }
 export const get = (p) => api("GET", p);
@@ -83,7 +84,7 @@ export function history(get, set, max = 5) {
     if (stack.length > max + 1) stack = stack.slice(-(max + 1));
     at = stack.length - 1;
   };
-  const go = (d) => { snap(); const j = at + d; if (j < 0 || j >= stack.length) { toast(d < 0 ? "Rien de plus à annuler." : "Rien à rétablir."); return; } at = j; set(JSON.parse(stack[at])); };
+  const go = (d) => { snap(); const j = at + d; if (j < 0 || j >= stack.length) { toast(d < 0 ? tt("Rien de plus à annuler.") : tt("Rien à rétablir.")); return; } at = j; set(JSON.parse(stack[at])); };
   const soon = () => { clearTimeout(timer); timer = setTimeout(snap, 300); };
   return {
     snap, undo: () => go(-1), redo: () => go(1),
@@ -103,7 +104,7 @@ export function history(get, set, max = 5) {
 export function modal(title, body, buttons) {
   const back = h("div.modal-back");
   const close = () => back.remove();
-  const box = h("div.modal", h("header", h("h2", title), h("button.icon", { title: "Fermer", on: { click: close } }, "✕")),
+  const box = h("div.modal", h("header", h("h2", title), h("button.icon", { title: tt("Fermer"), on: { click: close } }, "✕")),
                 h("div.modal-body", body),
                 h("footer", (buttons || []).map(b => h("button" + (b.primary ? ".primary" : ""),
                   { on: { click: async () => { if ((await b.click?.(close)) !== false) close(); } } }, b.label))));
@@ -117,7 +118,7 @@ export function modal(title, body, buttons) {
 export function loadImage(url) {
   return new Promise((ok, ko) => {
     const im = new Image();
-    im.onload = () => ok(im); im.onerror = () => ko(new Error("image illisible : " + url));
+    im.onload = () => ok(im); im.onerror = () => ko(new Error(tt("image illisible : ") + url));
     im.src = url;
   });
 }

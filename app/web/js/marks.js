@@ -2,12 +2,13 @@
 // pointilles. Une indication : { id, type, pts: [[x, y]...] en fraction de la case, color, w (epaisseur), dash, both, cw }.
 //   arrow : depart, arrivee            curve : depart, point de passage, arrivee      free : trace a main levee
 //   turn  : centre, depart de l'arc    frame : deux coins opposes
+import { tt, tr } from "./i18n.js";
 
 export const MARKS = {
-  arrow: ["Flèche", "→"], curve: ["Flèche courbe", "⤴"], free: ["Flèche dessinée", "✎"],
-  turn: ["Rotation", "↻"], frame: ["Cadre pointillé", "⬚"],
+  arrow: [tt("Flèche"), "→"], curve: [tt("Flèche courbe"), "⤴"], free: [tt("Flèche dessinée"), "✎"],
+  turn: [tt("Rotation"), "↻"], frame: [tt("Cadre pointillé"), "⬚"],
 };
-export const MARK_COLORS = { "#111111": "Noir", "#ffffff": "Blanc", "#d6262b": "Rouge", "#1d5fd6": "Bleu" };
+export const MARK_COLORS = { "#111111": tt("Noir"), "#ffffff": tt("Blanc"), "#d6262b": tt("Rouge"), "#1d5fd6": tt("Bleu") };
 const TURN_SWEEP = 285 * Math.PI / 180;
 
 const px = (bb, p) => [bb.x0 + p[0] * bb.w, bb.y0 + p[1] * bb.h];

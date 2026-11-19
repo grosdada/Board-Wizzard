@@ -460,3 +460,6 @@ p.error { color: var(--err); margin: 4px 0 0; min-height: 1.2em; }
 .row.guest .gname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .row.guest > select { flex: 0 0 auto; max-width: none; }
 .row.guest > input[type=text] { flex: 1; max-width: none; }
+/* bouton de langue (barre du haut) */
+button.lang { font-size: 12px; letter-spacing: .04em; color: var(--muted); }
+button.lang b { font-weight: 500; } button.lang b.on { color: var(--accent); font-weight: 700; }

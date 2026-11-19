@@ -12,14 +12,30 @@ input, button { width: 100%; box-sizing: border-box; padding: 11px 12px; border-
 input { margin-bottom: 8px; background: #141414; color: inherit; border: 1px solid #3a3a3a; }
 button { margin-top: 12px; background: #8fd0c4; color: #0e1b19; border: 0; font-weight: 600; cursor: pointer; }
 p { color: #f07a5d; min-height: 1.2em; margin: 10px 0 0; font-size: 13px; }
+a.lang { display: block; margin-top: 14px; text-align: right; color: #8b9392; font-size: 12px; text-decoration: none; cursor: pointer; }
 </style>
 </head>
 <body>
 <form id="f"><h1>BOARD<b>WIZZARD</b></h1>
 <input id="nm" type="text" placeholder="Nom d'invité (vide pour l'administrateur)" autocomplete="username" autocapitalize="none" spellcheck="false">
 <input id="pw" type="password" placeholder="Mot de passe" autocomplete="current-password" autofocus required>
-<button>Entrer</button><p id="msg"></p></form>
+<button id="go">Entrer</button><p id="msg"></p><a class="lang" id="lang"></a></form>
 <script>
+// langue choisie dans l'application (bouton FR / EN du haut), gardee dans ce navigateur
+const EN = {"Board Wizzard · connexion": "Board Wizzard · login", "Nom d'invité (vide pour l'administrateur)": "Guest name (empty for the administrator)",
+  "Mot de passe": "Password", "Entrer": "Enter", "Nom ou mot de passe refusé.": "Name or password refused.",
+  "trop d'essais : réessayer dans %d s": "too many attempts: try again in %d s"};
+const LANG = localStorage.getItem("bw.lang") === "en" ? "en" : "fr";
+const T = (s) => (LANG === "en" && EN[s]) || s;
+const say = (s) => { if (LANG !== "en") return s; const m = /^trop d'essais : réessayer dans (\d+) s$/.exec(s); return m ? EN["trop d'essais : réessayer dans %d s"].replace("%d", m[1]) : T(s); };
+if (LANG === "en") {
+  document.documentElement.lang = "en"; document.title = T(document.title);
+  for (const id of ["nm", "pw"]) { const el = document.getElementById(id); el.placeholder = T(el.placeholder); }
+  document.getElementById("go").textContent = T("Entrer");
+}
+const sw = document.getElementById("lang");
+sw.textContent = LANG === "en" ? "Français" : "English";
+sw.addEventListener("click", () => { localStorage.setItem("bw.lang", LANG === "en" ? "fr" : "en"); location.reload(); });
 document.getElementById("f").addEventListener("submit", async (e) => {
   e.preventDefault();
   const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -27,7 +43,7 @@ document.getElementById("f").addEventListener("submit", async (e) => {
   if (r.ok) { location.href = "/"; return; }
   let t = "Nom ou mot de passe refusé.";
   try { const j = await r.json(); if (r.status === 429 && j.error) t = j.error; } catch (err) { /* message par defaut */ }
-  document.getElementById("msg").textContent = t;
+  document.getElementById("msg").textContent = say(t);
 });
 </script>
 </body>

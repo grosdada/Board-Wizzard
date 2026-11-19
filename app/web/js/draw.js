@@ -6,6 +6,7 @@
 //     ha (angle de la trame) }
 // La trame est faite par le navigateur : un motif en « cones » de gris + le ton voulu, puis un seuil. Les points
 // grossissent donc tout seuls la ou le ton fonce, sans dessiner chaque point.
+import { tt, tr } from "./i18n.js";
 import { swatch } from "./colors.js";
 import { h, modal, toast, history } from "./api.js";
 
@@ -13,16 +14,16 @@ export const W = 1000;                                   // largeur de travail ;
 const uid = () => Math.random().toString(36).slice(2, 8);
 const f1 = (n) => (+n).toFixed(1);
 // primitives : se tracent en glissant d'un coin a l'autre
-export const PRIMS = { rect: ["Rectangle", "▭"], rrect: ["Rectangle arrondi", "▢"], ellipse: ["Ellipse", "◯"], tri: ["Triangle", "△"],
-                       diamond: ["Losange", "◇"], hexa: ["Hexagone", "⬡"], star: ["Étoile", "☆"], arrow: ["Flèche pleine", "➤"],
-                       half: ["Demi-cercle", "◓"], cloud: ["Nuage", "☁"] };
+export const PRIMS = { rect: [tt("Rectangle"), "▭"], rrect: [tt("Rectangle arrondi"), "▢"], ellipse: [tt("Ellipse"), "◯"], tri: [tt("Triangle"), "△"],
+                       diamond: [tt("Losange"), "◇"], hexa: [tt("Hexagone"), "⬡"], star: [tt("Étoile"), "☆"], arrow: [tt("Flèche pleine"), "➤"],
+                       half: [tt("Demi-cercle"), "◓"], cloud: [tt("Nuage"), "☁"] };
 // traces : ligne, main levee, ou point par point
-export const PATHS = { line: ["Ligne", "╱"], free: ["Tracé libre", "✎"], blob: ["Forme libre", "⬟"], poly: ["Forme point par point", "⬠"],
-                       polyline: ["Ligne brisée point par point", "⌇"] };
+export const PATHS = { line: [tt("Ligne"), "╱"], free: [tt("Tracé libre"), "✎"], blob: [tt("Forme libre"), "⬟"], poly: [tt("Forme point par point"), "⬠"],
+                       polyline: [tt("Ligne brisée point par point"), "⌇"] };
 const OPEN = new Set(["line", "free", "polyline"]);       // sans remplissage
 const MANY = new Set(["free", "blob", "poly", "polyline"]);
 // Remplissage d'une forme : fon (remplie ou non), col (couleur, blanc par defaut), tr (trame posee par-dessus la couleur).
-const TRAMES = { none: "Sans trame", tone: "Trame", grad: "Trame en dégradé" };
+const TRAMES = { none: tt("Sans trame"), tone: tt("Trame"), grad: tt("Trame en dégradé") };
 /** Remplissage d'une forme, anciennes formes comprises (fill : none | white | black | color | tone | grad). */
 export function fillOf(sh) {
   const ok = (c) => (/^#[0-9a-f]{3,8}$/i.test(c || "") ? c : null);
@@ -34,7 +35,7 @@ export function fillOf(sh) {
   if (f === "tone" || f === "grad") return { on: true, col: "#ffffff", tr: f };
   return { on: true, col: "#ffffff", tr: "none" };
 }
-const FORMS = { points: "Points", lignes: "Lignes", croix: "Croisillons" };
+const FORMS = { points: tt("Points"), lignes: tt("Lignes"), croix: tt("Croisillons") };
 const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, col: "#ffffff" };   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
 
 function geom(sh, H) {
@@ -80,7 +81,7 @@ export function boxOf(sh, H) {
 //               vari (irregularite, 0..1), ang (sens des lignes de vitesse), col (couleur des lignes), seed,
 //               bgon, bg (fond colore derriere les lignes ; sinon elles sont sur fond transparent),
 //               anim (animable dans le montage : piste « Lignes d'effet »), force (force de base, 1 = pleine) }
-export const FX_TYPES = { focus: "Lignes de concentration", speed: "Lignes de vitesse", flash: "Éclat plein" };
+export const FX_TYPES = { focus: tt("Lignes de concentration"), speed: tt("Lignes de vitesse"), flash: tt("Éclat plein") };
 export const FX_DEF = { on: false, type: "focus", cx: 0.5, cy: 0.5, n: 90, inner: 0.45, w: 1, vari: 0.6, ang: 0, col: "#111111", seed: 7, anim: false, force: 1 };
 export const hasDraw = (draw) => !!(draw && (((draw.shapes || []).length) || (draw.fx && draw.fx.on)));
 function rng(seed) { let a = (seed * 2654435761) >>> 0; return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -179,7 +180,7 @@ export function drawImage(draw, wpx, hpx) {
 
 // ------------------------------------------------------------------------------------------------ l'atelier
 /** Ouvre l'atelier de dessin pour une case. ratio = hauteur / largeur ; backdrop : url du decor a montrer dessous. */
-export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = "Enregistrer le fond" }) {
+export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = tt("Enregistrer le fond") }) {
   const H = W * ratio;
   const shapes = JSON.parse(JSON.stringify((draw && draw.shapes) || []));
   let tool = "rect", prim = "rect", path = "free", sel = null, drag = null, building = null, hover = null;
@@ -200,7 +201,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       (backdrop ? `<image href="${backdrop}" width="${W}" height="${f1(H)}" preserveAspectRatio="xMidYMid slice" opacity="0.35"/>` : "");
     const k = ww / W;                                       // le cadre de la case reste lisible quand on dezoome
     guide.innerHTML = big ? `<rect width="${W}" height="${f1(H)}" fill="none" stroke="#e2603a" stroke-width="${f1(2.5 * k)}" stroke-dasharray="${f1(12 * k)} ${f1(8 * k)}"/>` +
-      `<text x="${f1(6 * k)}" y="${f1(-6 * k)}" font-size="${f1(15 * k)}" fill="#e2603a">la case</text>` : "";
+      tt`<text x="${f1(6 * k)}" y="${f1(-6 * k)}" font-size="${f1(15 * k)}" fill="#e2603a">la case</text>` : "";
   };
   zone();
   // fantome : les personnages de la case par-dessus le dessin, en transparence, pour dessiner autour d'eux
@@ -212,9 +213,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const ghostSync = () => { ghost.setAttribute("opacity", gs.a); ghost.setAttribute("display", gs.on ? "inline" : "none"); localStorage.setItem("bw.ghost", JSON.stringify(gs)); };
   ghostSync();
   const gOut = h("output", Math.round(gs.a * 100) + " %");
-  const ghostBar = ghosts.length ? h("div.row.draw-ghost", { title: "Montre les personnages de la case par-dessus le dessin, pour s'en servir de repère. Ils ne font pas partie du fond." },
-    h("label.row.check", h("input", { type: "checkbox", checked: gs.on, on: { change: (e) => { gs.on = e.target.checked; ghostSync(); } } }), "👻 Personnages en fantôme"),
-    h("label.row.range", "Opacité", h("input", { type: "range", min: 0.05, max: 1, step: 0.01, value: gs.a, on: { input: (e) => { gs.a = +e.target.value; gOut.textContent = Math.round(gs.a * 100) + " %"; ghostSync(); } } }), gOut)) : "";
+  const ghostBar = ghosts.length ? h("div.row.draw-ghost", { title: tt("Montre les personnages de la case par-dessus le dessin, pour s'en servir de repère. Ils ne font pas partie du fond.") },
+    h("label.row.check", h("input", { type: "checkbox", checked: gs.on, on: { change: (e) => { gs.on = e.target.checked; ghostSync(); } } }), tt("👻 Personnages en fantôme")),
+    h("label.row.range", tt("Opacité"), h("input", { type: "range", min: 0.05, max: 1, step: 0.01, value: gs.a, on: { input: (e) => { gs.a = +e.target.value; gOut.textContent = Math.round(gs.a * 100) + " %"; ghostSync(); } } }), gOut)) : "";
   const fxG = document.createElementNS(NS, "g");
   const fx = Object.assign({}, FX_DEF, draw && draw.fx);
   const fxPaint = () => {
@@ -228,21 +229,21 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     fxBox.textContent = "";
     const rg = (label, k, min, max, step, title) => { const out = h("output", String(fx[k]));
       return h("label.row.range", { title: title || "" }, label, h("input", { type: "range", min, max, step, value: fx[k], on: { input: (e) => { fx[k] = +e.target.value; out.textContent = e.target.value; fxPaint(); } } }), out); };
-    fxBox.append(h("summary", "⚡ Lignes d'effet (concentration, vitesse, éclat)"),
-      h("div.row.wrap", h("label.row.check", h("input", { type: "checkbox", checked: fx.on, on: { change: (e) => { fx.on = e.target.checked; fxPaint(); fxUi(); } } }), "Afficher"),
+    fxBox.append(h("summary", tt("⚡ Lignes d'effet (concentration, vitesse, éclat)")),
+      h("div.row.wrap", h("label.row.check", h("input", { type: "checkbox", checked: fx.on, on: { change: (e) => { fx.on = e.target.checked; fxPaint(); fxUi(); } } }), tt("Afficher")),
         h("select", { on: { change: (e) => { fx.type = e.target.value; fxPaint(); fxUi(); } } }, Object.entries(FX_TYPES).map(([k, n]) => h("option", { value: k, selected: fx.type === k }, n))),
-        h("span.row.colrow", { title: "Couleur des lignes (les bandes)" }, "Lignes", swatch(fx.col || "#111111", (c) => { fx.col = c; fxPaint(); })),
-        h("label.row.check", { title: "Décoché : fond transparent, on voit le décor entre les lignes. Coché : un fond de couleur derrière les lignes." }, h("input", { type: "checkbox", checked: !!fx.bgon, on: { change: (e) => { fx.bgon = e.target.checked; if (!fx.bg) fx.bg = "#ffffff"; fxPaint(); fxUi(); } } }), "Fond"),
+        h("span.row.colrow", { title: tt("Couleur des lignes (les bandes)") }, tt("Lignes"), swatch(fx.col || "#111111", (c) => { fx.col = c; fxPaint(); })),
+        h("label.row.check", { title: tt("Décoché : fond transparent, on voit le décor entre les lignes. Coché : un fond de couleur derrière les lignes.") }, h("input", { type: "checkbox", checked: !!fx.bgon, on: { change: (e) => { fx.bgon = e.target.checked; if (!fx.bg) fx.bg = "#ffffff"; fxPaint(); fxUi(); } } }), tt("Fond")),
         fx.bgon ? swatch(fx.bg || "#ffffff", (c) => { fx.bg = c; fxPaint(); }) : h("span.muted", "transparent"),
-        h("button.mini", { type: "button", title: "Un autre tirage des mêmes lignes", on: { click: () => { fx.seed = 1 + Math.floor(Math.random() * 9999); fxPaint(); } } }, "🎲")));
+        h("button.mini", { type: "button", title: tt("Un autre tirage des mêmes lignes"), on: { click: () => { fx.seed = 1 + Math.floor(Math.random() * 9999); fxPaint(); } } }, "🎲")));
     if (!fx.on) return;
-    fxBox.append(rg("Nombre", "n", 8, 400, 1), rg("Épaisseur", "w", 0.2, 80, 0.1, "Tout à droite, les lignes se rejoignent et couvrent tout de noir"), rg("Irrégularité", "vari", 0, 1, 0.01));
-    if (fx.type === "speed") fxBox.append(rg("Sens", "ang", -180, 180, 1));
-    else fxBox.append(rg("Zone libre", "inner", 0, 1.4, 0.01, "Taille de la zone sans lignes autour du centre"),
-      h("div.row.wrap", h("button.mini" + (fxAim ? ".on" : ""), { type: "button", title: "Allume le mode centre : glisse alors dans l'image pour déplacer le point où les lignes convergent, autant de fois que tu veux. Reclique ce bouton quand c'est bon.", on: { click: () => { fxAim = !fxAim; fxDrag = false; fxPaint(); fxUi(); } } }, fxAim ? "✓ Centre trouvé (cliquer pour finir)" : "✛ Trouver le centre"),
-        h("button.mini", { type: "button", on: { click: () => { fx.cx = 0.5; fx.cy = 0.5; fxPaint(); } } }, "Centrer")));
-    fxBox.append(h("label.row.check", { title: "Ajoute une piste « Lignes d'effet » dans le montage : un curseur de force à animer par clés (les lignes arrivent, grossissent, disparaissent), et elles vibrent pendant la lecture." },
-      h("input", { type: "checkbox", checked: !!fx.anim, on: { change: (e) => { fx.anim = e.target.checked; } } }), "Animable dans le montage ⓘ"));
+    fxBox.append(rg(tt("Nombre"), "n", 8, 400, 1), rg(tt("Épaisseur"), "w", 0.2, 80, 0.1, tt("Tout à droite, les lignes se rejoignent et couvrent tout de noir")), rg(tt("Irrégularité"), "vari", 0, 1, 0.01));
+    if (fx.type === "speed") fxBox.append(rg(tt("Sens"), "ang", -180, 180, 1));
+    else fxBox.append(rg(tt("Zone libre"), "inner", 0, 1.4, 0.01, tt("Taille de la zone sans lignes autour du centre")),
+      h("div.row.wrap", h("button.mini" + (fxAim ? ".on" : ""), { type: "button", title: tt("Allume le mode centre : glisse alors dans l'image pour déplacer le point où les lignes convergent, autant de fois que tu veux. Reclique ce bouton quand c'est bon."), on: { click: () => { fxAim = !fxAim; fxDrag = false; fxPaint(); fxUi(); } } }, fxAim ? tt("✓ Centre trouvé (cliquer pour finir)") : tt("✛ Trouver le centre")),
+        h("button.mini", { type: "button", on: { click: () => { fx.cx = 0.5; fx.cy = 0.5; fxPaint(); } } }, tt("Centrer"))));
+    fxBox.append(h("label.row.check", { title: tt("Ajoute une piste « Lignes d'effet » dans le montage : un curseur de force à animer par clés (les lignes arrivent, grossissent, disparaissent), et elles vibrent pendant la lecture.") },
+      h("input", { type: "checkbox", checked: !!fx.anim, on: { change: (e) => { fx.anim = e.target.checked; } } }), tt("Animable dans le montage ⓘ")));
   };
   fxUi(); fxPaint();
   svg.append(back, art, fxG, ghost, guide, over);
@@ -255,12 +256,12 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     Object.assign(ext, { l: up(-x0), r: up(x1 - 1), t: up(-y0), b: up(y1 - 1) }); zone(); paint(); extInfo();
   };
   const extOut = h("span.muted", "");
-  const extInfo = () => { extOut.textContent = ext.l + ext.r + ext.t + ext.b > 0 ? `${(1 + ext.l + ext.r).toFixed(1)} × ${(1 + ext.t + ext.b).toFixed(1)} cases` : "taille de la case"; };
+  const extInfo = () => { extOut.textContent = ext.l + ext.r + ext.t + ext.b > 0 ? tt`${(1 + ext.l + ext.r).toFixed(1)} × ${(1 + ext.t + ext.b).toFixed(1)} cases` : tt("taille de la case"); };
   extInfo();
   const gb = (label, side, title) => h("button.mini", { type: "button", title, on: { click: (e) => grow(side, e.shiftKey ? -0.5 : 0.5) } }, label);
-  const extBar = h("div.row.draw-ext", { title: "Agrandit la zone de dessin au-delà de la case, pour un long travelling : ce qui est hors du cadre orange n'apparaît que quand la caméra du montage s'y déplace. Maj + clic réduit." },
-    h("span", "Zone de dessin ⓘ"), gb("◀＋", "l", "Ajouter à gauche (Maj : retirer)"), gb("＋▶", "r", "Ajouter à droite (Maj : retirer)"), gb("▲＋", "t", "Ajouter en haut (Maj : retirer)"), gb("＋▼", "b", "Ajouter en bas (Maj : retirer)"),
-    h("button.mini", { type: "button", title: "Réduit la zone à la case et aux formes déjà dessinées", on: { click: fit } }, "Recadrer"), extOut);
+  const extBar = h("div.row.draw-ext", { title: tt("Agrandit la zone de dessin au-delà de la case, pour un long travelling : ce qui est hors du cadre orange n'apparaît que quand la caméra du montage s'y déplace. Maj + clic réduit.") },
+    h("span", tt("Zone de dessin ⓘ")), gb("◀＋", "l", tt("Ajouter à gauche (Maj : retirer)")), gb("＋▶", "r", tt("Ajouter à droite (Maj : retirer)")), gb("▲＋", "t", tt("Ajouter en haut (Maj : retirer)")), gb("＋▼", "b", tt("Ajouter en bas (Maj : retirer)")),
+    h("button.mini", { type: "button", title: tt("Réduit la zone à la case et aux formes déjà dessinées"), on: { click: fit } }, tt("Recadrer")), extOut);
   const side = h("div.draw-side"), bar = h("div.draw-tools");
   const target = () => (sel ? shapes.find((s) => s.id === sel) : null);
   const val = (k) => { const t = target(); return t && t[k] !== undefined ? t[k] : cur[k]; };
@@ -301,37 +302,37 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const range = (label, k, min, max, step) => { const out = h("output", String(val(k) ?? 0));
       return h("label.row.range", label, h("input", { type: "range", min, max, step, value: val(k) ?? 0, on: { input: (e) => { set(k, +e.target.value); out.textContent = e.target.value; } } }), out); };
     const pick = (label, k, opts) => h("label.row", label, h("select", { on: { change: (e) => { set(k, e.target.value); props(); } } }, Object.entries(opts).map(([v, n]) => h("option", { value: v, selected: val(k) === v }, n))));
-    side.append(h("h4", t ? "Forme choisie" : "Prochaine forme"),
-      pick("Trait", "stroke", { "#111111": "Noir", "#ffffff": "Blanc", none: "Aucun" }));
-    if (val("stroke") !== "none") side.append(range("Épaisseur", "sw", 0.2, 12, 0.1));
-    side.append(h("h4", "Trait à la main"), range("Tremblé", "hand", 0, 10, 0.1), range("Ondulation", "hw", 0.5, 12, 0.1),
-      h("p.muted", "Tremblé à 0 : trait net. Ondulation courte = trait nerveux, longue = lignes qui flottent."));
+    side.append(h("h4", t ? tt("Forme choisie") : tt("Prochaine forme")),
+      pick(tt("Trait"), "stroke", { "#111111": tt("Noir"), "#ffffff": tt("Blanc"), none: tt("Aucun") }));
+    if (val("stroke") !== "none") side.append(range(tt("Épaisseur"), "sw", 0.2, 12, 0.1));
+    side.append(h("h4", tt("Trait à la main")), range(tt("Tremblé"), "hand", 0, 10, 0.1), range(tt("Ondulation"), "hw", 0.5, 12, 0.1),
+      h("p.muted", tt("Tremblé à 0 : trait net. Ondulation courte = trait nerveux, longue = lignes qui flottent.")));
     if (!open) {
       const fl = fillOf(t || cur);
       const write = (o) => { for (const tg of [t, cur]) if (tg) { tg.fon = o.on; tg.col = o.col; tg.tr = o.tr; delete tg.fill; } };
       const setFill = (patch) => { write(Object.assign(fl, patch)); paint(); props(); };
       side.append(h("div.row.fillrow",
-        h("label.row.check", { title: "Décoché : la forme n'est pas remplie, on voit à travers" }, h("input", { type: "checkbox", checked: fl.on, on: { change: (e) => setFill({ on: e.target.checked }) } }), "Remplissage"),
+        h("label.row.check", { title: tt("Décoché : la forme n'est pas remplie, on voit à travers") }, h("input", { type: "checkbox", checked: fl.on, on: { change: (e) => setFill({ on: e.target.checked }) } }), tt("Remplissage")),
         fl.on ? swatch(fl.col, (c) => { fl.col = c; write(fl); paint(); }) : "",
-        fl.on ? h("select", { title: "Trame posée par-dessus la couleur", on: { change: (e) => setFill({ tr: e.target.value }) } }, Object.entries(TRAMES).map(([v, n]) => h("option", { value: v, selected: fl.tr === v }, n))) : ""));
+        fl.on ? h("select", { title: tt("Trame posée par-dessus la couleur"), on: { change: (e) => setFill({ tr: e.target.value }) } }, Object.entries(TRAMES).map(([v, n]) => h("option", { value: v, selected: fl.tr === v }, n))) : ""));
       const fill = fl.on ? fl.tr : "none";
       if (fill === "tone" || fill === "grad") {
-        side.append(h("h4", "Trame"), pick("Motif", "form", FORMS), range("Taille", "dot", 4, 60, 0.5), range("Angle de la trame", "ha", 0, 180, 1),
-          range(fill === "grad" ? "Gris au départ" : "Gris", "tone", 0, 1, 0.01));
-        if (fill === "grad") side.append(range("Gris à l'arrivée", "tone2", 0, 1, 0.01), range("Sens du dégradé", "ga", 0, 360, 1));
+        side.append(h("h4", tt("Trame")), pick(tt("Motif"), "form", FORMS), range(tt("Taille"), "dot", 4, 60, 0.5), range(tt("Angle de la trame"), "ha", 0, 180, 1),
+          range(fill === "grad" ? tt("Gris au départ") : tt("Gris"), "tone", 0, 1, 0.01));
+        if (fill === "grad") side.append(range(tt("Gris à l'arrivée"), "tone2", 0, 1, 0.01), range(tt("Sens du dégradé"), "ga", 0, 360, 1));
       }
     }
     if (t) {
       const out = h("output.rot-out", Math.round(t.r || 0) + "°");
-      side.append(h("label.row.range", "Rotation", h("input.rot-in", { type: "range", min: -180, max: 180, step: 1, value: Math.round(t.r || 0), on: { input: (e) => { t.r = +e.target.value; out.textContent = e.target.value + "°"; paint(); } } }), out),
-        h("h4", "Ordre"), h("div.row.wrap",
-        h("button.mini", { on: { click: () => { const i = shapes.indexOf(t); if (i < shapes.length - 1) { shapes.splice(i, 1); shapes.splice(i + 1, 0, t); paint(); } } } }, "Avancer"),
-        h("button.mini", { on: { click: () => { const i = shapes.indexOf(t); if (i > 0) { shapes.splice(i, 1); shapes.splice(i - 1, 0, t); paint(); } } } }, "Reculer"),
-        h("button.mini", { on: { click: () => { const c = JSON.parse(JSON.stringify(t)); c.id = uid(); c.p = c.p.map((p) => [p[0] + 0.03, p[1] + 0.03]); shapes.push(c); sel = c.id; paint(); props(); } } }, "Dupliquer"),
-        h("button.mini.danger", { on: { click: () => { shapes.splice(shapes.indexOf(t), 1); sel = null; paint(); props(); } } }, "Supprimer")));
+      side.append(h("label.row.range", tt("Rotation"), h("input.rot-in", { type: "range", min: -180, max: 180, step: 1, value: Math.round(t.r || 0), on: { input: (e) => { t.r = +e.target.value; out.textContent = e.target.value + "°"; paint(); } } }), out),
+        h("h4", tt("Ordre")), h("div.row.wrap",
+        h("button.mini", { on: { click: () => { const i = shapes.indexOf(t); if (i < shapes.length - 1) { shapes.splice(i, 1); shapes.splice(i + 1, 0, t); paint(); } } } }, tt("Avancer")),
+        h("button.mini", { on: { click: () => { const i = shapes.indexOf(t); if (i > 0) { shapes.splice(i, 1); shapes.splice(i - 1, 0, t); paint(); } } } }, tt("Reculer")),
+        h("button.mini", { on: { click: () => { const c = JSON.parse(JSON.stringify(t)); c.id = uid(); c.p = c.p.map((p) => [p[0] + 0.03, p[1] + 0.03]); shapes.push(c); sel = c.id; paint(); props(); } } }, tt("Dupliquer")),
+        h("button.mini.danger", { on: { click: () => { shapes.splice(shapes.indexOf(t), 1); sel = null; paint(); props(); } } }, tt("Supprimer"))));
     }
-    const tip = tool === "poly" || tool === "polyline" ? "Clique pour poser chaque point. Double-clic, Entrée ou clic sur le premier point : la forme se termine" + (tool === "poly" ? " et se ferme toute seule." : ".") + " Échap annule."
-      : "Choisis un outil puis glisse dans le cadre. « Sélection » : clic sur une forme pour la régler, glisser pour la déplacer, carré ⤡ du coin pour l'agrandir, points ronds pour l'étirer, poignée ↻ pour la tourner (Maj : par crans de 15°). Suppr efface.";
+    const tip = tool === "poly" || tool === "polyline" ? tt("Clique pour poser chaque point. Double-clic, Entrée ou clic sur le premier point : la forme se termine") + (tool === "poly" ? tt(" et se ferme toute seule.") : ".") + tt(" Échap annule.")
+      : tt("Choisis un outil puis glisse dans le cadre. « Sélection » : clic sur une forme pour la régler, glisser pour la déplacer, carré ⤡ du coin pour l'agrandir, points ronds pour l'étirer, poignée ↻ pour la tourner (Maj : par crans de 15°). Suppr efface.");
     side.append(h("p.muted", tip));
   }
   function tools() {
@@ -342,12 +343,12 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       const wrap = h("div.draw-drop" + (tool === current ? ".on" : ""));
       const menu = h("div.draw-menu", Object.entries(list).map(([k, [n, i]]) => h("button" + (k === current ? ".on" : ""), { type: "button", on: { click: (e) => { e.stopPropagation(); wrap.classList.remove("open"); pickTool(k); } } }, h("span.ico", i), n)));
       wrap.append(h("button.mini.main", { type: "button", title: `${label} : ${name}`, on: { click: () => pickTool(current) } }, `${ico} ${name}`),
-        h("button.mini.caret", { type: "button", title: "Choisir parmi les " + label.toLowerCase(), on: { click: (e) => { e.stopPropagation(); const was = wrap.classList.contains("open"); bar.querySelectorAll(".draw-drop.open").forEach((x) => x.classList.remove("open")); wrap.classList.toggle("open", !was); } } }, label + " ▾"), menu);
+        h("button.mini.caret", { type: "button", title: tt("Choisir parmi les ") + label.toLowerCase(), on: { click: (e) => { e.stopPropagation(); const was = wrap.classList.contains("open"); bar.querySelectorAll(".draw-drop.open").forEach((x) => x.classList.remove("open")); wrap.classList.toggle("open", !was); } } }, label + " ▾"), menu);
       return wrap;
     };
-    bar.append(h("button.mini" + (tool === "select" ? ".on" : ""), { type: "button", title: "Choisir, déplacer, étirer, tourner", on: { click: () => pickTool("select") } }, "↖ Sélection"),
-      drop("Primitives", PRIMS, prim), drop("Tracés", PATHS, path),
-      h("button.mini.danger", { type: "button", title: "Retirer toutes les formes", on: { click: () => { if (shapes.length && confirm("Effacer tout le dessin de ce fond ?")) { building = null; shapes.length = 0; sel = null; paint(); props(); } } } }, "Tout effacer"));
+    bar.append(h("button.mini" + (tool === "select" ? ".on" : ""), { type: "button", title: tt("Choisir, déplacer, étirer, tourner"), on: { click: () => pickTool("select") } }, tt("↖ Sélection")),
+      drop(tt("Primitives"), PRIMS, prim), drop(tt("Tracés"), PATHS, path),
+      h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout le dessin de ce fond ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); } } } }, tt("Tout effacer")));
   }
   // point de la souris en fraction de la case, par la matrice du SVG : juste meme si l'image n'occupe pas tout son cadre a l'ecran
   const at = (e) => {
@@ -435,9 +436,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   document.addEventListener("click", away);
   const done = () => { document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
   tools(); props(); paint();
-  const m = modal(title || "Dessiner le fond", h("div.draw-editor", h("div.draw-main", bar, ghostBar, extBar, h("div.draw-frame", svg), fxBox), side),
-    [{ label: "Annuler", click: done },
-     { label: saveLabel, primary: true, click: () => { finish(true); done(); onSave(Object.assign({ shapes }, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null)); toast("Fond dessiné enregistré."); } }]);
+  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, ghostBar, extBar, h("div.draw-frame", svg), fxBox), side),
+    [{ label: tt("Annuler"), click: done },
+     { label: saveLabel, primary: true, click: () => { finish(true); done(); onSave(Object.assign({ shapes }, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null)); toast(tt("Fond dessiné enregistré.")); } }]);
   m.box.classList.add("modal-wide");
   hist.watch(m.box);
   return m;

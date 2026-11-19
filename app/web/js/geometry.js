@@ -6,14 +6,15 @@
 //   a, b = position du trait (0..1) a ses deux bouts, dans la boite englobante du parent :
 //   pour "h", a = hauteur au bord gauche, b = hauteur au bord droit (a != b : trait penche).
 // Les cases sont des polygones convexes : le parent decoupe par deux demi-plans, ecartes de la gouttiere.
+import { tt, tr } from "./i18n.js";
 
 // formats donnes en vertical ; « Horizontal » echange largeur et hauteur
 export const FORMATS = [
-  { id: "bd", label: "Page BD (2:3)", w: 1600, h: 2400 },
-  { id: "manga", label: "Manga B5", w: 1500, h: 2120 },
+  { id: "bd", label: tt("Page BD (2:3)"), w: 1600, h: 2400 },
+  { id: "manga", label: tt("Manga B5"), w: 1500, h: 2120 },
   { id: "portrait45", label: "4:5", w: 1600, h: 2000 },
-  { id: "carre", label: "Carré", w: 2000, h: 2000 },
-  { id: "ecran", label: "Écran 9:16", w: 1350, h: 2400 },
+  { id: "carre", label: tt("Carré"), w: 2000, h: 2000 },
+  { id: "ecran", label: tt("Écran 9:16"), w: 1350, h: 2400 },
 ];
 
 export function pageSize(format, orientation) {
@@ -176,14 +177,14 @@ export function splitLeaf(layout, id, dir, newId, cutId) {
 // courbe de la premiere. MEME CALCUL dans player/alive-player.js et app/geometry.py (export video).
 // courbes : [id, nom court (menu de la barre), nom long (clic droit sur une cle)]
 export const EASES = [
-  ["ease", "Ease in-out", "Ease in-out (douce : démarre et arrive en ralenti)"],
-  ["linear", "Linéaire", "Linéaire (vitesse constante)"],
-  ["in", "Ease in", "Ease in (démarre en ralenti, accélère)"],
-  ["out", "Ease out", "Ease out (ralentit à l'arrivée)"],
-  ["ease2", "Ease in-out fort", "Ease in-out fort (ralentis marqués aux deux bouts)"],
-  ["in2", "Ease in fort", "Ease in fort (long ralenti au départ)"],
-  ["out2", "Ease out fort", "Ease out fort (long ralenti à l'arrivée)"],
-  ["hold", "Palier", "Palier (reste sur place, puis saute à la clé suivante)"],
+  ["ease", tt("Ease in-out"), tt("Ease in-out (douce : démarre et arrive en ralenti)")],
+  ["linear", tt("Linéaire"), tt("Linéaire (vitesse constante)")],
+  ["in", tt("Ease in"), tt("Ease in (démarre en ralenti, accélère)")],
+  ["out", tt("Ease out"), tt("Ease out (ralentit à l'arrivée)")],
+  ["ease2", tt("Ease in-out fort"), tt("Ease in-out fort (ralentis marqués aux deux bouts)")],
+  ["in2", tt("Ease in fort"), tt("Ease in fort (long ralenti au départ)")],
+  ["out2", tt("Ease out fort"), tt("Ease out fort (long ralenti à l'arrivée)")],
+  ["hold", tt("Palier"), tt("Palier (reste sur place, puis saute à la clé suivante)")],
 ];
 
 // memes formules dans app/geometry.py et player/alive-player.js
@@ -224,12 +225,12 @@ export function layoutAt(layout, anim, t) {
 
 // style de page anime (module « Style de page » de la timeline) : pistes "page.<cle>"
 export const PAGE_TRACKS = [
-  { k: "bg", label: "Fond (autour des cases)", color: true },
-  { k: "fill", label: "Couleur des cases", color: true },
-  { k: "stroke", label: "Couleur des traits", color: true },
-  { k: "strokeWidth", label: "Épaisseur des traits", min: 0, max: 30, step: 0.5 },
-  { k: "gutter", label: "Gouttière", min: 0, max: 120, step: 1 },
-  { k: "margin", label: "Marge", min: 0, max: 400, step: 1 },
+  { k: "bg", label: tt("Fond (autour des cases)"), color: true },
+  { k: "fill", label: tt("Couleur des cases"), color: true },
+  { k: "stroke", label: tt("Couleur des traits"), color: true },
+  { k: "strokeWidth", label: tt("Épaisseur des traits"), min: 0, max: 30, step: 0.5 },
+  { k: "gutter", label: tt("Gouttière"), min: 0, max: 120, step: 1 },
+  { k: "margin", label: tt("Marge"), min: 0, max: 400, step: 1 },
 ];
 
 export function hexRgb(hex) {
@@ -310,20 +311,20 @@ function cols(n, mk) {
 }
 
 export const PRESETS = [
-  { id: "plein", label: "Pleine page", make: (L) => L() },
+  { id: "plein", label: tt("Pleine page"), make: (L) => L() },
   { id: "2b", label: "2 bandes", make: (L) => rows(2, L) },
   { id: "3b", label: "3 bandes", make: (L) => rows(3, L) },
-  { id: "2x2", label: "4 cases", make: (L) => rows(2, () => cols(2, L)) },
-  { id: "3x2", label: "6 cases", make: (L) => rows(3, () => cols(2, L)) },
-  { id: "3x3", label: "9 cases", make: (L) => rows(3, () => cols(3, L)) },
-  { id: "g3", label: "Grande + 3", make: (L) => S("h", 0.56, 0.56, L(), cols(3, L)) },
-  { id: "col2", label: "Colonne + 2", make: (L) => S("v", 0.58, 0.58, L(), S("h", 0.5, 0.5, L(), L())) },
-  { id: "hmb", label: "Haut, 2, bas", make: (L) => S("h", 0.3, 0.3, L(), S("h", 0.58, 0.58, S("v", 0.5, 0.5, L(), L()), L())) },
-  { id: "action", label: "Action penchée", make: (L) =>
+  { id: "2x2", label: tt("4 cases"), make: (L) => rows(2, () => cols(2, L)) },
+  { id: "3x2", label: tt("6 cases"), make: (L) => rows(3, () => cols(2, L)) },
+  { id: "3x3", label: tt("9 cases"), make: (L) => rows(3, () => cols(3, L)) },
+  { id: "g3", label: tt("Grande + 3"), make: (L) => S("h", 0.56, 0.56, L(), cols(3, L)) },
+  { id: "col2", label: tt("Colonne + 2"), make: (L) => S("v", 0.58, 0.58, L(), S("h", 0.5, 0.5, L(), L())) },
+  { id: "hmb", label: tt("Haut, 2, bas"), make: (L) => S("h", 0.3, 0.3, L(), S("h", 0.58, 0.58, S("v", 0.5, 0.5, L(), L()), L())) },
+  { id: "action", label: tt("Action penchée"), make: (L) =>
       S("h", 0.34, 0.27, L(), S("h", 0.55, 0.64, S("v", 0.56, 0.44, L(), L()), L())) },
-  { id: "david", label: "Cadres penchés (planche 3)", make: (L) =>
+  { id: "david", label: tt("Cadres penchés (planche 3)"), make: (L) =>
       S("h", 0.31, 0.285, L(), S("h", 0.74, 0.70, S("v", 0.475, 0.47, S("h", 0.53, 0.49, L(), L()), L()), L())) },
-  { id: "manga", label: "Manga dynamique", make: (L) =>
+  { id: "manga", label: tt("Manga dynamique"), make: (L) =>
       S("h", 0.24, 0.24, cols(2, L), S("h", 0.5, 0.42, S("v", 0.64, 0.4, L(), L()), S("v", 0.33, 0.37, L(), S("h", 0.5, 0.55, L(), L())))) },
 ];
 

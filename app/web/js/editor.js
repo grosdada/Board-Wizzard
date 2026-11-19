@@ -1,6 +1,7 @@
 // Editeur de page : SVG (fonds, calques de la banque, traits) + calque HTML (numeros, bulles).
 // Gestes : glisser un personnage = le faire tourner (orbite) ; poignee ✥ ou Alt+glisser = le deplacer ; coin = taille ;
 // clic droit = pose, axe, ordre. Glisser un fond en orbite = tourner le decor (Maj : recadrer). Base : Alive-Comics.
+import { tt, tr } from "./i18n.js";
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
@@ -35,7 +36,7 @@ export class Editor {
     this.svg.addEventListener("pointerdown", (e) => this.down(e));
     // double-clic sur une case : elle prend toute la place de la feuille ; double-clic encore (ou Echap) : retour a la page
     this.host = host; this.focusId = null;
-    this.back = h("button.mini.focus-back", { title: "Revenir à la page entière (Échap, ou double-clic)", on: { click: () => this.focus(null) } }, "⤡ Page entière");
+    this.back = h("button.mini.focus-back", { title: tt("Revenir à la page entière (Échap, ou double-clic)"), on: { click: () => this.focus(null) } }, tt("⤡ Page entière"));
     host.append(this.back);
     this.svg.addEventListener("dblclick", (e) => { const g = this.panelAt(this.pagePt(e)); if (g) { e.preventDefault(); this.focus(this.focusId === g.id ? null : g.id); } });
     window.addEventListener("resize", () => this.applyFocus());
@@ -303,11 +304,11 @@ export class Editor {
       const state = app.panelState(g.id);
       const chip = h("div.pchip", { style: { left: rect[0] + "%", top: rect[1] + "%" } }, h("span.num", String(g.order)),
         state ? h("span.dot." + state.kind, { title: state.text }) : null,
-        pan.show === "integrated" ? h("span.tag", "intégrée") : pan.show === "orbit" ? h("span.tag", "orbite") : null);
+        pan.show === "integrated" ? h("span.tag", tt("intégrée")) : pan.show === "orbit" ? h("span.tag", tt("orbite")) : null);
       this.overlay.append(chip);
       if (!pan.bg && !(pan.layers || []).length && !pan.integrated && !pan.orbit) {
         this.overlay.append(h("div.empty-hint", { style: { left: rect[0] + "%", top: rect[1] + "%", width: rect[2] + "%", height: rect[3] + "%" } },
-          h("span", "Glisse ici un décor, un personnage ou une image")));
+          h("span", tt("Glisse ici un décor, un personnage ou une image"))));
       }
       if ((pan.bubbles || []).length && window.AliveBubbles) {
         const ctl = window.AliveBubbles.mount(this.overlay, pan.bubbles, { edit: true, rect });

@@ -8,6 +8,7 @@
 // Profondeur de champ : panel.dof = { on, focus, amount } comme dans la case. Deux pistes l'animent :
 //   tracks.fo : [{ t, fo (mise au point, 0 devant a 1 fond), e }]   ·   tracks.bl : [{ t, bl (force du flou), e }]
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
+import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put } from "./api.js";
 import { MOUTHS, SETS, MODES, SIMPLE, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
@@ -23,22 +24,22 @@ const CAM0 = { cx: 0.5, cy: 0.5, z: 1, rot: 0, dz: 0 };
 export const CAM_BACK = 1;
 export const perspOf = (d, dz) => { const den = d + CAM_BACK - (dz || 0); return den <= 0.04 ? 0 : Math.min(60, (d + CAM_BACK) / den); };
 // doux : depart et arrivee amortis · lin : vitesse reguliere · fixe : pas d'intermediaire, on saute a la cle (paliers)
-export const EASES = { doux: "En douceur", lin: "Régulière", fixe: "Fixe (par paliers, sans intermédiaire)" };
+export const EASES = { doux: tt("En douceur"), lin: tt("Régulière"), fixe: tt("Fixe (par paliers, sans intermédiaire)") };
 const ease = (u, e) => (e === "fixe" ? 0 : e === "lin" ? u : u * u * (3 - 2 * u));
 const NUM = ["x", "y", "s", "rz", "cx", "cy", "z", "rot", "dz", "fo", "bl", "fx", "lw", "shg", "shw", "sha"];
 // mouvements de camera prets : [nom, depart, arrivee]
 export const MOVES = {
-  "trav-d": ["Travelling vers la droite", { cx: 0.38, z: 1.35 }, { cx: 0.62, z: 1.35 }],
-  "trav-g": ["Travelling vers la gauche", { cx: 0.62, z: 1.35 }, { cx: 0.38, z: 1.35 }],
-  "avant": ["Travelling avant (on s'approche)", { z: 1 }, { z: 1.7 }],
-  "arriere": ["Travelling arrière (on s'éloigne)", { z: 1.7 }, { z: 1 }],
-  "pano-h": ["Panoramique vers le haut", { cy: 0.62, z: 1.35 }, { cy: 0.38, z: 1.35 }],
-  "pano-b": ["Panoramique vers le bas", { cy: 0.38, z: 1.35 }, { cy: 0.62, z: 1.35 }],
-  "zoom": ["Zoom avant rapide", { z: 1 }, { z: 2.4 }],
-  "dolly": ["Avancer dans la profondeur (les plans se détachent)", { dz: 0 }, { dz: 0.7 }],
-  "dolly-r": ["Reculer dans la profondeur", { dz: 0.7 }, { dz: 0 }],
-  "dutch": ["Bascule (caméra qui penche)", { rot: -6, z: 1.25 }, { rot: 6, z: 1.25 }],
-  "fixe": ["Plan fixe (retire le mouvement)", null, null],
+  "trav-d": [tt("Travelling vers la droite"), { cx: 0.38, z: 1.35 }, { cx: 0.62, z: 1.35 }],
+  "trav-g": [tt("Travelling vers la gauche"), { cx: 0.62, z: 1.35 }, { cx: 0.38, z: 1.35 }],
+  "avant": [tt("Travelling avant (on s'approche)"), { z: 1 }, { z: 1.7 }],
+  "arriere": [tt("Travelling arrière (on s'éloigne)"), { z: 1.7 }, { z: 1 }],
+  "pano-h": [tt("Panoramique vers le haut"), { cy: 0.62, z: 1.35 }, { cy: 0.38, z: 1.35 }],
+  "pano-b": [tt("Panoramique vers le bas"), { cy: 0.38, z: 1.35 }, { cy: 0.62, z: 1.35 }],
+  "zoom": [tt("Zoom avant rapide"), { z: 1 }, { z: 2.4 }],
+  "dolly": [tt("Avancer dans la profondeur (les plans se détachent)"), { dz: 0 }, { dz: 0.7 }],
+  "dolly-r": [tt("Reculer dans la profondeur"), { dz: 0.7 }, { dz: 0 }],
+  "dutch": [tt("Bascule (caméra qui penche)"), { rot: -6, z: 1.25 }, { rot: 6, z: 1.25 }],
+  "fixe": [tt("Plan fixe (retire le mouvement)"), null, null],
 };
 
 /** Valeurs d'une piste a l'instant t. base : valeurs sans cle. n : nombre d'images de l'orbite (pour tourner au plus court). */
@@ -200,7 +201,7 @@ export function openMontage(app, pid) {
   const stateOf = (l) => scene.stateOf(l, t);
   const KEYED = ["x", "y", "s", "rz", "f", "v", "lw", "shg", "shw", "sha"];
   const camAt = () => scene.camAt(t);
-  const CAMS = { cam: "Caméra", fo: "Mise au point", bl: "Flou", fx: "Lignes d'effet" };      // pistes de la camera ; fo et bl : profondeur de champ
+  const CAMS = { cam: tt("Caméra"), fo: tt("Mise au point"), bl: tt("Flou"), fx: tt("Lignes d'effet") };      // pistes de la camera ; fo et bl : profondeur de champ
 
   // ------------------------------------------------------------------------------------------ visionneuse
   function paint() {
@@ -226,18 +227,18 @@ export function openMontage(app, pid) {
   const shapes = () => (pan.draw && pan.draw.shapes) || [];
   const fxAnim = () => !!(pan.draw && pan.draw.fx && pan.draw.fx.on && pan.draw.fx.anim);
   const shapeOf = (id) => (typeof id === "string" && id.startsWith("s:") ? shapes().find((x) => "s:" + x.id === id) : null);
-  const shapeName = (sh, i) => `Forme ${i + 1} (${((PRIMS[sh.t] || PATHS[sh.t] || ["forme"])[0]).toLowerCase()})`;
+  const shapeName = (sh, i) => tt`Forme ${i + 1} (${((PRIMS[sh.t] || PATHS[sh.t] || ["forme"])[0]).toLowerCase()})`;
   function topView() {
     const c = camAt(), yOf = (d) => H * (DY0 + (DY1 - DY0) * d), fs = Math.max(11, H * 0.03), camY = yOf(camD(c.dz || 0)), camX = c.cx * W, half = 0.5 / c.z * W;
     let o = `<rect width="${W}" height="${f1(H)}" fill="#f3f1ec"/>`;
     o += `<polygon points="${f1(camX)},${f1(camY)} ${f1(camX - half)},${f1(yOf(1))} ${f1(camX + half)},${f1(yOf(1))}" fill="#3b82f6" fill-opacity="0.09" stroke="#3b82f6" stroke-opacity="0.5" stroke-dasharray="6 5"/>`;
     for (const d of [0, 0.25, 0.5, 0.75, 1])
       o += `<line x1="0" x2="${W}" y1="${f1(yOf(d))}" y2="${f1(yOf(d))}" stroke="#b9b4a8" stroke-width="1" stroke-dasharray="${d === 0 || d === 1 ? "none" : "3 6"}"/>` +
-        `<text x="6" y="${f1(yOf(d) - 4)}" font-size="${f1(fs * 0.75)}" fill="#8a8578">${d === 0 ? "Devant · 0" : d === 1 ? "Fond · 1" : d}</text>`;
+        `<text x="6" y="${f1(yOf(d) - 4)}" font-size="${f1(fs * 0.75)}" fill="#8a8578">${d === 0 ? tt("Devant · 0") : d === 1 ? tt("Fond · 1") : d}</text>`;
     o += `<rect x="0" y="${f1(yOf(1) - H * 0.035)}" width="${W}" height="${f1(H * 0.035)}" fill="#cfcabd"/>` +
-      `<text x="${W / 2}" y="${f1(yOf(1) - H * 0.045)}" font-size="${f1(fs * 0.8)}" fill="#8a8578" text-anchor="middle">DÉCOR</text>`;
+      tt`<text x="${W / 2}" y="${f1(yOf(1) - H * 0.045)}" font-size="${f1(fs * 0.8)}" fill="#8a8578" text-anchor="middle">DÉCOR</text>`;
     if (dof.on) o += `<line x1="0" x2="${W}" y1="${f1(yOf(c.fo))}" y2="${f1(yOf(c.fo))}" stroke="#16a34a" stroke-width="2.5"/>` +
-      `<text x="${W - 6}" y="${f1(yOf(c.fo) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT · ${c.fo.toFixed(2)}</text>`;
+      tt`<text x="${W - 6}" y="${f1(yOf(c.fo) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT · ${c.fo.toFixed(2)}</text>`;
     const th = H * 0.03;
     shapes().forEach((sh, i) => {                           // formes du decor : des cartes plus fines, a glisser en profondeur et en travers
       const b = boxOf(sh, H), y = yOf(sh.d ?? 1), on = sel === "s:" + sh.id;
@@ -255,7 +256,7 @@ export function openMontage(app, pid) {
     });
     o += `<g transform="translate(${f1(camX)} ${f1(camY)})"><rect x="${f1(-fs * 1.1)}" y="${f1(-fs * 0.5)}" width="${f1(fs * 2.2)}" height="${f1(fs * 1.3)}" rx="3" fill="${sel === "cam" ? "#3b82f6" : "#5b6472"}"/>` +
       `<polygon points="${f1(-fs * 0.5)},${f1(-fs * 0.5)} ${f1(fs * 0.5)},${f1(-fs * 0.5)} ${f1(fs * 0.8)},${f1(-fs * 1.1)} ${f1(-fs * 0.8)},${f1(-fs * 1.1)}" fill="${sel === "cam" ? "#3b82f6" : "#5b6472"}"/>` +
-      `<text y="${f1(fs * 1.75)}" font-size="${f1(fs * 0.8)}" fill="#5b6472" text-anchor="middle">CAMÉRA</text></g>`;
+      tt`<text y="${f1(fs * 1.75)}" font-size="${f1(fs * 0.8)}" fill="#5b6472" text-anchor="middle">CAMÉRA</text></g>`;
     return o + `<rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
   }
 
@@ -297,10 +298,10 @@ export function openMontage(app, pid) {
     if (shp) {                                             // forme du decor : seule sa profondeur se regle ici
       const inp = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: shp.d ?? 1, on: { input: (e) => { shp.d = +e.target.value; out.textContent = shp.d.toFixed(2); paint(); } } }), out = h("output", (shp.d ?? 1).toFixed(2));
       side.append(h("h4", shapeName(shp, shapes().indexOf(shp))),
-        h("label.row.range", { title: "1 = collée au décor. Plus près de 0, la forme se détache : elle glisse et grossit davantage quand la caméra bouge (parallaxe)." }, "Profondeur ⓘ", inp, out),
-        h("div.row.wrap", h("button.mini", { on: { click: () => { shp.d = 1; paint(); props(); } } }, "Recoller au décor"),
-          h("button.mini", { title: "Toutes les formes reviennent sur le décor", on: { click: () => { for (const x of shapes()) delete x.d; paint(); props(); } } }, "Tout recoller")),
-        h("div.muted", { title: "Dans la vue « Profondeur », glisser la carte d'une forme la déplace en profondeur (haut / bas) et en travers (gauche / droite). Sa hauteur, sa taille et son dessin se règlent dans « Dessiner le fond »." }, "Forme du décor : profondeur et place en travers ⓘ"));
+        h("label.row.range", { title: tt("1 = collée au décor. Plus près de 0, la forme se détache : elle glisse et grossit davantage quand la caméra bouge (parallaxe).") }, tt("Profondeur ⓘ"), inp, out),
+        h("div.row.wrap", h("button.mini", { on: { click: () => { shp.d = 1; paint(); props(); } } }, tt("Recoller au décor")),
+          h("button.mini", { title: tt("Toutes les formes reviennent sur le décor"), on: { click: () => { for (const x of shapes()) delete x.d; paint(); props(); } } }, tt("Tout recoller"))),
+        h("div.muted", { title: tt("Dans la vue « Profondeur », glisser la carte d'une forme la déplace en profondeur (haut / bas) et en travers (gauche / droite). Sa hauteur, sa taille et son dessin se règlent dans « Dessiner le fond ».") }, tt("Forme du décor : profondeur et place en travers ⓘ")));
       syncProps = () => { if (document.activeElement !== inp) inp.value = shp.d ?? 1; out.textContent = (shp.d ?? 1).toFixed(2); };
       keyBar();
       return;
@@ -314,100 +315,100 @@ export function openMontage(app, pid) {
       rows.push(() => { const v = cur()[k]; if (document.activeElement !== inp) inp.value = v; out.textContent = fmt(v); });
       return h("label.row.range", label, inp, out);
     };
-    side.append(h("h4", isCam ? "🎥 Caméra" : (itemOf(l) ? itemOf(l).name : "Élément")));
+    side.append(h("h4", isCam ? tt("🎥 Caméra") : (itemOf(l) ? itemOf(l).name : tt("Élément"))));
     if (isCam) {
-      side.append(range("Cadre ↔", "cx", -0.5, 1.5, 0.005), range("Cadre ↕", "cy", -0.5, 1.5, 0.005), range("Zoom", "z", 0.4, 5, 0.01),
-        h("div", { title: "Avance ou recule la caméra dans la profondeur : ce qui est près grossit plus vite que le fond, et ce qu'elle dépasse disparaît. 1 = elle atteint le premier plan, 2 = le décor. Dans l'image : Alt + molette. Dans la vue « Profondeur » : glisser la caméra vers le haut." }, range("Avancer ⓘ", "dz", -2, 1.95, 0.01)), range("Inclinaison", "rot", -45, 45, 0.5, (x) => Math.round(x) + "°"),
-        h("h4", { title: "Un mouvement prêt pose deux clés, au début et à la fin. Tu peux ensuite les régler ou en ajouter." }, "Mouvements prêts ⓘ"),
-        h("select", { on: { change: (e) => { applyMove(e.target.value); e.target.value = ""; } } }, h("option", { value: "" }, "Choisir un mouvement…"), Object.entries(MOVES).map(([k, [name]]) => h("option", { value: k }, name))),
-        h("h4", { title: "0 = tout devant, 1 = le décor. Quand le flou est coché, la mise au point et le flou ont chacun leur piste dans la timeline, avec leurs propres clés : la mise au point peut passer d'un personnage à l'autre. La vue « Profondeur » montre le plan net." }, "Profondeur de champ ⓘ"),
-        h("label.row.check", h("input", { type: "checkbox", checked: !!dof.on, on: { change: (e) => { dof.on = e.target.checked; if (!dof.on && (sel === "fo" || sel === "bl")) sel = "cam"; paint(); lanes(); props(); } } }), "Flou de profondeur"));
-      if (dof.on) side.append(range("Mise au point", "fo", 0, 1, 0.01, undefined, "fo"), range("Flou", "bl", 0, 60, 1, (x) => String(Math.round(x)), "bl"));
+      side.append(range(tt("Cadre ↔"), "cx", -0.5, 1.5, 0.005), range(tt("Cadre ↕"), "cy", -0.5, 1.5, 0.005), range(tt("Zoom"), "z", 0.4, 5, 0.01),
+        h("div", { title: tt("Avance ou recule la caméra dans la profondeur : ce qui est près grossit plus vite que le fond, et ce qu'elle dépasse disparaît. 1 = elle atteint le premier plan, 2 = le décor. Dans l'image : Alt + molette. Dans la vue « Profondeur » : glisser la caméra vers le haut.") }, range(tt("Avancer ⓘ"), "dz", -2, 1.95, 0.01)), range(tt("Inclinaison"), "rot", -45, 45, 0.5, (x) => Math.round(x) + "°"),
+        h("h4", { title: tt("Un mouvement prêt pose deux clés, au début et à la fin. Tu peux ensuite les régler ou en ajouter.") }, tt("Mouvements prêts ⓘ")),
+        h("select", { on: { change: (e) => { applyMove(e.target.value); e.target.value = ""; } } }, h("option", { value: "" }, tt("Choisir un mouvement…")), Object.entries(MOVES).map(([k, [name]]) => h("option", { value: k }, name))),
+        h("h4", { title: tt("0 = tout devant, 1 = le décor. Quand le flou est coché, la mise au point et le flou ont chacun leur piste dans la timeline, avec leurs propres clés : la mise au point peut passer d'un personnage à l'autre. La vue « Profondeur » montre le plan net.") }, tt("Profondeur de champ ⓘ")),
+        h("label.row.check", h("input", { type: "checkbox", checked: !!dof.on, on: { change: (e) => { dof.on = e.target.checked; if (!dof.on && (sel === "fo" || sel === "bl")) sel = "cam"; paint(); lanes(); props(); } } }), tt("Flou de profondeur")));
+      if (dof.on) side.append(range(tt("Mise au point"), "fo", 0, 1, 0.01, undefined, "fo"), range(tt("Flou"), "bl", 0, 60, 1, (x) => String(Math.round(x)), "bl"));
       side.append(
-        fxAnim() ? h("h4", { title: "Les lignes d'effet dessinées dans le fond de la case. 0 : aucune ; 1 : pleines ; au-delà : plus épaisses. Se pose en clés sur la piste « Lignes d'effet » : elles arrivent, grossissent, disparaissent." }, "⚡ Lignes d'effet ⓘ") : "",
-        fxAnim() ? range("Force", "fx", 0, 2.5, 0.01, undefined, "fx") : "",
-        h("h4", { title: "Quand la caméra se déplace, le premier plan glisse plus vite que le fond, selon la profondeur des éléments : le bouton « Profondeur » sous l'image les montre vus de dessus pour les placer." }, "Parallaxe ⓘ"),
-        h("label.row.check", h("input", { type: "checkbox", checked: !!anim.parallax, on: { change: (e) => { anim.parallax = e.target.checked; paint(); props(); } } }), "Parallaxe automatique"),
-        anim.parallax ? h("label.row.range", "Force", h("input", { type: "range", min: 0, max: 3, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "");
+        fxAnim() ? h("h4", { title: tt("Les lignes d'effet dessinées dans le fond de la case. 0 : aucune ; 1 : pleines ; au-delà : plus épaisses. Se pose en clés sur la piste « Lignes d'effet » : elles arrivent, grossissent, disparaissent.") }, tt("⚡ Lignes d'effet ⓘ")) : "",
+        fxAnim() ? range(tt("Force"), "fx", 0, 2.5, 0.01, undefined, "fx") : "",
+        h("h4", { title: tt("Quand la caméra se déplace, le premier plan glisse plus vite que le fond, selon la profondeur des éléments : le bouton « Profondeur » sous l'image les montre vus de dessus pour les placer.") }, tt("Parallaxe ⓘ")),
+        h("label.row.check", h("input", { type: "checkbox", checked: !!anim.parallax, on: { change: (e) => { anim.parallax = e.target.checked; paint(); props(); } } }), tt("Parallaxe automatique")),
+        anim.parallax ? h("label.row.range", tt("Force"), h("input", { type: "range", min: 0, max: 3, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "");
     } else {
       const it = itemOf(l), n = nOf(l, cur().v);
-      side.append(range("Position ↔", "x", -1, 2, 0.005), range("Position ↕", "y", -1, 3, 0.005), range("Taille", "s", 0.05, 6, 0.01),
-        range("Inclinaison", "rz", -180, 180, 1, (x) => Math.round(x) + "°"));
-      if (n) side.append(range("Axe (rotation)", "f", 0, n - 1, 1, (x) => Math.round(x * 360 / n) + "°"));
+      side.append(range(tt("Position ↔"), "x", -1, 2, 0.005), range(tt("Position ↕"), "y", -1, 3, 0.005), range(tt("Taille"), "s", 0.05, 6, 0.01),
+        range(tt("Inclinaison"), "rz", -180, 180, 1, (x) => Math.round(x) + "°"));
+      if (n) side.append(range(tt("Axe (rotation)"), "f", 0, n - 1, 1, (x) => Math.round(x * 360 / n) + "°"));
       {
         const inp = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: depthNow(l), on: { input: (e) => { setDepth(l, +e.target.value); paint(); lanes(); syncProps(); } } }), out = h("output", depthNow(l).toFixed(2));
         rows.push(() => { const v = depthNow(l); if (document.activeElement !== inp) inp.value = v; out.textContent = v.toFixed(2); });
-        side.append(h("label.row.range", { title: "0 = tout devant, 1 = au fond. Sert à la parallaxe, au flou de profondeur et à l'ordre des éléments." }, "Profondeur", inp, out));
+        side.append(h("label.row.range", { title: tt("0 = tout devant, 1 = au fond. Sert à la parallaxe, au flou de profondeur et à l'ordre des éléments.") }, tt("Profondeur"), inp, out));
       }
       if (sprite(it, cur().v, cur().f)?.vec) {
         const wig = (label, k, min, max, def) => { const out = h("output", (l[k] ?? def).toFixed(1)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.1, value: l[k] ?? def, on: { input: (e) => { l[k] = +e.target.value; out.textContent = (+e.target.value).toFixed(1); paint(); } } }), out); };
-        side.append(range("Trait", "lw", -12, 6, 0.1, (x) => (+x).toFixed(1)), fold("wig", "Tremblé du trait", wig("Tremblé", "hand", 0, 10, 0), wig("Ondulation", "wave", 0.5, 12, 4)),
-          h("label.row.check", { title: "Le trait tremble en boucle pendant la lecture, comme un dessin refait à chaque image" }, h("input", { type: "checkbox", checked: !!(l.boil && l.boil.on), on: { change: (e) => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: e.target.checked }); paint(); props(); } } }), "Animer le tremblé"),
-          h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
+        side.append(range(tt("Trait"), "lw", -12, 6, 0.1, (x) => (+x).toFixed(1)), fold("wig", tt("Tremblé du trait"), wig(tt("Tremblé"), "hand", 0, 10, 0), wig(tt("Ondulation"), "wave", 0.5, 12, 4)),
+          h("label.row.check", { title: tt("Le trait tremble en boucle pendant la lecture, comme un dessin refait à chaque image") }, h("input", { type: "checkbox", checked: !!(l.boil && l.boil.on), on: { change: (e) => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: e.target.checked }); paint(); props(); } } }), tt("Animer le tremblé")),
+          h("div.row.colrow", { title: tt("Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent.") }, h("span", tt("Couleur")),
             swatch(l.col || "#ffffff", (c) => { l.col = c; paint(); }),
-            l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; paint(); props(); } } }, "Blanc") : ""),
-          h("div.row.colrow", { title: "Couleur du trait : tout ce qui est noir dans le dessin prend cette couleur." }, h("span", "Contour"),
+            l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; paint(); props(); } } }, tt("Blanc")) : ""),
+          h("div.row.colrow", { title: tt("Couleur du trait : tout ce qui est noir dans le dessin prend cette couleur.") }, h("span", tt("Contour")),
             swatch(l.ink || "#111111", (c) => { l.ink = c; paint(); }),
-            l.ink && l.ink.toLowerCase() !== "#111111" ? h("button.mini", { on: { click: () => { delete l.ink; paint(); props(); } } }, "Noir") : ""));
+            l.ink && l.ink.toLowerCase() !== "#111111" ? h("button.mini", { on: { click: () => { delete l.ink; paint(); props(); } } }, tt("Noir")) : ""));
       }
       side.append(voiceBox(l));
       if (l.boil && l.boil.on && sprite(it, cur().v, cur().f)?.vec) {
         const bo = (label, k, min, max, step, def, fmt) => { const out = h("output", fmt(l.boil[k] ?? def)); return h("label.row.range", label, h("input", { type: "range", min, max, step, value: l.boil[k] ?? def, on: { input: (e) => { l.boil[k] = +e.target.value; out.textContent = fmt(+e.target.value); paint(); } } }), out); };
         const at = [...side.children].find((x) => x.matches && x.matches("label.check") && /Animer le tremblé/.test(x.textContent));
-        const box = h("div.fold-in", bo("Intensité", "a", 0.3, 8, 0.1, 2, (x) => (+x).toFixed(1)), bo("Rapidité", "v", 1, 24, 1, 8, (x) => Math.round(x) + " /s"));
+        const box = h("div.fold-in", bo(tt("Intensité"), "a", 0.3, 8, 0.1, 2, (x) => (+x).toFixed(1)), bo(tt("Rapidité"), "v", 1, 24, 1, 8, (x) => Math.round(x) + " /s"));
         if (at) at.after(box); else side.append(box);
       }
       const move = (d) => reorder(l, d);
-      side.append(h("h4", "Ordre"), h("div.row.wrap", h("button.mini", { on: { click: () => move(1) } }, "Avancer"), h("button.mini", { on: { click: () => move(-1) } }, "Reculer"),
-        h("button.mini", { on: { click: () => move("top") } }, "Premier plan"), h("button.mini", { on: { click: () => move("bottom") } }, "Arrière-plan")));
-      if (it && Object.keys(it.variants).length > 1) side.append(h("label.row", "Pose", h("select", { on: { change: (e) => { const vv = variantOf(it, e.target.value); preload(it, e.target.value); change(sel, { v: e.target.value, f: vv && vv.orbit ? Math.min(cur().f, vv.orbit.n - 1) : 0 }); props(); } } },
-        Object.entries(it.variants).map(([k, vv]) => h("option", { value: k, selected: k === cur().v }, (vv.orbit ? "↻ " : "▫ ") + vv.label)))));
+      side.append(h("h4", tt("Ordre")), h("div.row.wrap", h("button.mini", { on: { click: () => move(1) } }, tt("Avancer")), h("button.mini", { on: { click: () => move(-1) } }, tt("Reculer")),
+        h("button.mini", { on: { click: () => move("top") } }, tt("Premier plan")), h("button.mini", { on: { click: () => move("bottom") } }, tt("Arrière-plan"))));
+      if (it && Object.keys(it.variants).length > 1) side.append(h("label.row", tt("Pose"), h("select", { on: { change: (e) => { const vv = variantOf(it, e.target.value); preload(it, e.target.value); change(sel, { v: e.target.value, f: vv && vv.orbit ? Math.min(cur().f, vv.orbit.n - 1) : 0 }); props(); } } },
+        Object.entries(it.variants).map(([k, vv]) => h("option", { value: k, selected: k === cur().v }, (vv.orbit ? "↻ " : "▫ ") + tr(vv.label))))));
       // ombre et ombre portee : en dernier, apres la profondeur et le reste
       if (sprite(it, cur().v, cur().f)?.vec) {
         const sh = l.sh || {};
-        side.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: e.target.checked }); paint(); props(); } } }), "Ombre"));
-        if (sh.on) side.append(fold("sh", "Réglages de l'ombre",
-          h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu d'assombrir la couleur du corps" }, h("input", { type: "checkbox", checked: !!sh.ink, on: { change: (e) => { l.sh.ink = e.target.checked; paint(); } } }), "Couleur du contour"),
-          range("Gris", "shg", 0.2, 0.95, 0.01), range("Largeur", "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range("Lumière (angle)", "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
-          h("label.row.range", { title: "0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin, une par cran." }, "Formes détaillées ⓘ", h("input", { type: "range", min: 0, max: 8, step: 1, value: sh.k || 0, on: { input: (e) => { l.sh.k = +e.target.value; e.target.nextSibling.textContent = e.target.value; paint(); } } }), h("output", String(sh.k || 0)))));
+        side.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: e.target.checked }); paint(); props(); } } }), tt("Ombre")));
+        if (sh.on) side.append(fold("sh", tt("Réglages de l'ombre"),
+          h("label.row.check", { title: tt("L'ombre prend la couleur choisie pour le contour du dessin, au lieu d'assombrir la couleur du corps") }, h("input", { type: "checkbox", checked: !!sh.ink, on: { change: (e) => { l.sh.ink = e.target.checked; paint(); } } }), tt("Couleur du contour")),
+          range(tt("Gris"), "shg", 0.2, 0.95, 0.01), range(tt("Largeur"), "shw", 0.5, 25, 0.1, (x) => (+x).toFixed(1)), range(tt("Lumière (angle)"), "sha", 0, 360, 1, (x) => Math.round(x) + "°"),
+          h("label.row.range", { title: tt("0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin, une par cran.") }, tt("Formes détaillées ⓘ"), h("input", { type: "range", min: 0, max: 8, step: 1, value: sh.k || 0, on: { input: (e) => { l.sh.k = +e.target.value; e.target.nextSibling.textContent = e.target.value; paint(); } } }), h("output", String(sh.k || 0)))));
       }
       {
         const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); paint(); };
         const plain = (label, k, min, max, def) => { const out = h("output", (gs[k] ?? def).toFixed(2)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.01, value: gs[k] ?? def, on: { input: (e) => { putg(k, +e.target.value); out.textContent = (+e.target.value).toFixed(2); } } }), out); };
-        side.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); props(); } } }), "Ombre portée"));
-        if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée",
-          h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu du noir" }, h("input", { type: "checkbox", checked: !!gs.ink, on: { change: (e) => putg("ink", e.target.checked) } }), "Couleur du contour"),
-          plain("Opacité", "a", 0.05, 1, 0.35), h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, plain("Flou ⓘ", "b", 0, 4, 1)), plain("Largeur", "w", 0.2, 2.5, 0.8), plain("Épaisseur", "h", 0.2, 4, 1),
-          h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, plain("Décalage ↔ ⓘ", "dx", -0.6, 0.6, 0), plain("Décalage ↕", "dy", -0.6, 0.6, 0)),
-          h("div", { title: "Déforme le contour de l'ombre. 0 : ovale net. Tout à droite : une tache abstraite. Ondulation courte = bord déchiqueté, longue = grandes vagues. Forme : une autre tache, au hasard." },
-            plain("Tremblé ⓘ", "hand", 0, 10, 0), plain("Ondulation", "wave", 0.5, 12, 4), plain("Forme", "seed", 0, 40, 0))));
+        side.append(h("label.row.check", { title: tt("Une tache sombre et floue sous l'élément, pour le poser au sol") }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); props(); } } }), tt("Ombre portée")));
+        if (gs.on) side.append(fold("gs", tt("Réglages de l'ombre portée"),
+          h("label.row.check", { title: tt("L'ombre prend la couleur choisie pour le contour du dessin, au lieu du noir") }, h("input", { type: "checkbox", checked: !!gs.ink, on: { change: (e) => putg("ink", e.target.checked) } }), tt("Couleur du contour")),
+          plain(tt("Opacité"), "a", 0.05, 1, 0.35), h("div", { title: tt("0 : bord net. Vers la droite : de plus en plus floue.") }, plain(tt("Flou ⓘ"), "b", 0, 4, 1)), plain(tt("Largeur"), "w", 0.2, 2.5, 0.8), plain(tt("Épaisseur"), "h", 0.2, 4, 1),
+          h("div", { title: tt("Pour la caler sous les pieds quand le personnage a l'air de flotter") }, plain(tt("Décalage ↔ ⓘ"), "dx", -0.6, 0.6, 0), plain(tt("Décalage ↕"), "dy", -0.6, 0.6, 0)),
+          h("div", { title: tt("Déforme le contour de l'ombre. 0 : ovale net. Tout à droite : une tache abstraite. Ondulation courte = bord déchiqueté, longue = grandes vagues. Forme : une autre tache, au hasard.") },
+            plain(tt("Tremblé ⓘ"), "hand", 0, 10, 0), plain(tt("Ondulation"), "wave", 0.5, 12, 4), plain(tt("Forme"), "seed", 0, 40, 0))));
       }
     }
     keyBar();
-    side.append(h("label.row.check", { title: "Dans l'image, sur un élément : glisser = le faire tourner (orbite) ; glisser la croix ✥ au milieu = le déplacer (ou Maj + glisser) ; glisser la pastille ↻ au-dessus = le pencher (Maj : crans de 15°) ; molette = taille ; clic droit = son menu (pose, axe, ordre, ombres…). Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché." }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), "Clé automatique à chaque réglage ⓘ"));
+    side.append(h("label.row.check", { title: tt("Dans l'image, sur un élément : glisser = le faire tourner (orbite) ; glisser la croix ✥ au milieu = le déplacer (ou Maj + glisser) ; glisser la pastille ↻ au-dessus = le pencher (Maj : crans de 15°) ; molette = taille ; clic droit = son menu (pose, axe, ordre, ombres…). Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché.") }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), tt("Clé automatique à chaque réglage ⓘ")));
     syncProps = () => rows.forEach((f) => f());
   }
   // boutons de cle : juste au-dessus de la timeline
   const keyBox = h("div.mt-keys");
   function keyBar() {
     keyBox.textContent = "";
-    if (shapeOf(sel)) { keyBox.append(h("span.muted", "Forme du décor : elle se place en profondeur, sans clés.")); return; }
-    const k = near(sel), name = CAMS[sel] || (itemOf(layerOf(sel)) || {}).name || "élément";
+    if (shapeOf(sel)) { keyBox.append(h("span.muted", tt("Forme du décor : elle se place en profondeur, sans clés."))); return; }
+    const k = near(sel), name = CAMS[sel] || (itemOf(layerOf(sel)) || {}).name || tt("élément");
     keyBox.append(
-      h("button.mini", { title: "Aller à la clé précédente (Alt + ←). Piste choisie ; si elle n'a pas de clé, toutes les pistes.", on: { click: () => jumpKey(-1) } }, "◀◆"),
-      h("button.mini", { title: "Aller à la clé suivante (Alt + →)", on: { click: () => jumpKey(1) } }, "◆▶"),
+      h("button.mini", { title: tt("Aller à la clé précédente (Alt + ←). Piste choisie ; si elle n'a pas de clé, toutes les pistes."), on: { click: () => jumpKey(-1) } }, "◀◆"),
+      h("button.mini", { title: tt("Aller à la clé suivante (Alt + →)"), on: { click: () => jumpKey(1) } }, "◆▶"),
       h("span.muted", name + " :"),
-      h("button.mini", { title: "Enregistre les réglages de cet instant", on: { click: () => { setKey(sel, {}); paint(); lanes(); props(); } } }, "◆ Poser une clé"),
-      h("button.mini.danger", { disabled: !k, title: "Retire la clé sous la tête de lecture", on: { click: () => { anim.tracks[sel] = keysOf(sel).filter((x) => x !== k); selKey = null; paint(); lanes(); props(); } } }, "Retirer cette clé"),
-      h("button.mini.danger", { disabled: !keysOf(sel).length, on: { click: () => { delete anim.tracks[sel]; selKey = null; paint(); lanes(); props(); } } }, "Vider la piste"),
-      k ? h("label.row", "Interpolation", h("select", { title: "Façon d'arriver sur cette clé", on: { change: (e) => { k.e = e.target.value; paint(); lanes(); } } }, Object.entries(EASES).map(([v, n]) => h("option", { value: v, selected: (k.e || "doux") === v }, n)))) : "");
+      h("button.mini", { title: tt("Enregistre les réglages de cet instant"), on: { click: () => { setKey(sel, {}); paint(); lanes(); props(); } } }, tt("◆ Poser une clé")),
+      h("button.mini.danger", { disabled: !k, title: tt("Retire la clé sous la tête de lecture"), on: { click: () => { anim.tracks[sel] = keysOf(sel).filter((x) => x !== k); selKey = null; paint(); lanes(); props(); } } }, tt("Retirer cette clé")),
+      h("button.mini.danger", { disabled: !keysOf(sel).length, on: { click: () => { delete anim.tracks[sel]; selKey = null; paint(); lanes(); props(); } } }, tt("Vider la piste")),
+      k ? h("label.row", tt("Interpolation"), h("select", { title: tt("Façon d'arriver sur cette clé"), on: { change: (e) => { k.e = e.target.value; paint(); lanes(); } } }, Object.entries(EASES).map(([v, n]) => h("option", { value: v, selected: (k.e || "doux") === v }, n)))) : "");
   }
   function jumpKey(dir) {                                   // de cle en cle : celles de la piste choisie, sinon toutes
     stop();
     const own = keysOf(sel), all = own.length ? own : Object.values(anim.tracks).flat();
     const ts = [...new Set(all.map((k) => k.t))].sort((a, b) => a - b);
     const to = dir > 0 ? ts.find((x) => x > t + 0.02) : [...ts].reverse().find((x) => x < t - 0.02);
-    if (to == null) return toast(ts.length ? (dir > 0 ? "Pas de clé après." : "Pas de clé avant.") : "Aucune clé posée.");
+    if (to == null) return toast(ts.length ? (dir > 0 ? tt("Pas de clé après.") : tt("Pas de clé avant.")) : tt("Aucune clé posée."));
     picked.clear(); selKey = own.find((k) => k.t === to) || null;
     seek(to, true);
   }
@@ -439,47 +440,47 @@ export function openMontage(app, pid) {
     setTimeout(() => document.addEventListener("pointerdown", close, true), 0);
   }
   function layerMenu(e, l) {
-    const it = itemOf(l), st = stateOf(l), vv = it && variantOf(it, st.v), items = [{ head: it ? it.name : "Élément" }];
-    items.push({ label: "◆ Poser une clé ici", click: () => { setKey(l.id, {}); paint(); lanes(); props(); } });
+    const it = itemOf(l), st = stateOf(l), vv = it && variantOf(it, st.v), items = [{ head: it ? it.name : tt("Élément") }];
+    items.push({ label: tt("◆ Poser une clé ici"), click: () => { setKey(l.id, {}); paint(); lanes(); props(); } });
     if (it && Object.keys(it.variants).length > 1) {
-      items.push({ head: "Pose" });
+      items.push({ head: tt("Pose") });
       for (const [k, v] of Object.entries(it.variants)) items.push({ label: (v.orbit ? "↻ " : "▫ ") + v.label, checked: k === st.v, click: () => { preload(it, k); change(l.id, { v: k, f: v.orbit ? Math.min(st.f, v.orbit.n - 1) : 0 }); props(); } });
-      items.push({ note: "↻ orbite prête · ▫ image fixe" });
+      items.push({ note: tt("↻ orbite prête · ▫ image fixe") });
     }
     if (vv && vv.orbit && vv.orbit.n) {
       const curAx = AXES[Math.round(frameToAngle(vv.orbit, st.f) / 45) % 8];
-      items.push({ head: "Axe" });
-      AXES.forEach((ax, i) => items.push({ label: ax, half: true, checked: ax === curAx, click: () => change(l.id, { f: angleToFrame(vv.orbit, i * 45) }) }));
+      items.push({ head: tt("Axe") });
+      AXES.forEach((ax, i) => items.push({ label: tr(ax), half: true, checked: ax === curAx, click: () => change(l.id, { f: angleToFrame(vv.orbit, i * 45) }) }));
     }
-    items.push({ head: "Ordre" },
-      { label: "Avancer", half: true, click: () => reorder(l, 1) }, { label: "Reculer", half: true, click: () => reorder(l, -1) },
-      { label: "Premier plan", half: true, click: () => reorder(l, "top") }, { label: "Arrière-plan", half: true, click: () => reorder(l, "bottom") },
-      { head: "Élément" },
-      { label: "Retourner (miroir)", checked: !!l.flip, click: () => { l.flip = !l.flip; paint(); } });
-    if (sprite(it, st.v, st.f)?.vec) items.push({ label: "Ombre", checked: !!(l.sh && l.sh.on), click: () => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: !(l.sh && l.sh.on) }); paint(); props(); } },
-      { label: "Animer le tremblé", checked: !!(l.boil && l.boil.on), click: () => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: !(l.boil && l.boil.on) }); paint(); props(); } });
-    items.push({ label: "Ombre portée", checked: !!(l.gs && l.gs.on), click: () => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { on: !(l.gs && l.gs.on) }); paint(); props(); } },
-      { label: "Bouche dessinée", checked: !!(l.lip && l.lip.on), click: () => { l.lip = Object.assign({ off: 0, bg: true }, l.lip, { on: !(l.lip && l.lip.on) }); paint(); props(); } },
-      l.lip && l.lip.on ? { label: "✛ Placer la bouche à la main", click: () => { placing = l.id; svg.style.cursor = "crosshair"; props(); } } : null,
-      { head: "Clés" },
-      keysOf(l.id).length ? { label: "Vider sa piste", danger: true, click: () => { delete anim.tracks[l.id]; selKey = null; paint(); lanes(); props(); } } : { note: "Aucune clé sur cet élément" });
+    items.push({ head: tt("Ordre") },
+      { label: tt("Avancer"), half: true, click: () => reorder(l, 1) }, { label: tt("Reculer"), half: true, click: () => reorder(l, -1) },
+      { label: tt("Premier plan"), half: true, click: () => reorder(l, "top") }, { label: tt("Arrière-plan"), half: true, click: () => reorder(l, "bottom") },
+      { head: tt("Élément") },
+      { label: tt("Retourner (miroir)"), checked: !!l.flip, click: () => { l.flip = !l.flip; paint(); } });
+    if (sprite(it, st.v, st.f)?.vec) items.push({ label: tt("Ombre"), checked: !!(l.sh && l.sh.on), click: () => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: !(l.sh && l.sh.on) }); paint(); props(); } },
+      { label: tt("Animer le tremblé"), checked: !!(l.boil && l.boil.on), click: () => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: !(l.boil && l.boil.on) }); paint(); props(); } });
+    items.push({ label: tt("Ombre portée"), checked: !!(l.gs && l.gs.on), click: () => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { on: !(l.gs && l.gs.on) }); paint(); props(); } },
+      { label: tt("Bouche dessinée"), checked: !!(l.lip && l.lip.on), click: () => { l.lip = Object.assign({ off: 0, bg: true }, l.lip, { on: !(l.lip && l.lip.on) }); paint(); props(); } },
+      l.lip && l.lip.on ? { label: tt("✛ Placer la bouche à la main"), click: () => { placing = l.id; svg.style.cursor = "crosshair"; props(); } } : null,
+      { head: tt("Clés") },
+      keysOf(l.id).length ? { label: tt("Vider sa piste"), danger: true, click: () => { delete anim.tracks[l.id]; selKey = null; paint(); lanes(); props(); } } : { note: tt("Aucune clé sur cet élément") });
     ctxMenu(e, items);
   }
   function camMenu(e) {
-    const items = [{ head: "Caméra" }, { label: "◆ Poser une clé ici", click: () => { setKey("cam", {}); sel = "cam"; paint(); lanes(); props(); } }, { head: "Mouvements prêts" }];
+    const items = [{ head: tt("Caméra") }, { label: tt("◆ Poser une clé ici"), click: () => { setKey("cam", {}); sel = "cam"; paint(); lanes(); props(); } }, { head: tt("Mouvements prêts") }];
     for (const [k, [name]] of Object.entries(MOVES)) items.push({ label: name, click: () => applyMove(k) });
-    items.push({ head: "Plan" },
-      { label: "Flou de profondeur", checked: !!dof.on, click: () => { dof.on = !dof.on; paint(); lanes(); props(); } },
-      { label: "Parallaxe automatique", checked: !!anim.parallax, click: () => { anim.parallax = !anim.parallax; paint(); props(); } },
-      { label: depthView ? "🖼 Voir l'image" : "⬒ Vue de dessus (profondeur)", click: () => depthBtn.click() });
+    items.push({ head: tt("Plan") },
+      { label: tt("Flou de profondeur"), checked: !!dof.on, click: () => { dof.on = !dof.on; paint(); lanes(); props(); } },
+      { label: tt("Parallaxe automatique"), checked: !!anim.parallax, click: () => { anim.parallax = !anim.parallax; paint(); props(); } },
+      { label: depthView ? tt("🖼 Voir l'image") : tt("⬒ Vue de dessus (profondeur)"), click: () => depthBtn.click() });
     ctxMenu(e, items);
   }
   function keyMenu(e, id, k) {                              // clic droit sur une cle : son interpolation
     e.preventDefault();
     document.querySelector(".mt-menu")?.remove();
-    const box = h("div.menu.mt-menu", h("div.mhead", `Clé à ${k.t.toFixed(2)} s · arrivée`),
+    const box = h("div.menu.mt-menu", h("div.mhead", tt`Clé à ${k.t.toFixed(2)} s · arrivée`),
       Object.entries(EASES).map(([v, n]) => h("button" + ((k.e || "doux") === v ? ".on" : ""), { on: { click: () => { k.e = v; box.remove(); paint(); lanes(); props(); } } }, ((k.e || "doux") === v ? "✓ " : "") + n)),
-      h("button.danger", { on: { click: () => { anim.tracks[id] = keysOf(id).filter((x) => x !== k); selKey = null; box.remove(); paint(); lanes(); props(); } } }, "Retirer cette clé"));
+      h("button.danger", { on: { click: () => { anim.tracks[id] = keysOf(id).filter((x) => x !== k); selKey = null; box.remove(); paint(); lanes(); props(); } } }, tt("Retirer cette clé")));
     document.body.append(box);
     const r = box.getBoundingClientRect();
     box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px";
@@ -514,7 +515,7 @@ export function openMontage(app, pid) {
   }
   async function setVoice(l, blob, name, file) {           // un son arrive (fichier, micro ou voix generee) : on le range, on l'ecoute, on pose les bouches
     try {
-      toast("Écoute de la voix…");
+      toast(tt("Écoute de la voix…"));
       const [r, res] = await Promise.all([file ? (typeof file === "string" ? { file } : file) : upload(`projects/${app.project.id}/audio?name=${encodeURIComponent(name)}&source=${/^micro\./.test(name) ? "micro" : "import"}`, blob), blob.arrayBuffer().then((b) => analyse(b))]);
       if (r.audio) { put("audio/" + r.audio, { dur: res.dur }).catch(() => {}); if (app.bankUI) app.bankUI.reload(); libAudio = null; }   // la voix est aussi rangee dans la banque audio
       const first = !l.lip || l.lip.x == null;
@@ -523,61 +524,61 @@ export function openMontage(app, pid) {
       if (first) await autoMouth(l, true);
       if ((l.lip.off || 0) + res.dur > anim.dur) { anim.dur = Math.min(60, Math.ceil(((l.lip.off || 0) + res.dur) * 2) / 2); dur.value = anim.dur; }
       hist.snap(); paint(); lanes(); props();
-      toast(`Voix posée : ${res.dur.toFixed(1)} s, ${new Set(res.cues).size} bouches différentes.`);
-    } catch (e) { toast("Voix refusée : " + e.message, "error"); }
+      toast(tt`Voix posée : ${res.dur.toFixed(1)} s, ${new Set(res.cues).size} bouches différentes.`);
+    } catch (e) { toast(tt("Voix refusée : ") + e.message, "error"); }
   }
   // voix de synthese ElevenLabs : un texte, une voix du compte, et le son arrive comme une voix importee
   let ttsVoices = null, ttsBusy = false, libAudio = null;
   function libBox(l) {                                     // reprendre une voix deja rangee dans la banque audio
-    const pick = h("select", { title: "Les voix importées, enregistrées ou générées sont rangées dans l'onglet Audio de la banque", on: { change: async (e) => {
+    const pick = h("select", { title: tt("Les voix importées, enregistrées ou générées sont rangées dans l'onglet Audio de la banque"), on: { change: async (e) => {
       const id = e.target.value; e.target.value = "";
       if (!id) return;
       try {
         const r = await post(`projects/${app.project.id}/audio-from`, { id });
         await setVoice(l, await (await fetch(`/projects/${app.project.id}/${r.file}`)).blob(), r.name, r.file);
-      } catch (err) { toast("Son non repris : " + err.message, "error"); }
-    } } }, h("option", { value: "" }, libAudio ? (libAudio.length ? "📁 Prendre dans la banque audio…" : "Banque audio vide") : "Banque audio…"));
+      } catch (err) { toast(tt("Son non repris : ") + err.message, "error"); }
+    } } }, h("option", { value: "" }, libAudio ? (libAudio.length ? tt("📁 Prendre dans la banque audio…") : tt("Banque audio vide")) : tt("Banque audio…")));
     const fill = () => pick.append(...libAudio.map((a) => h("option", { value: a.id, title: a.text || "" }, (a.folder ? a.folder + " / " : "") + a.name + (a.dur ? ` · ${a.dur.toFixed(1)} s` : ""))));
     if (libAudio) fill();
-    else get("audio").then((v) => { libAudio = v || []; pick.options[0].textContent = libAudio.length ? "📁 Prendre dans la banque audio…" : "Banque audio vide"; fill(); }).catch(() => {});
+    else get("audio").then((v) => { libAudio = v || []; pick.options[0].textContent = libAudio.length ? tt("📁 Prendre dans la banque audio…") : tt("Banque audio vide"); fill(); }).catch(() => {});
     return pick;
   }
   const tts = { text: "", voice: localStorage.getItem("bw.ttsVoice") || "" };
   function ttsBox(l) {
-    const area = h("textarea", { rows: 3, placeholder: "Ce que dit le personnage…", style: { width: "100%", boxSizing: "border-box" }, on: { input: (e) => { tts.text = e.target.value; } } });
+    const area = h("textarea", { rows: 3, placeholder: tt("Ce que dit le personnage…"), style: { width: "100%", boxSizing: "border-box" }, on: { input: (e) => { tts.text = e.target.value; } } });
     area.value = tts.text;
-    const pick = h("select", { on: { change: (e) => { tts.voice = e.target.value; localStorage.setItem("bw.ttsVoice", tts.voice); } } }, h("option", { value: "" }, ttsVoices ? "Choisir une voix…" : "Chargement des voix…"));
-    const fill = () => { pick.textContent = ""; pick.append(h("option", { value: "" }, "Choisir une voix…"), ...ttsVoices.map((v) => h("option", { value: v.id, selected: v.id === tts.voice, title: v.info }, v.name + (v.info ? " · " + v.info : "")))); };
+    const pick = h("select", { on: { change: (e) => { tts.voice = e.target.value; localStorage.setItem("bw.ttsVoice", tts.voice); } } }, h("option", { value: "" }, ttsVoices ? tt("Choisir une voix…") : tt("Chargement des voix…")));
+    const fill = () => { pick.textContent = ""; pick.append(h("option", { value: "" }, tt("Choisir une voix…")), ...ttsVoices.map((v) => h("option", { value: v.id, selected: v.id === tts.voice, title: v.info }, v.name + (v.info ? " · " + v.info : "")))); };
     if (ttsVoices) fill();
-    else get("tts/voices").then((v) => { ttsVoices = v; fill(); }).catch((e) => { pick.textContent = ""; pick.append(h("option", { value: "" }, "Voix indisponibles")); note.textContent = e.message; });
+    else get("tts/voices").then((v) => { ttsVoices = v; fill(); }).catch((e) => { pick.textContent = ""; pick.append(h("option", { value: "" }, tt("Voix indisponibles"))); note.textContent = e.message; });
     const note = h("div.muted", "");
     const go = h("button.mini", { disabled: ttsBusy, on: { click: async () => {
-      if (!tts.text.trim()) return toast("Écris d'abord le texte à dire.", "error");
-      if (!tts.voice) return toast("Choisis une voix.", "error");
-      ttsBusy = true; go.disabled = true; go.textContent = "Génération…";
+      if (!tts.text.trim()) return toast(tt("Écris d'abord le texte à dire."), "error");
+      if (!tts.voice) return toast(tt("Choisis une voix."), "error");
+      ttsBusy = true; go.disabled = true; go.textContent = tt("Génération…");
       try {
         const vn = (ttsVoices || []).find((v) => v.id === tts.voice), label = `${vn ? vn.name : "voix"} : ${tts.text.trim().slice(0, 30)}`;
         const r = await post(`projects/${app.project.id}/tts`, { text: tts.text.trim(), voice: tts.voice, voice_name: vn ? vn.name : "", name: label });
         const blob = await (await fetch(`/projects/${app.project.id}/${r.file}`)).blob();
         ttsBusy = false;
         await setVoice(l, blob, label, r);
-      } catch (e) { ttsBusy = false; toast("Voix non générée : " + e.message, "error"); if (go.isConnected) { go.disabled = false; go.textContent = "✨ Générer la voix"; } }
-    } } }, ttsBusy ? "Génération…" : "✨ Générer la voix");
-    return fold("tts", "✨ Générer une voix (ElevenLabs)", area, h("label.row", "Voix", pick), h("div.row", go), note);
+      } catch (e) { ttsBusy = false; toast(tt("Voix non générée : ") + e.message, "error"); if (go.isConnected) { go.disabled = false; go.textContent = tt("✨ Générer la voix"); } }
+    } } }, ttsBusy ? tt("Génération…") : tt("✨ Générer la voix"));
+    return fold("tts", tt("✨ Générer une voix (ElevenLabs)"), area, h("label.row", tt("Voix"), pick), h("div.row", go), note);
   }
   function trimBlanks(l) {                                 // coupe le silence du debut et de la fin (d'apres les bouches trouvees)
     const lip = l.lip, c = lip.cues || "", fps = lip.fps || 12, first = c.search(/[^X]/);
-    if (first < 0) return toast("Cette voix est muette : rien à garder.");
+    if (first < 0) return toast(tt("Cette voix est muette : rien à garder."));
     let last = c.length - 1; while (last > first && c[last] === "X") last--;
     lip.in = f3(Math.max(0, first / fps - 0.06)); lip.out = f3(Math.min(lip.dur || 1e9, (last + 1) / fps + 0.12));
     hist.snap(); paint(); lanes(); props();
-    toast(`Blancs coupés : ${(lip.out - lip.in).toFixed(1)} s gardées sur ${(lip.dur || 0).toFixed(1)}.`);
+    toast(tt`Blancs coupés : ${(lip.out - lip.in).toFixed(1)} s gardées sur ${(lip.dur || 0).toFixed(1)}.`);
   }
   async function autoMouth(l, quiet) {                     // reperage automatique sur l'image de face
     const it = itemOf(l), st = stateOf(l), vv = it && variantOf(it, st.v);
     const sp = it && sprite(it, st.v, vv && vv.orbit ? angleToFrame(vv.orbit, 0) : 0), found = sp && await locateMouth(sp.url);
     l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, found || { x: 0.5, y: 0.13, s: 0.035, hw: 0.03 });
-    if (!quiet) { paint(); props(); toast(found ? "Bouche repérée sur l'image de face. Ajuste au besoin, ou place-la à la main." : "Repérage impossible sur cette image : place la bouche à la main."); }
+    if (!quiet) { paint(); props(); toast(found ? tt("Bouche repérée sur l'image de face. Ajuste au besoin, ou place-la à la main.") : tt("Repérage impossible sur cette image : place la bouche à la main.")); }
   }
   function placeMouth(e) {                                 // placement a la main : un clic dans l'image, la ou est la bouche
     const l = layerOf(placing); placing = null; svg.style.cursor = "";
@@ -599,55 +600,55 @@ export function openMontage(app, pid) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true }), parts = [];
       rec = new MediaRecorder(stream);
       rec.ondataavailable = (ev) => { if (ev.data.size) parts.push(ev.data); };
-      rec.onstop = () => { stream.getTracks().forEach((x) => x.stop()); const type = rec.mimeType || "audio/webm"; rec = null; if (btn.isConnected) { btn.textContent = "● Micro"; btn.classList.remove("danger"); }
+      rec.onstop = () => { stream.getTracks().forEach((x) => x.stop()); const type = rec.mimeType || "audio/webm"; rec = null; if (btn.isConnected) { btn.textContent = tt("● Micro"); btn.classList.remove("danger"); }
         if (parts.length) setVoice(l, new Blob(parts, { type }), "micro" + (type.includes("ogg") ? ".ogg" : type.includes("mp4") ? ".mp4" : ".webm")); };
       rec.start();
-      btn.textContent = "■ Arrêter l'enregistrement"; btn.classList.add("danger");
-    } catch (e) { rec = null; toast("Micro indisponible : " + e.message, "error"); }
+      btn.textContent = tt("■ Arrêter l'enregistrement"); btn.classList.add("danger");
+    } catch (e) { rec = null; toast(tt("Micro indisponible : ") + e.message, "error"); }
   }
   function voiceBox(l) {
     const lip = l.lip || {}, put = (k, x) => { l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { [k]: x }); paint(); };
     const plain = (label, k, min, max, step, def, fmt = (x) => (+x).toFixed(3)) => { const out = h("output", fmt(lip[k] ?? def));
       return h("label.row.range", label, h("input", { type: "range", min, max, step, value: lip[k] ?? def, on: { input: (e) => { put(k, +e.target.value); out.textContent = fmt(+e.target.value); } } }), out); };
     const file = h("input", { type: "file", accept: "audio/*,video/mp4,.webm", style: { display: "none" }, on: { change: (e) => { const f = e.target.files[0]; if (f) setVoice(l, f, f.name); e.target.value = ""; } } });
-    const micBtn = h("button.mini", { title: "Enregistre ta voix au micro ; clique encore pour arrêter", on: { click: () => micro(l, micBtn) } }, rec ? "■ Arrêter l'enregistrement" : "● Micro");
-    const rows = [h("div.row.wrap", h("button.mini", { title: "Fichier son : wav, mp3, m4a, ogg, webm", on: { click: () => file.click() } }, lip.src ? "Changer la voix…" : "Importer une voix…"), micBtn, file,
-      lip.src ? h("button.mini.danger", { title: "Retire la voix et ses bouches (la place de la bouche est gardée)", on: { click: () => { const a = players.get(l.id); if (a) a.pause(); players.delete(l.id); delete l.lip.src; delete l.lip.cues; delete l.lip.name; delete l.lip.dur; paint(); props(); } } }, "Retirer") : "")];
+    const micBtn = h("button.mini", { title: tt("Enregistre ta voix au micro ; clique encore pour arrêter"), on: { click: () => micro(l, micBtn) } }, rec ? tt("■ Arrêter l'enregistrement") : tt("● Micro"));
+    const rows = [h("div.row.wrap", h("button.mini", { title: tt("Fichier son : wav, mp3, m4a, ogg, webm"), on: { click: () => file.click() } }, lip.src ? tt("Changer la voix…") : tt("Importer une voix…")), micBtn, file,
+      lip.src ? h("button.mini.danger", { title: tt("Retire la voix et ses bouches (la place de la bouche est gardée)"), on: { click: () => { const a = players.get(l.id); if (a) a.pause(); players.delete(l.id); delete l.lip.src; delete l.lip.cues; delete l.lip.name; delete l.lip.dur; paint(); props(); } } }, tt("Retirer")) : "")];
     rows.push(libBox(l), ttsBox(l));
     if (lip.src) {
       const [va, vb] = voiceSpan(lip);
-      rows.push(h("div.muted", { title: lip.name || "" }, `🔊 ${(lip.name || "voix").slice(0, 22)} · ${(vb - va).toFixed(1)} s` + (vb - va < (lip.dur || 0) - 0.01 ? ` sur ${(lip.dur || 0).toFixed(1)}` : "")),
+      rows.push(h("div.muted", { title: lip.name || "" }, `🔊 ${(lip.name || "voix").slice(0, 22)} · ${(vb - va).toFixed(1)} s` + (vb - va < (lip.dur || 0) - 0.01 ? tt` sur ${(lip.dur || 0).toFixed(1)}` : "")),
         h("div.row.wrap",
-          h("button.mini", { title: "Retire le silence avant le premier son et après le dernier", on: { click: () => { trimBlanks(l); } } }, "✂ Couper les blancs"),
-          h("button.mini", { title: "Coupe la voix à la tête de lecture : ce qui vient après n'est plus joué", on: { click: () => { const v = voiceTime(lip, t); if (v < 0) return toast("Place la tête de lecture dans la voix."); put("out", f3(v)); lanes(); props(); } } }, "✂ Couper ici"),
-          vb - va < (lip.dur || 0) - 0.01 ? h("button.mini", { title: "Retrouve la voix entière", on: { click: () => { delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, "Entière") : ""));
+          h("button.mini", { title: tt("Retire le silence avant le premier son et après le dernier"), on: { click: () => { trimBlanks(l); } } }, tt("✂ Couper les blancs")),
+          h("button.mini", { title: tt("Coupe la voix à la tête de lecture : ce qui vient après n'est plus joué"), on: { click: () => { const v = voiceTime(lip, t); if (v < 0) return toast(tt("Place la tête de lecture dans la voix.")); put("out", f3(v)); lanes(); props(); } } }, tt("✂ Couper ici")),
+          vb - va < (lip.dur || 0) - 0.01 ? h("button.mini", { title: tt("Retrouve la voix entière"), on: { click: () => { delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, tt("Entière")) : ""));
     }
-    rows.push(h("label.row.check", { title: "Affiche la bouche dessinée sur le personnage" }, h("input", { type: "checkbox", checked: !!lip.on, on: { change: (e) => { put("on", e.target.checked); props(); } } }), "Bouche dessinée"));
+    rows.push(h("label.row.check", { title: tt("Affiche la bouche dessinée sur le personnage") }, h("input", { type: "checkbox", checked: !!lip.on, on: { change: (e) => { put("on", e.target.checked); props(); } } }), tt("Bouche dessinée")));
     if (lip.on) {
       rows.push(h("div.row.wrap",
-        h("button.mini", { title: "Cherche la tête sur l'image de face et vise la bouche", on: { click: () => autoMouth(l) } }, "◎ Repérer la bouche"),
-        h("button.mini" + (placing === l.id ? ".on" : ""), { title: "Puis clique dans l'image, à l'endroit de la bouche", on: { click: () => { placing = placing === l.id ? null : l.id; svg.style.cursor = placing ? "crosshair" : ""; props(); } } }, placing === l.id ? "Clique sur la bouche…" : "✛ Placer à la main")),
-        plain("Taille", "s", 0.005, 0.2, 0.001, 0.035), plain("Position ↔", "x", 0, 1, 0.002, 0.5), plain("Position ↕", "y", 0, 1, 0.002, 0.13),
-        h("div", { title: "Rayon de l'axe sur lequel la bouche tourne avec l'orbite : plus il est grand, plus la bouche part sur le côté quand le personnage tourne." }, plain("Axe de la tête ⓘ", "hw", 0, 0.15, 0.001, 0.03)),
-        plain("Inclinaison", "r", -60, 60, 1, 0, (x) => Math.round(x) + "°"),
-        h("label.row", { title: "Simple : fermée sur les silences ; dès que ça parle, elle alterne ouverte et fermée. Varié : pareil, mais la bouche ouverte change selon le son. Détaillé : les neuf bouches, sans battement." }, "Lip sync",
+        h("button.mini", { title: tt("Cherche la tête sur l'image de face et vise la bouche"), on: { click: () => autoMouth(l) } }, tt("◎ Repérer la bouche")),
+        h("button.mini" + (placing === l.id ? ".on" : ""), { title: tt("Puis clique dans l'image, à l'endroit de la bouche"), on: { click: () => { placing = placing === l.id ? null : l.id; svg.style.cursor = placing ? "crosshair" : ""; props(); } } }, placing === l.id ? tt("Clique sur la bouche…") : tt("✛ Placer à la main"))),
+        plain(tt("Taille"), "s", 0.005, 0.2, 0.001, 0.035), plain(tt("Position ↔"), "x", 0, 1, 0.002, 0.5), plain(tt("Position ↕"), "y", 0, 1, 0.002, 0.13),
+        h("div", { title: tt("Rayon de l'axe sur lequel la bouche tourne avec l'orbite : plus il est grand, plus la bouche part sur le côté quand le personnage tourne.") }, plain(tt("Axe de la tête ⓘ"), "hw", 0, 0.15, 0.001, 0.03)),
+        plain(tt("Inclinaison"), "r", -60, 60, 1, 0, (x) => Math.round(x) + "°"),
+        h("label.row", { title: tt("Simple : fermée sur les silences ; dès que ça parle, elle alterne ouverte et fermée. Varié : pareil, mais la bouche ouverte change selon le son. Détaillé : les neuf bouches, sans battement.") }, tt("Lip sync"),
           h("select", { on: { change: (e) => { put("mode", e.target.value); lanes(); props(); } } }, Object.entries(MODES).map(([k, n]) => h("option", { value: k, selected: (lip.mode || "simple") === k }, n)))),
-        lip.mode !== "detail" ? h("div", { title: "Nombre de battements de bouche par seconde pendant que ça parle" }, plain("Rythme ⓘ", "flap", 1.5, 6, 0.5, 4, (x) => (+x).toFixed(1) + " /s")) : "",
-        (lip.set || "capsule") === "capsule" ? h("div", { title: "Taille de la bouche ouverte, par rapport au trait de la bouche fermée" }, plain("Ouverture ↔ ⓘ", "ow", 0.15, 1.2, 0.01, 0.55, (x) => (+x).toFixed(2)), plain("Ouverture ↕", "oh", 0.2, 2.5, 0.01, 1, (x) => (+x).toFixed(2))) : "",
-        h("label.row", { title: "Le dessin des bouches" }, "Jeu de bouches", h("select", { on: { change: (e) => { put("set", e.target.value); props(); } } }, Object.entries(SETS).map(([k, n]) => h("option", { value: k, selected: (lip.set || "capsule") === k }, n)))),
-        fold("lipt", "Trait de la bouche", plain("Épaisseur", "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain("Tremblé", "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain("Ondulation", "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))),
-        h("label.row.check", { title: "Une forme derrière la bouche, pour couvrir celle du dessin. Elle prend la couleur choisie pour le personnage (blanc s'il n'en a pas)." }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => { put("bg", e.target.checked); props(); } } }), "Masque de peau"));
-      if (lip.bg !== false) rows.push(fold("lipm", "Réglages du masque", plain("Largeur", "mw", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)), plain("Hauteur", "mh", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)),
-        plain("Décalage ↔", "mx", -120, 120, 1, 0, (x) => String(Math.round(x))), plain("Décalage ↕", "my", -120, 120, 1, 0, (x) => String(Math.round(x))),
-        h("label.row.check", { title: "Montre le masque en rose le temps de l'aligner" }, h("input", { type: "checkbox", checked: !!showMask, on: { change: (e) => { showMask = e.target.checked; paint(); } } }), "Voir le masque")));
+        lip.mode !== "detail" ? h("div", { title: tt("Nombre de battements de bouche par seconde pendant que ça parle") }, plain(tt("Rythme ⓘ"), "flap", 1.5, 6, 0.5, 4, (x) => (+x).toFixed(1) + " /s")) : "",
+        (lip.set || "capsule") === "capsule" ? h("div", { title: tt("Taille de la bouche ouverte, par rapport au trait de la bouche fermée") }, plain(tt("Ouverture ↔ ⓘ"), "ow", 0.15, 1.2, 0.01, 0.55, (x) => (+x).toFixed(2)), plain(tt("Ouverture ↕"), "oh", 0.2, 2.5, 0.01, 1, (x) => (+x).toFixed(2))) : "",
+        h("label.row", { title: tt("Le dessin des bouches") }, tt("Jeu de bouches"), h("select", { on: { change: (e) => { put("set", e.target.value); props(); } } }, Object.entries(SETS).map(([k, n]) => h("option", { value: k, selected: (lip.set || "capsule") === k }, n)))),
+        fold("lipt", tt("Trait de la bouche"), plain(tt("Épaisseur"), "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain(tt("Tremblé"), "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain(tt("Ondulation"), "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))),
+        h("label.row.check", { title: tt("Une forme derrière la bouche, pour couvrir celle du dessin. Elle prend la couleur choisie pour le personnage (blanc s'il n'en a pas).") }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => { put("bg", e.target.checked); props(); } } }), tt("Masque de peau")));
+      if (lip.bg !== false) rows.push(fold("lipm", tt("Réglages du masque"), plain(tt("Largeur"), "mw", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)), plain(tt("Hauteur"), "mh", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)),
+        plain(tt("Décalage ↔"), "mx", -120, 120, 1, 0, (x) => String(Math.round(x))), plain(tt("Décalage ↕"), "my", -120, 120, 1, 0, (x) => String(Math.round(x))),
+        h("label.row.check", { title: tt("Montre le masque en rose le temps de l'aligner") }, h("input", { type: "checkbox", checked: !!showMask, on: { change: (e) => { showMask = e.target.checked; paint(); } } }), tt("Voir le masque"))));
       if (lip.cues) {
-        const simple = lip.mode !== "detail" && lip.mode !== "mix", force = (sh) => { const i = cueIndex(lip, t); if (i < 0) return toast("La tête de lecture est hors de la voix."); const c = lip.cues.split(""); for (let q = i; q < Math.min(c.length, i + 2); q++) c[q] = sh; put("cues", c.join("")); props(); };
-        rows.push(plain("Décalage (s)", "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2)),
-          h("div.muted", { title: "Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée." }, `Bouche à cet instant ⓘ : ${MOUTHS[cueAt(lip, t)]}`),
+        const simple = lip.mode !== "detail" && lip.mode !== "mix", force = (sh) => { const i = cueIndex(lip, t); if (i < 0) return toast(tt("La tête de lecture est hors de la voix.")); const c = lip.cues.split(""); for (let q = i; q < Math.min(c.length, i + 2); q++) c[q] = sh; put("cues", c.join("")); props(); };
+        rows.push(plain(tt("Décalage (s)"), "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2)),
+          h("div.muted", { title: tt("Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée.") }, tt`Bouche à cet instant ⓘ : ${MOUTHS[cueAt(lip, t)]}`),
           h("div.row.wrap.mouths", (simple ? SIMPLE : Object.keys(MOUTHS)).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); b.innerHTML = mouthIcon(k, lip.set); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));
       }
     }
-    return h("div", h("h4", { title: "Une voix importée ou enregistrée fait parler le personnage : le navigateur écoute le son et appelle la bonne bouche, sans calcul sur les machines." }, "🗣 Voix et bouche ⓘ"), fold("lip", "Réglages de la voix", ...rows));
+    return h("div", h("h4", { title: tt("Une voix importée ou enregistrée fait parler le personnage : le navigateur écoute le son et appelle la bonne bouche, sans calcul sur les machines.") }, tt("🗣 Voix et bouche ⓘ")), fold("lip", tt("Réglages de la voix"), ...rows));
   }
 
   // ------------------------------------------------------------------------------------------ timeline (bas)
@@ -659,24 +660,24 @@ export function openMontage(app, pid) {
     const ruler = h("div.mt-lane.ruler", { "data-lane": "ruler" }, ticks.map((s) => h("span.tick", { style: `left:${pct(s)}` }, Number.isInteger(s) ? s + " s" : "")));
     tl.append(h("div.mt-row", h("div.mt-name", ""), ruler));
     const row = (id, name, ico) => {
-      const lane = h("div.mt-lane", { "data-lane": id }, keysOf(id).map((k) => { const d = h("span.key" + (k === selKey || picked.has(k) ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: `${k.t.toFixed(2)} s · ${EASES[k.e || "doux"]} (clic droit pour changer)` }); d.__key = k; d.dataset.key = id; return d; }));
+      const lane = h("div.mt-lane", { "data-lane": id }, keysOf(id).map((k) => { const d = h("span.key" + (k === selKey || picked.has(k) ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: tt`${k.t.toFixed(2)} s · ${EASES[k.e || "doux"]} (clic droit pour changer)` }); d.__key = k; d.dataset.key = id; return d; }));
       tl.append(h("div.mt-row" + (sel === id ? ".on" : ""), h("div.mt-name", { on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, ico, " ", name, keysOf(id).length ? h("span.count", String(keysOf(id).length)) : ""), lane));
     };
-    row("cam", "Caméra", "🎥");
-    if (dof.on) { row("fo", "Mise au point", "◎"); row("bl", "Flou", "◌"); }
-    if (fxAnim()) row("fx", "Lignes d'effet", "⚡");
+    row("cam", tt("Caméra"), "🎥");
+    if (dof.on) { row("fo", tt("Mise au point"), "◎"); row("bl", tt("Flou"), "◌"); }
+    if (fxAnim()) row("fx", tt("Lignes d'effet"), "⚡");
     for (const l of [...pan.layers].reverse()) {
-      const name = itemOf(l) ? itemOf(l).name : "élément";
+      const name = itemOf(l) ? itemOf(l).name : tt("élément");
       row(l.id, name, "●");
       const lip = l.lip;
       if (lip && lip.src) {                                // la voix du personnage : un bloc a deplacer et a raccourcir par ses deux bouts
         const [va, vb] = voiceSpan(lip), fps = lip.fps || 12, c = lip.cues || "", i0 = Math.floor(va * fps), i1 = Math.max(i0 + 1, Math.ceil(vb * fps));
         let bars = "";
         for (let i = i0; i < i1; i++) if (c[i] && c[i] !== "X") bars += `<rect x="${i - i0}" y="${c[i] === "M" ? 0.35 : "AOL".includes(c[i]) ? 0.05 : 0.2}" width="1.05" height="${c[i] === "M" ? 0.3 : "AOL".includes(c[i]) ? 0.9 : 0.6}"/>`;
-        const clip = h("div.mt-clip", { "data-clip": l.id, title: `${lip.name || "voix"} · glisser pour déplacer, tirer un bout pour raccourcir`, style: `left:${pct(lip.off || 0)};width:${pct(vb - va)}` },
+        const clip = h("div.mt-clip", { "data-clip": l.id, title: tt`${lip.name || "voix"} · glisser pour déplacer, tirer un bout pour raccourcir`, style: `left:${pct(lip.off || 0)};width:${pct(vb - va)}` },
           h("span.dk-h.l", { "data-edge": "in" }), h("span.dk-h.r", { "data-edge": "out" }));
         clip.insertAdjacentHTML("afterbegin", `<svg viewBox="0 0 ${i1 - i0} 1" preserveAspectRatio="none">${bars}</svg>`);
-        tl.append(h("div.mt-row.voice", h("div.mt-name", { title: `Voix de ${name}`, on: { click: () => { sel = l.id; selKey = null; paint(); lanes(); props(); } } }, "🔊 ", name), h("div.mt-lane", { "data-lane": l.id }, clip)));
+        tl.append(h("div.mt-row.voice", h("div.mt-name", { title: tt`Voix de ${name}`, on: { click: () => { sel = l.id; selKey = null; paint(); lanes(); props(); } } }, "🔊 ", name), h("div.mt-lane", { "data-lane": l.id }, clip)));
       }
     }
     tl.append(h("div.mt-head", { style: `left:calc(var(--mt-name) + var(--mt-pad) + (100% - var(--mt-name) - 2 * var(--mt-pad)) * ${t / anim.dur})` }));
@@ -830,7 +831,7 @@ export function openMontage(app, pid) {
   }, { passive: false });
 
   // ------------------------------------------------------------------------------------------ lecture
-  const playBtn = h("button.mini.mt-play", { on: { click: () => (playing ? stop() : play()) } }, "▶ Lecture");
+  const playBtn = h("button.mini.mt-play", { on: { click: () => (playing ? stop() : play()) } }, tt("▶ Lecture"));
   function tick(now) {
     if (!playing) return;
     t += (now - last) / 1000; last = now;
@@ -838,8 +839,8 @@ export function openMontage(app, pid) {
     paint(); head(); voices(true);
     raf = requestAnimationFrame(tick);
   }
-  function play() { if (t >= anim.dur - 0.01) t = 0; playing = true; playBtn.textContent = "⏸ Pause"; last = performance.now(); raf = requestAnimationFrame(tick); }
-  function stop() { if (!playing) return; playing = false; voices(false); cancelAnimationFrame(raf); playBtn.textContent = "▶ Lecture"; paint(); lanes(); props(); }
+  function play() { if (t >= anim.dur - 0.01) t = 0; playing = true; playBtn.textContent = tt("⏸ Pause"); last = performance.now(); raf = requestAnimationFrame(tick); }
+  function stop() { if (!playing) return; playing = false; voices(false); cancelAnimationFrame(raf); playBtn.textContent = tt("▶ Lecture"); paint(); lanes(); props(); }
   // Ctrl+Z / Ctrl+Y : les 5 dernieres actions (elements, cles, camera, profondeur de champ)
   const hist = history(() => ({ layers: pan.layers, anim, dof, draw: pan.draw || null }), (st) => {
     if (st.draw) pan.draw = st.draw;
@@ -868,11 +869,11 @@ export function openMontage(app, pid) {
   document.addEventListener("keydown", key, true);
   const done = () => { playing = false; voices(false); if (rec) { try { rec.stop(); } catch (e) { /* rien */ } } cancelAnimationFrame(raf); document.removeEventListener("keydown", key, true); };
 
-  const dur = h("input", { type: "number", min: 0.5, max: 60, step: 0.5, value: anim.dur, title: "Durée du plan, en secondes",
-    on: { change: (e) => { const d = clamp(+e.target.value || 4, 0.5, 60), k = d / anim.dur; if (confirm("Étirer aussi les clés sur la nouvelle durée ?\nAnnuler : les clés gardent leur instant.")) for (const ks of Object.values(anim.tracks)) for (const x of ks) x.t = f3(x.t * k); anim.dur = d; t = Math.min(t, d); paint(); lanes(); props(); } } });
-  const fullBtn = h("button.mini", { title: "La fenêtre de montage prend tout l'écran", on: { click: () => { const on = m.box.classList.toggle("modal-full"); fullBtn.textContent = on ? "🗗 Fenêtre" : "⛶ Plein écran"; } } }, "⛶ Plein écran");
-  const depthBtn = h("button.mini", { title: "Schéma vu de dessus : chaque élément est une carte, à glisser vers le fond ou vers la caméra",
-    on: { click: () => { depthView = !depthView; depthBtn.textContent = depthView ? "🖼 Image" : "⬒ Profondeur"; depthBtn.classList.toggle("on", depthView); paint(); } } }, "⬒ Profondeur");
+  const dur = h("input", { type: "number", min: 0.5, max: 60, step: 0.5, value: anim.dur, title: tt("Durée du plan, en secondes"),
+    on: { change: (e) => { const d = clamp(+e.target.value || 4, 0.5, 60), k = d / anim.dur; if (confirm(tt("Étirer aussi les clés sur la nouvelle durée ?\nAnnuler : les clés gardent leur instant."))) for (const ks of Object.values(anim.tracks)) for (const x of ks) x.t = f3(x.t * k); anim.dur = d; t = Math.min(t, d); paint(); lanes(); props(); } } });
+  const fullBtn = h("button.mini", { title: tt("La fenêtre de montage prend tout l'écran"), on: { click: () => { const on = m.box.classList.toggle("modal-full"); fullBtn.textContent = on ? tt("🗗 Fenêtre") : tt("⛶ Plein écran"); } } }, tt("⛶ Plein écran"));
+  const depthBtn = h("button.mini", { title: tt("Schéma vu de dessus : chaque élément est une carte, à glisser vers le fond ou vers la caméra"),
+    on: { click: () => { depthView = !depthView; depthBtn.textContent = depthView ? tt("🖼 Image") : tt("⬒ Profondeur"); depthBtn.classList.toggle("on", depthView); paint(); } } }, tt("⬒ Profondeur"));
   const save = () => {
     done();
     const real = pg.panels[pid] || (pg.panels[pid] = {});
@@ -883,26 +884,26 @@ export function openMontage(app, pid) {
     real.anim = anim;
     app.commit("montage"); app.editor.render(); app.refreshInspector();
   };
-  const bar = h("div.mt-bar", h("button.mini", { title: "Revenir au début", on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn,
-    h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), "En boucle"), clock,
-    h("span.muted", { title: "Dans une piste : glisser trace un lasso qui prend les clés, Ctrl + clic en ajoute une. Les clés prises se déplacent ensemble et s'effacent avec Suppr. La règle des secondes déplace la tête de lecture." }, "Maj : aimant sur les clés · glisser : lasso ⓘ"),
+  const bar = h("div.mt-bar", h("button.mini", { title: tt("Revenir au début"), on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn,
+    h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), tt("En boucle")), clock,
+    h("span.muted", { title: tt("Dans une piste : glisser trace un lasso qui prend les clés, Ctrl + clic en ajoute une. Les clés prises se déplacent ensemble et s'effacent avec Suppr. La règle des secondes déplace la tête de lecture.") }, tt("Maj : aimant sur les clés · glisser : lasso ⓘ")),
     h("span.spacer"),
-    h("button.mini.danger", { title: "Retire toutes les clés de toutes les pistes : chaque élément et la caméra reviennent à leur place de départ. Ctrl+Z pour revenir en arrière.", on: { click: () => {
+    h("button.mini.danger", { title: tt("Retire toutes les clés de toutes les pistes : chaque élément et la caméra reviennent à leur place de départ. Ctrl+Z pour revenir en arrière."), on: { click: () => {
       const n = Object.values(anim.tracks).reduce((q, ks) => q + ks.length, 0);
-      if (!n) return toast("Aucune clé à effacer.");
-      if (!confirm(`Effacer toute l'animation de cette case ?
+      if (!n) return toast(tt("Aucune clé à effacer."));
+      if (!confirm(tt`Effacer toute l'animation de cette case ?
 ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.tracks[k].length).length} piste(s). Les voix et les réglages des éléments sont gardés.`)) return;
       stop(); hist.snap();
       for (const k of Object.keys(anim.tracks)) delete anim.tracks[k];
       picked.clear(); selKey = null; hist.snap(); paint(); lanes(); props();
-      toast("Animation effacée. Ctrl+Z pour la retrouver.");
-    } } }, "🧹 Effacer l'animation"),
-    depthBtn, h("label.row", "Durée (s)", dur));
+      toast(tt("Animation effacée. Ctrl+Z pour la retrouver."));
+    } } }, tt("🧹 Effacer l'animation")),
+    depthBtn, h("label.row", tt("Durée (s)"), dur));
   paint(); lanes(); props();
-  const m = modal(`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, keyBox, tl),
-    [{ label: "Annuler", click: done },
-     { label: "Enregistrer le montage", click: () => { save(); toast("Montage enregistré."); } },
-     { label: "Enregistrer et envoyer dans le deck ▸", primary: true, click: () => { save(); app.sendToDeck(pid); } }]);
+  const m = modal(tt`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, keyBox, tl),
+    [{ label: tt("Annuler"), click: done },
+     { label: tt("Enregistrer le montage"), click: () => { save(); toast(tt("Montage enregistré.")); } },
+     { label: tt("Enregistrer et envoyer dans le deck ▸"), primary: true, click: () => { save(); app.sendToDeck(pid); } }]);
   m.box.classList.add("modal-wide", "modal-montage");
   { const hd = m.box.querySelector("header"); fullBtn.classList.add("head-full"); hd.insertBefore(fullBtn, hd.querySelector("button.icon")); }   // plein ecran : en haut a droite, a cote de la croix
   hist.watch(m.box);

@@ -10,24 +10,25 @@
 // (0 = devant, pi/2 = cote droit de l'ecran quand la tete est de face, pi = derriere) et sa hauteur y.
 // psi : orientation de la tete en radians (0 = de face, positif = elle tourne vers la gauche de l'ecran, comme l'orbite).
 
+import { tt, tr } from "./i18n.js";
 import { sprite, vecReady, variantOf, frameToAngle } from "./model.js";
 
-export const FORMES = { ovale: ["Ovale", 0.76, 2, 2, 0.12], rond: ["Rond", 0.92, 2, 2.2, 0], carre: ["Carré", 0.82, 2.6, 3.2, 0.04],
-  long: ["Long", 0.64, 2, 2.3, 0.1], coeur: ["Triangle", 0.86, 2.2, 1.7, 0.3], poire: ["Poire", 0.7, 2, 2.7, -0.28] };
-export const YEUX = { points: "Points", ronds: "Ronds", grands: "Grands", amandes: "Amandes", traits: "Traits", arcs: "Rieurs" };
-export const SOURCILS = { aucun: "Aucun", droits: "Droits", arques: "Arqués", fronces: "Froncés", tristes: "Tristes", epais: "Épais" };
-export const NEZ = { trait: "Trait", rond: "Rond", pointu: "Pointu", patate: "Patate", points: "Deux points", aucun: "Aucun" };
-export const BOUCHES = { sourire: "Sourire", neutre: "Neutre", moue: "Moue", ouverte: "Ouverte", grand: "Grand sourire" };
+export const FORMES = { ovale: [tt("Ovale"), 0.76, 2, 2, 0.12], rond: [tt("Rond"), 0.92, 2, 2.2, 0], carre: [tt("Carré"), 0.82, 2.6, 3.2, 0.04],
+  long: [tt("Long"), 0.64, 2, 2.3, 0.1], coeur: [tt("Triangle"), 0.86, 2.2, 1.7, 0.3], poire: [tt("Poire"), 0.7, 2, 2.7, -0.28] };
+export const YEUX = { points: tt("Points"), ronds: tt("Ronds"), grands: tt("Grands"), amandes: tt("Amandes"), traits: tt("Traits"), arcs: tt("Rieurs") };
+export const SOURCILS = { aucun: tt("Aucun"), droits: tt("Droits"), arques: tt("Arqués"), fronces: tt("Froncés"), tristes: tt("Tristes"), epais: tt("Épais") };
+export const NEZ = { trait: tt("Trait"), rond: tt("Rond"), pointu: tt("Pointu"), patate: tt("Patate"), points: tt("Deux points"), aucun: tt("Aucun") };
+export const BOUCHES = { sourire: tt("Sourire"), neutre: tt("Neutre"), moue: tt("Moue"), ouverte: tt("Ouverte"), grand: tt("Grand sourire") };
 // cheveux : [nom, haut du front, largeur du visage degage (radians), niveau de la nuque (au-dela : peau), pente de la raie]
-export const CHEVEUX = { chauve: ["Chauve"], court: ["Courts", -0.55, 1.2, 0.4, 0], raie: ["Raie", -0.5, 1.15, 0.4, 0.2],
-  frange: ["Frange", -0.26, 1.08, 0.4, 0], degarni: ["Dégarni", -1.3, 1.1, 0.35, 0], carre: ["Carré", -0.3, 1.0, 2, 0],
-  long: ["Longs", -0.5, 0.98, 2, 0.12], chignon: ["Chignon", -0.55, 1.15, 2, 0], queue: ["Queue", -0.55, 1.15, 2, 0],
-  afro: ["Afro", -0.42, 1.05, 2, 0], herisse: ["Hérissés", -0.6, 1.2, 0.4, 0], crete: ["Crête"] };
-export const LUNETTES = { aucune: "Aucune", rondes: "Rondes", carrees: "Carrées" };
+export const CHEVEUX = { chauve: [tt("Chauve")], court: [tt("Courts"), -0.55, 1.2, 0.4, 0], raie: [tt("Raie"), -0.5, 1.15, 0.4, 0.2],
+  frange: [tt("Frange"), -0.26, 1.08, 0.4, 0], degarni: [tt("Dégarni"), -1.3, 1.1, 0.35, 0], carre: [tt("Carré"), -0.3, 1.0, 2, 0],
+  long: [tt("Longs"), -0.5, 0.98, 2, 0.12], chignon: [tt("Chignon"), -0.55, 1.15, 2, 0], queue: [tt("Queue"), -0.55, 1.15, 2, 0],
+  afro: [tt("Afro"), -0.42, 1.05, 2, 0], herisse: [tt("Hérissés"), -0.6, 1.2, 0.4, 0], crete: [tt("Crête")] };
+export const LUNETTES = { aucune: tt("Aucune"), rondes: tt("Rondes"), carrees: tt("Carrées") };
 export const DEFAUT = { forme: "ovale", yeux: "points", sourcils: "droits", nez: "trait", bouche: "sourire", cheveux: "court",
   lunettes: "aucune", moustache: false, barbe: false, oreilles: true, k: 1.15, dx: 0, dy: 0, peau: "", poil: "", lw: 1 };
-export const PIECES = [["forme", "Tête", FORMES], ["cheveux", "Cheveux", CHEVEUX], ["yeux", "Yeux", YEUX], ["sourcils", "Sourcils", SOURCILS],
-  ["nez", "Nez", NEZ], ["bouche", "Bouche", BOUCHES], ["lunettes", "Lunettes", LUNETTES]];
+export const PIECES = [["forme", tt("Tête"), FORMES], ["cheveux", tt("Cheveux"), CHEVEUX], ["yeux", tt("Yeux"), YEUX], ["sourcils", tt("Sourcils"), SOURCILS],
+  ["nez", tt("Nez"), NEZ], ["bouche", tt("Bouche"), BOUCHES], ["lunettes", tt("Lunettes"), LUNETTES]];
 const nameOf = (v) => (Array.isArray(v) ? v[0] : v);
 export const labelOf = (table, key) => nameOf(table[key]);
 

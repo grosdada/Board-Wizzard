@@ -8,9 +8,10 @@
 //                  set (jeu de bouches : dessin | graphique), lw (epaisseur du trait), hand, wave (tremble du trait), bg (masque blanc), mw, mh, mx, my (son reglage) }
 // La bouche est accrochee a un axe vertical qui tourne avec l'orbite : de trois quarts elle glisse sur le cote et se
 // resserre, de dos elle disparait.
+import { tt, tr } from "./i18n.js";
 
 export const MOUTHS = {
-  X: "Repos (fermée)", M: "M · B · P", A: "A · I ouvert", E: "É · I · sourire", O: "O", U: "OU · W", F: "F · V", D: "C · D · G · K · N · R · S", L: "L · T · TH",
+  X: tt("Repos (fermée)"), M: "M · B · P", A: tt("A · I ouvert"), E: tt("É · I · sourire"), O: "O", U: tt("OU · W"), F: "F · V", D: "C · D · G · K · N · R · S", L: "L · T · TH",
 };
 const INK = `stroke="#111" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"`;
 const SHAPES = {
@@ -53,27 +54,27 @@ const PLAIN = { X: LINE, M: LINE, F: LINE, A: CAPSULE, E: CAPSULE, O: CAPSULE, U
 // noir et blanc, cNN.png en couleurs d'origine), toutes dans un cadre 360 x 240 donc a la meme echelle.
 // [nom affiche, dossier/prefixe, numero de la carte pour chaque bouche]
 const IMG_SETS = {
-  pate: ["Pâte à modeler · au trait, avec dents", "pate/n", { X: 12, M: 9, A: 2, E: 4, O: 0, U: 3, F: 11, D: 6, L: 7 }],
-  pate2: ["Pâte à modeler · au trait, bouches rondes", "pate/n", { X: 12, M: 10, A: 5, E: 1, O: 0, U: 3, F: 11, D: 6, L: 8 }],
-  patec: ["Pâte à modeler · couleurs, avec dents", "pate/c", { X: 12, M: 9, A: 2, E: 4, O: 0, U: 3, F: 11, D: 6, L: 7 }],
-  pate2c: ["Pâte à modeler · couleurs, bouches rondes", "pate/c", { X: 12, M: 10, A: 5, E: 1, O: 0, U: 3, F: 11, D: 6, L: 8 }],
-  toon: ["Cartoon · au trait, par sons", "toon/n", { X: 5, M: 5, A: 0, E: 7, O: 1, U: 10, F: 6, D: 2, L: 4 }],
-  toon2: ["Cartoon · au trait, souriant", "toon/n", { X: 23, M: 13, A: 19, E: 14, O: 20, U: 11, F: 18, D: 22, L: 17 }],
-  toon3: ["Cartoon · au trait, dents serrées", "toon/n", { X: 5, M: 23, A: 12, E: 9, O: 11, U: 10, F: 21, D: 15, L: 8 }],
-  toonc: ["Cartoon · couleurs, par sons", "toon/c", { X: 5, M: 5, A: 0, E: 7, O: 1, U: 10, F: 6, D: 2, L: 4 }],
-  toon2c: ["Cartoon · couleurs, souriant", "toon/c", { X: 23, M: 13, A: 19, E: 14, O: 20, U: 11, F: 18, D: 22, L: 17 }],
-  expr: ["Expressif · au trait, par sons", "expr/n", { X: 29, M: 20, A: 22, E: 27, O: 5, U: 16, F: 15, D: 18, L: 6 }],
-  expr2: ["Expressif · au trait, joyeux", "expr/n", { X: 38, M: 37, A: 39, E: 17, O: 21, U: 11, F: 7, D: 28, L: 25 }],
-  expr3: ["Expressif · au trait, en colère", "expr/n", { X: 59, M: 56, A: 50, E: 51, O: 24, U: 48, F: 46, D: 57, L: 9 }],
-  expr4: ["Expressif · au trait, triste", "expr/n", { X: 41, M: 42, A: 30, E: 31, O: 34, U: 53, F: 36, D: 33, L: 32 }],
-  exprc: ["Expressif · couleurs, par sons", "expr/c", { X: 29, M: 20, A: 22, E: 27, O: 5, U: 16, F: 15, D: 18, L: 6 }],
-  expr2c: ["Expressif · couleurs, joyeux", "expr/c", { X: 38, M: 37, A: 39, E: 17, O: 21, U: 11, F: 7, D: 28, L: 25 }],
-  noir: ["Tordu · au trait", "noir/n", { X: 2, M: 11, A: 0, E: 4, O: 1, U: 10, F: 3, D: 6, L: 5 }],
-  noir2: ["Tordu · au trait, de travers", "noir/n", { X: 11, M: 2, A: 9, E: 7, O: 10, U: 13, F: 3, D: 8, L: 12 }],
-  noirc: ["Tordu · couleurs", "noir/c", { X: 2, M: 11, A: 0, E: 4, O: 1, U: 10, F: 3, D: 6, L: 5 }],
+  pate: [tt("Pâte à modeler · au trait, avec dents"), "pate/n", { X: 12, M: 9, A: 2, E: 4, O: 0, U: 3, F: 11, D: 6, L: 7 }],
+  pate2: [tt("Pâte à modeler · au trait, bouches rondes"), "pate/n", { X: 12, M: 10, A: 5, E: 1, O: 0, U: 3, F: 11, D: 6, L: 8 }],
+  patec: [tt("Pâte à modeler · couleurs, avec dents"), "pate/c", { X: 12, M: 9, A: 2, E: 4, O: 0, U: 3, F: 11, D: 6, L: 7 }],
+  pate2c: [tt("Pâte à modeler · couleurs, bouches rondes"), "pate/c", { X: 12, M: 10, A: 5, E: 1, O: 0, U: 3, F: 11, D: 6, L: 8 }],
+  toon: [tt("Cartoon · au trait, par sons"), "toon/n", { X: 5, M: 5, A: 0, E: 7, O: 1, U: 10, F: 6, D: 2, L: 4 }],
+  toon2: [tt("Cartoon · au trait, souriant"), "toon/n", { X: 23, M: 13, A: 19, E: 14, O: 20, U: 11, F: 18, D: 22, L: 17 }],
+  toon3: [tt("Cartoon · au trait, dents serrées"), "toon/n", { X: 5, M: 23, A: 12, E: 9, O: 11, U: 10, F: 21, D: 15, L: 8 }],
+  toonc: [tt("Cartoon · couleurs, par sons"), "toon/c", { X: 5, M: 5, A: 0, E: 7, O: 1, U: 10, F: 6, D: 2, L: 4 }],
+  toon2c: [tt("Cartoon · couleurs, souriant"), "toon/c", { X: 23, M: 13, A: 19, E: 14, O: 20, U: 11, F: 18, D: 22, L: 17 }],
+  expr: [tt("Expressif · au trait, par sons"), "expr/n", { X: 29, M: 20, A: 22, E: 27, O: 5, U: 16, F: 15, D: 18, L: 6 }],
+  expr2: [tt("Expressif · au trait, joyeux"), "expr/n", { X: 38, M: 37, A: 39, E: 17, O: 21, U: 11, F: 7, D: 28, L: 25 }],
+  expr3: [tt("Expressif · au trait, en colère"), "expr/n", { X: 59, M: 56, A: 50, E: 51, O: 24, U: 48, F: 46, D: 57, L: 9 }],
+  expr4: [tt("Expressif · au trait, triste"), "expr/n", { X: 41, M: 42, A: 30, E: 31, O: 34, U: 53, F: 36, D: 33, L: 32 }],
+  exprc: [tt("Expressif · couleurs, par sons"), "expr/c", { X: 29, M: 20, A: 22, E: 27, O: 5, U: 16, F: 15, D: 18, L: 6 }],
+  expr2c: [tt("Expressif · couleurs, joyeux"), "expr/c", { X: 38, M: 37, A: 39, E: 17, O: 21, U: 11, F: 7, D: 28, L: 25 }],
+  noir: [tt("Tordu · au trait"), "noir/n", { X: 2, M: 11, A: 0, E: 4, O: 1, U: 10, F: 3, D: 6, L: 5 }],
+  noir2: [tt("Tordu · au trait, de travers"), "noir/n", { X: 11, M: 2, A: 9, E: 7, O: 10, U: 13, F: 3, D: 8, L: 12 }],
+  noirc: [tt("Tordu · couleurs"), "noir/c", { X: 2, M: 11, A: 0, E: 4, O: 1, U: 10, F: 3, D: 6, L: 5 }],
 };
 const CARD = (path, n) => `<image href="/web/mouths/${path}${String(n).padStart(2, "0")}.png" x="-60" y="-40" width="120" height="80"/>`;
-export const SETS = { capsule: "Trait et capsule", dessin: "Dessiné (trait fin)", graphique: "Graphique (plein)" };
+export const SETS = { capsule: tt("Trait et capsule"), dessin: tt("Dessiné (trait fin)"), graphique: tt("Graphique (plein)") };
 const SETMAP = { capsule: PLAIN, dessin: DRAWN, graphique: SHAPES };
 for (const [k, [name, path, map]] of Object.entries(IMG_SETS)) { SETS[k] = name; SETMAP[k] = Object.fromEntries(Object.entries(map).map(([c, n]) => [c, CARD(path, n)])); }
 /** Dessin d'une bouche en traces, centree sur l'origine, large d'environ 100.
@@ -103,7 +104,7 @@ export const mouthIcon = (shape, set) => `<svg viewBox="-56 -44 112 100" width="
 
 // Lip sync simple (par defaut) : deux bouches seulement. Fermee sur les silences ; des que ca parle, elle alterne
 // ouverte et fermee (lip.flap battements par seconde, 4 par defaut) pour imiter le mouvement.
-export const MODES = { simple: "Simple : la bouche bat quand ça parle", mix: "Varié : elle bat, et s'ouvre selon le son", detail: "Détaillé : neuf bouches" };
+export const MODES = { simple: tt("Simple : la bouche bat quand ça parle"), mix: tt("Varié : elle bat, et s'ouvre selon le son"), detail: tt("Détaillé : neuf bouches") };
 export const SIMPLE = ["X", "A"];
 const simpleCache = new Map();
 export function simplify(cues, rate = 4, varied = false) {

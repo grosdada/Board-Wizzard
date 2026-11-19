@@ -1,0 +1,27 @@
+# Textes que tools/i18n.py ne doit pas signaler : une ligne = un texte exact.
+# Consignes envoyees aux modeles (deja en anglais, ne se traduisent pas)
+Redraw this rough collage as one coherent storyboard drawing in a single consistent line style. Keep every character and object exactly where it is, same pose, same size, same framing.
+Turn this rough collage into one coherent photograph. Keep every character and object exactly where it is, same pose, same size, same framing. Unify the lighting and colour, add contact shadows, blend the cut-out edges.
+# Donnees : dossiers crees par l'application (les memes dans les deux langues, sinon la banque se coupe en deux)
+Portraits-robots
+Personnages assemblés
+# Identifiants (valeurs comparees ou enregistrees, jamais affichees telles quelles), limites a leur fichier
+bank.js: Space
+face.js: droits
+face.js: court
+face.js: long
+face.js: grands
+face.js: arques
+face.js: neutre
+face.js: ouverte
+face.js: grand
+geometry.js: page.
+lipsync.js: A
+main.js: fal:fal-ai/qwen-image-edit-plus
+montage.js: fixe
+# Noms des langues du bouton de changement de langue (les memes dans les deux langues)
+Français
+English
+login.html: Français
+main.js: EN
+main.js: FR

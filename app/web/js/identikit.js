@@ -2,6 +2,7 @@
 // (forme du visage, cheveux, yeux, sourcils, nez, bouche, oreilles, moustache, barbe, lunettes, signes, couvre-chef).
 // Les elements viennent de la banque d'elements (data/parts, /api/parts) ; on peut en dessiner de nouveaux dans l'atelier.
 // Le visage monte part dans la banque comme une image a part entiere.
+import { tt, tr } from "./i18n.js";
 import { h, get, del, upload, toast, modal } from "./api.js";
 import { openDrawEditor, drawImage } from "./draw.js";
 
@@ -20,11 +21,12 @@ const ratioOf = (file) => new Promise((ok) => {
 
 export async function openIdentikit(bankUI) {
   let cats;
-  try { cats = await get("parts"); } catch (e) { return toast("Banque d'éléments indisponible : " + e.message, "error"); }
+  try { cats = await get("parts"); } catch (e) { return toast(tt("Banque d'éléments indisponible : ") + e.message, "error"); }
+  for (const c of cats) { c.label = tr(c.label); for (const it of c.items) if (!it.mine) it.name = tr(it.name); }   // noms venus du serveur : traduits a l'affichage
   let cur = cats.find((c) => c.key === "visage") || cats[0], layers = [], sel = null, drag = null, uidN = 1;
   const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", `0 0 ${S} ${S}`); svg.setAttribute("class", "idk-stage");
-  const name = h("input", { type: "text", placeholder: "Nom du personnage" });
+  const name = h("input", { type: "text", placeholder: tt("Nom du personnage") });
   const tabs = h("div.idk-tabs"), grid = h("div.idk-grid"), knobs = h("div.idk-knobs");
   const sorted = () => layers.slice().sort((a, b) => ORDER.indexOf(a.cat) - ORDER.indexOf(b.cat) || a.n - b.n);
   const tf = (l) => `translate(${l.x} ${l.y}) rotate(${l.rot}) scale(${l.flip ? -1 : 1} 1)`;
@@ -67,14 +69,14 @@ export async function openIdentikit(bankUI) {
   const props = () => {
     knobs.textContent = "";
     const l = layers.find((x) => x.n === sel);
-    if (!l) { knobs.append(h("p.muted", "Clique un élément dans la liste pour le poser. Sur le visage : glisser pour le déplacer, molette pour sa taille ; poignées des coins = taille, des côtés = étirer, rond du haut = tourner (Maj : crans de 15°). Flèches : déplacer (Maj : de dix). Suppr : retirer. Clic droit : miroir, empilement. Un seul élément par catégorie (sauf les signes) : en choisir un autre le remplace à la même place.")); return; }
+    if (!l) { knobs.append(h("p.muted", tt("Clique un élément dans la liste pour le poser. Sur le visage : glisser pour le déplacer, molette pour sa taille ; poignées des coins = taille, des côtés = étirer, rond du haut = tourner (Maj : crans de 15°). Flèches : déplacer (Maj : de dix). Suppr : retirer. Clic droit : miroir, empilement. Un seul élément par catégorie (sauf les signes) : en choisir un autre le remplace à la même place."))); return; }
     const label = (cats.find((c) => c.key === l.cat) || {}).label || l.cat;
     knobs.append(h("b", `${label} · ${l.name}`),
-      range("Taille", "w", 30, 950, 1), range("Largeur", "kx", 0.2, 4, 0.01, "Étire ou resserre l'élément en largeur"), range("Hauteur", "ky", 0.2, 4, 0.01, "Étire ou tasse l'élément en hauteur"),
-      range("Rotation", "rot", -180, 180, 1),
-      h("div.row.wrap", h("button.mini", { on: { click: () => { l.flip = !l.flip; paint(); } } }, "⇋ Miroir"),
-        h("button.mini", { title: "Remet la taille et la place de départ", on: { click: () => { const p = PLACE[l.cat]; Object.assign(l, { x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: false }); paint(); props(); } } }, "↺ Place de départ"),
-        h("button.mini.danger", { title: "Ou touche Suppr", on: { click: removeSel } }, "Retirer du visage")));
+      range(tt("Taille"), "w", 30, 950, 1), range(tt("Largeur"), "kx", 0.2, 4, 0.01, tt("Étire ou resserre l'élément en largeur")), range(tt("Hauteur"), "ky", 0.2, 4, 0.01, tt("Étire ou tasse l'élément en hauteur")),
+      range(tt("Rotation"), "rot", -180, 180, 1),
+      h("div.row.wrap", h("button.mini", { on: { click: () => { l.flip = !l.flip; paint(); } } }, tt("⇋ Miroir")),
+        h("button.mini", { title: tt("Remet la taille et la place de départ"), on: { click: () => { const p = PLACE[l.cat]; Object.assign(l, { x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: false }); paint(); props(); } } }, tt("↺ Place de départ")),
+        h("button.mini.danger", { title: tt("Ou touche Suppr"), on: { click: removeSel } }, tt("Retirer du visage"))));
   };
   const put = async (cat, it) => {
     const r = await ratioOf(it.file), p = PLACE[cat] || [500, 500, 300];
@@ -88,32 +90,32 @@ export async function openIdentikit(bankUI) {
     tabs.textContent = "";
     tabs.append(...cats.map((c) => h("button.mini" + (c === cur ? ".on" : ""), { on: { click: () => { cur = c; showCat(); } } }, c.label, h("span.count", String(c.items.length)))));
     grid.textContent = "";
-    grid.append(...cur.items.map((it) => h("button.idk-el", { "data-id": it.id, title: it.name + (it.mine ? " (dessiné ici)" : ""), on: { click: () => put(cur.key, it) } },
+    grid.append(...cur.items.map((it) => h("button.idk-el", { "data-id": it.id, title: it.name + (it.mine ? tt(" (dessiné ici)") : ""), on: { click: () => put(cur.key, it) } },
       h("img", { src: `/parts/${it.file}?t=${it.t || 0}`, loading: "lazy", alt: "" }), h("span", it.name),
-      h("i", { title: "Retirer cet élément de la banque (il est mis de côté, pas détruit)", on: { click: async (e) => {
+      h("i", { title: tt("Retirer cet élément de la banque (il est mis de côté, pas détruit)"), on: { click: async (e) => {
         e.stopPropagation();
-        if (!confirm(`Retirer « ${it.name} » de la banque d'éléments ?`)) return;
+        if (!confirm(tt`Retirer « ${it.name} » de la banque d'éléments ?`)) return;
         try { await del(`parts/${cur.key}/${it.id}`); cur.items = cur.items.filter((x) => x !== it); layers = layers.filter((l) => !(l.cat === cur.key && l.id === it.id)); paint(); props(); showCat(); }
         catch (err) { toast(err.message, "error"); }
       } } }, "✕"))),
-      h("button.idk-el.add", { title: "Dessiner soi-même un élément de cette catégorie : il s'ajoute à la banque", on: { click: () => drawOne() } }, h("b", "✏"), h("span", "Dessiner…")));
-    if (!cur.items.length) grid.prepend(h("p.muted", "Aucun élément dans cette catégorie pour l'instant."));
+      h("button.idk-el.add", { title: tt("Dessiner soi-même un élément de cette catégorie : il s'ajoute à la banque"), on: { click: () => drawOne() } }, h("b", "✏"), h("span", tt("Dessiner…"))));
+    if (!cur.items.length) grid.prepend(h("p.muted", tt("Aucun élément dans cette catégorie pour l'instant.")));
     marks();
   };
   const drawOne = () => {
     const cat = cur;
-    openDrawEditor({ draw: null, ratio: 1, backdrop: null, title: `Dessiner : ${cat.label}`, saveLabel: "Ajouter à la banque d'éléments",
+    openDrawEditor({ draw: null, ratio: 1, backdrop: null, title: tt`Dessiner : ${cat.label}`, saveLabel: tt("Ajouter à la banque d'éléments"),
       onSave: async (d) => {
         if (!d.shapes.length) return;
-        const nm = (prompt("Nom de cet élément :", cat.label + " dessiné") || "").trim();
+        const nm = (prompt(tt("Nom de cet élément :"), cat.label + tt(" dessiné")) || "").trim();
         if (!nm) return;
         const im = await drawImage(d, 768, 768);
-        if (!im) return toast("Le dessin n'a pas pu être converti en image.", "error");
+        if (!im) return toast(tt("Le dessin n'a pas pu être converti en image."), "error");
         const c = document.createElement("canvas"); c.width = c.height = 768;
         const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 768, 768); x.drawImage(im, 0, 0, 768, 768);
         const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
         try { const it = await upload(`parts/${cat.key}?name=${encodeURIComponent(nm)}`, blob); cat.items.push(it); cur = cat; showCat(); put(cat.key, it); }
-        catch (e) { toast("Élément refusé : " + e.message, "error"); }
+        catch (e) { toast(tt("Élément refusé : ") + e.message, "error"); }
       } });
   };
   // souris : glisser un element pose, molette pour sa taille
@@ -157,11 +159,11 @@ export async function openIdentikit(bankUI) {
     if (sel !== l.n) { sel = l.n; paint(); props(); }
     const same = sorted().filter((x) => x.cat === l.cat), i = same.indexOf(l);
     const swap = (o) => { [l.n, o.n] = [o.n, l.n]; sel = l.n; paint(); props(); };
-    const items = [["⇋ Miroir", () => { l.flip = !l.flip; paint(); }],
-      ["↺ Place de départ", () => { const p = PLACE[l.cat]; Object.assign(l, { x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: false }); paint(); props(); }],
-      i < same.length - 1 ? ["▲ Monter d'un cran", () => swap(same[i + 1])] : null,
-      i > 0 ? ["▼ Descendre d'un cran", () => swap(same[i - 1])] : null,
-      ["✕ Retirer du visage", removeSel, true]].filter(Boolean);
+    const items = [[tt("⇋ Miroir"), () => { l.flip = !l.flip; paint(); }],
+      [tt("↺ Place de départ"), () => { const p = PLACE[l.cat]; Object.assign(l, { x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: false }); paint(); props(); }],
+      i < same.length - 1 ? [tt("▲ Monter d'un cran"), () => swap(same[i + 1])] : null,
+      i > 0 ? [tt("▼ Descendre d'un cran"), () => swap(same[i - 1])] : null,
+      [tt("✕ Retirer du visage"), removeSel, true]].filter(Boolean);
     document.querySelector(".menu")?.remove();
     const box = h("div.menu.mt-menu", items.map(([label, fn, danger]) => h("button" + (danger ? ".danger" : ""), { on: { click: () => { box.remove(); fn(); } } }, label)));
     document.body.append(box);
@@ -208,21 +210,21 @@ export async function openIdentikit(bankUI) {
     }
     return new Promise((ok) => c.toBlob(ok, "image/png"));
   };
-  const m = modal("Portrait-robot", h("div.idk",
-    h("div.idk-left", svg, h("div.row.wrap", h("button.mini", { title: "Tire un visage au hasard dans la banque", on: { click: random } }, "🎲 Au hasard"),
-      h("button.mini", { on: { click: () => { layers = []; sel = null; paint(); props(); marks(); } } }, "Tout retirer")), knobs),
-    h("div.idk-right", h("label.row", "Nom", name), tabs, grid)),
-    [{ label: "Fermer" }, { label: "Ajouter à la banque", primary: true, click: async () => {
-      if (!layers.length) { toast("Pose au moins un élément.", "error"); return false; }
-      const nm = name.value.trim() || "Portrait-robot";
-      const orbit = confirm("Calculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : il reste une image fixe, tu pourras lancer l'orbite plus tard depuis sa fiche.");
+  const m = modal(tt("Portrait-robot"), h("div.idk",
+    h("div.idk-left", svg, h("div.row.wrap", h("button.mini", { title: tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
+      h("button.mini", { on: { click: () => { layers = []; sel = null; paint(); props(); marks(); } } }, tt("Tout retirer"))), knobs),
+    h("div.idk-right", h("label.row", tt("Nom"), name), tabs, grid)),
+    [{ label: tt("Fermer") }, { label: tt("Ajouter à la banque"), primary: true, click: async () => {
+      if (!layers.length) { toast(tt("Pose au moins un élément."), "error"); return false; }
+      const nm = name.value.trim() || tt("Portrait-robot");
+      const orbit = confirm(tt("Calculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : il reste une image fixe, tu pourras lancer l'orbite plus tard depuis sa fiche."));
       try {
         sel = null; paint();
         const blob = await render();
         const it = await upload("bank?" + new URLSearchParams({ kind: "character", name: nm, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", file: "portrait.png", folder: "Portraits-robots" }), blob);
         bankUI.tab = "character"; await bankUI.reload(); bankUI.reveal(it.id); bankUI.app.pollSoon();
-        toast(`« ${nm} » est dans la banque, dossier Portraits-robots.` + (orbit ? " Son orbite est en calcul." : ""));
-      } catch (e) { toast("Portrait refusé : " + e.message, "error", 9000); return false; }
+        toast(tt`« ${nm} » est dans la banque, dossier Portraits-robots.` + (orbit ? tt(" Son orbite est en calcul.") : ""));
+      } catch (e) { toast(tt("Portrait refusé : ") + e.message, "error", 9000); return false; }
     } }]);
   m.box.classList.add("wide", "idk-box");
   showCat(); paint(); props();

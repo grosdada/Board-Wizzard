@@ -1,5 +1,6 @@
 // Board Wizzard : storyboards par decalcomanie. Cases (decoupage d'Alive-Comics), banque de personnages / decors /
 // assets en orbite, bulles, fausse profondeur de champ, « Integrate », orbite de case.
+import { tt, tr, LANG, setLang } from "./i18n.js";
 import { h, get, post, put, del, upload, toast, modal, debounce } from "./api.js";
 import { compute, PRESETS, transpose, splitLeaf, removeLeaf, leaves, randomLayout, clone } from "./geometry.js";
 import { Editor } from "./editor.js";
@@ -13,24 +14,24 @@ import { openDeck, addClip } from "./deck.js";
 import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox } from "./model.js";
 
 const FORMATS = [
-  { id: "story", label: "Storyboard 16:10", w: 2400, h: 1500 },
-  { id: "hd", label: "Écran 16:9", w: 2400, h: 1350 },
-  { id: "a4", label: "A4 paysage", w: 2400, h: 1697 },
-  { id: "a4p", label: "A4 portrait", w: 1697, h: 2400 },
-  { id: "bd", label: "Page BD 2:3", w: 1600, h: 2400 },
-  { id: "carre", label: "Carré", w: 2000, h: 2000 },
+  { id: "story", label: tt("Storyboard 16:10"), w: 2400, h: 1500 },
+  { id: "hd", label: tt("Écran 16:9"), w: 2400, h: 1350 },
+  { id: "a4", label: tt("A4 paysage"), w: 2400, h: 1697 },
+  { id: "a4p", label: tt("A4 portrait"), w: 1697, h: 2400 },
+  { id: "bd", label: tt("Page BD 2:3"), w: 1600, h: 2400 },
+  { id: "carre", label: tt("Carré"), w: 2000, h: 2000 },
 ];
 const PAGE0 = { format: "story", width: 2400, height: 1500, bg: "#ffffff", fill: "#ffffff", stroke: "#111111", strokeWidth: 5, gutter: 26, margin: 60 };
 const LAYOUTS = [
   ...PRESETS.filter((p) => ["plein", "2x2", "3x3", "g3", "col2", "action"].includes(p.id)),
-  { id: "2x3", label: "6 cases (2 rangées)", make: (L) => transpose(PRESETS.find((p) => p.id === "3x2").make(L)) },
+  { id: "2x3", label: tt("6 cases (2 rangées)"), make: (L) => transpose(PRESETS.find((p) => p.id === "3x2").make(L)) },
   { id: "1x3", label: "3 colonnes", make: (L) => transpose(PRESETS.find((p) => p.id === "3b").make(L)) },
   { id: "1x2", label: "2 colonnes", make: (L) => transpose(PRESETS.find((p) => p.id === "2b").make(L)) },
-  { id: "2x4", label: "8 cases", make: (L) => transpose(PRESETS.find((p) => p.id === "3x2").make(() => transpose(PRESETS.find((q) => q.id === "2b").make(L)))) },
+  { id: "2x4", label: tt("8 cases"), make: (L) => transpose(PRESETS.find((p) => p.id === "3x2").make(() => transpose(PRESETS.find((q) => q.id === "2b").make(L)))) },
   ...PRESETS.filter((p) => ["2b", "3b", "3x2"].includes(p.id)),
 ];
-const BUB = { oval: ["Parole", "Bonjour !", true], thought: ["Pensée", "Hmm…", true], shout: ["Cri", "ATTENTION !", true],
-              whisper: ["Chuchote", "chut…", true], box: ["Narration", "Le lendemain…", false] };
+const BUB = { oval: [tt("Parole"), tt("Bonjour !"), true], thought: [tt("Pensée"), tt("Hmm…"), true], shout: [tt("Cri"), tt("ATTENTION !"), true],
+              whisper: [tt("Chuchote"), tt("chut…"), true], box: [tt("Narration"), tt("Le lendemain…"), false] };
 
 class App {
   constructor() {
@@ -51,7 +52,7 @@ class App {
     const last = localStorage.getItem("bw.project");
     if (list.find((p) => p.id === last)) await this.open(last);
     else if (list.length) await this.open(list[0].id);
-    else await this.create("Storyboard 1");
+    else await this.create(tt("Storyboard 1"));
     this.keys();
     this.poll();
     this.pollWorkers();
@@ -60,26 +61,28 @@ class App {
   // ---------------------------------------------------------------- squelette
   shell() {
     const el = this.el = {};
-    el.title = h("button.title", { title: "Changer de storyboard", on: { click: () => this.projectsDialog() } }, "…");
+    el.title = h("button.title", { title: tt("Changer de storyboard"), on: { click: () => this.projectsDialog() } }, "…");
     el.pages = h("div.pages");
-    el.workers = h("div.workers", { title: "Machines de rendu", on: { click: () => this.settingsDialog() } });
-    el.jobsBtn = h("button", { on: { click: () => this.toggleJobs() } }, "Rendus");
-    el.target = h("select", { title: "Où calculer", on: { change: (e) => localStorage.setItem("bw.target", e.target.value) } },
-      [["auto", "Calcul : auto"], ["local", "Mes machines"], ["fal", "fal (cloud)"]].map(([v, l]) => h("option", { value: v, selected: v === target() }, l)));
+    el.workers = h("div.workers", { title: tt("Machines de rendu"), on: { click: () => this.settingsDialog() } });
+    el.jobsBtn = h("button", { on: { click: () => this.toggleJobs() } }, tt("Rendus"));
+    el.target = h("select", { title: tt("Où calculer"), on: { change: (e) => localStorage.setItem("bw.target", e.target.value) } },
+      [["auto", tt("Calcul : auto")], ["local", tt("Mes machines")], ["fal", "fal (cloud)"]].map(([v, l]) => h("option", { value: v, selected: v === target() }, l)));
     el.left = h("aside.left"); el.center = h("div.center"); el.bank = h("div.bank"); el.insp = h("div.insp");
     el.drawer = h("div.drawer.hidden");
     const top = h("header.top", h("div.logo", "BOARD", h("b", "WIZZARD")), el.title,
-      h("button.icon", { title: "Annuler (Ctrl+Z)", on: { click: () => this.doUndo() } }, "↶"),
-      h("button.icon", { title: "Rétablir (Ctrl+Y)", on: { click: () => this.doRedo() } }, "↷"),
+      h("button.icon", { title: tt("Annuler (Ctrl+Z)"), on: { click: () => this.doUndo() } }, "↶"),
+      h("button.icon", { title: tt("Rétablir (Ctrl+Y)"), on: { click: () => this.doRedo() } }, "↷"),
       el.pages,
-      h("button.primary.drawasset", { title: "Fabriquer un asset sans calcul : le dessiner soi-même (crayons, formes de base), ou partir d'un objet tout fait (table, chaise, étagère…) réglable, qui tourne sur 360°", on: { click: () => this.assetDialog() } }, "✏ Dessiner un asset"),
+      h("button.primary.drawasset", { title: tt("Fabriquer un asset sans calcul : le dessiner soi-même (crayons, formes de base), ou partir d'un objet tout fait (table, chaise, étagère…) réglable, qui tourne sur 360°"), on: { click: () => this.assetDialog() } }, tt("✏ Dessiner un asset")),
       h("div.grow"), el.workers, el.target, el.jobsBtn,
-      h("button", { title: "Decks de montage : les cases animées mises bout à bout", on: { click: (e) => this.decksMenu(e) } }, "🎞 Decks ▾"),
-      h("button", { title: "Imprimer ou enregistrer la page en PDF", on: { click: () => window.print() } }, "Imprimer"),
-      h("button.icon", { title: "Réglages", on: { click: () => this.settingsDialog() } }, "⚙"));
+      h("button", { title: tt("Decks de montage : les cases animées mises bout à bout"), on: { click: (e) => this.decksMenu(e) } }, tt("🎞 Decks ▾")),
+      h("button", { title: tt("Imprimer ou enregistrer la page en PDF"), on: { click: () => window.print() } }, tt("Imprimer")),
+      h("button.lang", { title: tt("Passer l'interface en anglais"), on: { click: (e) => { e.currentTarget.disabled = true; setLang(LANG === "fr" ? "en" : "fr"); } } },
+        h("b" + (LANG === "fr" ? ".on" : ""), "FR"), " / ", h("b" + (LANG !== "fr" ? ".on" : ""), "EN")),
+      h("button.icon", { title: tt("Réglages"), on: { click: () => this.settingsDialog() } }, "⚙"));
     document.getElementById("app").append(top, h("div.work", el.left, el.center, h("aside.right", el.bank, el.insp)), el.drawer);
     this.editor = new Editor(el.center, this);
-    el.center.append(h("div.hint", "Glisser un personnage : le faire tourner · ✥ ou Alt+glisser : déplacer · coin : taille · clic droit : pose, axe, ordre"));
+    el.center.append(h("div.hint", tt("Glisser un personnage : le faire tourner · ✥ ou Alt+glisser : déplacer · coin : taille · clic droit : pose, axe, ordre")));
   }
 
   // ---------------------------------------------------------------- storyboard
@@ -112,10 +115,10 @@ class App {
   renderPages() {
     const P = this.project;
     this.el.pages.textContent = "";
-    this.el.pages.append(h("span.muted", "Page"), ...P.pages.map((pg, i) => h("button.pg" + (i === this.pageIndex ? ".on" : ""),
+    this.el.pages.append(h("span.muted", tt("Page")), ...P.pages.map((pg, i) => h("button.pg" + (i === this.pageIndex ? ".on" : ""),
       { on: { click: () => { this.pageIndex = i; this.sel = {}; this.refresh(); } } }, String(i + 1))),
-      h("button.pg", { title: "Ajouter une page (même découpage)", on: { click: () => this.addPage() } }, "+"),
-      ...(P.pages.length > 1 ? [h("button.pg", { title: "Supprimer cette page", on: { click: () => this.removePage() } }, "−")] : []));
+      h("button.pg", { title: tt("Ajouter une page (même découpage)"), on: { click: () => this.addPage() } }, "+"),
+      ...(P.pages.length > 1 ? [h("button.pg", { title: tt("Supprimer cette page"), on: { click: () => this.removePage() } }, "−")] : []));
   }
 
   addPage() {
@@ -127,7 +130,7 @@ class App {
     this.commit("page"); this.refresh();
   }
   removePage() {
-    if (!confirm("Supprimer cette page et ses cases ?")) return;
+    if (!confirm(tt("Supprimer cette page et ses cases ?"))) return;
     this.project.pages.splice(this.pageIndex, 1);
     this.pageIndex = Math.max(0, this.pageIndex - 1); this.sel = {};
     this.commit("page"); this.refresh();
@@ -135,18 +138,18 @@ class App {
 
   async projectsDialog() {
     const list = await get("projects");
-    const name = h("input", { type: "text", placeholder: "Nom du nouveau storyboard" });
+    const name = h("input", { type: "text", placeholder: tt("Nom du nouveau storyboard") });
     const rename = h("input", { type: "text", value: this.project.name });
-    const m = modal("Storyboards", h("div.form",
-      h("label.row", "Nom de celui-ci", rename),
+    const m = modal(tt("Storyboards"), h("div.form",
+      h("label.row", tt("Nom de celui-ci"), rename),
       h("div.plist", list.map((p) => h("div.prow" + (p.id === this.project.id ? ".on" : ""),
         h("button.link", { on: { click: async () => { m.close(); await this.open(p.id); } } }, p.name),
-        h("span.muted", `${p.pages} page(s) · ${new Date(p.updated * 1000).toLocaleDateString("fr-FR")}`),
+        h("span.muted", tt`${p.pages} page(s) · ${new Date(p.updated * 1000).toLocaleDateString("fr-FR")}`),
         p.id !== this.project.id ? h("button.mini.danger", { on: { click: async (e) => {
-          if (!confirm(`Supprimer « ${p.name} » ? (corbeille du dossier de données)`)) return;
-          await del("projects/" + p.id); e.target.closest(".prow").remove(); } } }, "Supprimer") : null))),
-      h("div.row", name, h("button.primary", { on: { click: async () => { m.close(); await this.create(name.value.trim() || "Storyboard"); } } }, "Créer"))),
-      [{ label: "Fermer", click: () => { if (rename.value.trim() && rename.value !== this.project.name) { this.project.name = rename.value.trim(); this.commit("name"); this.refresh(); } } }]);
+          if (!confirm(tt`Supprimer « ${p.name} » ? (corbeille du dossier de données)`)) return;
+          await del("projects/" + p.id); e.target.closest(".prow").remove(); } } }, tt("Supprimer")) : null))),
+      h("div.row", name, h("button.primary", { on: { click: async () => { m.close(); await this.create(name.value.trim() || tt("Storyboard")); } } }, tt("Créer")))),
+      [{ label: tt("Fermer"), click: () => { if (rename.value.trim() && rename.value !== this.project.name) { this.project.name = rename.value.trim(); this.commit("name"); this.refresh(); } } }]);
   }
 
   // ---------------------------------------------------------------- annuler / enregistrer
@@ -176,10 +179,10 @@ class App {
       catch (e) {
         if (e.status === 409) {                // modifie ailleurs : on arrete d'enregistrer plutot que d'ecraser
           this.frozen = true;
-          modal("Storyboard modifié ailleurs", h("div.form", h("p", "Ce storyboard a été enregistré depuis un autre onglet ou un autre appareil après que cette page l'a chargé."),
-            h("p", "Pour ne rien écraser, cette page n'enregistre plus. Recharge-la pour repartir de la dernière version ; ce que tu viens de faire ici depuis le dernier enregistrement réussi sera perdu.")),
-            [{ label: "Plus tard" }, { label: "Recharger", primary: true, click: () => location.reload() }]);
-        } else toast("Enregistrement impossible : " + e.message, "error");
+          modal(tt("Storyboard modifié ailleurs"), h("div.form", h("p", tt("Ce storyboard a été enregistré depuis un autre onglet ou un autre appareil après que cette page l'a chargé.")),
+            h("p", tt("Pour ne rien écraser, cette page n'enregistre plus. Recharge-la pour repartir de la dernière version ; ce que tu viens de faire ici depuis le dernier enregistrement réussi sera perdu."))),
+            [{ label: tt("Plus tard") }, { label: tt("Recharger"), primary: true, click: () => location.reload() }]);
+        } else toast(tt("Enregistrement impossible : ") + e.message, "error");
       }
     }, 400))();
   }
@@ -213,28 +216,28 @@ class App {
       on: { input: (e) => { page[key] = clamp(+e.target.value || 0, min, max); this.editor.render(); this.commitSoon("page-" + key); } } }));
     const col = (label, key) => h("div.row.colrow", h("span", label), swatch(page[key], (c) => { page[key] = c; this.editor.render(); this.commitSoon("page-" + key); }));
     left.textContent = "";
-    left.append(h("h3", "Découpage"),
+    left.append(h("h3", tt("Découpage")),
       h("div.presets", LAYOUTS.map((p) => h("button.preset", { title: p.label, on: { click: () => this.applyLayout(p.make) } }, presetThumb(p, page)))),
-      h("div.row", h("button.mini", { title: "Découpage au hasard", on: { click: () => this.randomLayout() } }, "🎲 Hasard"),
-        h("button.mini", { title: "Les bandes deviennent des colonnes", on: { click: () => { pg.layout = transpose(pg.layout); this.commit("layout"); this.refresh(); } } }, "⟲ Pivoter")),
-      h("div.row", h("button.mini", { on: { click: () => this.split("h") } }, "Couper ━"), h("button.mini", { on: { click: () => this.split("v") } }, "Couper ┃"),
-        h("button.mini.danger", { on: { click: () => this.removePanel() } }, "Supprimer la case")),
-      h("p.muted", "Glisse un trait pour le déplacer, un de ses bouts pour l'incliner (Maj : trait droit)."),
-      h("h3", "Page"),
-      h("label.row", "Format", h("select", { on: { change: (e) => { const f = FORMATS.find((x) => x.id === e.target.value);
+      h("div.row", h("button.mini", { title: tt("Découpage au hasard"), on: { click: () => this.randomLayout() } }, tt("🎲 Hasard")),
+        h("button.mini", { title: tt("Les bandes deviennent des colonnes"), on: { click: () => { pg.layout = transpose(pg.layout); this.commit("layout"); this.refresh(); } } }, tt("⟲ Pivoter"))),
+      h("div.row", h("button.mini", { on: { click: () => this.split("h") } }, tt("Couper ━")), h("button.mini", { on: { click: () => this.split("v") } }, tt("Couper ┃")),
+        h("button.mini.danger", { on: { click: () => this.removePanel() } }, tt("Supprimer la case"))),
+      h("p.muted", tt("Glisse un trait pour le déplacer, un de ses bouts pour l'incliner (Maj : trait droit).")),
+      h("h3", tt("Page")),
+      h("label.row", tt("Format"), h("select", { on: { change: (e) => { const f = FORMATS.find((x) => x.id === e.target.value);
         Object.assign(page, { format: f.id, width: f.w, height: f.h }); this.commit("format"); this.refresh(); } } },
         FORMATS.map((f) => h("option", { value: f.id, selected: f.id === page.format }, f.label)))),
-      num("Gouttière", "gutter", 0, 200), num("Marge", "margin", 0, 400), num("Trait", "strokeWidth", 0, 40),
-      h("details.fold", { open: !!(page.hand > 0) }, h("summary", "Tremblé du contour"), ...[["Tremblé", "hand", 0, 10, 0], ["Ondulation", "wave", 0.5, 12, 4]].map(([label, key, min, max, def]) => {
+      num(tt("Gouttière"), "gutter", 0, 200), num(tt("Marge"), "margin", 0, 400), num(tt("Trait"), "strokeWidth", 0, 40),
+      h("details.fold", { open: !!(page.hand > 0) }, h("summary", tt("Tremblé du contour")), ...[[tt("Tremblé"), "hand", 0, 10, 0], [tt("Ondulation"), "wave", 0.5, 12, 4]].map(([label, key, min, max, def]) => {
         const val = page[key] ?? def, out = h("output", fmt(val));
         return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.1, value: val,
           on: { input: (e) => { page[key] = +e.target.value; out.textContent = fmt(page[key]); this.editor.render(); this.commitSoon("page-hand"); } } }), out); })),
-      col("Fond de page", "bg"), col("Fond des cases", "fill"), col("Couleur du trait", "stroke"),
-      h("h3", "Toute la page"),
-      h("div.row", h("button.mini", { title: "Chaque case composée devient un dessin homogène", on: { click: () => this.integratePage("dessin") } }, "✦ Tout en dessin"),
-        h("button.mini", { title: "Chaque case composée devient une photo unifiée", on: { click: () => this.integratePage("photo") } }, "✦ Tout en photo")),
-      h("div.row", h("button.mini", { on: { click: () => this.showAll("layers") } }, "Voir les calques"),
-        h("button.mini", { on: { click: () => this.showAll("integrated") } }, "Voir les intégrées")));
+      col(tt("Fond de page"), "bg"), col(tt("Fond des cases"), "fill"), col(tt("Couleur du trait"), "stroke"),
+      h("h3", tt("Toute la page")),
+      h("div.row", h("button.mini", { title: tt("Chaque case composée devient un dessin homogène"), on: { click: () => this.integratePage("dessin") } }, tt("✦ Tout en dessin")),
+        h("button.mini", { title: tt("Chaque case composée devient une photo unifiée"), on: { click: () => this.integratePage("photo") } }, tt("✦ Tout en photo"))),
+      h("div.row", h("button.mini", { on: { click: () => this.showAll("layers") } }, tt("Voir les calques")),
+        h("button.mini", { on: { click: () => this.showAll("integrated") } }, tt("Voir les intégrées"))));
   }
 
   applyLayout(make) {
@@ -251,14 +254,14 @@ class App {
   }
   split(dir) {
     const pg = this.page();
-    if (!this.sel.panel) return toast("Choisis d'abord une case.");
+    if (!this.sel.panel) return toast(tt("Choisis d'abord une case."));
     pg.layout = splitLeaf(pg.layout, this.sel.panel, dir, this.newId(), "c" + this.project.nextId++);
     this.commit("layout"); this.refresh();
   }
   removePanel() {
     const pg = this.page(), id = this.sel.panel;
-    if (!id) return toast("Choisis d'abord une case.");
-    if (leaves(pg.layout).length < 2) return toast("C'est la dernière case de la page.");
+    if (!id) return toast(tt("Choisis d'abord une case."));
+    if (leaves(pg.layout).length < 2) return toast(tt("C'est la dernière case de la page."));
     pg.layout = removeLeaf(pg.layout, id); delete pg.panels[id];
     this.sel = {}; this.commit("layout"); this.refresh();
   }
@@ -284,27 +287,27 @@ class App {
       const pan = this.page().panels[pid] || (this.page().panels[pid] = {});
       pan.bg = { file: r.file, w: r.w, h: r.h }; pan.view = { zoom: 1, ox: 0, oy: 0 }; pan.show = "layers";
       this.commit("drop"); this.select({ panel: pid }); this.editor.render(); this.refreshInspector();
-    } catch (e) { toast("Image refusée : " + e.message, "error"); }
+    } catch (e) { toast(tt("Image refusée : ") + e.message, "error"); }
   }
 
   // generation depuis une case : « genere-moi un marteau » ; l'element entre en banque et se pose ici des qu'il existe
   generateHere(pid, rel) {
-    const prompt = h("textarea", { rows: 3, placeholder: "Un marteau de charpentier usé, manche en bois…" });
-    const kind = h("select", [["asset", "Objet / véhicule"], ["character", "Personnage"], ["decor", "Décor (devient le fond)"]].map(([v, t]) => h("option", { value: v }, t)));
-    const style = h("select", [["photo", "Photoréaliste"], ["dessin", "Dessin"], ["3d", "3D"]].map(([v, t]) => h("option", { value: v, selected: v === this.guessStyle(this.findPanel(pid) || {}) }, t)));
+    const prompt = h("textarea", { rows: 3, placeholder: tt("Un marteau de charpentier usé, manche en bois…") });
+    const kind = h("select", [["asset", tt("Objet / véhicule")], ["character", tt("Personnage")], ["decor", tt("Décor (devient le fond)")]].map(([v, t]) => h("option", { value: v }, t)));
+    const style = h("select", [["photo", tt("Photoréaliste")], ["dessin", tt("Dessin")], ["3d", "3D"]].map(([v, t]) => h("option", { value: v, selected: v === this.guessStyle(this.findPanel(pid) || {}) }, t)));
     const orbit = h("input", { type: "checkbox", checked: true });
-    modal("Générer dans cette case", h("div.form", h("label.col", "Quoi ?", prompt), h("label.row", "Type", kind), h("label.row", "Rendu", style),
-      h("label.row.check", orbit, "Avec son orbite 360° (pivotable ensuite)"),
-      h("p.muted", "L'élément est ajouté à la banque : il resservira. Il se pose dans la case dès que son image existe (≈ 1 min), puis devient pivotable.")),
-      [{ label: "Annuler" }, { label: "Générer", primary: true, click: async () => {
+    modal(tt("Générer dans cette case"), h("div.form", h("label.col", tt("Quoi ?"), prompt), h("label.row", tt("Type"), kind), h("label.row", tt("Rendu"), style),
+      h("label.row.check", orbit, tt("Avec son orbite 360° (pivotable ensuite)")),
+      h("p.muted", tt("L'élément est ajouté à la banque : il resservira. Il se pose dans la case dès que son image existe (≈ 1 min), puis devient pivotable."))),
+      [{ label: tt("Annuler") }, { label: tt("Générer"), primary: true, click: async () => {
         const text = prompt.value.trim();
-        if (!text) { toast("Décris ce qu'il faut générer.", "error"); return false; }
+        if (!text) { toast(tt("Décris ce qu'il faut générer."), "error"); return false; }
         const f = this.bankUI.folder;
         const r = await post("bank/generate", { kind: kind.value, name: text.slice(0, 36), prompt: text, style: style.value, orbit: orbit.checked,
                                                 folder: f && f !== "·" ? f : "", target: target() });
         this.pending[r.job] = { project: this.project.id, pid, rel };
         localStorage.setItem("bw.pending", JSON.stringify(this.pending));
-        toast("Génération lancée : l'élément se posera dans la case."); this.pollSoon();
+        toast(tt("Génération lancée : l'élément se posera dans la case.")); this.pollSoon();
       } }]);
     setTimeout(() => prompt.focus(), 30);
   }
@@ -356,75 +359,75 @@ class App {
   copyLayerTo(l) {
     const pg = this.page(), pid = this.sel.panel, item = this.bank.get(l.item);
     const others = this.editor.geom.panels.filter((g) => g.id !== pid).sort((x, y) => x.order - y.order);
-    if (!others.length) return toast("Il n'y a pas d'autre case sur cette page.");
+    if (!others.length) return toast(tt("Il n'y a pas d'autre case sur cette page."));
     const boxes = others.map((g) => [g, h("input", { type: "checkbox" })]);
-    const all = h("button.mini", { on: { click: (e) => { e.preventDefault(); const on = boxes.some(([, c]) => !c.checked); boxes.forEach(([, c]) => { c.checked = on; }); } } }, "Toutes / aucune");
-    modal(`Copier « ${item ? item.name : "l'élément"} » vers…`, h("div.form",
-      h("p.muted", "L'élément est ajouté dans les cases cochées avec la même pose, le même axe, la même place et la même taille. Le reste de ces cases n'est pas touché."),
-      h("div.checks", boxes.map(([g, c]) => h("label.row.check", c, `Case ${g.order}`))), h("div.row", all)),
-      [{ label: "Annuler" }, { label: "Copier", primary: true, click: () => {
+    const all = h("button.mini", { on: { click: (e) => { e.preventDefault(); const on = boxes.some(([, c]) => !c.checked); boxes.forEach(([, c]) => { c.checked = on; }); } } }, tt("Toutes / aucune"));
+    modal(tt`Copier « ${item ? item.name : tt("l'élément")} » vers…`, h("div.form",
+      h("p.muted", tt("L'élément est ajouté dans les cases cochées avec la même pose, le même axe, la même place et la même taille. Le reste de ces cases n'est pas touché.")),
+      h("div.checks", boxes.map(([g, c]) => h("label.row.check", c, tt`Case ${g.order}`))), h("div.row", all)),
+      [{ label: tt("Annuler") }, { label: tt("Copier"), primary: true, click: () => {
         const to = boxes.filter(([, c]) => c.checked).map(([g]) => g);
-        if (!to.length) { toast("Coche au moins une case.", "error"); return false; }
+        if (!to.length) { toast(tt("Coche au moins une case."), "error"); return false; }
         for (const g of to) { const pan = pg.panels[g.id] || (pg.panels[g.id] = {}); (pan.layers = pan.layers || []).push(Object.assign(clone(l), { id: uid() })); pan.show = "layers"; }
         this.commit("copy-layer"); this.editor.render(); this.refreshInspector();
-        toast(`Élément copié vers ${to.map((g) => g.order).join(", ")}.`);
+        toast(tt`Élément copié vers ${to.map((g) => g.order).join(", ")}.`);
       } }]);
   }
 
   layerMenu(e) {
     const l = this.layer(); if (!l) return;
-    const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [{ label: "🎬 Montage (animer la case)…", star: true, click: () => openMontage(this, this.sel.panel) },
-      { label: "✎ Dessiner le fond…", star: "blue", click: () => this.drawBackground(this.sel.panel) }];
-    items.push({ head: "Pose" });
+    const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [{ label: tt("🎬 Montage (animer la case)…"), star: true, click: () => openMontage(this, this.sel.panel) },
+      { label: tt("✎ Dessiner le fond…"), star: "blue", click: () => this.drawBackground(this.sel.panel) }];
+    items.push({ head: tt("Pose") });
     // ↻ : orbite calculee, la pose tourne · ⏳ : orbite en calcul · ▫ : image fixe, pas d'orbite
     for (const [k, vv] of Object.entries(item?.variants || {})) items.push({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + vv.label, checked: k === l.v, click: () => this.setPose(l, k) });
-    items.push({ note: "↻ orbite prête · ⏳ en calcul · ▫ image fixe" });
-    items.push({ label: "📍 Montrer dans la banque", click: () => this.bankUI.reveal(l.item) });
-    items.push({ label: "Générer d'autres poses…", click: () => this.bankUI.openItem(l.item) });
+    items.push({ note: tt("↻ orbite prête · ⏳ en calcul · ▫ image fixe") });
+    items.push({ label: tt("📍 Montrer dans la banque"), click: () => this.bankUI.reveal(l.item) });
+    items.push({ label: tt("Générer d'autres poses…"), click: () => this.bankUI.openItem(l.item) });
     if (v && v.orbit) {
       const cur = nearestAxis(v.orbit, l.f || 0);
-      items.push({ head: "Axe" });
-      for (const a of AXES) items.push({ label: a, checked: a === cur, click: () => this.setAxis(l, a), half: true });
+      items.push({ head: tt("Axe") });
+      for (const a of AXES) items.push({ label: tr(a), checked: a === cur, click: () => this.setAxis(l, a), half: true });
     }
-    items.push({ head: "Calque" },
-      { label: "Miroir", checked: !!l.flip, click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); } },
-      { label: "Premier plan", click: () => this.order(l, "top"), half: true }, { label: "Arrière-plan", click: () => this.order(l, "bottom"), half: true },
-      { label: "Avancer", click: () => this.order(l, "up"), half: true }, { label: "Reculer", click: () => this.order(l, "down"), half: true },
-      { label: "Dupliquer", click: () => this.duplicate(l), half: true }, { label: "Supprimer", click: () => this.removeLayer(l), half: true, danger: true },
-      { label: "Copier vers une case…", click: () => this.copyLayerTo(l) });
+    items.push({ head: tt("Calque") },
+      { label: tt("Miroir"), checked: !!l.flip, click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); } },
+      { label: tt("Premier plan"), click: () => this.order(l, "top"), half: true }, { label: tt("Arrière-plan"), click: () => this.order(l, "bottom"), half: true },
+      { label: tt("Avancer"), click: () => this.order(l, "up"), half: true }, { label: tt("Reculer"), click: () => this.order(l, "down"), half: true },
+      { label: tt("Dupliquer"), click: () => this.duplicate(l), half: true }, { label: tt("Supprimer"), click: () => this.removeLayer(l), half: true, danger: true },
+      { label: tt("Copier vers une case…"), click: () => this.copyLayerTo(l) });
     menu(e, items);
   }
 
   panelMenu(e, pid, pt, g) {
-    const pan = this.curPanel(), items = [{ label: "🎬 Montage (animer la case)…", star: true, click: () => openMontage(this, pid) },
-      { label: "✎ Dessiner le fond…", star: "blue", click: () => this.drawBackground(pid) }, { head: "Bulle" }];
+    const pan = this.curPanel(), items = [{ label: tt("🎬 Montage (animer la case)…"), star: true, click: () => openMontage(this, pid) },
+      { label: tt("✎ Dessiner le fond…"), star: "blue", click: () => this.drawBackground(pid) }, { head: tt("Bulle") }];
     const rel = { x: (pt.x - g.bbox.x0) / g.bbox.w, y: (pt.y - g.bbox.y0) / g.bbox.h };
     for (const [t, [label]] of Object.entries(BUB)) items.push({ label, click: () => this.addBubble(t, rel), half: true });
-    items.push({ head: "Indication" });
+    items.push({ head: tt("Indication") });
     for (const [t, [label, ico]] of Object.entries(MARKS)) items.push({ label: `${ico} ${label}`, half: true, click: () => (t === "free" ? this.armMark(t) : this.addMark(pid, t, [rel.x, rel.y])) });
-    items.push({ head: "Banque" }, { label: "✨ Générer un élément ici…", click: () => this.generateHere(pid, rel) });
-    items.push({ head: "Integrate (image unifiée)" },
+    items.push({ head: tt("Banque") }, { label: tt("✨ Générer un élément ici…"), click: () => this.generateHere(pid, rel) });
+    items.push({ head: tt("Integrate (image unifiée)") },
       ...INTEGRATE_STYLES.map(([k, label, tip]) => ({ label, click: () => this.integrate(k) })),
-      { head: "Case" }, { label: "⬒ Profondeur (vue de dessus)", click: () => this.depthDialog(pid) }, { label: "Orbite de la case", click: () => this.panelOrbit() });
+      { head: tt("Case") }, { label: tt("⬒ Profondeur (vue de dessus)"), click: () => this.depthDialog(pid) }, { label: tt("Orbite de la case"), click: () => this.panelOrbit() });
     if (pan.integrated || pan.orbit) {
-      items.push({ head: "Afficher" }, { label: "Calques d'origine", checked: (pan.show || "layers") === "layers", click: () => this.setShow("layers") });
+      items.push({ head: tt("Afficher") }, { label: tt("Calques d'origine"), checked: (pan.show || "layers") === "layers", click: () => this.setShow("layers") });
       // les images generees de la case (Integrate) : on passe de l'une a l'autre, ou on revient aux calques d'origine
       const vers = (pan.integrations || []).length ? pan.integrations : (pan.integrated ? [pan.integrated] : []);
       vers.forEach((f, i) => {
         const ts = +((f.match(/_(\d{9,})\.\w+$/) || [])[1] || 0), when = ts ? new Date(ts * 1000).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
-        items.push({ label: `Image générée ${i + 1}${when ? " · " + when : ""}`, checked: pan.show === "integrated" && pan.integrated === f,
+        items.push({ label: tt`Image générée ${i + 1}${when ? " · " + when : ""}`, checked: pan.show === "integrated" && pan.integrated === f,
                      click: () => { pan.integrated = f; pan.show = "integrated"; this.commit("ver"); this.editor.render(); this.refreshInspector(); } });
       });
-      if (pan.show === "integrated" && vers.length) items.push({ label: "Retirer l'image affichée de la liste", danger: true, click: () => {
+      if (pan.show === "integrated" && vers.length) items.push({ label: tt("Retirer l'image affichée de la liste"), danger: true, click: () => {
         const left = vers.filter((f) => f !== pan.integrated);
         pan.integrations = left; pan.integrated = left[left.length - 1] || null; if (!pan.integrated) { delete pan.integrated; pan.show = "layers"; }
         this.commit("ver"); this.editor.render(); this.refreshInspector(); } });
-      if (pan.orbit) items.push({ label: "Orbite", checked: pan.show === "orbit", click: () => this.setShow("orbit") });
+      if (pan.orbit) items.push({ label: tt("Orbite"), checked: pan.show === "orbit", click: () => this.setShow("orbit") });
     }
-    if (this.editor.geom.panels.length > 1) items.push({ label: "Copier cette case vers…", click: () => this.copyPanelTo(pid) });
-    items.push({ head: "Découpage" }, { label: "Couper ━", click: () => this.split("h"), half: true }, { label: "Couper ┃", click: () => this.split("v"), half: true });
-    if (pan.bg) items.push({ label: "Retirer le fond", click: () => { delete pan.bg; this.commit("bg"); this.editor.render(); this.refreshInspector(); } });
-    items.push({ label: "Vider la case", danger: true, click: () => { this.page().panels[pid] = {}; this.commit("clear"); this.editor.render(); this.refreshInspector(); } });
+    if (this.editor.geom.panels.length > 1) items.push({ label: tt("Copier cette case vers…"), click: () => this.copyPanelTo(pid) });
+    items.push({ head: tt("Découpage") }, { label: tt("Couper ━"), click: () => this.split("h"), half: true }, { label: tt("Couper ┃"), click: () => this.split("v"), half: true });
+    if (pan.bg) items.push({ label: tt("Retirer le fond"), click: () => { delete pan.bg; this.commit("bg"); this.editor.render(); this.refreshInspector(); } });
+    items.push({ label: tt("Vider la case"), danger: true, click: () => { this.page().panels[pid] = {}; this.commit("clear"); this.editor.render(); this.refreshInspector(); } });
     menu(e, items);
   }
   // copie tout le contenu d'une case (fond, cadrage, calques, bulles, profondeur de champ) dans d'autres cases de la page
@@ -433,13 +436,13 @@ class App {
     const others = this.editor.geom.panels.filter((g) => g.id !== pid).sort((x, y) => x.order - y.order);
     const filled = (g) => { const q = pg.panels[g.id] || {}; return !!(q.bg || (q.layers || []).length || (q.bubbles || []).length); };
     const boxes = others.map((g) => [g, h("input", { type: "checkbox" })]);
-    const all = h("button.mini", { on: { click: (e) => { e.preventDefault(); const on = boxes.some(([, c]) => !c.checked); boxes.forEach(([, c]) => { c.checked = on; }); } } }, "Toutes / aucune");
-    modal(`Copier la case ${from ? from.order : ""} vers…`, h("div.form",
-      h("p.muted", "Tout est copié : fond et cadrage, personnages et objets, bulles, profondeur de champ. Le contenu des cases cochées est remplacé."),
-      h("div.checks", boxes.map(([g, c]) => h("label.row.check", c, `Case ${g.order}`, filled(g) ? h("span.muted", " (déjà remplie)") : ""))), h("div.row", all)),
-      [{ label: "Annuler" }, { label: "Copier", primary: true, click: () => {
+    const all = h("button.mini", { on: { click: (e) => { e.preventDefault(); const on = boxes.some(([, c]) => !c.checked); boxes.forEach(([, c]) => { c.checked = on; }); } } }, tt("Toutes / aucune"));
+    modal(tt`Copier la case ${from ? from.order : ""} vers…`, h("div.form",
+      h("p.muted", tt("Tout est copié : fond et cadrage, personnages et objets, bulles, profondeur de champ. Le contenu des cases cochées est remplacé.")),
+      h("div.checks", boxes.map(([g, c]) => h("label.row.check", c, tt`Case ${g.order}`, filled(g) ? h("span.muted", tt(" (déjà remplie)")) : ""))), h("div.row", all)),
+      [{ label: tt("Annuler") }, { label: tt("Copier"), primary: true, click: () => {
         const to = boxes.filter(([, c]) => c.checked).map(([g]) => g);
-        if (!to.length) { toast("Coche au moins une case.", "error"); return false; }
+        if (!to.length) { toast(tt("Coche au moins une case."), "error"); return false; }
         for (const g of to) {
           const copy = JSON.parse(JSON.stringify(src));
           for (const k of ["integrated", "integrations", "orbit"]) delete copy[k];   // images calculées pour la case d'origine
@@ -450,7 +453,7 @@ class App {
           pg.panels[g.id] = copy;
         }
         this.commit("copy"); this.editor.render(); this.refreshInspector();
-        toast(`Case copiée vers ${to.map((g) => g.order).join(", ")}.`);
+        toast(tt`Case copiée vers ${to.map((g) => g.order).join(", ")}.`);
       } }]);
   }
   // atelier de dessin du fond de la case : formes simples, traces, gris en trame
@@ -459,7 +462,7 @@ class App {
     if (!g) return;
     const bg = background(pan, this.bank, this.project.id);
     const ghosts = (pan.layers || []).map((l) => { const it = this.bank.get(l.item), sp = it && sprite(it, l.v, l.f); return sp && { url: sp.url, x: l.x, y: l.y, s: l.s, ar: sp.w / sp.h, flip: l.flip }; }).filter(Boolean);
-    openDrawEditor({ draw: pan.draw, ratio: g.bbox.h / g.bbox.w, backdrop: bg ? bg.url : null, ghosts, title: `Dessiner le fond de la case ${g.order}`,
+    openDrawEditor({ draw: pan.draw, ratio: g.bbox.h / g.bbox.w, backdrop: bg ? bg.url : null, ghosts, title: tt`Dessiner le fond de la case ${g.order}`,
       onSave: (d) => { if (d.shapes.length || (d.fx && d.fx.on)) pan.draw = d; else delete pan.draw; pan.show = "layers"; this.commit("draw"); this.editor.render(); this.refreshInspector(); } });
   }
   // ---------------------------------------------------------------- profondeur : la case vue de dessus
@@ -467,7 +470,7 @@ class App {
   // ou la-bas revient au meme : c'est la place de l'element dans l'espace de la case.
   depthDialog(pid) {
     const pan = this.page().panels[pid], g = this.geo(pid);
-    if (!pan || !g || !(pan.layers || []).length) return toast("Pose d'abord des éléments dans la case.");
+    if (!pan || !g || !(pan.layers || []).length) return toast(tt("Pose d'abord des éléments dans la case."));
     const W = 1000, H = W * g.bbox.h / g.bbox.w, bb = { x0: 0, y0: 0, w: W, h: H }, DY0 = 0.8, DY1 = 0.14;
     const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg");
     svg.setAttribute("viewBox", `0 0 ${W} ${H.toFixed(1)}`); svg.setAttribute("class", "depthview");
@@ -484,11 +487,11 @@ class App {
         `<polygon points="${W / 2},${f1(yOf(-0.2))} 0,${f1(yOf(1))} ${W},${f1(yOf(1))}" fill="#3b82f6" fill-opacity="0.09" stroke="#3b82f6" stroke-opacity="0.5" stroke-dasharray="6 5"/>`;
       for (const d of [0, 0.25, 0.5, 0.75, 1])
         o += `<line x1="0" x2="${W}" y1="${f1(yOf(d))}" y2="${f1(yOf(d))}" stroke="#b9b4a8" stroke-width="1" stroke-dasharray="${d === 0 || d === 1 ? "none" : "3 6"}"/>` +
-          `<text x="6" y="${f1(yOf(d) - 4)}" font-size="${f1(fs * 0.75)}" fill="#8a8578">${d === 0 ? "Devant · 0" : d === 1 ? "Fond · 1" : d}</text>`;
+          `<text x="6" y="${f1(yOf(d) - 4)}" font-size="${f1(fs * 0.75)}" fill="#8a8578">${d === 0 ? tt("Devant · 0") : d === 1 ? tt("Fond · 1") : d}</text>`;
       o += `<rect x="0" y="${f1(yOf(1) - H * 0.035)}" width="${W}" height="${f1(H * 0.035)}" fill="#cfcabd"/>` +
-        `<text x="${W / 2}" y="${f1(yOf(1) - H * 0.045)}" font-size="${f1(fs * 0.8)}" fill="#8a8578" text-anchor="middle">DÉCOR</text>`;
+        tt`<text x="${W / 2}" y="${f1(yOf(1) - H * 0.045)}" font-size="${f1(fs * 0.8)}" fill="#8a8578" text-anchor="middle">DÉCOR</text>`;
       if (dof.on) o += `<line x1="0" x2="${W}" y1="${f1(yOf(dof.focus ?? 0.5))}" y2="${f1(yOf(dof.focus ?? 0.5))}" stroke="#16a34a" stroke-width="2.5"/>` +
-        `<text x="${W - 6}" y="${f1(yOf(dof.focus ?? 0.5) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT</text>`;
+        tt`<text x="${W - 6}" y="${f1(yOf(dof.focus ?? 0.5) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT</text>`;
       pan.layers.forEach((l, li) => {
         const it = this.bank.get(l.item), sp = it && sprite(it, l.v, l.f);
         if (!sp) return;
@@ -499,7 +502,7 @@ class App {
           `<text x="${f1(box.cx)}" y="${f1(y + th / 2 + fs * 0.9)}" font-size="${f1(fs * 0.8)}" fill="${on ? "#b8431f" : "#444"}" text-anchor="middle" data-layer="${l.id}">${esc(it.name)} · ${depthOf(pan, li).toFixed(2)}</text></g>`;
       });
       o += `<g transform="translate(${W / 2} ${f1(yOf(-0.2))})"><rect x="${f1(-fs * 1.1)}" y="${f1(-fs * 0.5)}" width="${f1(fs * 2.2)}" height="${f1(fs * 1.3)}" rx="3" fill="#5b6472"/>` +
-        `<text y="${f1(fs * 1.75)}" font-size="${f1(fs * 0.8)}" fill="#5b6472" text-anchor="middle">CAMÉRA</text></g>`;
+        tt`<text y="${f1(fs * 1.75)}" font-size="${f1(fs * 0.8)}" fill="#5b6472" text-anchor="middle">CAMÉRA</text></g>`;
       svg.innerHTML = o;
     };
     const pt = (e) => { const r = svg.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
@@ -518,28 +521,28 @@ class App {
     });
     svg.addEventListener("pointerup", () => { if (drag) { drag = null; this.commit("depth"); this.editor.render(); this.refreshInspector(); } });
     paint();
-    const m = modal(`Profondeur · case ${g.order}`, h("div.depthbox", svg,
-      h("p.muted", "La case vue de dessus : la caméra en bas, le décor en haut. Glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; à gauche ou à droite, elle se déplace dans le cadre. L'élément le plus loin passe derrière les autres. C'est la même position que dans le montage (bouton « Profondeur ») : régler ici ou là-bas revient au même.")),
-      [{ label: "Fermer" }]);
+    const m = modal(tt`Profondeur · case ${g.order}`, h("div.depthbox", svg,
+      h("p.muted", tt("La case vue de dessus : la caméra en bas, le décor en haut. Glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; à gauche ou à droite, elle se déplace dans le cadre. L'élément le plus loin passe derrière les autres. C'est la même position que dans le montage (bouton « Profondeur ») : régler ici ou là-bas revient au même."))),
+      [{ label: tt("Fermer") }]);
     m.box.classList.add("wide");
   }
 
   // ---------------------------------------------------------------- dessiner un asset : a la main, ou objet tout fait
   assetDialog() {
-    const m = modal("Dessiner un asset", h("div.form.assetpick",
-      h("button.big", { on: { click: () => { m.close(); this.drawAsset(); } } }, h("b", "✏ Le dessiner"), h("span", "Crayon, tracé libre, formes de base (rectangle, ellipse, triangle…), épaisseur du trait, aplats et trames. L'atelier de dessin des fonds, sur une feuille blanche.")),
-      h("button.big", { on: { click: () => { m.close(); this.proceduralDialog(); } } }, h("b", "🪑 Objet tout fait"), h("span", "Table, chaise, tabouret, banc, caisse, étagère, lit, bureau : on règle les cotes avec des curseurs. L'objet tourne sur 360° tout de suite, sans calcul."))),
-      [{ label: "Fermer" }]);
+    const m = modal(tt("Dessiner un asset"), h("div.form.assetpick",
+      h("button.big", { on: { click: () => { m.close(); this.drawAsset(); } } }, h("b", tt("✏ Le dessiner")), h("span", tt("Crayon, tracé libre, formes de base (rectangle, ellipse, triangle…), épaisseur du trait, aplats et trames. L'atelier de dessin des fonds, sur une feuille blanche."))),
+      h("button.big", { on: { click: () => { m.close(); this.proceduralDialog(); } } }, h("b", tt("🪑 Objet tout fait")), h("span", tt("Table, chaise, tabouret, banc, caisse, étagère, lit, bureau : on règle les cotes avec des curseurs. L'objet tourne sur 360° tout de suite, sans calcul.")))),
+      [{ label: tt("Fermer") }]);
   }
   drawAsset() {
-    openDrawEditor({ draw: null, ratio: 1, backdrop: null, title: "Dessiner un asset", saveLabel: "Ranger dans la banque",
+    openDrawEditor({ draw: null, ratio: 1, backdrop: null, title: tt("Dessiner un asset"), saveLabel: tt("Ranger dans la banque"),
       onSave: async (d) => {
         if (!d.shapes.length) return;
-        const name = (prompt("Nom de l'asset :", "Asset dessiné") || "").trim();
-        if (!name) return toast("Dessin abandonné : il faut un nom pour le ranger dans la banque.", "error");
-        const orbit = confirm("Calculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : il reste une image fixe, tu pourras lancer l'orbite plus tard depuis sa fiche.");
+        const name = (prompt(tt("Nom de l'asset :"), tt("Asset dessiné")) || "").trim();
+        if (!name) return toast(tt("Dessin abandonné : il faut un nom pour le ranger dans la banque."), "error");
+        const orbit = confirm(tt("Calculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : il reste une image fixe, tu pourras lancer l'orbite plus tard depuis sa fiche."));
         const im = await drawImage(d, 1024, 1024);
-        if (!im) return toast("Le dessin n'a pas pu être converti en image.", "error");
+        if (!im) return toast(tt("Le dessin n'a pas pu être converti en image."), "error");
         const c = document.createElement("canvas"); c.width = c.height = 1024;
         const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 1024, 1024); x.drawImage(im, 0, 0, 1024, 1024);
         const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
@@ -547,8 +550,8 @@ class App {
         try {
           await upload("bank?" + new URLSearchParams({ kind: "asset", name, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", target: target(), file: "dessin.png", folder: f }), blob);
           this.bankUI.tab = "asset"; await this.bankUI.reload(); this.pollSoon();
-          toast(`« ${name} » est dans la banque, onglet Assets.` + (orbit ? " Son orbite est en calcul." : ""));
-        } catch (e) { toast("Asset refusé : " + e.message, "error"); }
+          toast(tt`« ${name} » est dans la banque, onglet Assets.` + (orbit ? tt(" Son orbite est en calcul.") : ""));
+        } catch (e) { toast(tt("Asset refusé : ") + e.message, "error"); }
       } });
   }
   async proceduralDialog() {
@@ -557,7 +560,7 @@ class App {
     let cur = cat[0], vals = {}, az = 30, spin = null, url = null, busy = false, again = false;
     const img = h("img.procview", { alt: "", draggable: false });
     const knobs = h("div.knobs");
-    const name = h("input", { type: "text", placeholder: "Nom dans la banque" });
+    const name = h("input", { type: "text", placeholder: tt("Nom dans la banque") });
     const refresh = async () => {                              // un seul apercu a la fois ; le dernier reglage gagne
       if (busy) { again = true; return; }
       busy = true;
@@ -570,28 +573,28 @@ class App {
     };
     const build = () => {
       vals = Object.fromEntries(cur.params.map((q) => [q.key, q.def]));
-      name.value = cur.label;
+      name.value = tr(cur.label);
       knobs.textContent = "";
       for (const q of cur.params) {
-        if (q.choices) knobs.append(h("label.row", q.label, h("select", { on: { change: (e) => { vals[q.key] = e.target.value; refresh(); } } }, q.choices.map((c) => h("option", { value: c, selected: c === q.def }, c)))));
-        else { const out = h("output", String(q.def)); knobs.append(h("label.row.range", q.label, h("input", { type: "range", min: q.min, max: q.max, step: q.step, value: q.def, on: { input: (e) => { vals[q.key] = +e.target.value; out.textContent = e.target.value; refresh(); } } }), out)); }
+        if (q.choices) knobs.append(h("label.row", tr(q.label), h("select", { on: { change: (e) => { vals[q.key] = e.target.value; refresh(); } } }, q.choices.map((c) => h("option", { value: c, selected: c === q.def }, tr(c))))));
+        else { const out = h("output", String(q.def)); knobs.append(h("label.row.range", tr(q.label), h("input", { type: "range", min: q.min, max: q.max, step: q.step, value: q.def, on: { input: (e) => { vals[q.key] = +e.target.value; out.textContent = e.target.value; refresh(); } } }), out)); }
       }
       refresh();
     };
-    const pick = h("select", { on: { change: (e) => { cur = cat.find((c) => c.key === e.target.value); build(); } } }, cat.map((c) => h("option", { value: c.key }, c.label)));
+    const pick = h("select", { on: { change: (e) => { cur = cat.find((c) => c.key === e.target.value); build(); } } }, cat.map((c) => h("option", { value: c.key }, tr(c.label))));
     const turn = h("input", { type: "range", min: 0, max: 359, step: 1, value: az, on: { input: (e) => { az = +e.target.value; refresh(); } } });
-    const play = h("button.mini", { title: "Faire tourner l'aperçu", on: { click: () => { if (spin) { clearInterval(spin); spin = null; play.textContent = "▶"; return; } play.textContent = "⏸"; spin = setInterval(() => { if (!document.body.contains(img)) { clearInterval(spin); return; } az = (az + 6) % 360; turn.value = az; refresh(); }, 140); } } }, "▶");
-    const m = modal("Objet tout fait", h("div.procedural",
+    const play = h("button.mini", { title: tt("Faire tourner l'aperçu"), on: { click: () => { if (spin) { clearInterval(spin); spin = null; play.textContent = "▶"; return; } play.textContent = "⏸"; spin = setInterval(() => { if (!document.body.contains(img)) { clearInterval(spin); return; } az = (az + 6) % 360; turn.value = az; refresh(); }, 140); } } }, "▶");
+    const m = modal(tt("Objet tout fait"), h("div.procedural",
       h("div.procleft", img, h("div.scrub", play, turn)),
-      h("div.form", h("label.row", "Objet", pick), knobs, h("label.row", "Nom", name),
-        h("p.muted", "Cotes en centimètres. L'objet est rangé dans les Assets avec son orbite complète (72 images), sans passer par une machine : compte une demi-minute."))),
-      [{ label: "Annuler" }, { label: "Ajouter à la banque", primary: true, click: async () => {
-        toast("Fabrication de l'orbite (une demi-minute)…", "info", 9000);
+      h("div.form", h("label.row", tt("Objet"), pick), knobs, h("label.row", tt("Nom"), name),
+        h("p.muted", tt("Cotes en centimètres. L'objet est rangé dans les Assets avec son orbite complète (72 images), sans passer par une machine : compte une demi-minute.")))),
+      [{ label: tt("Annuler") }, { label: tt("Ajouter à la banque"), primary: true, click: async () => {
+        toast(tt("Fabrication de l'orbite (une demi-minute)…"), "info", 9000);
         const f = this.bankUI.tab === "asset" && this.bankUI.folder && this.bankUI.folder !== "·" ? this.bankUI.folder : "";
         try {
           const it = await post("procedural/create", { key: cur.key, params: vals, name: name.value.trim(), folder: f });
           this.bankUI.tab = "asset"; await this.bankUI.reload(); this.bankUI.reveal(it.id);
-        } catch (e) { toast("Objet refusé : " + e.message, "error", 9000); return false; }
+        } catch (e) { toast(tt("Objet refusé : ") + e.message, "error", 9000); return false; }
       } }]);
     m.box.classList.add("wide");
     build();
@@ -599,17 +602,17 @@ class App {
   // decks de montage : plusieurs par storyboard, enregistres avec lui
   decks() {
     const P = this.project;
-    if (!P.decks) { P.decks = []; if (P.deck && (P.deck.clips || []).length) P.decks.push({ id: uid(), name: "Deck 1", clips: P.deck.clips }); delete P.deck; }
+    if (!P.decks) { P.decks = []; if (P.deck && (P.deck.clips || []).length) P.decks.push({ id: uid(), name: tt("Deck 1"), clips: P.deck.clips }); delete P.deck; }
     return P.decks;
   }
-  newDeck(name, clips) { const d = { id: uid(), name: name || `Deck ${this.decks().length + 1}`, clips: clips || [] }; this.decks().push(d); this.project.deckCur = d.id; this.commit("deck"); this.refreshTop(); return d; }
+  newDeck(name, clips) { const d = { id: uid(), name: name || tt`Deck ${this.decks().length + 1}`, clips: clips || [] }; this.decks().push(d); this.project.deckCur = d.id; this.commit("deck"); this.refreshTop(); return d; }
   /** Le deck demande, sinon le deck en cours, sinon le premier, sinon un deck neuf. */
-  deckOf(id) { const ds = this.decks(); return ds.find((d) => d.id === id) || ds.find((d) => d.id === this.project.deckCur) || ds[0] || this.newDeck("Deck 1"); }
+  deckOf(id) { const ds = this.decks(); return ds.find((d) => d.id === id) || ds.find((d) => d.id === this.project.deckCur) || ds[0] || this.newDeck(tt("Deck 1")); }
   refreshTop() { this.refreshInspector(); }
   decksMenu(e) {
-    const ds = this.decks(), items = [{ head: ds.length ? "Decks enregistrés" : "Aucun deck pour l'instant" }];
+    const ds = this.decks(), items = [{ head: ds.length ? tt("Decks enregistrés") : tt("Aucun deck pour l'instant") }];
     for (const d of ds) items.push({ label: `🎞 ${d.name} · ${d.clips.length} plan${d.clips.length > 1 ? "s" : ""}`, checked: d.id === this.project.deckCur, click: () => openDeck(this, d.id) });
-    items.push({ label: "＋ Nouveau deck…", click: () => { const n = (prompt("Nom du nouveau deck :", `Deck ${ds.length + 1}`) || "").trim(); if (n) openDeck(this, this.newDeck(n).id); } });
+    items.push({ label: tt("＋ Nouveau deck…"), click: () => { const n = (prompt(tt("Nom du nouveau deck :"), tt`Deck ${ds.length + 1}`) || "").trim(); if (n) openDeck(this, this.newDeck(n).id); } });
     menu(e, items);
   }
   // deck de montage global : une case animee y devient un plan
@@ -627,7 +630,7 @@ class App {
 
   // ---------------------------------------------------------------- bulles
   addBubble(type, rel) {
-    const pan = this.curPanel(); if (!pan) return toast("Choisis d'abord une case.");
+    const pan = this.curPanel(); if (!pan) return toast(tt("Choisis d'abord une case."));
     const [, text, tail] = BUB[type];
     const b = { id: uid(), type, text, size: "M", color: "white", font: "bd", show: "always", x: clamp(rel?.x ?? 0.5, 0.1, 0.9), y: clamp(rel?.y ?? 0.2, 0.08, 0.9) };
     if (tail) { b.tx = clamp(b.x + 0.06, 0, 1); b.ty = clamp(b.y + 0.2, 0, 1.1); }
@@ -650,7 +653,7 @@ class App {
   resetMark(m, at) { m.pts = newMark(m.type, m.id, [at[0] + (m.type === "frame" || m.type === "turn" ? 0 : 0.15), at[1]]).pts; }
   armMark(type) {                                       // l'indication se trace au prochain glisser dans une case
     this.markTool = type; this.editor.render(true);
-    toast(type === "free" ? "Dessine la flèche dans la case : la pointe se met au bout du trait." : "Glisse dans une case pour tracer (un simple clic pose une taille standard).");
+    toast(type === "free" ? tt("Dessine la flèche dans la case : la pointe se met au bout du trait.") : tt("Glisse dans une case pour tracer (un simple clic pose une taille standard)."));
   }
   removeMark() {
     const pan = this.curPanel(), m = this.mark();
@@ -672,10 +675,10 @@ class App {
     const set = (k, v) => () => { m[k] = v; this.commit("mark"); this.editor.render(); this.refreshInspector(); };
     const items = [{ head: MARKS[m.type][0] }];
     for (const [c, name] of Object.entries(MARK_COLORS)) items.push({ label: name, half: true, checked: (m.color || "#111111") === c, click: set("color", c) });
-    if (m.type === "turn") items.push({ label: "Inverser le sens", click: set("cw", m.cw === false) });
-    else if (m.type !== "frame") items.push({ label: "Pointe aux deux bouts", checked: !!m.both, click: set("both", !m.both) });
-    items.push({ label: "Pointillés", checked: m.type === "frame" ? m.dash !== false : !!m.dash, click: set("dash", m.type === "frame" ? m.dash === false : !m.dash) },
-      { label: "Dupliquer", click: () => this.duplicateMark() }, { label: "Supprimer", danger: true, click: () => this.removeMark() });
+    if (m.type === "turn") items.push({ label: tt("Inverser le sens"), click: set("cw", m.cw === false) });
+    else if (m.type !== "frame") items.push({ label: tt("Pointe aux deux bouts"), checked: !!m.both, click: set("both", !m.both) });
+    items.push({ label: tt("Pointillés"), checked: m.type === "frame" ? m.dash !== false : !!m.dash, click: set("dash", m.type === "frame" ? m.dash === false : !m.dash) },
+      { label: tt("Dupliquer"), click: () => this.duplicateMark() }, { label: tt("Supprimer"), danger: true, click: () => this.removeMark() });
     menu(e, items);
   }
   removeBubble() {
@@ -685,11 +688,11 @@ class App {
   }
   bubbleMenu(e, pid, id) {
     this.select({ panel: pid, bubble: id });
-    const b = this.bubble(), items = [{ head: "Forme" }];
+    const b = this.bubble(), items = [{ head: tt("Forme") }];
     for (const [t, [label]] of Object.entries(BUB)) items.push({ label, checked: b.type === t, half: true, click: () => { b.type = t; this.commit("bub"); this.editor.render(); this.refreshInspector(); } });
-    items.push({ head: "Bulle" }, { label: b.tx != null ? "Sans queue" : "Avec queue", click: () => {
+    items.push({ head: tt("Bulle") }, { label: b.tx != null ? tt("Sans queue") : tt("Avec queue"), click: () => {
       if (b.tx != null) { delete b.tx; delete b.ty; delete b.bx; delete b.by; } else { b.tx = b.x + 0.06; b.ty = b.y + 0.2; }
-      this.commit("bub"); this.editor.render(); } }, { label: "Supprimer", danger: true, click: () => this.removeBubble() });
+      this.commit("bub"); this.editor.render(); } }, { label: tt("Supprimer"), danger: true, click: () => this.removeBubble() });
     menu(e, items);
   }
 
@@ -700,37 +703,37 @@ class App {
     return (await upload(`projects/${this.project.id}/flat/${g.id}`, blob)).file;
   }
   async integrate(style, extra) {
-    const pan = this.curPanel(); if (!pan) return toast("Choisis d'abord une case.");
-    if (!pan.bg && !(pan.layers || []).length) return toast("La case est vide.");
+    const pan = this.curPanel(); if (!pan) return toast(tt("Choisis d'abord une case."));
+    if (!pan.bg && !(pan.layers || []).length) return toast(tt("La case est vide."));
     try {
       const flat = await this.flat();
       await post(`projects/${this.project.id}/integrate`, { panel: this.sel.panel, flat, style: style || pan.style || this.guessStyle(pan), extra: extra || "", target: target() });
-      toast("Integrate lancé : l'image unifiée remplacera les calques (ils restent disponibles)."); this.pollSoon();
-    } catch (e) { toast("Integrate impossible : " + e.message, "error"); }
+      toast(tt("Integrate lancé : l'image unifiée remplacera les calques (ils restent disponibles).")); this.pollSoon();
+    } catch (e) { toast(tt("Integrate impossible : ") + e.message, "error"); }
   }
   // toute la page d'un coup : chaque case composee part a Integrate (les cases deja integrees sont refaites)
   async integratePage(style) {
     const pg = this.page(), todo = this.editor.geom.panels.filter((g) => { const p = pg.panels[g.id] || {}; return p.bg || (p.layers || []).length; });
-    if (!todo.length) return toast("Aucune case composée sur cette page.");
-    if (!confirm(`Lancer Integrate (${(INTEGRATE_STYLES.find(([k]) => k === style) || INTEGRATE_STYLES[2])[1].toLowerCase()}) sur ${todo.length} case(s) ?`)) return;
+    if (!todo.length) return toast(tt("Aucune case composée sur cette page."));
+    if (!confirm(tt`Lancer Integrate (${(INTEGRATE_STYLES.find(([k]) => k === style) || INTEGRATE_STYLES[2])[1].toLowerCase()}) sur ${todo.length} case(s) ?`)) return;
     let n = 0;
     for (const g of todo) {
       try {
         const flat = await this.flat(g.id);
         await post(`projects/${this.project.id}/integrate`, { panel: g.id, flat, style, target: target() }); n++;
-      } catch (e) { toast(`Case ${g.order} : ${e.message}`, "error"); }
+      } catch (e) { toast(tt`Case ${g.order} : ${e.message}`, "error"); }
     }
-    toast(`${n} Integrate lancé(s).`); this.pollSoon();
+    toast(tt`${n} Integrate lancé(s).`); this.pollSoon();
   }
   async panelOrbit() {
-    const pan = this.curPanel(); if (!pan) return toast("Choisis d'abord une case.");
+    const pan = this.curPanel(); if (!pan) return toast(tt("Choisis d'abord une case."));
     try {
       let flat;
       if (pan.show === "integrated" && pan.integrated) flat = pan.integrated;        // l'image integree tourne mieux qu'un collage
       else flat = await this.flat();
       await post(`projects/${this.project.id}/orbit`, { panel: this.sel.panel, flat, target: target() });
-      toast("Orbite de la case lancée (≈ 3 min)."); this.pollSoon();
-    } catch (e) { toast("Orbite impossible : " + e.message, "error"); }
+      toast(tt("Orbite de la case lancée (≈ 3 min).")); this.pollSoon();
+    } catch (e) { toast(tt("Orbite impossible : ") + e.message, "error"); }
   }
   guessStyle(pan) {
     const it = (pan.layers || []).map((l) => this.bank.get(l.item)).find(Boolean) || this.bank.get(pan.bg?.item);
@@ -743,163 +746,163 @@ class App {
     const pan = this.curPanel(), l = this.layer(), b = this.bubble();
     const range = (label, val, min, max, step, fn, kind) => { const out = h("output", fmt(val));
       return h("label.row.range", label, h("input", { type: "range", min, max, step, value: val, on: { input: (e) => { fn(+e.target.value); out.textContent = fmt(+e.target.value); this.editor.render(true); this.commitSoon(kind); } } }), out); };
-    if (!pan) { box.append(h("h3", "Sélection"), h("p.muted", "Clique une case pour la régler ; glisse-y un décor puis des personnages depuis la banque.")); return; }
+    if (!pan) { box.append(h("h3", tt("Sélection")), h("p.muted", tt("Clique une case pour la régler ; glisse-y un décor puis des personnages depuis la banque."))); return; }
     if (l) {
       const item = this.bank.get(l.item), v = variantOf(item, l.v), sp = item && sprite(item, l.v, l.f), ls = pan.layers, i = ls.indexOf(l);
-      box.append(h("h3", item ? item.name : "Élément retiré de la banque"));
-      if (!item) { box.append(h("button.mini.danger", { on: { click: () => this.removeLayer(l) } }, "Supprimer le calque")); return; }
-      box.append(h("label.row", "Pose", h("select", { on: { change: (e) => this.setPose(l, e.target.value) } },
-        Object.entries(item.variants).map(([k, vv]) => h("option", { value: k, selected: k === l.v }, (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + vv.label)))));
+      box.append(h("h3", item ? item.name : tt("Élément retiré de la banque")));
+      if (!item) { box.append(h("button.mini.danger", { on: { click: () => this.removeLayer(l) } }, tt("Supprimer le calque"))); return; }
+      box.append(h("label.row", tt("Pose"), h("select", { on: { change: (e) => this.setPose(l, e.target.value) } },
+        Object.entries(item.variants).map(([k, vv]) => h("option", { value: k, selected: k === l.v }, (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + tr(vv.label))))));
       if (v && v.orbit) {
         const cur = nearestAxis(v.orbit, l.f || 0);
-        box.append(h("div.axes", AXES.map((a) => h("button.mini" + (a === cur ? ".on" : ""), { on: { click: () => this.setAxis(l, a) } }, a))),
-          range("Rotation", sp.i, 0, sp.n - 1, 1, (x) => { l.f = x; }, "frame"));
-      } else box.append(h("p.muted", this.jobsFor(l.item, l.v) ? "Orbite en calcul : le personnage deviendra pivotable." : "Pas d'orbite pour cette pose : image fixe."));
-      const rs = range("Taille", l.s, 0.05, 12, 0.01, (x) => { l.s = x; }, "lscale");
-      const rpx = range("Position ↔", l.x, -4, 5, 0.005, (x) => { l.x = x; }, "lmove"), rpy = range("Position ↕", l.y, -4, 8, 0.005, (x) => { l.y = x; }, "lmove");
+        box.append(h("div.axes", AXES.map((a) => h("button.mini" + (a === cur ? ".on" : ""), { on: { click: () => this.setAxis(l, a) } }, tr(a)))),
+          range(tt("Rotation"), sp.i, 0, sp.n - 1, 1, (x) => { l.f = x; }, "frame"));
+      } else box.append(h("p.muted", this.jobsFor(l.item, l.v) ? tt("Orbite en calcul : le personnage deviendra pivotable.") : tt("Pas d'orbite pour cette pose : image fixe.")));
+      const rs = range(tt("Taille"), l.s, 0.05, 12, 0.01, (x) => { l.s = x; }, "lscale");
+      const rpx = range(tt("Position ↔"), l.x, -4, 5, 0.005, (x) => { l.x = x; }, "lmove"), rpy = range(tt("Position ↕"), l.y, -4, 8, 0.005, (x) => { l.y = x; }, "lmove");
       this.syncLayer = () => { for (const [r, v] of [[rs, l.s], [rpx, l.x], [rpy, l.y]]) { r.querySelector("input").value = v; r.querySelector("output").textContent = fmt(v); } };
       // dépliant : reste ouvert ou fermé d'un élément à l'autre
       const fold = (key, label, ...rows) => { this.folds = this.folds || { sh: true, gs: true, wig: false };
         return h("details.fold", { open: !!this.folds[key], on: { toggle: (e) => { this.folds[key] = e.target.open; } } }, h("summary", label), ...rows); };
-      if (sp && sp.vec) box.append(h("div", { title: "Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin, jusqu'à un filet." }, range("Trait ⓘ", l.lw || 0, -12, 6, 0.1, (x) => { l.lw = x; }, "lw")),
-        fold("wig", "Tremblé du trait", range("Tremblé", l.hand || 0, 0, 10, 0.1, (x) => { l.hand = x; }, "hand"), range("Ondulation", l.wave ?? 4, 0.5, 12, 0.1, (x) => { l.wave = x; }, "hand")),
-        h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
+      if (sp && sp.vec) box.append(h("div", { title: tt("Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin, jusqu'à un filet.") }, range(tt("Trait ⓘ"), l.lw || 0, -12, 6, 0.1, (x) => { l.lw = x; }, "lw")),
+        fold("wig", tt("Tremblé du trait"), range(tt("Tremblé"), l.hand || 0, 0, 10, 0.1, (x) => { l.hand = x; }, "hand"), range(tt("Ondulation"), l.wave ?? 4, 0.5, 12, 0.1, (x) => { l.wave = x; }, "hand")),
+        h("div.row.colrow", { title: tt("Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent.") }, h("span", tt("Couleur")),
           swatch(l.col || "#ffffff", (c) => { l.col = c; this.editor.render(true); this.commitSoon("col"); }),
-          l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; this.commit("col"); this.editor.render(); this.refreshInspector(); } } }, "Blanc") : ""),
-        h("div.row.colrow", { title: "Couleur du trait : tout ce qui est noir dans le dessin prend cette couleur." }, h("span", "Contour"),
+          l.col && l.col.toLowerCase() !== "#ffffff" ? h("button.mini", { on: { click: () => { delete l.col; this.commit("col"); this.editor.render(); this.refreshInspector(); } } }, tt("Blanc")) : ""),
+        h("div.row.colrow", { title: tt("Couleur du trait : tout ce qui est noir dans le dessin prend cette couleur.") }, h("span", tt("Contour")),
           swatch(l.ink || "#111111", (c) => { l.ink = c; this.editor.render(true); this.commitSoon("ink"); }),
-          l.ink && l.ink.toLowerCase() !== "#111111" ? h("button.mini", { on: { click: () => { delete l.ink; this.commit("ink"); this.editor.render(); this.refreshInspector(); } } }, "Noir") : ""));
-      box.append(range("Inclinaison", l.rz || 0, -180, 180, 1, (x) => { l.rz = x; }, "rz"));
+          l.ink && l.ink.toLowerCase() !== "#111111" ? h("button.mini", { on: { click: () => { delete l.ink; this.commit("ink"); this.editor.render(); this.refreshInspector(); } } }, tt("Noir")) : ""));
+      box.append(range(tt("Inclinaison"), l.rz || 0, -180, 180, 1, (x) => { l.rz = x; }, "rz"));
       box.append(rs, rpx, rpy,
-        range("Profondeur", depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"));
+        range(tt("Profondeur"), depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"));
       // ombre et ombre portee : en dernier, apres la profondeur
       if (sp && sp.vec) {
         const sh = l.sh || {}, put = (k, x) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135 }, l.sh, { [k]: x }); };
-        box.append(h("label.row.check", { title: "Un aplat gris posé sur le dessin, du côté opposé à la lumière. Sans calcul." }, h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), "Ombre"));
-        if (sh.on) box.append(fold("sh", "Réglages de l'ombre",
-          h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu d'assombrir la couleur du corps" }, h("input", { type: "checkbox", checked: !!sh.ink, on: { change: (e) => { put("ink", e.target.checked); this.editor.render(true); this.commit("shade"); } } }), "Cloner la couleur de contour"),
-          range("Gris", sh.g ?? 0.72, 0.2, 0.95, 0.01, (x) => put("g", x), "shade"),
-          range("Largeur", sh.w ?? 5, 0.5, 25, 0.1, (x) => put("w", x), "shade"),
-          range("Lumière (angle)", sh.a ?? 135, 0, 360, 1, (x) => put("a", x), "shade"),
-          h("div", { title: "0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin (tête, torse…), une par cran." }, range("Formes détaillées ⓘ", sh.k ?? 0, 0, 8, 1, (x) => put("k", x), "shade"))));
+        box.append(h("label.row.check", { title: tt("Un aplat gris posé sur le dessin, du côté opposé à la lumière. Sans calcul.") }, h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), tt("Ombre")));
+        if (sh.on) box.append(fold("sh", tt("Réglages de l'ombre"),
+          h("label.row.check", { title: tt("L'ombre prend la couleur choisie pour le contour du dessin, au lieu d'assombrir la couleur du corps") }, h("input", { type: "checkbox", checked: !!sh.ink, on: { change: (e) => { put("ink", e.target.checked); this.editor.render(true); this.commit("shade"); } } }), tt("Cloner la couleur de contour")),
+          range(tt("Gris"), sh.g ?? 0.72, 0.2, 0.95, 0.01, (x) => put("g", x), "shade"),
+          range(tt("Largeur"), sh.w ?? 5, 0.5, 25, 0.1, (x) => put("w", x), "shade"),
+          range(tt("Lumière (angle)"), sh.a ?? 135, 0, 360, 1, (x) => put("a", x), "shade"),
+          h("div", { title: tt("0 : ombre sur la silhouette seule. Monter ajoute une ombre aux plus grandes formes du dessin (tête, torse…), une par cran.") }, range(tt("Formes détaillées ⓘ"), sh.k ?? 0, 0, 8, 1, (x) => put("k", x), "shade"))));
       }
       {
         const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); };
-        box.append(h("label.row.check", { title: "Une tache sombre et floue sous l'élément, pour le poser au sol" }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); this.commit("cast"); this.editor.render(); this.refreshInspector(); } } }), "Ombre portée"));
-        if (gs.on) box.append(fold("gs", "Réglages de l'ombre portée",
-          h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu du noir" }, h("input", { type: "checkbox", checked: !!gs.ink, on: { change: (e) => { putg("ink", e.target.checked); this.editor.render(true); this.commit("cast"); } } }), "Cloner la couleur de contour"),
-          range("Opacité", gs.a ?? 0.35, 0.05, 1, 0.01, (x) => putg("a", x), "cast"),
-          h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, range("Flou ⓘ", gs.b ?? 1, 0, 4, 0.05, (x) => putg("b", x), "cast")),
-          range("Épaisseur", gs.h ?? 1, 0.2, 4, 0.05, (x) => putg("h", x), "cast"),
-          h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, range("Décalage ↔ ⓘ", gs.dx || 0, -0.6, 0.6, 0.005, (x) => putg("dx", x), "cast"), range("Décalage ↕", gs.dy || 0, -0.6, 0.6, 0.005, (x) => putg("dy", x), "cast")),
-          range("Largeur", gs.w ?? 0.8, 0.2, 2.5, 0.01, (x) => putg("w", x), "cast"),
-          h("div", { title: "Déforme le contour de l'ombre. 0 : ovale net. Tout à droite : une tache abstraite. Ondulation courte = bord déchiqueté, longue = grandes vagues. Forme : une autre tache, au hasard." },
-            range("Tremblé ⓘ", gs.hand || 0, 0, 10, 0.1, (x) => putg("hand", x), "cast"), range("Ondulation", gs.wave ?? 4, 0.5, 12, 0.1, (x) => putg("wave", x), "cast"), range("Forme", gs.seed || 0, 0, 40, 1, (x) => putg("seed", x), "cast"))));
+        box.append(h("label.row.check", { title: tt("Une tache sombre et floue sous l'élément, pour le poser au sol") }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); this.commit("cast"); this.editor.render(); this.refreshInspector(); } } }), tt("Ombre portée")));
+        if (gs.on) box.append(fold("gs", tt("Réglages de l'ombre portée"),
+          h("label.row.check", { title: tt("L'ombre prend la couleur choisie pour le contour du dessin, au lieu du noir") }, h("input", { type: "checkbox", checked: !!gs.ink, on: { change: (e) => { putg("ink", e.target.checked); this.editor.render(true); this.commit("cast"); } } }), tt("Cloner la couleur de contour")),
+          range(tt("Opacité"), gs.a ?? 0.35, 0.05, 1, 0.01, (x) => putg("a", x), "cast"),
+          h("div", { title: tt("0 : bord net. Vers la droite : de plus en plus floue.") }, range(tt("Flou ⓘ"), gs.b ?? 1, 0, 4, 0.05, (x) => putg("b", x), "cast")),
+          range(tt("Épaisseur"), gs.h ?? 1, 0.2, 4, 0.05, (x) => putg("h", x), "cast"),
+          h("div", { title: tt("Pour la caler sous les pieds quand le personnage a l'air de flotter") }, range(tt("Décalage ↔ ⓘ"), gs.dx || 0, -0.6, 0.6, 0.005, (x) => putg("dx", x), "cast"), range(tt("Décalage ↕"), gs.dy || 0, -0.6, 0.6, 0.005, (x) => putg("dy", x), "cast")),
+          range(tt("Largeur"), gs.w ?? 0.8, 0.2, 2.5, 0.01, (x) => putg("w", x), "cast"),
+          h("div", { title: tt("Déforme le contour de l'ombre. 0 : ovale net. Tout à droite : une tache abstraite. Ondulation courte = bord déchiqueté, longue = grandes vagues. Forme : une autre tache, au hasard.") },
+            range(tt("Tremblé ⓘ"), gs.hand || 0, 0, 10, 0.1, (x) => putg("hand", x), "cast"), range(tt("Ondulation"), gs.wave ?? 4, 0.5, 12, 0.1, (x) => putg("wave", x), "cast"), range(tt("Forme"), gs.seed || 0, 0, 40, 1, (x) => putg("seed", x), "cast"))));
       }
       box.append(
-        h("div.row", h("button.mini" + (l.flip ? ".on" : ""), { on: { click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); this.refreshInspector(); } } }, "⇋ Miroir"),
-          h("button.mini", { on: { click: () => this.order(l, "up") } }, "Avancer"), h("button.mini", { on: { click: () => this.order(l, "down") } }, "Reculer"),
-          h("button.mini", { on: { click: () => this.duplicate(l) } }, "Dupliquer"),
-          h("button.mini", { title: "Ajouter cet élément, tel qu'il est réglé, dans d'autres cases", on: { click: () => this.copyLayerTo(l) } }, "Copier vers…"),
-          h("button.mini.danger", { on: { click: () => this.removeLayer(l) } }, "Supprimer")),
-        h("button.mini", { on: { click: () => this.bankUI.openItem(l.item) } }, "Fiche : poses et orbites…"));
+        h("div.row", h("button.mini" + (l.flip ? ".on" : ""), { on: { click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); this.refreshInspector(); } } }, tt("⇋ Miroir")),
+          h("button.mini", { on: { click: () => this.order(l, "up") } }, tt("Avancer")), h("button.mini", { on: { click: () => this.order(l, "down") } }, tt("Reculer")),
+          h("button.mini", { on: { click: () => this.duplicate(l) } }, tt("Dupliquer")),
+          h("button.mini", { title: tt("Ajouter cet élément, tel qu'il est réglé, dans d'autres cases"), on: { click: () => this.copyLayerTo(l) } }, tt("Copier vers…")),
+          h("button.mini.danger", { on: { click: () => this.removeLayer(l) } }, tt("Supprimer"))),
+        h("button.mini", { on: { click: () => this.bankUI.openItem(l.item) } }, tt("Fiche : poses et orbites…")));
       return;
     }
     if (b) {
       const AB = window.AliveBubbles, upd = () => { this.editor.bubs.get(this.sel.panel)?.layout(); this.commitSoon("bub-" + b.id); };
       const sel = (label, key, opts) => h("label.row", label, h("select", { on: { change: (e) => { b[key] = e.target.value; this.editor.render(); this.commit("bub"); } } },
         opts.map(([v, t]) => h("option", { value: v, selected: (b[key] || opts[0][0]) === v }, t))));
-      box.append(h("h3", "Bulle"),
+      box.append(h("h3", tt("Bulle")),
         h("textarea", { rows: 3, on: { input: (e) => { b.text = e.target.value; const it = this.editor.bubs.get(this.sel.panel)?.items.find((x) => x.b === b); if (it) it.txt.textContent = b.text; upd(); } } }, b.text || ""),
-        sel("Forme", "type", Object.entries(BUB).map(([k, v]) => [k, v[0]])),
-        sel("Taille", "size", [["S", "Petite"], ["M", "Moyenne"], ["L", "Grande"]]),
-        sel("Couleur", "color", Object.entries(AB.COLOR_NAMES)),
-        sel("Police", "font", Object.entries(AB.FONTS).map(([k, v]) => [k, v[0]])),
-        h("div.row", h("button.mini", { on: { click: () => { if (b.tx != null) { delete b.tx; delete b.ty; delete b.bx; delete b.by; } else { b.tx = b.x + 0.06; b.ty = b.y + 0.2; } this.commit("bub"); this.editor.render(); } } }, "Queue oui / non"),
-          h("button.mini.danger", { on: { click: () => this.removeBubble() } }, "Supprimer")));
+        sel(tt("Forme"), "type", Object.entries(BUB).map(([k, v]) => [k, v[0]])),
+        sel(tt("Taille"), "size", [["S", tt("Petite")], ["M", tt("Moyenne")], ["L", tt("Grande")]]),
+        sel(tt("Couleur"), "color", Object.entries(AB.COLOR_NAMES)),
+        sel(tt("Police"), "font", Object.entries(AB.FONTS).map(([k, v]) => [k, v[0]])),
+        h("div.row", h("button.mini", { on: { click: () => { if (b.tx != null) { delete b.tx; delete b.ty; delete b.bx; delete b.by; } else { b.tx = b.x + 0.06; b.ty = b.y + 0.2; } this.commit("bub"); this.editor.render(); } } }, tt("Queue oui / non")),
+          h("button.mini.danger", { on: { click: () => this.removeBubble() } }, tt("Supprimer"))));
       return;
     }
     const mk = this.mark();
     if (mk) {
       const redo = () => { this.editor.render(); this.commit("mark"); this.refreshInspector(); };
-      box.append(h("h3", "Indication · " + MARKS[mk.type][0]),
-        h("div.row.colrow", h("span", "Couleur"), swatch(mk.color || "#111111", (c) => { mk.color = c; this.editor.render(true); this.commitSoon("mark"); })),
-        range("Épaisseur", mk.w || 1, 0.4, 4, 0.1, (x) => { mk.w = x; }, "mark"),
+      box.append(h("h3", tt("Indication · ") + MARKS[mk.type][0]),
+        h("div.row.colrow", h("span", tt("Couleur")), swatch(mk.color || "#111111", (c) => { mk.color = c; this.editor.render(true); this.commitSoon("mark"); })),
+        range(tt("Épaisseur"), mk.w || 1, 0.4, 4, 0.1, (x) => { mk.w = x; }, "mark"),
         h("div.row",
-          h("button.mini" + ((mk.type === "frame" ? mk.dash !== false : mk.dash) ? ".on" : ""), { on: { click: () => { mk.dash = mk.type === "frame" ? mk.dash === false : !mk.dash; redo(); } } }, "Pointillés"),
-          mk.type === "turn" ? h("button.mini", { on: { click: () => { mk.cw = mk.cw === false; redo(); } } }, "Inverser le sens")
-            : mk.type !== "frame" ? h("button.mini" + (mk.both ? ".on" : ""), { on: { click: () => { mk.both = !mk.both; redo(); } } }, "Deux pointes") : ""),
-        h("div.row", h("button.mini", { title: "Glisser l'indication la déplace ; ses points ronds la déforment.", on: { click: () => this.duplicateMark() } }, "Dupliquer"), h("button.mini.danger", { title: "Ou touche Suppr", on: { click: () => this.removeMark() } }, "Supprimer")));
+          h("button.mini" + ((mk.type === "frame" ? mk.dash !== false : mk.dash) ? ".on" : ""), { on: { click: () => { mk.dash = mk.type === "frame" ? mk.dash === false : !mk.dash; redo(); } } }, tt("Pointillés")),
+          mk.type === "turn" ? h("button.mini", { on: { click: () => { mk.cw = mk.cw === false; redo(); } } }, tt("Inverser le sens"))
+            : mk.type !== "frame" ? h("button.mini" + (mk.both ? ".on" : ""), { on: { click: () => { mk.both = !mk.both; redo(); } } }, tt("Deux pointes")) : ""),
+        h("div.row", h("button.mini", { title: tt("Glisser l'indication la déplace ; ses points ronds la déforment."), on: { click: () => this.duplicateMark() } }, tt("Dupliquer")), h("button.mini.danger", { title: tt("Ou touche Suppr"), on: { click: () => this.removeMark() } }, tt("Supprimer"))));
       return;
     }
     // ---- la case
     const g = this.geo(this.sel.panel), bg = background(pan, this.bank, this.project.id);
     const dof = pan.dof || (pan.dof = { on: false, focus: 0.3, amount: 12 });
-    box.append(h("h3", "Case " + (g ? g.order : "")));
-    box.append(h("div.row", h("span.muted", "Fond :"), h("span", bg ? (bg.item ? bg.item.name : "image importée") : "aucun"),
-      bg ? h("button.mini", { on: { click: () => { delete pan.bg; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } }, "Retirer") : null));
-    box.append(h("div.row", h("button.mini", { title: "Formes simples, tracés, gris en trame de points : un décor fait à la main en noir et blanc", on: { click: () => this.drawBackground(this.sel.panel) } }, (pan.draw ? "✎ Modifier le fond dessiné" : "✎ Dessiner le fond")),
-      pan.draw ? h("button.mini.danger", { on: { click: () => { delete pan.draw; this.commit("draw"); this.editor.render(); this.refreshInspector(); } } }, "Retirer le dessin") : ""));
-    if (bg && bg.item && Object.keys(bg.item.variants).length > 1) box.append(h("label.row", "Ambiance", h("select", { on: { change: (e) => { pan.bg.v = e.target.value; pan.bg.f = 0; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } },
-      Object.entries(bg.item.variants).map(([k, vv]) => h("option", { value: k, selected: k === (pan.bg.v || "base") }, vv.label)))));
-    if (bg && bg.orbit) box.append(range("Axe du décor", pan.bg.f || 0, 0, bg.n - 1, 1, (x) => { pan.bg.f = x; }, "bturn"));
+    box.append(h("h3", tt("Case ") + (g ? g.order : "")));
+    box.append(h("div.row", h("span.muted", tt("Fond :")), h("span", bg ? (bg.item ? bg.item.name : tt("image importée")) : "aucun"),
+      bg ? h("button.mini", { on: { click: () => { delete pan.bg; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer")) : null));
+    box.append(h("div.row", h("button.mini", { title: tt("Formes simples, tracés, gris en trame de points : un décor fait à la main en noir et blanc"), on: { click: () => this.drawBackground(this.sel.panel) } }, (pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond"))),
+      pan.draw ? h("button.mini.danger", { on: { click: () => { delete pan.draw; this.commit("draw"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer le dessin")) : ""));
+    if (bg && bg.item && Object.keys(bg.item.variants).length > 1) box.append(h("label.row", tt("Ambiance"), h("select", { on: { change: (e) => { pan.bg.v = e.target.value; pan.bg.f = 0; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } },
+      Object.entries(bg.item.variants).map(([k, vv]) => h("option", { value: k, selected: k === (pan.bg.v || "base") }, tr(vv.label))))));
+    if (bg && bg.orbit) box.append(range(tt("Axe du décor"), pan.bg.f || 0, 0, bg.n - 1, 1, (x) => { pan.bg.f = x; }, "bturn"));
     if (bg) {
       // cadrage du fond : zoom, puis position horizontale et verticale (-100 = bord gauche / haut, 100 = bord droit / bas)
       const travel = () => { const pl = placement(g.bbox, bg.w || 16, bg.h || 9, pan.view); return { pl, mx: (pl.w - g.bbox.w) / (2 * g.bbox.w), my: (pl.h - g.bbox.h) / (2 * g.bbox.h) }; };
       const pos = (axis) => { const t = travel(), m = axis === "x" ? t.mx : t.my, o = axis === "x" ? t.pl.ox : t.pl.oy; return m > 1e-4 ? Math.round(-o / m * 100) : 0; };
       const setPos = (axis, x) => { const t = travel(), v = Object.assign({ zoom: 1, ox: 0, oy: 0 }, pan.view); if (axis === "x") v.ox = -x / 100 * t.mx; else v.oy = -x / 100 * t.my; pan.view = v; };
-      const rx = range("Cadrage ↔", pos("x"), -100, 100, 1, (x) => setPos("x", x), "pan");
-      const ry = range("Cadrage ↕", pos("y"), -100, 100, 1, (x) => setPos("y", x), "pan");
+      const rx = range(tt("Cadrage ↔"), pos("x"), -100, 100, 1, (x) => setPos("x", x), "pan");
+      const ry = range(tt("Cadrage ↕"), pos("y"), -100, 100, 1, (x) => setPos("y", x), "pan");
       const sync = () => { for (const [r, a] of [[rx, "x"], [ry, "y"]]) { const t = travel(), free = (a === "x" ? t.mx : t.my) > 1e-4; r.querySelector("input").value = pos(a); r.querySelector("output").textContent = pos(a); r.querySelector("input").disabled = !free; r.classList.toggle("off", !free); } };
       this.syncPan = sync;
-      if (bg.vec) box.append(range("Trait du fond", pan.bglw || 0, -2, 6, 0.1, (x) => { pan.bglw = x; }, "bglw"),
-        range("Tremblé du fond", pan.bghand || 0, 0, 10, 0.1, (x) => { pan.bghand = x; }, "bghand"), range("Ondulation du fond", pan.bgwave ?? 4, 0.5, 12, 0.1, (x) => { pan.bgwave = x; }, "bghand"));
-      box.append(range("Zoom du fond", (pan.view || {}).zoom || 1, 1, 6, 0.01, (x) => { const t0 = travel(), kx = t0.mx > 1e-4 ? t0.pl.ox / t0.mx : 0, ky = t0.my > 1e-4 ? t0.pl.oy / t0.my : 0; pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); const t1 = travel(); pan.view.ox = kx * t1.mx; pan.view.oy = ky * t1.my; sync(); }, "pan"),
-        rx, ry, h("div.row", h("button.mini", { title: "Zoom 1, fond centré", on: { click: () => { pan.view = { zoom: 1, ox: 0, oy: 0 }; this.commit("pan"); this.editor.render(); this.refreshInspector(); } } }, "Recentrer le fond"),
-          h("span.muted", bg.orbit ? "Maj + glisser dans la case : recadrer" : "Glisser dans la case : recadrer")));
+      if (bg.vec) box.append(range(tt("Trait du fond"), pan.bglw || 0, -2, 6, 0.1, (x) => { pan.bglw = x; }, "bglw"),
+        range(tt("Tremblé du fond"), pan.bghand || 0, 0, 10, 0.1, (x) => { pan.bghand = x; }, "bghand"), range(tt("Ondulation du fond"), pan.bgwave ?? 4, 0.5, 12, 0.1, (x) => { pan.bgwave = x; }, "bghand"));
+      box.append(range(tt("Zoom du fond"), (pan.view || {}).zoom || 1, 1, 6, 0.01, (x) => { const t0 = travel(), kx = t0.mx > 1e-4 ? t0.pl.ox / t0.mx : 0, ky = t0.my > 1e-4 ? t0.pl.oy / t0.my : 0; pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); const t1 = travel(); pan.view.ox = kx * t1.mx; pan.view.oy = ky * t1.my; sync(); }, "pan"),
+        rx, ry, h("div.row", h("button.mini", { title: tt("Zoom 1, fond centré"), on: { click: () => { pan.view = { zoom: 1, ox: 0, oy: 0 }; this.commit("pan"); this.editor.render(); this.refreshInspector(); } } }, tt("Recentrer le fond")),
+          h("span.muted", bg.orbit ? tt("Maj + glisser dans la case : recadrer") : tt("Glisser dans la case : recadrer"))));
       sync();
     } else this.syncPan = null;
-    box.append(h("button", { title: "Vue de dessus de la case : la caméra en bas, le décor en haut, chaque élément posé à sa profondeur. Glisser une carte : haut / bas = sa profondeur, gauche / droite = sa place. C'est la même position que dans le montage.", on: { click: () => this.depthDialog(this.sel.panel) } }, "⬒ Profondeur (vue de dessus)"));
-    box.append(h("h4", { title: "0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre)." }, "Profondeur de champ ⓘ"),
-      h("label.row.check", h("input", { type: "checkbox", checked: dof.on, on: { change: (e) => { dof.on = e.target.checked; this.commit("dof"); this.editor.render(); } } }), "Flouter selon la profondeur"),
-      range("Mise au point", dof.focus, 0, 1, 0.01, (x) => { dof.focus = x; dof.on = true; }, "dof"),
-      range("Flou", dof.amount, 0, 60, 1, (x) => { dof.amount = x; dof.on = true; }, "dof"));
+    box.append(h("button", { title: tt("Vue de dessus de la case : la caméra en bas, le décor en haut, chaque élément posé à sa profondeur. Glisser une carte : haut / bas = sa profondeur, gauche / droite = sa place. C'est la même position que dans le montage."), on: { click: () => this.depthDialog(this.sel.panel) } }, tt("⬒ Profondeur (vue de dessus)")));
+    box.append(h("h4", { title: tt("0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre).") }, tt("Profondeur de champ ⓘ")),
+      h("label.row.check", h("input", { type: "checkbox", checked: dof.on, on: { change: (e) => { dof.on = e.target.checked; this.commit("dof"); this.editor.render(); } } }), tt("Flouter selon la profondeur")),
+      range(tt("Mise au point"), dof.focus, 0, 1, 0.01, (x) => { dof.focus = x; dof.on = true; }, "dof"),
+      range(tt("Flou"), dof.amount, 0, 60, 1, (x) => { dof.amount = x; dof.on = true; }, "dof"));
     const style = h("select", { title: INTEGRATE_STYLES.map(([, l, tip]) => l + " : " + tip).join("\n") }, INTEGRATE_STYLES.map(([v, t]) => h("option", { value: v, selected: v === (pan.style || this.guessStyle(pan)) }, t)));
     style.addEventListener("change", () => { pan.style = style.value; this.commitSoon("style"); });
-    const extra = h("input", { type: "text", placeholder: "Consigne en plus (facultatif) : « night, rain »…" });
+    const extra = h("input", { type: "text", placeholder: tt("Consigne en plus (facultatif) : « night, rain »…") });
     // moteur d'Integrate : choisi une fois, applique a tous les Integrate (cases, clic droit, « Tout en… »)
     const engNow = (this.info.settings.render || {}).integrate_engine || "";
     const engList = INTEGRATE_ENGINES.some(([k]) => k === engNow) ? INTEGRATE_ENGINES : [...INTEGRATE_ENGINES, [engNow, engNow.replace(/^fal:/, "fal · ")]];
-    const engine = h("select", { title: "Le moteur qui calcule Integrate. Ce choix est gardé et s'applique à tous les Integrate, jusqu'à ce que tu le changes." },
-      engList.map(([k, t]) => h("option", { value: k, selected: k === engNow }, t)), h("option", { value: "+" }, "Autre modèle fal…"));
+    const engine = h("select", { title: tt("Le moteur qui calcule Integrate. Ce choix est gardé et s'applique à tous les Integrate, jusqu'à ce que tu le changes.") },
+      engList.map(([k, t]) => h("option", { value: k, selected: k === engNow }, t)), h("option", { value: "+" }, tt("Autre modèle fal…")));
     engine.addEventListener("change", async () => {
       let v = engine.value;
-      if (v === "+") { const m = (prompt("Identifiant du modèle d'édition sur fal (il doit accepter plusieurs images en « image_urls ») :", "fal-ai/") || "").trim(); if (!m || m === "fal-ai/") { engine.value = engNow; return; } v = "fal:" + m; }
+      if (v === "+") { const m = (prompt(tt("Identifiant du modèle d'édition sur fal (il doit accepter plusieurs images en « image_urls ») :"), "fal-ai/") || "").trim(); if (!m || m === "fal-ai/") { engine.value = engNow; return; } v = "fal:" + m; }
       try { await put("settings", { render: { integrate_engine: v } }); }
-      catch (e) { engine.value = engNow; return toast("Moteur d'Integrate non changé : " + e.message + ".", "error"); }
+      catch (e) { engine.value = engNow; return toast(tt("Moteur d'Integrate non changé : ") + e.message + ".", "error"); }
       this.info = await get("info");
-      toast("Moteur d'Integrate enregistré : " + (v ? v.replace(/^fal:/, "fal · ") : "automatique") + "."); this.refreshInspector();
+      toast(tt("Moteur d'Integrate enregistré : ") + (v ? v.replace(/^fal:/, "fal · ") : tt("automatique")) + "."); this.refreshInspector();
     });
-    box.append(h("h4", "Image finale"), h("label.row", "Rendu", style), h("label.row", "Moteur", engine), extra,
-      h("div.row", h("button.primary", { title: "Une seule image, lumière et ombres unifiées", on: { click: () => this.integrate(style.value, extra.value.trim()) } }, "✦ Integrate"),
-        h("button", { title: "Orbite 360° de toute la case", on: { click: () => this.panelOrbit() } }, "↻ Orbite de la case")));
+    box.append(h("h4", tt("Image finale")), h("label.row", tt("Rendu"), style), h("label.row", tt("Moteur"), engine), extra,
+      h("div.row", h("button.primary", { title: tt("Une seule image, lumière et ombres unifiées"), on: { click: () => this.integrate(style.value, extra.value.trim()) } }, tt("✦ Integrate")),
+        h("button", { title: tt("Orbite 360° de toute la case"), on: { click: () => this.panelOrbit() } }, tt("↻ Orbite de la case"))));
     if (pan.integrated || pan.orbit) {
-      const modes = [["layers", "Calques"]]; if (pan.integrated) modes.push(["integrated", "Intégrée"]); if (pan.orbit) modes.push(["orbit", "Orbite"]);
-      box.append(h("div.row", h("span.muted", "Afficher :"), modes.map(([m, t]) => h("button.mini" + ((pan.show || "layers") === m ? ".on" : ""), { on: { click: () => this.setShow(m) } }, t))));
+      const modes = [["layers", tt("Calques")]]; if (pan.integrated) modes.push(["integrated", tt("Intégrée")]); if (pan.orbit) modes.push(["orbit", tt("Orbite")]);
+      box.append(h("div.row", h("span.muted", tt("Afficher :")), modes.map(([m, t]) => h("button.mini" + ((pan.show || "layers") === m ? ".on" : ""), { on: { click: () => this.setShow(m) } }, t))));
       if ((pan.integrations || []).length > 1) box.append(h("div.versions", pan.integrations.map((f, i) => h("img" + (f === pan.integrated ? ".on" : ""), {
-        src: `/projects/${this.project.id}/${f}`, title: "Version " + (i + 1), on: { click: () => { pan.integrated = f; pan.show = "integrated"; this.commit("ver"); this.editor.render(); this.refreshInspector(); } } }))));
-      if (pan.show === "orbit" && pan.orbit) box.append(range("Axe de la scène", pan.orbit.frame || 0, 0, pan.orbit.n - 1, 1, (x) => { pan.orbit.frame = x; }, "oturn"));
+        src: `/projects/${this.project.id}/${f}`, title: tt("Version ") + (i + 1), on: { click: () => { pan.integrated = f; pan.show = "integrated"; this.commit("ver"); this.editor.render(); this.refreshInspector(); } } }))));
+      if (pan.show === "orbit" && pan.orbit) box.append(range(tt("Axe de la scène"), pan.orbit.frame || 0, 0, pan.orbit.n - 1, 1, (x) => { pan.orbit.frame = x; }, "oturn"));
     }
-    box.append(h("h4", "Animation"), h("div.row", h("button.mini", { title: "Timeline, poses clés, caméra virtuelle", on: { click: () => openMontage(this, this.sel.panel) } }, pan.anim ? "🎬 Ouvrir le montage" : "🎬 Mode montage"),
-      pan.anim ? h("span.muted", `${pan.anim.dur} s · ${Object.values(pan.anim.tracks || {}).reduce((n, k) => n + k.length, 0)} clés`) : ""),
-      h("div.row", h("button.mini", { title: "Ajoute cette case comme plan dans le deck de montage global", on: { click: () => this.sendToDeck(this.sel.panel) } }, "▸ Envoyer dans le deck"),
-        h("button.mini", { on: { click: () => openDeck(this) } }, "🎞 Ouvrir le deck"),
-        (() => { const d = this.decks().find((x) => x.id === this.project.deckCur) || this.decks()[0]; if (!d) return ""; const n = d.clips.filter((c) => c.panel === this.sel.panel && c.page === this.page().id).length; return h("span.muted", `« ${d.name} »` + (n ? ` · déjà ${n} fois` : "")); })()));
-    box.append(h("h4", "Indications"), h("div.row.wrap", Object.entries(MARKS).map(([t, [label, ico]]) => h("button.mini" + (this.markTool === t ? ".on" : ""), { title: "Tracer dans une case : " + label, on: { click: () => this.armMark(t) } }, `${ico} ${label}`))));
-    box.append(h("h4", "Bulles"), h("div.row", Object.entries(BUB).map(([t, [label]]) => h("button.mini", { on: { click: () => this.addBubble(t) } }, "+ " + label))));
-    if ((pan.layers || []).length) box.append(h("h4", "Calques (du fond vers l'avant)"), h("div.layers", pan.layers.map((x) => {
+    box.append(h("h4", tt("Animation")), h("div.row", h("button.mini", { title: tt("Timeline, poses clés, caméra virtuelle"), on: { click: () => openMontage(this, this.sel.panel) } }, pan.anim ? tt("🎬 Ouvrir le montage") : tt("🎬 Mode montage")),
+      pan.anim ? h("span.muted", tt`${pan.anim.dur} s · ${Object.values(pan.anim.tracks || {}).reduce((n, k) => n + k.length, 0)} clés`) : ""),
+      h("div.row", h("button.mini", { title: tt("Ajoute cette case comme plan dans le deck de montage global"), on: { click: () => this.sendToDeck(this.sel.panel) } }, tt("▸ Envoyer dans le deck")),
+        h("button.mini", { on: { click: () => openDeck(this) } }, tt("🎞 Ouvrir le deck")),
+        (() => { const d = this.decks().find((x) => x.id === this.project.deckCur) || this.decks()[0]; if (!d) return ""; const n = d.clips.filter((c) => c.panel === this.sel.panel && c.page === this.page().id).length; return h("span.muted", `« ${d.name} »` + (n ? tt` · déjà ${n} fois` : "")); })()));
+    box.append(h("h4", tt("Indications")), h("div.row.wrap", Object.entries(MARKS).map(([t, [label, ico]]) => h("button.mini" + (this.markTool === t ? ".on" : ""), { title: tt("Tracer dans une case : ") + label, on: { click: () => this.armMark(t) } }, `${ico} ${label}`))));
+    box.append(h("h4", tt("Bulles")), h("div.row", Object.entries(BUB).map(([t, [label]]) => h("button.mini", { on: { click: () => this.addBubble(t) } }, "+ " + label))));
+    if ((pan.layers || []).length) box.append(h("h4", tt("Calques (du fond vers l'avant)")), h("div.layers", pan.layers.map((x) => {
       const it = this.bank.get(x.item);
-      return h("button.lrow", { on: { click: () => this.select({ panel: this.sel.panel, layer: x.id }) } }, it ? it.name : "?", h("span.muted", it ? variantOf(it, x.v).label : ""));
+      return h("button.lrow", { on: { click: () => this.select({ panel: this.sel.panel, layer: x.id }) } }, it ? it.name : "?", h("span.muted", it ? tr(variantOf(it, x.v).label) : ""));
     })));
   }
 
@@ -910,7 +913,7 @@ class App {
   }
   panelState(pid) {
     const j = this.jobs.find((x) => (x.status === "queued" || x.status === "running") && x.params.panel === pid && x.params.project === this.project?.id);
-    return j ? { kind: j.status === "running" ? "busy" : "wait", text: j.title } : null;
+    return j ? { kind: j.status === "running" ? "busy" : "wait", text: tr(j.title) } : null;
   }
   pollSoon() { clearTimeout(this._poll); this._poll = setTimeout(() => this.poll(), 500); }
   async poll() {
@@ -924,7 +927,7 @@ class App {
       const act = jobs.filter((j) => j.status === "queued" || j.status === "running");
       active = act.length;
       const run = act.filter((j) => j.status === "running").length;
-      this.el.jobsBtn.textContent = active ? `Rendus · ${run} en cours, ${active - run} en file` : "Rendus";
+      this.el.jobsBtn.textContent = active ? tt`Rendus · ${run} en cours, ${active - run} en file` : tt("Rendus");
       this.el.jobsBtn.classList.toggle("busy", active > 0);
       if (before !== act.map((j) => j.id).join() || doneBefore !== jobs.filter((j) => j.status === "done").length) {
         await this.bankUI.reload();
@@ -939,26 +942,26 @@ class App {
   toggleJobs() { this.el.drawer.classList.toggle("hidden"); this.renderJobs(); }
   renderJobs() {
     const d = this.el.drawer, rows = [...this.jobs].reverse().slice(0, 80);
-    const label = { queued: "en file", running: "en cours", done: "fait", error: "erreur", cancelled: "annulé" };
+    const label = { queued: tt("en file"), running: tt("en cours"), done: tt("fait"), error: tt("erreur"), cancelled: tt("annulé") };
     d.textContent = "";
-    d.append(h("header", h("b", "Rendus"), h("div.grow"),
-      h("button.mini", { on: { click: async () => { await post("jobs/cancel-all"); this.pollSoon(); } } }, "Tout annuler"),
-      h("button.mini", { on: { click: async () => { await post("jobs/clear"); this.pollSoon(); } } }, "Effacer les terminés"),
+    d.append(h("header", h("b", tt("Rendus")), h("div.grow"),
+      h("button.mini", { on: { click: async () => { await post("jobs/cancel-all"); this.pollSoon(); } } }, tt("Tout annuler")),
+      h("button.mini", { on: { click: async () => { await post("jobs/clear"); this.pollSoon(); } } }, tt("Effacer les terminés")),
       h("button.icon", { on: { click: () => this.toggleJobs() } }, "✕")),
       h("div.joblist", rows.length ? rows.map((j) => h("div.job." + j.status, h("span.dot." + ({ queued: "wait", running: "busy", done: "ok", error: "err", cancelled: "off" })[j.status]),
-        h("span.jt", j.title), h("span.muted", [label[j.status], j.worker, j.progress, j.status === "running" ? Math.round(Date.now() / 1000 - j.started) + " s" : "",
+        h("span.jt", tr(j.title)), h("span.muted", [label[j.status], j.worker, tr(j.progress), j.status === "running" ? Math.round(Date.now() / 1000 - j.started) + " s" : "",
           j.status === "done" ? Math.round(j.finished - j.started) + " s" : ""].filter(Boolean).join(" · ")),
-        j.error ? h("span.err", { title: j.error }, j.error.slice(0, 140)) : null,
-        j.status === "queued" || j.status === "running" ? h("button.mini", { on: { click: async () => { await post(`jobs/${j.id}/cancel`); this.pollSoon(); } } }, "Annuler") : null))
-        : h("p.muted", "Aucun rendu pour l'instant.")));
+        j.error ? h("span.err", { title: tr(j.error) }, tr(j.error).slice(0, 140)) : null,
+        j.status === "queued" || j.status === "running" ? h("button.mini", { on: { click: async () => { await post(`jobs/${j.id}/cancel`); this.pollSoon(); } } }, tt("Annuler")) : null))
+        : h("p.muted", tt("Aucun rendu pour l'instant."))));
   }
   async pollWorkers() {
     try {
       const ws = await get("workers");
       this.el.workers.textContent = "";
       this.el.workers.append(...ws.map((w) => h("span.dot." + (!w.online ? "err" : w.busy || w.load ? "busy" : w.orbit ? "ok" : "wait"),
-        { title: `${w.name} : ${!w.online ? "injoignable" : (w.busy || w.load ? "occupée" : "prête")}${w.missing?.length ? " · manque : " + w.missing.join(", ") : ""}${w.gpu ? " · " + w.gpu : ""}` })),
-        h("span.muted", ws.length ? `${ws.filter((w) => w.online).length}/${ws.length} machines` : (this.info.settings.fal.key || localStorage.getItem("bw.falKey") ? "fal" : "aucune machine")));
+        { title: `${w.name} : ${!w.online ? tt("injoignable") : (w.busy || w.load ? tt("occupée") : tt("prête"))}${w.missing?.length ? " · manque : " + w.missing.join(", ") : ""}${w.gpu ? " · " + w.gpu : ""}` })),
+        h("span.muted", ws.length ? `${ws.filter((w) => w.online).length}/${ws.length} machines` : (this.info.settings.fal.key || localStorage.getItem("bw.falKey") ? "fal" : tt("aucune machine"))));
     } catch (e) { /* plus tard */ }
     setTimeout(() => this.pollWorkers(), 20000);
   }
@@ -969,125 +972,125 @@ class App {
     // peut faire attendre longtemps)
     let s;
     try { s = await get("settings"); }
-    catch (e) { toast("Réglages illisibles : " + (e.message || e), "error"); return; }
-    const wbox = h("div.wstatus", h("p.muted", "Recherche des machines…"));
+    catch (e) { toast(tt("Réglages illisibles : ") + (e.message || e), "error"); return; }
+    const wbox = h("div.wstatus", h("p.muted", tt("Recherche des machines…")));
     get("workers?fresh=1").catch(() => []).then((ws) => {
-      wbox.replaceChildren(...(ws.length ? ws.map((w) => h("div", h("span.dot." + (w.online ? (w.orbit ? "ok" : "wait") : "err")), ` ${w.name} · ${w.online ? (w.gpu || "en ligne") : "injoignable"}`,
-        w.online ? h("span.muted", " · " + ["orbit", "matte", "edit", "t2i"].map((c) => (w[c] ? "✓ " : "✗ ") + ({ orbit: "orbite", matte: "détourage", edit: "édition", t2i: "image" })[c]).join("  ")) : null)) : [h("p.muted", "Aucune machine déclarée.")]));
+      wbox.replaceChildren(...(ws.length ? ws.map((w) => h("div", h("span.dot." + (w.online ? (w.orbit ? "ok" : "wait") : "err")), ` ${w.name} · ${w.online ? (w.gpu || tt("en ligne")) : tt("injoignable")}`,
+        w.online ? h("span.muted", " · " + ["orbit", "matte", "edit", "t2i"].map((c) => (w[c] ? "✓ " : "✗ ") + ({ orbit: "orbite", matte: tt("détourage"), edit: tt("édition"), t2i: "image" })[c]).join("  ")) : null)) : [h("p.muted", tt("Aucune machine déclarée."))]));
     });
     const f = (v, ph, type = "text") => h("input", { type, value: v ?? "", placeholder: ph || "", autocomplete: type === "password" ? "new-password" : "off" });
     const workers = h("textarea", { rows: 4, placeholder: "HITCHCOCK | http://192.168.1.60:8188" }, (s.workers || []).map((w) => `${w.name} | ${w.url}`).join("\n"));
-    const qb = f(s.qbuilder_settings, "…\\Workflows-Q-Builder\\local_settings.json");
-    const len = h("select", [[73, "3 s (73 images)"], [90, "3,75 s"], [107, "4,5 s"], [124, "5,2 s (124 images)"]].map(([v, t]) => h("option", { value: v, selected: v === s.render.orbit_length }, t)));
-    const tgt = h("select", [["auto", "Auto : machines d'abord, fal sinon"], ["local", "Machines seulement"], ["fal", "fal seulement"]].map(([v, t]) => h("option", { value: v, selected: v === s.render.target }, t)));
+    const qb = f(s.qbuilder_settings, tt("…\\Workflows-Q-Builder\\local_settings.json"));
+    const len = h("select", [[73, tt("3 s (73 images)")], [90, "3,75 s"], [107, "4,5 s"], [124, tt("5,2 s (124 images)")]].map(([v, t]) => h("option", { value: v, selected: v === s.render.orbit_length }, t)));
+    const tgt = h("select", [["auto", tt("Auto : machines d'abord, fal sinon")], ["local", tt("Machines seulement")], ["fal", "fal seulement"]].map(([v, t]) => h("option", { value: v, selected: v === s.render.target }, t)));
     // champ secret : toujours masque, jamais propose par l'historique du navigateur, avec un bouton pour coller
     const secret = (v, ph) => h("input", { type: "password", value: v ?? "", placeholder: ph || "", autocomplete: "new-password", name: "bw-" + uid(), spellcheck: "false", "data-lpignore": "true", "data-1p-ignore": "true" });
-    const paste = (inp) => h("button.mini", { type: "button", title: "Coller le contenu du presse-papiers dans ce champ", on: { click: async (e) => {
+    const paste = (inp) => h("button.mini", { type: "button", title: tt("Coller le contenu du presse-papiers dans ce champ"), on: { click: async (e) => {
       e.preventDefault();
-      try { const t = (await navigator.clipboard.readText()).trim(); if (!t) return toast("Le presse-papiers est vide.", "error"); inp.value = t; toast("Clé collée (" + t.length + " caractères). N'oublie pas « Enregistrer »."); }
-      catch (err) { toast("Le navigateur refuse l'accès au presse-papiers : clique dans le champ puis Ctrl+V.", "error"); } } } }, "Coller");
-    const key = secret(s.fal.key, "clé fal du poste"), myKey = secret(localStorage.getItem("bw.falKey") || "", "ma clé fal (reste dans ce navigateur)");
+      try { const t = (await navigator.clipboard.readText()).trim(); if (!t) return toast(tt("Le presse-papiers est vide."), "error"); inp.value = t; toast(tt("Clé collée (") + t.length + tt(" caractères). N'oublie pas « Enregistrer ».")); }
+      catch (err) { toast(tt("Le navigateur refuse l'accès au presse-papiers : clique dans le champ puis Ctrl+V."), "error"); } } } }, tt("Coller"));
+    const key = secret(s.fal.key, tt("clé fal du poste")), myKey = secret(localStorage.getItem("bw.falKey") || "", tt("ma clé fal (reste dans ce navigateur)"));
     const orbit = f(s.fal.orbit), edit = f(s.fal.edit), t2i = f(s.fal.t2i);
-    const el = s.elevenlabs || {}, ekey = secret(el.key, "clé ElevenLabs du poste"), emodel = f(el.model || "eleven_multilingual_v2");
-    const fres = h("select", [["480P", "480P · le moins cher (≈ 0,31 $ l'orbite de 5 s)"], ["768P", "768P (≈ 0,375 $)"], ["2K", "2K"], ["4K", "4K"]].map(([v, t]) => h("option", { value: v, selected: v === (s.fal.orbit_resolution || "768P") }, t)));
+    const el = s.elevenlabs || {}, ekey = secret(el.key, tt("clé ElevenLabs du poste")), emodel = f(el.model || "eleven_multilingual_v2");
+    const fres = h("select", [["480P", tt("480P · le moins cher (≈ 0,31 $ l'orbite de 5 s)")], ["768P", "768P (≈ 0,375 $)"], ["2K", "2K"], ["4K", "4K"]].map(([v, t]) => h("option", { value: v, selected: v === (s.fal.orbit_resolution || "768P") }, t)));
     const fcon = h("input", { type: "number", min: 1, max: 20, step: 1, value: s.fal.concurrency || 3 });
     const me = (this.info && this.info.me) || { role: "admin", vip: true, password: !!s.server.password }, guest = me.role === "guest";
     const locked = !!s.server.lock_settings || guest;                // un invite ne change que ce qui reste dans son navigateur
-    const lib = s.library || {}, lurl = f(lib.url || "", "https://…/bibliotheque"), luser = f(lib.user || "", "identifiant"), lpw = secret(lib.password, "mot de passe de la bibliothèque");
-    modal("Réglages", h("div.form.settings",
-      h("h4", "Machines ComfyUI"),
+    const lib = s.library || {}, lurl = f(lib.url || "", "https://…/bibliotheque"), luser = f(lib.user || "", tt("identifiant")), lpw = secret(lib.password, tt("mot de passe de la bibliothèque"));
+    modal(tt("Réglages"), h("div.form.settings",
+      h("h4", tt("Machines ComfyUI")),
       wbox,
-      h("label.col", "Une machine par ligne : nom | adresse", workers),
-      h("label.col", "Réglages de Workflows Q-builder (ses machines sont reprises)", qb),
-      h("h4", "Calcul"), h("label.row", "Durée d'une orbite", len), h("label.row", "Où calculer par défaut", tgt),
-      h("h4", "fal (cloud)"), h("div.row.keyrow", h("span", "Clé du poste"), key, paste(key)), h("div.row.keyrow", h("span", "Ma clé (ce navigateur)"), myKey, paste(myKey)),
-      h("label.row", "Résolution de l'orbite", fres), h("label.row", "Calculs fal en même temps", fcon),
-      h("label.row", "Modèle orbite", orbit), h("label.row", "Modèle édition / Integrate", edit), h("label.row", "Modèle image", t2i),
-      h("p.muted", "Sur fal, l'orbite H3 + LoRA dure 5 s au minimum ; « minimax/h3-max/camera-controls » accepte 3 s. Sur fal : image, détourage et orbite essayés ; édition pas encore."),
-      h("h4", { title: "Pour le bouton « Générer une voix » du montage. La clé reste sur ce poste." }, "ElevenLabs (voix) ⓘ"), h("div.row.keyrow", h("span", "Clé ElevenLabs"), ekey, paste(ekey)),
-      h("label.row", "Modèle de voix", emodel),
-      h("h4", { title: "Un dossier de personnages tout faits, hébergé en ligne et protégé par un mot de passe. On y pioche depuis la banque : bouton « 📦 Paquets »." }, "Bibliothèque en ligne ⓘ"),
-      h("label.row", "Adresse", lurl), h("label.row", "Identifiant", luser), h("div.row.keyrow", h("span", "Mot de passe"), lpw, paste(lpw)),
-      h("h4", "Mon compte"),
-      h("div.row.wrap", h("span", !me.password ? "L'application n'a pas de mot de passe : tout le monde est administrateur."
-          : guest ? `Connecté : ${me.name} · invité${me.vip ? " VIP (bibliothèque en ligne comprise)" : ""}` : "Connecté : administrateur"),
-        h("button.mini", { type: "button", on: { click: () => this.passwordDialog(me.password) } }, me.password ? "🔑 Changer mon mot de passe…" : "🔑 Mettre un mot de passe…"),
-        me.password ? h("button.mini", { type: "button", title: "Ferme la session dans ce navigateur", on: { click: async () => { await post("logout", {}); location.href = "/login"; } } }, "⏻ Se déconnecter") : null),
-      locked ? h("p.muted", guest ? "Compte invité : les réglages de cette page sont ceux de l'administrateur. Tu peux seulement donner tes clés « de ce navigateur » et changer ton mot de passe."
-        : "Instance en ligne : les autres réglages de cette page sont verrouillés. Les clés fal et ElevenLabs « de ce navigateur » et le mot de passe restent modifiables.") : null,
+      h("label.col", tt("Une machine par ligne : nom | adresse"), workers),
+      h("label.col", tt("Réglages de Workflows Q-builder (ses machines sont reprises)"), qb),
+      h("h4", tt("Calcul")), h("label.row", tt("Durée d'une orbite"), len), h("label.row", tt("Où calculer par défaut"), tgt),
+      h("h4", "fal (cloud)"), h("div.row.keyrow", h("span", tt("Clé du poste")), key, paste(key)), h("div.row.keyrow", h("span", tt("Ma clé (ce navigateur)")), myKey, paste(myKey)),
+      h("label.row", tt("Résolution de l'orbite"), fres), h("label.row", tt("Calculs fal en même temps"), fcon),
+      h("label.row", tt("Modèle orbite"), orbit), h("label.row", tt("Modèle édition / Integrate"), edit), h("label.row", tt("Modèle image"), t2i),
+      h("p.muted", tt("Sur fal, l'orbite H3 + LoRA dure 5 s au minimum ; « minimax/h3-max/camera-controls » accepte 3 s. Sur fal : image, détourage et orbite essayés ; édition pas encore.")),
+      h("h4", { title: tt("Pour le bouton « Générer une voix » du montage. La clé reste sur ce poste.") }, tt("ElevenLabs (voix) ⓘ")), h("div.row.keyrow", h("span", tt("Clé ElevenLabs")), ekey, paste(ekey)),
+      h("label.row", tt("Modèle de voix"), emodel),
+      h("h4", { title: tt("Un dossier de personnages tout faits, hébergé en ligne et protégé par un mot de passe. On y pioche depuis la banque : bouton « 📦 Paquets ».") }, tt("Bibliothèque en ligne ⓘ")),
+      h("label.row", tt("Adresse"), lurl), h("label.row", tt("Identifiant"), luser), h("div.row.keyrow", h("span", tt("Mot de passe")), lpw, paste(lpw)),
+      h("h4", tt("Mon compte")),
+      h("div.row.wrap", h("span", !me.password ? tt("L'application n'a pas de mot de passe : tout le monde est administrateur.")
+          : guest ? tt`Connecté : ${me.name} · invité${me.vip ? tt(" VIP (bibliothèque en ligne comprise)") : ""}` : tt("Connecté : administrateur")),
+        h("button.mini", { type: "button", on: { click: () => this.passwordDialog(me.password) } }, me.password ? tt("🔑 Changer mon mot de passe…") : tt("🔑 Mettre un mot de passe…")),
+        me.password ? h("button.mini", { type: "button", title: tt("Ferme la session dans ce navigateur"), on: { click: async () => { await post("logout", {}); location.href = "/login"; } } }, tt("⏻ Se déconnecter")) : null),
+      locked ? h("p.muted", guest ? tt("Compte invité : les réglages de cette page sont ceux de l'administrateur. Tu peux seulement donner tes clés « de ce navigateur » et changer ton mot de passe.")
+        : tt("Instance en ligne : les autres réglages de cette page sont verrouillés. Les clés fal et ElevenLabs « de ce navigateur » et le mot de passe restent modifiables.")) : null,
       !guest && me.password ? this.guestsBox() : null,
-      h("p.muted", `Données (banque et storyboards) : ${s.data}`)),
-      [{ label: "Annuler" }, { label: "Enregistrer", primary: true, click: async () => {
+      h("p.muted", tt`Données (banque et storyboards) : ${s.data}`)),
+      [{ label: tt("Annuler") }, { label: tt("Enregistrer"), primary: true, click: async () => {
         if (myKey.value.trim()) localStorage.setItem("bw.falKey", myKey.value.trim()); else localStorage.removeItem("bw.falKey");
-        if (locked) { toast("Clé de ce navigateur enregistrée."); return; }
+        if (locked) { toast(tt("Clé de ce navigateur enregistrée.")); return; }
         const list = workers.value.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p[0])
           .map((p) => (p.length > 1 ? { name: p[0], url: p[1], enabled: true } : { name: p[0], url: p[0], enabled: true }));
         await put("settings", { workers: list, qbuilder_settings: qb.value.trim(), render: { orbit_length: +len.value, target: tgt.value },
                                 fal: { key: key.value.trim(), orbit_resolution: fres.value, concurrency: Math.max(1, Math.min(20, +fcon.value || 3)), orbit: orbit.value.trim(), edit: edit.value.trim(), t2i: t2i.value.trim() },
                                 elevenlabs: { key: ekey.value.trim(), model: emodel.value.trim() || "eleven_multilingual_v2" },
                                 library: { url: lurl.value.trim(), user: luser.value.trim(), password: lpw.value } });
-        this.info = await get("info"); toast("Réglages enregistrés."); this.pollWorkers();
+        this.info = await get("info"); toast(tt("Réglages enregistrés.")); this.pollWorkers();
       } }]);
   }
 
   // comptes invites, geres par l'admin : un invite travaille sur la meme banque et les memes storyboards, sans toucher aux
   // reglages ; un invite VIP a en plus la bibliotheque en ligne
   guestsBox() {
-    const list = h("div.guests", h("p.muted", "Chargement…"));
+    const list = h("div.guests", h("p.muted", tt("Chargement…")));
     const shown = (name, pw, what) => {                              // le mot de passe n'est lisible qu'a cet instant
       const out = h("input", { type: "text", readOnly: true, value: pw, on: { focus: (e) => e.target.select() } });
-      modal(what, h("div.form", h("label.row", "Nom d'invité", h("input", { type: "text", readOnly: true, value: name })),
-        h("div.row.keyrow", h("span", "Mot de passe"), out, h("button.mini", { type: "button", on: { click: async () => {
-          try { await navigator.clipboard.writeText(`Nom : ${name}\nMot de passe : ${pw}`); toast("Nom et mot de passe copiés."); } catch (e) { out.focus(); toast("Copie refusée par le navigateur : sélectionne le texte et copie-le.", "error"); } } } }, "Copier")),
-        h("p.muted", "Note-le maintenant : il ne sera plus jamais affiché. L'invité se connecte à la même adresse que toi, avec ce nom et ce mot de passe, et peut ensuite le changer dans ses réglages.")), [{ label: "C'est noté", primary: true }]);
+      modal(what, h("div.form", h("label.row", tt("Nom d'invité"), h("input", { type: "text", readOnly: true, value: name })),
+        h("div.row.keyrow", h("span", tt("Mot de passe")), out, h("button.mini", { type: "button", on: { click: async () => {
+          try { await navigator.clipboard.writeText(tt`Nom : ${name}\nMot de passe : ${pw}`); toast(tt("Nom et mot de passe copiés.")); } catch (e) { out.focus(); toast(tt("Copie refusée par le navigateur : sélectionne le texte et copie-le."), "error"); } } } }, tt("Copier"))),
+        h("p.muted", tt("Note-le maintenant : il ne sera plus jamais affiché. L'invité se connecte à la même adresse que toi, avec ce nom et ce mot de passe, et peut ensuite le changer dans ses réglages."))), [{ label: tt("C'est noté"), primary: true }]);
     };
     const draw = (accs) => {
       list.replaceChildren(...(accs.length ? accs.map((a) => {
-        const kind = h("select", { title: "Invité : toute l'application sauf la bibliothèque en ligne. VIP : la bibliothèque en ligne aussi.", on: { change: async () => {
-          try { draw((await put("accounts/" + a.id, { vip: kind.value === "vip" })).accounts); toast(`${a.name} : ${kind.value === "vip" ? "invité VIP" : "invité"}.`); } catch (e) { toast(e.message, "error"); } } } },
-          h("option", { value: "guest", selected: !a.vip }, "Invité"), h("option", { value: "vip", selected: !!a.vip }, "Invité VIP"));
+        const kind = h("select", { title: tt("Invité : toute l'application sauf la bibliothèque en ligne. VIP : la bibliothèque en ligne aussi."), on: { change: async () => {
+          try { draw((await put("accounts/" + a.id, { vip: kind.value === "vip" })).accounts); toast(`${a.name} : ${kind.value === "vip" ? tt("invité VIP") : tt("invité")}.`); } catch (e) { toast(e.message, "error"); } } } },
+          h("option", { value: "guest", selected: !a.vip }, tt("Invité")), h("option", { value: "vip", selected: !!a.vip }, tt("Invité VIP")));
         return h("div.row.guest", h("span.gname", a.name), kind,
-          h("button.mini", { type: "button", title: "Tire un nouveau mot de passe pour cet invité : l'ancien ne marche plus", on: { click: async () => {
-            if (!confirm(`Donner un nouveau mot de passe à « ${a.name} » ? L'ancien ne marchera plus.`)) return;
-            try { const r = await put("accounts/" + a.id, { reset: true }); draw(r.accounts); shown(a.name, r.password, "Nouveau mot de passe"); } catch (e) { toast(e.message, "error"); } } } }, "🔑 Nouveau mot de passe"),
-          h("button.mini", { type: "button", title: "Supprime ce compte : l'invité est déconnecté tout de suite", on: { click: async () => {
-            if (!confirm(`Supprimer le compte de « ${a.name} » ?`)) return;
-            try { draw((await del("accounts/" + a.id)).accounts); toast(`Compte de ${a.name} supprimé.`); } catch (e) { toast(e.message, "error"); } } } }, "✕ Supprimer"));
-      }) : [h("p.muted", "Aucun invité pour l'instant.")]));
+          h("button.mini", { type: "button", title: tt("Tire un nouveau mot de passe pour cet invité : l'ancien ne marche plus"), on: { click: async () => {
+            if (!confirm(tt`Donner un nouveau mot de passe à « ${a.name} » ? L'ancien ne marchera plus.`)) return;
+            try { const r = await put("accounts/" + a.id, { reset: true }); draw(r.accounts); shown(a.name, r.password, tt("Nouveau mot de passe")); } catch (e) { toast(e.message, "error"); } } } }, tt("🔑 Nouveau mot de passe")),
+          h("button.mini", { type: "button", title: tt("Supprime ce compte : l'invité est déconnecté tout de suite"), on: { click: async () => {
+            if (!confirm(tt`Supprimer le compte de « ${a.name} » ?`)) return;
+            try { draw((await del("accounts/" + a.id)).accounts); toast(tt`Compte de ${a.name} supprimé.`); } catch (e) { toast(e.message, "error"); } } } }, tt("✕ Supprimer")));
+      }) : [h("p.muted", tt("Aucun invité pour l'instant."))]));
     };
     get("accounts").then((r) => draw(r.accounts)).catch((e) => { list.replaceChildren(h("p.muted", e.message)); });
-    const name = h("input", { type: "text", placeholder: "nom de l'invité", maxLength: 40, autocomplete: "off" });
-    const type = h("select", h("option", { value: "guest" }, "Invité"), h("option", { value: "vip" }, "Invité VIP"));
+    const name = h("input", { type: "text", placeholder: tt("nom de l'invité"), maxLength: 40, autocomplete: "off" });
+    const type = h("select", h("option", { value: "guest" }, tt("Invité")), h("option", { value: "vip" }, tt("Invité VIP")));
     const add = async () => {
-      if (!name.value.trim()) return toast("Donne un nom à l'invité.", "error");
-      try { const r = await post("accounts", { name: name.value, vip: type.value === "vip" }); name.value = ""; draw((await get("accounts")).accounts); shown(r.account.name, r.password, "Compte invité créé"); }
+      if (!name.value.trim()) return toast(tt("Donne un nom à l'invité."), "error");
+      try { const r = await post("accounts", { name: name.value, vip: type.value === "vip" }); name.value = ""; draw((await get("accounts")).accounts); shown(r.account.name, r.password, tt("Compte invité créé")); }
       catch (e) { toast(e.message, "error"); }
     };
     name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
     return h("div.guestsbox",
-      h("h4", { title: "Un invité utilise toute l'application (même banque, mêmes storyboards) mais ne touche ni aux réglages ni aux comptes. Un invité VIP a en plus accès à la bibliothèque en ligne." }, "Comptes invités ⓘ"),
-      list, h("div.row.guest", name, type, h("button.mini", { type: "button", on: { click: add } }, "＋ Créer l'invité")),
-      h("p.muted", "Invité : toute l'application, sans la bibliothèque en ligne. Invité VIP : avec la bibliothèque en ligne. Les invités travaillent sur ta banque et tes storyboards et peuvent les modifier."));
+      h("h4", { title: tt("Un invité utilise toute l'application (même banque, mêmes storyboards) mais ne touche ni aux réglages ni aux comptes. Un invité VIP a en plus accès à la bibliothèque en ligne.") }, tt("Comptes invités ⓘ")),
+      list, h("div.row.guest", name, type, h("button.mini", { type: "button", on: { click: add } }, tt("＋ Créer l'invité"))),
+      h("p.muted", tt("Invité : toute l'application, sans la bibliothèque en ligne. Invité VIP : avec la bibliothèque en ligne. Les invités travaillent sur ta banque et tes storyboards et peuvent les modifier.")));
   }
 
   // mon compte : changer le mot de passe de l'application (l'actuel est demande)
   passwordDialog(has) {
     const fld = (ph) => h("input", { type: "password", placeholder: ph, autocomplete: "new-password", spellcheck: "false" });
-    const old = fld("mot de passe actuel"), n1 = fld("au moins 8 caractères"), n2 = fld("le même, une seconde fois");
+    const old = fld(tt("mot de passe actuel")), n1 = fld(tt("au moins 8 caractères")), n2 = fld(tt("le même, une seconde fois"));
     const err = h("p.error");
     const show = h("input", { type: "checkbox", on: { change: () => [old, n1, n2].forEach((i) => { i.type = show.checked ? "text" : "password"; }) } });
-    modal(has ? "Changer le mot de passe" : "Mettre un mot de passe", h("div.form",
-      has ? h("label.row", "Mot de passe actuel", old) : null,
-      h("label.row", "Nouveau mot de passe", n1), h("label.row", "Confirmer", n2),
-      h("label.row", "Afficher ce que je tape", show), err,
-      h("p.muted", "Les autres navigateurs connectés à cette application devront se reconnecter avec le nouveau mot de passe.")),
-      [{ label: "Annuler" }, { label: "Enregistrer", primary: true, click: async () => {
+    modal(has ? tt("Changer le mot de passe") : tt("Mettre un mot de passe"), h("div.form",
+      has ? h("label.row", tt("Mot de passe actuel"), old) : null,
+      h("label.row", tt("Nouveau mot de passe"), n1), h("label.row", tt("Confirmer"), n2),
+      h("label.row", tt("Afficher ce que je tape"), show), err,
+      h("p.muted", tt("Les autres navigateurs connectés à cette application devront se reconnecter avec le nouveau mot de passe."))),
+      [{ label: tt("Annuler") }, { label: tt("Enregistrer"), primary: true, click: async () => {
         err.textContent = "";
-        if (n1.value.length < 8) { err.textContent = "Le nouveau mot de passe doit faire au moins 8 caractères."; return false; }
-        if (n1.value !== n2.value) { err.textContent = "Les deux saisies du nouveau mot de passe sont différentes."; return false; }
+        if (n1.value.length < 8) { err.textContent = tt("Le nouveau mot de passe doit faire au moins 8 caractères."); return false; }
+        if (n1.value !== n2.value) { err.textContent = tt("Les deux saisies du nouveau mot de passe sont différentes."); return false; }
         try { await post("password", { old: old.value, new: n1.value }); }
-        catch (e) { err.textContent = "Refusé : " + (e.message || e); return false; }
-        toast("Mot de passe changé.");
+        catch (e) { err.textContent = tt("Refusé : ") + (e.message || e); return false; }
+        toast(tt("Mot de passe changé."));
       } }]);
   }
 
@@ -1129,16 +1132,16 @@ function transposeIf(page, layout) { return page.width > page.height ? transpose
 const CID = Math.random().toString(36).slice(2, 10);       // cet onglet, pour que le serveur reconnaisse ses propres enregistrements
 // moteurs d'Integrate : [valeur du reglage render.integrate_engine, nom]. Seul Qwen Image Edit Plus a servi sur fal.
 const INTEGRATE_ENGINES = [
-  ["", "Automatique (mes machines, sinon fal)"],
-  ["local", "Mes machines · Qwen-Image-Edit"],
-  ["fal:fal-ai/qwen-image-edit-plus", "fal · Qwen Image Edit Plus"],
-  ["fal:fal-ai/nano-banana/edit", "fal · Nano Banana (non essayé)"],
-  ["fal:fal-ai/bytedance/seedream/v4/edit", "fal · Seedream 4 (non essayé)"]];
+  ["", tt("Automatique (mes machines, sinon fal)")],
+  ["local", tt("Mes machines · Qwen-Image-Edit")],
+  ["fal:fal-ai/qwen-image-edit-plus", tt("fal · Qwen Image Edit Plus")],
+  ["fal:fal-ai/nano-banana/edit", tt("fal · Nano Banana (non essayé)")],
+  ["fal:fal-ai/bytedance/seedream/v4/edit", tt("fal · Seedream 4 (non essayé)")]];
 // rendus d'Integrate : [cle envoyee au serveur (poses.INTEGRATE), nom, ce que ca fait]
 const INTEGRATE_STYLES = [
-  ["encre", "Encrage (net et fidèle)", "met la case dessinée au propre, à l'encre, sans rien redessiner : silhouettes, têtes et proportions verrouillées"],
-  ["dessin", "Dessin (storyboard)", "redessine le collage en un seul dessin de storyboard, plus libre"],
-  ["photo", "Photoréaliste", "en fait une seule photographie, lumière et ombres unifiées"]];
+  ["encre", tt("Encrage (net et fidèle)"), tt("met la case dessinée au propre, à l'encre, sans rien redessiner : silhouettes, têtes et proportions verrouillées")],
+  ["dessin", tt("Dessin (storyboard)"), tt("redessine le collage en un seul dessin de storyboard, plus libre")],
+  ["photo", tt("Photoréaliste"), tt("en fait une seule photographie, lumière et ombres unifiées")]];
 function defaultIntegrate(style) {
   return style === "dessin"
     ? "Redraw this rough collage as one coherent storyboard drawing in a single consistent line style. Keep every character and object exactly where it is, same pose, same size, same framing."
@@ -1180,4 +1183,4 @@ function menu(e, items) {
 
 const app = new App();
 window.app = app;
-app.start().catch((e) => { console.error(e); toast("Démarrage impossible : " + e.message, "error", 20000); });
+app.start().catch((e) => { console.error(e); toast(tt("Démarrage impossible : ") + e.message, "error", 20000); });
