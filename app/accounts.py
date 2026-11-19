@@ -16,6 +16,15 @@ from . import settings
 ROUNDS = 200_000
 
 
+# mot de passe tire au hasard : ni tiret ni tiret bas (les messageries en font de l'italique ou les remplacent), ni
+# caracteres qui se confondent (l, I, 1, O, 0)
+ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def _new_password(n=12):
+    return "".join(secrets.choice(ALPHABET) for _ in range(n))
+
+
 def _hash(password, salt):
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), ROUNDS).hex()
 
@@ -69,7 +78,7 @@ def create(name, vip=False, password=""):
         raise ValueError("il faut un nom pour l'invité")
     if name.casefold() == "admin" or find(name):
         raise ValueError("ce nom est déjà pris")
-    password = str(password or "") or secrets.token_urlsafe(9)
+    password = str(password or "") or _new_password()
     _check_password(password)
     salt = secrets.token_hex(16)
     acc = {"id": secrets.token_hex(6), "name": name, "vip": bool(vip), "salt": salt, "hash": _hash(password, salt),
@@ -87,7 +96,7 @@ def update(aid, vip=None, password=None, reset=False):
             if vip is not None:
                 a["vip"] = bool(vip)
             if reset:
-                password = out = secrets.token_urlsafe(9)
+                password = out = _new_password()
             if password is not None:
                 _check_password(str(password))
                 a["salt"] = secrets.token_hex(16)
