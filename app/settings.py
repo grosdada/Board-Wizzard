@@ -143,6 +143,7 @@ def public(library=True):
         s["library"] = {"url": "", "user": "", "password": ""}
         s["fal"]["key"] = ""
         s.setdefault("elevenlabs", {})["key"] = ""
+        s["workers"], s["qbuilder_settings"] = [], ""      # ni les machines du poste, ni leurs adresses
     key = s["fal"].get("key") or ""
     s["fal"]["key"] = ("••••" + key[-4:]) if key else ""
     ekey = (s.get("elevenlabs") or {}).get("key") or ""

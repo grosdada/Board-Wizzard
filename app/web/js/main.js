@@ -43,6 +43,9 @@ class App {
     try { this.pending = JSON.parse(localStorage.getItem("bw.pending") || "{}"); } catch (e) { this.pending = {}; }
   }
 
+  // invite non VIP : pas de machines du poste, tous ses calculs partent sur fal avec sa propre cle
+  noMachines() { const me = this.info && this.info.me; return !!(me && me.role === "guest" && !me.vip); }
+
   async start() {
     this.info = await get("info");
     this.shell();
@@ -65,8 +68,10 @@ class App {
     el.pages = h("div.pages");
     el.workers = h("div.workers", { title: tt("Machines de rendu"), on: { click: () => this.settingsDialog() } });
     el.jobsBtn = h("button", { on: { click: () => this.toggleJobs() } }, tt("Rendus"));
-    el.target = h("select", { title: tt("Où calculer"), on: { change: (e) => localStorage.setItem("bw.target", e.target.value) } },
-      [["auto", tt("Calcul : auto")], ["local", tt("Mes machines")], ["fal", "fal (cloud)"]].map(([v, l]) => h("option", { value: v, selected: v === target() }, l)));
+    el.target = this.noMachines()
+      ? h("select", { title: tt("Compte invité : tes calculs partent sur fal avec ta propre clé (Réglages › fal › « Ma clé (ce navigateur) »)."), disabled: true }, h("option", { value: "fal" }, tt("Calcul : fal (ma clé)")))
+      : h("select", { title: tt("Où calculer"), on: { change: (e) => localStorage.setItem("bw.target", e.target.value) } },
+        [["auto", tt("Calcul : auto")], ["local", tt("Mes machines")], ["fal", "fal (cloud)"]].map(([v, l]) => h("option", { value: v, selected: v === target() }, l)));
     el.left = h("aside.left"); el.center = h("div.center"); el.bank = h("div.bank"); el.insp = h("div.insp");
     el.drawer = h("div.drawer.hidden");
     const top = h("header.top", h("div.logo", "BOARD", h("b", "WIZZARD")), el.title,
@@ -900,7 +905,7 @@ class App {
       this.info = await get("info");
       toast(tt("Moteur d'Integrate enregistré : ") + (v ? v.replace(/^fal:/, "fal · ") : tt("automatique")) + "."); this.refreshInspector();
     });
-    box.append(h("h4", tt("Image finale")), h("label.row", tt("Rendu"), style), h("label.row", tt("Moteur"), engine), extra,
+    box.append(h("h4", tt("Image finale")), h("label.row", tt("Rendu"), style), h("label.row", tt("Moteur"), this.noMachines() ? h("span.muted", tt("fal, avec ta clé")) : engine), extra,
       h("div.row", h("button.primary", { title: tt("Une seule image, lumière et ombres unifiées"), on: { click: () => this.integrate(style.value, extra.value.trim()) } }, tt("✦ Integrate")),
         h("button", { title: tt("Orbite 360° de toute la case"), on: { click: () => this.panelOrbit() } }, tt("↻ Orbite de la case"))));
     if (pan.integrated || pan.orbit) {
@@ -973,6 +978,12 @@ class App {
         : h("p.muted", tt("Aucun rendu pour l'instant."))));
   }
   async pollWorkers() {
+    if (this.noMachines()) {                                   // pas d'etat des machines : seulement la cle fal personnelle
+      const mine = !!localStorage.getItem("bw.falKey");
+      this.el.workers.replaceChildren(h("span.muted", mine ? tt("fal · ma clé") : tt("pas de clé fal")));
+      this.el.workers.title = mine ? tt("Compte invité : tes calculs partent sur fal avec ta propre clé.") : tt("Compte invité : entre ta clé fal dans Réglages › fal › « Ma clé (ce navigateur) » pour lancer des calculs.");
+      return;
+    }
     try {
       const ws = await get("workers");
       this.el.workers.textContent = "";
@@ -1017,11 +1028,10 @@ class App {
     const locked = !!s.server.lock_settings || guest;                // un invite ne change que ce qui reste dans son navigateur
     const lib = s.library || {}, lurl = f(lib.url || "", tt("https://…/bibliotheque")), luser = f(lib.user || "", tt("identifiant")), lpw = secret(lib.password, tt("mot de passe de la bibliothèque"));
     modal(tt("Réglages"), h("div.form.settings",
-      h("h4", tt("Machines ComfyUI")),
-      wbox,
-      h("label.col", tt("Une machine par ligne : nom | adresse"), workers),
-      h("label.col", tt("Réglages de Workflows Q-builder (ses machines sont reprises)"), qb),
-      h("h4", tt("Calcul")), h("label.row", tt("Durée d'une orbite"), len), h("label.row", tt("Où calculer par défaut"), tgt),
+      this.noMachines() ? null : h("h4", tt("Machines ComfyUI")),
+      ...(this.noMachines() ? [h("p.muted", tt("Compte invité : les machines du poste ne te sont pas ouvertes. Tes calculs (images, poses, orbites, Integrate) partent sur fal avec ta propre clé, celle de « Ma clé (ce navigateur) » dans la rubrique fal ci-dessous."))]
+        : [wbox, h("label.col", tt("Une machine par ligne : nom | adresse"), workers), h("label.col", tt("Réglages de Workflows Q-builder (ses machines sont reprises)"), qb)]),
+      h("h4", tt("Calcul")), h("label.row", tt("Durée d'une orbite"), len), this.noMachines() ? null : h("label.row", tt("Où calculer par défaut"), tgt),
       h("h4", "fal (cloud)"), h("div.row.keyrow", h("span", tt("Clé du poste")), key, paste(key)), h("div.row.keyrow", h("span", tt("Ma clé (ce navigateur)")), myKey, paste(myKey), help("fal")),
       h("label.row", tt("Résolution de l'orbite"), fres), h("label.row", tt("Calculs fal en même temps"), fcon),
       h("label.row", tt("Modèle orbite"), orbit), h("label.row", tt("Modèle édition / Integrate"), edit), h("label.row", tt("Modèle image"), t2i),

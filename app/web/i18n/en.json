@@ -1134,7 +1134,15 @@
   "Ma clé ElevenLabs : mode d'emploi": "My ElevenLabs key: how to",
   "Ma clé fal : mode d'emploi": "My fal key: how to",
   "La clé reste dans ce navigateur : elle n'est pas enregistrée sur le serveur et les autres comptes ne la voient pas. Les voix générées sont décomptées de ton compte ElevenLabs, selon ton abonnement.": "The key stays in this browser: it is not saved on the server and other accounts cannot see it. Generated voices are counted against your ElevenLabs account, according to your plan.",
-  "La clé reste dans ce navigateur : elle n'est pas enregistrée sur le serveur et les autres comptes ne la voient pas. Les calculs envoyés à fal (images, orbites) sont facturés sur ton compte fal.": "The key stays in this browser: it is not saved on the server and other accounts cannot see it. Jobs sent to fal (images, orbits) are billed to your fal account."
+  "La clé reste dans ce navigateur : elle n'est pas enregistrée sur le serveur et les autres comptes ne la voient pas. Les calculs envoyés à fal (images, orbites) sont facturés sur ton compte fal.": "The key stays in this browser: it is not saved on the server and other accounts cannot see it. Jobs sent to fal (images, orbits) are billed to your fal account.",
+  "Compte invité : tes calculs partent sur fal avec ta propre clé (Réglages › fal › « Ma clé (ce navigateur) »).": "Guest account: your jobs go to fal with your own key (Settings › fal › « My key (this browser) »).",
+  "Calcul : fal (ma clé)": "Compute: fal (my key)",
+  "fal, avec ta clé": "fal, with your key",
+  "fal · ma clé": "fal · my key",
+  "pas de clé fal": "no fal key",
+  "Compte invité : tes calculs partent sur fal avec ta propre clé.": "Guest account: your jobs go to fal with your own key.",
+  "Compte invité : entre ta clé fal dans Réglages › fal › « Ma clé (ce navigateur) » pour lancer des calculs.": "Guest account: enter your fal key in Settings › fal › « My key (this browser) » to run jobs.",
+  "Compte invité : les machines du poste ne te sont pas ouvertes. Tes calculs (images, poses, orbites, Integrate) partent sur fal avec ta propre clé, celle de « Ma clé (ce navigateur) » dans la rubrique fal ci-dessous.": "Guest account: this computer's machines are not open to you. Your jobs (images, poses, orbits, Integrate) go to fal with your own key, the one in « My key (this browser) » in the fal section below."
  },
  "server": {
   "Parle": "Speaks",

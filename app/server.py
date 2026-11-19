@@ -402,6 +402,8 @@ class Handler(BaseHTTPRequestHandler):
                 S.caps.clear()
             return self.send_json(settings.public(self.me["vip"]))
         if head == "workers":
+            if self.own_key():                                      # invite non VIP : les machines du poste ne lui sont pas ouvertes
+                return self.send_json([])
             if q.get("fresh"):
                 S.caps.clear()
             return self.send_json(S.workers_status())
