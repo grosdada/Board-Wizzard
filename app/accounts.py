@@ -37,7 +37,7 @@ def by_token(tok):
 
 
 def find(name):
-    key = (name or "").strip().casefold()
+    key = " ".join((name or "").split()).casefold()
     for a in _all():
         if a["name"].casefold() == key:
             return a
@@ -45,7 +45,11 @@ def find(name):
 
 
 def verify(acc, password):
-    return hmac.compare_digest(_hash(str(password), acc["salt"]), acc["hash"])
+    """Mot de passe exact, ou le meme sans les blancs autour (un copier-coller embarque souvent une espace ou un retour)."""
+    pw = str(password)
+    if hmac.compare_digest(_hash(pw, acc["salt"]), acc["hash"]):
+        return True
+    return pw.strip() != pw and hmac.compare_digest(_hash(pw.strip(), acc["salt"]), acc["hash"])
 
 
 def public():
