@@ -361,7 +361,16 @@ class Handler(BaseHTTPRequestHandler):
     # ---------------------------------------------------------------- API
     def job_opts(self, data):
         return {"target": (data or {}).get("target") or "auto", "_fal_key": self.headers.get("X-Fal-Key") or None,
-                "prio": 2 if (data or {}).get("low") else None}
+                "prio": 2 if (data or {}).get("low") else None, "own_key": self.own_key()}
+
+    def own_key(self):
+        """Un invite non VIP n'utilise pas les cles du serveur (fal, ElevenLabs) : seulement sa propre cle fal."""
+        return not (self.me or {}).get("vip")
+
+    def eleven_key(self):
+        if self.own_key():
+            raise ApiError("la voix ElevenLabs est réservée aux comptes VIP", 403)
+        return (settings.load().get("elevenlabs") or {}).get("key")
 
     def api(self, method, seg, q, data, body):
         head = seg[0]
@@ -416,7 +425,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(store.audio_entry(seg[1]))
         if head == "tts" and seg[1:] == ["voices"]:                 # voix ElevenLabs du compte
             try:
-                return self.send_json(eleven.voices((settings.load().get("elevenlabs") or {}).get("key")))
+                return self.send_json(eleven.voices(self.eleven_key()))
             except eleven.ElevenError as e:
                 raise ApiError(str(e), 400)
         if head == "folders":                                       # dossiers et sous-dossiers de la banque
@@ -558,7 +567,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(retouch.undo_state(iid, q.get("variant", "base")))
         if act == "prepare":
             made = jobs.prepare(iid, orbit=d.get("orbit", True), pose_keys=d.get("poses") or [], target=opts["target"],
-                                fal_key=opts["_fal_key"], prio=2 if d.get("low") else 1)
+                                fal_key=opts["_fal_key"], prio=2 if d.get("low") else 1, own_key=opts["own_key"])
             for c in d.get("custom") or []:
                 if (c or "").strip():
                     made.append(S.add("item_pose", {"item": iid, "pose": "", "custom": c.strip(),
@@ -596,7 +605,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _follow(self, q):
         return {"target": q.get("target", "auto"), "fal_key": self.headers.get("X-Fal-Key") or None,
-                "prio": 2 if q.get("low") else 1}
+                "prio": 2 if q.get("low") else 1, "own_key": self.own_key()}
 
     def api_projects(self, method, seg, q, data, body):
         S = jobs.SCHEDULER
@@ -647,7 +656,7 @@ class Handler(BaseHTTPRequestHandler):
         if act == "tts" and method == "POST":                      # voix generee par ElevenLabs, rangee comme une voix importee
             cfg = settings.load().get("elevenlabs") or {}
             try:
-                mp3 = eleven.speak(cfg.get("key"), d.get("voice"), d.get("text"), cfg.get("model"))
+                mp3 = eleven.speak(self.eleven_key(), d.get("voice"), d.get("text"), cfg.get("model"))
             except eleven.ElevenError as e:
                 raise ApiError(str(e), 400)
             dest = pdir / "assets" / ("voix_%d.mp3" % (time.time() * 1000))

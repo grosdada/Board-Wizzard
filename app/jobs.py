@@ -291,7 +291,8 @@ def run_item_pose(job, prov):
         sprites.normalize(png, d / ("v/%s/ref.png" % vid))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    follow = {"target": job["target"], "_fal_key": job.get("_fal_key"), "prio": job.get("prio", 1)}
+    follow = {"target": job["target"], "_fal_key": job.get("_fal_key"), "prio": job.get("prio", 1),
+              "own_key": bool(job.get("own_key"))}
     if it["kind"] != "decor":
         SCHEDULER.add("item_cut", {"item": it["id"], "variant": vid}, "Détourage · %s · %s" % (it["name"], label), **follow)
     if p.get("orbit", True):
@@ -320,7 +321,8 @@ def run_item_new(job, prov):
         shutil.rmtree(tmp, ignore_errors=True)
     job["result"] = {"item": it["id"]}
     job["params"]["item"] = it["id"]
-    prepare(it["id"], orbit=p.get("orbit", True), target=job["target"], fal_key=job.get("_fal_key"), prio=job.get("prio", 1))
+    prepare(it["id"], orbit=p.get("orbit", True), target=job["target"], fal_key=job.get("_fal_key"), prio=job.get("prio", 1),
+            own_key=bool(job.get("own_key")))
 
 
 def run_panel_integrate(job, prov):
@@ -389,10 +391,10 @@ def add_item(kind, name, image_path, style="photo", tags=None, facing="face", fo
     return store.mutate_item(it["id"], apply)
 
 
-def prepare(item_id, orbit=True, pose_keys=(), target="auto", fal_key=None, prio=1):
+def prepare(item_id, orbit=True, pose_keys=(), target="auto", fal_key=None, prio=1, own_key=False):
     """Met en file ce qu'il faut pour qu'un element soit utilisable : detourage, orbite de base, poses demandees."""
     it = store.load_item(item_id)
-    follow = {"target": target, "_fal_key": fal_key, "prio": prio}
+    follow = {"target": target, "_fal_key": fal_key, "prio": prio, "own_key": own_key}
     made = []
     base = it["variants"]["base"]
     if it["kind"] != "decor" and not base.get("cut") and not SCHEDULER.pending("item_cut", item=item_id, variant="base"):
@@ -407,6 +409,11 @@ def prepare(item_id, orbit=True, pose_keys=(), target="auto", fal_key=None, prio
         made.append(SCHEDULER.add("item_pose", {"item": item_id, "pose": key, "orbit": orbit},
                                   "Pose · %s · %s" % (it["name"], hit[0] if hit else key), **follow))
     return made
+
+
+def fal_key_for(job):
+    """Cle fal d'une tache : celle du navigateur, sinon celle du serveur, sauf pour un invite non VIP (own_key)."""
+    return job.get("_fal_key") or ("" if job.get("own_key") else settings.load()["fal"].get("key") or "")
 
 
 # ------------------------------------------------------------------ planificateur
@@ -486,14 +493,15 @@ class Scheduler:
         return any(self.worker_caps(w["url"], 120).get(cap) for w in settings.workers())
 
     # ---- file
-    def add(self, kind, params, title, target="auto", _fal_key=None, prio=None):
+    def add(self, kind, params, title, target="auto", _fal_key=None, prio=None, own_key=False):
+        """own_key : tache d'un invite non VIP, qui ne peut pas utiliser la cle fal du serveur (seulement la sienne)."""
         if target not in ("local", "fal", "auto"):
             target = "auto"
         if target == "auto":
             target = settings.load()["render"].get("target", "auto")
         job = {"id": uuid.uuid4().hex[:10], "kind": kind, "params": params, "title": title, "target": target,
                "status": "queued", "worker": "", "created": time.time(), "started": 0, "finished": 0, "error": "",
-               "progress": "", "attempts": 0, "_fal_key": _fal_key,
+               "progress": "", "attempts": 0, "_fal_key": _fal_key, "own_key": bool(own_key),
                "prio": PRIO.get(kind, 1) if prio is None else int(prio)}
         with self.wake:
             self.jobs.append(job)
@@ -548,7 +556,7 @@ class Scheduler:
                 if j["target"] == "fal" or not self.worker_caps(worker["url"], 120).get(cap):
                     continue
             else:
-                key = j.get("_fal_key") or settings.load()["fal"].get("key")
+                key = fal_key_for(j)
                 if not key or j["target"] == "local":
                     continue
                 if j["target"] == "auto" and self._local_can(cap):
@@ -575,7 +583,7 @@ class Scheduler:
                     prov = LocalProvider(worker["url"], job)
                 else:
                     from . import falapi
-                    prov = falapi.FalProvider(job.get("_fal_key") or settings.load()["fal"]["key"], job)
+                    prov = falapi.FalProvider(fal_key_for(job), job)
                 RUNNERS[job["kind"]](job, prov)
                 job.update({"status": "done", "finished": time.time(), "progress": ""})
             except Cancelled:

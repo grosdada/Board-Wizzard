@@ -139,8 +139,10 @@ def public(library=True):
     bibliotheque en ligne (invite sans acces)."""
     s = load()
     s.pop("accounts", None)
-    if not library:
+    if not library:                                  # invite non VIP : ni bibliotheque, ni cles du serveur (fal, ElevenLabs)
         s["library"] = {"url": "", "user": "", "password": ""}
+        s["fal"]["key"] = ""
+        s.setdefault("elevenlabs", {})["key"] = ""
     key = s["fal"].get("key") or ""
     s["fal"]["key"] = ("••••" + key[-4:]) if key else ""
     ekey = (s.get("elevenlabs") or {}).get("key") or ""
