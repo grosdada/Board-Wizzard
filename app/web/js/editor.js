@@ -6,6 +6,8 @@ import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
 import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
+import { faceFor, opsSvg } from "./face.js";
+import { frameToAngle, thinMask, lineWidth } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -154,12 +156,12 @@ export class Editor {
           if (!sp) return;
           const box = layerBox(bb, l, sp);
           const gsd = groundShadow(l, box);                  // ombre portee : sous l'element
-          if (gsd) grp.append(s("ellipse", { cx: gsd.cx, cy: gsd.cy, rx: gsd.rx, ry: gsd.ry, fill: gsd.col, opacity: gsd.a, "pointer-events": "none",
+          if (gsd) grp.append(s("path", { d: gsd.d, fill: gsd.col, opacity: gsd.a, "pointer-events": "none",
                                              filter: this.blur(defs, gsd.blur + blurOf(pan, depthOf(pan, i), bb)) }));
           const vf = vecFrame(sp, () => this.render(true));
           if (vf) {                                          // dessin en traces : net a tout zoom, trait reglable
             const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc;
-            const col = bodyFill(l), ink = inkFill(l), st = inkStroke(l.lw, col, ink), tag = { "data-layer": l.id, "data-panel": g.id };
+            const col = bodyFill(l), ink = inkFill(l), st = inkStroke(l.lw, col, ink, vf.sw), tag = { "data-layer": l.id, "data-panel": g.id };
             const gv = s("g", Object.assign({ class: "layer vlayer", transform: (l.rz ? `rotate(${l.rz} ${box.cx} ${box.y + box.h / 2}) ` : "") + (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1) ` : "") + `translate(${tx} ${ty}) scale(${sc})`,
                                               filter: this.blur(defs, blurOf(pan, depthOf(pan, i), bb)) }, tag));
             const cid = "vc-" + g.id + "-" + l.id, clip = s("clipPath", { id: cid });
@@ -169,7 +171,13 @@ export class Editor {
             if (lw) defs.insertAdjacentHTML("beforeend", lw);
             const gw = lw ? s("g", { filter: `url(#wg-${g.id}-${l.id})` }) : gv;
             if (gw !== gv) gv.append(gw);
-            gw.append(s("path", Object.assign({ d: vf.body, fill: col }, tag)));
+            const orb = (variantOf(item, l.v) || {}).orbit;     // portrait-robot : la tete en traces, tournee comme le corps
+            const fo = faceFor(item, sp, vf, orb ? frameToAngle(orb, sp.i) * Math.PI / 180 : 0, { peau: col, trait: ink, lw: lineWidth(vf.sw, l.lw) }, () => this.render(true));
+            const fattr = ` data-layer="${l.id}" data-panel="${g.id}"`;
+            if (fo) gw.insertAdjacentHTML("beforeend", opsSvg(fo.under, fattr));
+            const gb = st.thin ? s("g", { mask: `url(#vm-${g.id}-${l.id})` }) : gw;     // trait affine : la silhouette recule avec lui
+            if (st.thin) { defs.insertAdjacentHTML("beforeend", thinMask(`vm-${g.id}-${l.id}`, vf.body, st.thin)); gw.append(gb); }
+            gb.append(s("path", Object.assign({ d: vf.body, fill: col }, tag)));
             const gi = s("g", { "clip-path": `url(#${cid})` });
             const shd = shadeOf(l.sh, vf.h, col, ink);
             if (shd) {                                       // ombre : aplat gris, puis la silhouette decalee en blanc par-dessus
@@ -184,7 +192,8 @@ export class Editor {
               });
             }
             gi.append(s("path", Object.assign({ d: vf.ink, fill: ink, "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round" }, tag)));
-            gw.append(gi);
+            gb.append(gi);
+            if (fo) gw.insertAdjacentHTML("beforeend", opsSvg(fo.over, fattr));
             if (st.outline > 0) gv.append(s("path", { d: vf.body, fill: "none", stroke: "#111111", "stroke-width": st.outline, "pointer-events": "none" }));
             grp.append(gv);
             if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };

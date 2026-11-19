@@ -329,6 +329,8 @@ def run_panel_integrate(job, prov):
     prompt = p.get("prompt") or poses.INTEGRATE.get(p.get("style", "photo"), poses.INTEGRATE["photo"])
     if p.get("extra"):
         prompt += " " + p["extra"].strip()
+    if p.get("edit_model") and isinstance(getattr(prov, "cfg", None), dict):   # modele fal choisi pour Integrate
+        prov.cfg = dict(prov.cfg, edit=p["edit_model"])
     tmp = _tmp()
     try:
         png = prov.edit([d / p["flat"]], prompt, _seed(job), tmp)

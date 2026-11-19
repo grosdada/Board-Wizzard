@@ -40,7 +40,15 @@ def _write(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp%s" % uuid.uuid4().hex[:6])
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tmp, path)
+    for k in range(8):                                             # sur le NAS, un lecteur de passage bloque le remplacement
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if k == 7:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(0.25 * (k + 1))
 
 
 def safe(base, rel):
@@ -93,8 +101,51 @@ def load_project(pid):
     return _read(project_dir(pid) / "project.json")
 
 
+HISTORY_EVERY, HISTORY_KEEP = 120, 400      # une copie toutes les 2 minutes au plus, les 400 dernieres gardees
+
+
+def _history(pid):
+    """Avant d'ecraser un storyboard, garde sa version precedente dans projects/<id>/history/. Un enregistrement
+    malheureux (un vieil onglet reste ouvert, une fausse manoeuvre) ne detruit plus le travail : il reste la."""
+    try:
+        d = project_dir(pid)
+        cur = d / "project.json"
+        if not cur.exists():
+            return
+        h = d / "history"
+        h.mkdir(parents=True, exist_ok=True)
+        old = sorted(h.glob("*.json"))
+        now = time.time()
+        if old and now - old[-1].stat().st_mtime < HISTORY_EVERY:
+            return
+        shutil.copy2(cur, h / (time.strftime("%Y%m%d-%H%M%S") + ".json"))
+        for f in old[:max(0, len(old) + 1 - HISTORY_KEEP)]:
+            f.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def project_history(pid):
+    h = project_dir(pid) / "history"
+    return [{"file": f.name, "t": int(f.stat().st_mtime), "size": f.stat().st_size} for f in sorted(h.glob("*.json"), reverse=True)] if h.is_dir() else []
+
+
+def restore_project(pid, name):
+    """Remet une version gardee (la version actuelle est d'abord gardee a son tour)."""
+    if not re.fullmatch(r"[0-9]{8}-[0-9]{6}\.json", name or ""):
+        raise ValueError("version inconnue")
+    with _lock:
+        old = _read(project_dir(pid) / "history" / name)
+        cur = load_project(pid)
+        shutil.copy2(project_dir(pid) / "project.json", project_dir(pid) / "history" / (time.strftime("%Y%m%d-%H%M%S") + ".json"))
+        old["id"], old["rev"] = pid, int(cur.get("rev", 0))
+        old.pop("ui", None)
+        return save_project(old)
+
+
 def save_project(p):
     with _lock:
+        _history(p["id"])
         p["updated"] = time.time()
         p["rev"] = int(p.get("rev", 0)) + 1
         _write(project_dir(p["id"]) / "project.json", p)
@@ -137,7 +188,7 @@ def list_items():
     if root.exists():
         for d in root.iterdir():
             try:
-                out.append(_read(d / "item.json"))
+                out.append(resolve(_read(d / "item.json")))
             except (OSError, ValueError):
                 continue
     return sorted(out, key=lambda x: (x.get("kind", ""), x.get("name", "").lower()))
@@ -327,6 +378,28 @@ def create_item(kind, name, style="photo", tags=None):
               "updated": now, "source": "", "w": 0, "h": 0, "variants": {}}
         _write(item_dir(iid) / "item.json", it)
         return it
+
+
+def resolve(it):
+    """Personnage assemble (portrait-robot) : il n'a pas d'images a lui, il emprunte les poses et les orbites de son corps
+    (it["body"]) et y pose sa tete en traces (it["face"]). src = l'element ou sont les fichiers."""
+    if it.get("body"):
+        try:
+            b = _read(item_dir(it["body"]) / "item.json")
+        except (OSError, ValueError):
+            return it
+        it = dict(it, variants=b.get("variants", {}), w=b.get("w", 0), h=b.get("h", 0), style=b.get("style", "dessin"),
+                  facing=b.get("facing", "face"), src=b["id"])
+    return it
+
+
+def assemble(name, body, face, folder=""):
+    """Cree un personnage a partir d'un corps de la banque et d'une tete du portrait-robot. Aucun calcul, aucune copie."""
+    b = load_item(body)
+    if b.get("body"):
+        raise ValueError("ce personnage est deja un assemblage : choisir un corps")
+    it = create_item("character", name or "Personnage", b.get("style", "dessin"), ["portrait-robot"])
+    return resolve(mutate_item(it["id"], lambda x: x.update(body=body, face=face or {}, folder=folder or "")))
 
 
 def load_item(iid):

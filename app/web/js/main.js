@@ -7,10 +7,10 @@ import { Bank, target } from "./bank.js";
 import { flattenPanel } from "./flatten.js";
 import { MARKS, MARK_COLORS, newMark } from "./marks.js";
 import { swatch } from "./colors.js";
-import { openDrawEditor } from "./draw.js";
+import { openDrawEditor, drawImage } from "./draw.js";
 import { openMontage } from "./montage.js";
 import { openDeck, addClip } from "./deck.js";
-import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement } from "./model.js";
+import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox } from "./model.js";
 
 const FORMATS = [
   { id: "story", label: "Storyboard 16:10", w: 2400, h: 1500 },
@@ -71,7 +71,9 @@ class App {
     const top = h("header.top", h("div.logo", "BOARD", h("b", "WIZZARD")), el.title,
       h("button.icon", { title: "Annuler (Ctrl+Z)", on: { click: () => this.doUndo() } }, "↶"),
       h("button.icon", { title: "Rétablir (Ctrl+Y)", on: { click: () => this.doRedo() } }, "↷"),
-      el.pages, h("div.grow"), el.workers, el.target, el.jobsBtn,
+      el.pages,
+      h("button.primary.drawasset", { title: "Fabriquer un asset sans calcul : le dessiner soi-même (crayons, formes de base), ou partir d'un objet tout fait (table, chaise, étagère…) réglable, qui tourne sur 360°", on: { click: () => this.assetDialog() } }, "✏ Dessiner un asset"),
+      h("div.grow"), el.workers, el.target, el.jobsBtn,
       h("button", { title: "Decks de montage : les cases animées mises bout à bout", on: { click: (e) => this.decksMenu(e) } }, "🎞 Decks ▾"),
       h("button", { title: "Imprimer ou enregistrer la page en PDF", on: { click: () => window.print() } }, "Imprimer"),
       h("button.icon", { title: "Réglages", on: { click: () => this.settingsDialog() } }, "⚙"));
@@ -169,8 +171,16 @@ class App {
   doRedo() { if (!this.redo.length) return; this.undo.push(this.last); this.restore(this.redo.pop()); }
   save() {
     (this._save = this._save || debounce(async () => {
-      try { const r = await put("projects/" + this.project.id, this.project); this.project.rev = r.rev; this.absorb(r); }
-      catch (e) { toast("Enregistrement impossible : " + e.message, "error"); }
+      if (this.frozen) return;
+      try { const r = await put("projects/" + this.project.id, Object.assign({}, this.project, { _cid: CID })); this.project.rev = r.rev; this.absorb(r); }
+      catch (e) {
+        if (e.status === 409) {                // modifie ailleurs : on arrete d'enregistrer plutot que d'ecraser
+          this.frozen = true;
+          modal("Storyboard modifié ailleurs", h("div.form", h("p", "Ce storyboard a été enregistré depuis un autre onglet ou un autre appareil après que cette page l'a chargé."),
+            h("p", "Pour ne rien écraser, cette page n'enregistre plus. Recharge-la pour repartir de la dernière version ; ce que tu viens de faire ici depuis le dernier enregistrement réussi sera perdu.")),
+            [{ label: "Plus tard" }, { label: "Recharger", primary: true, click: () => location.reload() }]);
+        } else toast("Enregistrement impossible : " + e.message, "error");
+      }
     }, 400))();
   }
   absorb(srv) {                      // ce que les taches ont ecrit cote serveur : image integree, orbite de case
@@ -365,6 +375,7 @@ class App {
     // ↻ : orbite calculee, la pose tourne · ⏳ : orbite en calcul · ▫ : image fixe, pas d'orbite
     for (const [k, vv] of Object.entries(item?.variants || {})) items.push({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + vv.label, checked: k === l.v, click: () => this.setPose(l, k) });
     items.push({ note: "↻ orbite prête · ⏳ en calcul · ▫ image fixe" });
+    items.push({ label: "📍 Montrer dans la banque", click: () => this.bankUI.reveal(l.item) });
     items.push({ label: "Générer d'autres poses…", click: () => this.bankUI.openItem(l.item) });
     if (v && v.orbit) {
       const cur = nearestAxis(v.orbit, l.f || 0);
@@ -388,11 +399,22 @@ class App {
     items.push({ head: "Indication" });
     for (const [t, [label, ico]] of Object.entries(MARKS)) items.push({ label: `${ico} ${label}`, half: true, click: () => (t === "free" ? this.armMark(t) : this.addMark(pid, t, [rel.x, rel.y])) });
     items.push({ head: "Banque" }, { label: "✨ Générer un élément ici…", click: () => this.generateHere(pid, rel) });
-    items.push({ head: "Case" }, { label: "Integrate (image unifiée)", click: () => this.integrate() },
-      { label: "Orbite de la case", click: () => this.panelOrbit() });
+    items.push({ head: "Integrate (image unifiée)" },
+      ...INTEGRATE_STYLES.map(([k, label, tip]) => ({ label, click: () => this.integrate(k) })),
+      { head: "Case" }, { label: "⬒ Profondeur (vue de dessus)", click: () => this.depthDialog(pid) }, { label: "Orbite de la case", click: () => this.panelOrbit() });
     if (pan.integrated || pan.orbit) {
-      items.push({ head: "Afficher" }, { label: "Calques", checked: (pan.show || "layers") === "layers", click: () => this.setShow("layers") });
-      if (pan.integrated) items.push({ label: "Image intégrée", checked: pan.show === "integrated", click: () => this.setShow("integrated") });
+      items.push({ head: "Afficher" }, { label: "Calques d'origine", checked: (pan.show || "layers") === "layers", click: () => this.setShow("layers") });
+      // les images generees de la case (Integrate) : on passe de l'une a l'autre, ou on revient aux calques d'origine
+      const vers = (pan.integrations || []).length ? pan.integrations : (pan.integrated ? [pan.integrated] : []);
+      vers.forEach((f, i) => {
+        const ts = +((f.match(/_(\d{9,})\.\w+$/) || [])[1] || 0), when = ts ? new Date(ts * 1000).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+        items.push({ label: `Image générée ${i + 1}${when ? " · " + when : ""}`, checked: pan.show === "integrated" && pan.integrated === f,
+                     click: () => { pan.integrated = f; pan.show = "integrated"; this.commit("ver"); this.editor.render(); this.refreshInspector(); } });
+      });
+      if (pan.show === "integrated" && vers.length) items.push({ label: "Retirer l'image affichée de la liste", danger: true, click: () => {
+        const left = vers.filter((f) => f !== pan.integrated);
+        pan.integrations = left; pan.integrated = left[left.length - 1] || null; if (!pan.integrated) { delete pan.integrated; pan.show = "layers"; }
+        this.commit("ver"); this.editor.render(); this.refreshInspector(); } });
       if (pan.orbit) items.push({ label: "Orbite", checked: pan.show === "orbit", click: () => this.setShow("orbit") });
     }
     if (this.editor.geom.panels.length > 1) items.push({ label: "Copier cette case vers…", click: () => this.copyPanelTo(pid) });
@@ -435,6 +457,140 @@ class App {
     const ghosts = (pan.layers || []).map((l) => { const it = this.bank.get(l.item), sp = it && sprite(it, l.v, l.f); return sp && { url: sp.url, x: l.x, y: l.y, s: l.s, ar: sp.w / sp.h, flip: l.flip }; }).filter(Boolean);
     openDrawEditor({ draw: pan.draw, ratio: g.bbox.h / g.bbox.w, backdrop: bg ? bg.url : null, ghosts, title: `Dessiner le fond de la case ${g.order}`,
       onSave: (d) => { if (d.shapes.length || (d.fx && d.fx.on)) pan.draw = d; else delete pan.draw; pan.show = "layers"; this.commit("draw"); this.editor.render(); this.refreshInspector(); } });
+  }
+  // ---------------------------------------------------------------- profondeur : la case vue de dessus
+  // Meme schema et memes donnees que le bouton « Profondeur » du montage : l.d (0 devant, 1 au fond) et l.x. Regler ici
+  // ou la-bas revient au meme : c'est la place de l'element dans l'espace de la case.
+  depthDialog(pid) {
+    const pan = this.page().panels[pid], g = this.geo(pid);
+    if (!pan || !g || !(pan.layers || []).length) return toast("Pose d'abord des éléments dans la case.");
+    const W = 1000, H = W * g.bbox.h / g.bbox.w, bb = { x0: 0, y0: 0, w: W, h: H }, DY0 = 0.8, DY1 = 0.14;
+    const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H.toFixed(1)}`); svg.setAttribute("class", "depthview");
+    const yOf = (d) => H * (DY0 + (DY1 - DY0) * d), f1 = (x) => x.toFixed(1), f3 = (x) => +(+x).toFixed(3);
+    const esc = (x) => String(x).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+    let sel = this.sel.layer || null, drag = null;
+    const setDepth = (l, d) => {                             // comme au montage : l'ordre d'empilement suit la profondeur
+      pan.layers.forEach((x, i) => { if (x.d == null) x.d = f3(depthOf(pan, i)); });
+      l.d = f3(clamp(d, 0, 1)); pan.layers.sort((a, b) => b.d - a.d);
+    };
+    const paint = () => {
+      const fs = Math.max(11, H * 0.03), th = H * 0.03, dof = pan.dof || {};
+      let o = `<rect width="${W}" height="${f1(H)}" fill="#f3f1ec"/>` +
+        `<polygon points="${W / 2},${f1(yOf(-0.2))} 0,${f1(yOf(1))} ${W},${f1(yOf(1))}" fill="#3b82f6" fill-opacity="0.09" stroke="#3b82f6" stroke-opacity="0.5" stroke-dasharray="6 5"/>`;
+      for (const d of [0, 0.25, 0.5, 0.75, 1])
+        o += `<line x1="0" x2="${W}" y1="${f1(yOf(d))}" y2="${f1(yOf(d))}" stroke="#b9b4a8" stroke-width="1" stroke-dasharray="${d === 0 || d === 1 ? "none" : "3 6"}"/>` +
+          `<text x="6" y="${f1(yOf(d) - 4)}" font-size="${f1(fs * 0.75)}" fill="#8a8578">${d === 0 ? "Devant · 0" : d === 1 ? "Fond · 1" : d}</text>`;
+      o += `<rect x="0" y="${f1(yOf(1) - H * 0.035)}" width="${W}" height="${f1(H * 0.035)}" fill="#cfcabd"/>` +
+        `<text x="${W / 2}" y="${f1(yOf(1) - H * 0.045)}" font-size="${f1(fs * 0.8)}" fill="#8a8578" text-anchor="middle">DÉCOR</text>`;
+      if (dof.on) o += `<line x1="0" x2="${W}" y1="${f1(yOf(dof.focus ?? 0.5))}" y2="${f1(yOf(dof.focus ?? 0.5))}" stroke="#16a34a" stroke-width="2.5"/>` +
+        `<text x="${W - 6}" y="${f1(yOf(dof.focus ?? 0.5) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT</text>`;
+      pan.layers.forEach((l, li) => {
+        const it = this.bank.get(l.item), sp = it && sprite(it, l.v, l.f);
+        if (!sp) return;
+        const box = layerBox(bb, l, sp), y = yOf(depthOf(pan, li)), on = sel === l.id, ih = H * 0.11, iw = ih * sp.w / sp.h;
+        o += `<g data-layer="${l.id}" style="cursor:grab">` +
+          `<image href="${sp.url}" x="${f1(box.cx - iw / 2)}" y="${f1(y - th / 2 - ih - 2)}" width="${f1(iw)}" height="${f1(ih)}" opacity="${on ? 1 : 0.75}" data-layer="${l.id}"/>` +
+          `<rect x="${f1(box.x)}" y="${f1(y - th / 2)}" width="${f1(Math.max(box.w, 14))}" height="${f1(th)}" rx="${f1(th / 3)}" fill="${on ? "#e2603a" : "#2f2d2a"}" stroke="#fff" stroke-width="1.5" data-layer="${l.id}"/>` +
+          `<text x="${f1(box.cx)}" y="${f1(y + th / 2 + fs * 0.9)}" font-size="${f1(fs * 0.8)}" fill="${on ? "#b8431f" : "#444"}" text-anchor="middle" data-layer="${l.id}">${esc(it.name)} · ${depthOf(pan, li).toFixed(2)}</text></g>`;
+      });
+      o += `<g transform="translate(${W / 2} ${f1(yOf(-0.2))})"><rect x="${f1(-fs * 1.1)}" y="${f1(-fs * 0.5)}" width="${f1(fs * 2.2)}" height="${f1(fs * 1.3)}" rx="3" fill="#5b6472"/>` +
+        `<text y="${f1(fs * 1.75)}" font-size="${f1(fs * 0.8)}" fill="#5b6472" text-anchor="middle">CAMÉRA</text></g>`;
+      svg.innerHTML = o;
+    };
+    const pt = (e) => { const r = svg.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
+    svg.addEventListener("pointerdown", (e) => {
+      const id = e.target.dataset && e.target.dataset.layer, l = id && pan.layers.find((x) => x.id === id);
+      if (!l) return;
+      sel = id; svg.setPointerCapture(e.pointerId); e.preventDefault();
+      drag = { l, p: pt(e), d: depthOf(pan, pan.layers.indexOf(l)), x: l.x };
+      this.select({ panel: pid, layer: id }); paint();
+    });
+    svg.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const q = pt(e);
+      setDepth(drag.l, drag.d - (q.y - drag.p.y) / (DY0 - DY1)); drag.l.x = f3(clamp(drag.x + (q.x - drag.p.x), -0.3, 1.3));
+      paint(); this.editor.render(true);
+    });
+    svg.addEventListener("pointerup", () => { if (drag) { drag = null; this.commit("depth"); this.editor.render(); this.refreshInspector(); } });
+    paint();
+    const m = modal(`Profondeur · case ${g.order}`, h("div.depthbox", svg,
+      h("p.muted", "La case vue de dessus : la caméra en bas, le décor en haut. Glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; à gauche ou à droite, elle se déplace dans le cadre. L'élément le plus loin passe derrière les autres. C'est la même position que dans le montage (bouton « Profondeur ») : régler ici ou là-bas revient au même.")),
+      [{ label: "Fermer" }]);
+    m.box.classList.add("wide");
+  }
+
+  // ---------------------------------------------------------------- dessiner un asset : a la main, ou objet tout fait
+  assetDialog() {
+    const m = modal("Dessiner un asset", h("div.form.assetpick",
+      h("button.big", { on: { click: () => { m.close(); this.drawAsset(); } } }, h("b", "✏ Le dessiner"), h("span", "Crayon, tracé libre, formes de base (rectangle, ellipse, triangle…), épaisseur du trait, aplats et trames. L'atelier de dessin des fonds, sur une feuille blanche.")),
+      h("button.big", { on: { click: () => { m.close(); this.proceduralDialog(); } } }, h("b", "🪑 Objet tout fait"), h("span", "Table, chaise, tabouret, banc, caisse, étagère, lit, bureau : on règle les cotes avec des curseurs. L'objet tourne sur 360° tout de suite, sans calcul."))),
+      [{ label: "Fermer" }]);
+  }
+  drawAsset() {
+    openDrawEditor({ draw: null, ratio: 1, backdrop: null, title: "Dessiner un asset", saveLabel: "Ranger dans la banque",
+      onSave: async (d) => {
+        if (!d.shapes.length) return;
+        const name = (prompt("Nom de l'asset :", "Asset dessiné") || "").trim();
+        if (!name) return toast("Dessin abandonné : il faut un nom pour le ranger dans la banque.", "error");
+        const orbit = confirm("Calculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : il reste une image fixe, tu pourras lancer l'orbite plus tard depuis sa fiche.");
+        const im = await drawImage(d, 1024, 1024);
+        if (!im) return toast("Le dessin n'a pas pu être converti en image.", "error");
+        const c = document.createElement("canvas"); c.width = c.height = 1024;
+        const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 1024, 1024); x.drawImage(im, 0, 0, 1024, 1024);
+        const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
+        const f = this.bankUI.tab === "asset" && this.bankUI.folder && this.bankUI.folder !== "·" ? this.bankUI.folder : "";
+        try {
+          await upload("bank?" + new URLSearchParams({ kind: "asset", name, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", target: target(), file: "dessin.png", folder: f }), blob);
+          this.bankUI.tab = "asset"; await this.bankUI.reload(); this.pollSoon();
+          toast(`« ${name} » est dans la banque, onglet Assets.` + (orbit ? " Son orbite est en calcul." : ""));
+        } catch (e) { toast("Asset refusé : " + e.message, "error"); }
+      } });
+  }
+  async proceduralDialog() {
+    let cat;
+    try { cat = await get("procedural"); } catch (e) { return toast(e.message, "error"); }
+    let cur = cat[0], vals = {}, az = 30, spin = null, url = null, busy = false, again = false;
+    const img = h("img.procview", { alt: "", draggable: false });
+    const knobs = h("div.knobs");
+    const name = h("input", { type: "text", placeholder: "Nom dans la banque" });
+    const refresh = async () => {                              // un seul apercu a la fois ; le dernier reglage gagne
+      if (busy) { again = true; return; }
+      busy = true;
+      try {
+        const r = await fetch("/api/procedural/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: cur.key, params: vals, az }) });
+        if (r.ok) { const b = await r.blob(); if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(b); img.src = url; }
+      } catch (e) { /* le prochain reglage relancera */ }
+      busy = false;
+      if (again) { again = false; refresh(); }
+    };
+    const build = () => {
+      vals = Object.fromEntries(cur.params.map((q) => [q.key, q.def]));
+      name.value = cur.label;
+      knobs.textContent = "";
+      for (const q of cur.params) {
+        if (q.choices) knobs.append(h("label.row", q.label, h("select", { on: { change: (e) => { vals[q.key] = e.target.value; refresh(); } } }, q.choices.map((c) => h("option", { value: c, selected: c === q.def }, c)))));
+        else { const out = h("output", String(q.def)); knobs.append(h("label.row.range", q.label, h("input", { type: "range", min: q.min, max: q.max, step: q.step, value: q.def, on: { input: (e) => { vals[q.key] = +e.target.value; out.textContent = e.target.value; refresh(); } } }), out)); }
+      }
+      refresh();
+    };
+    const pick = h("select", { on: { change: (e) => { cur = cat.find((c) => c.key === e.target.value); build(); } } }, cat.map((c) => h("option", { value: c.key }, c.label)));
+    const turn = h("input", { type: "range", min: 0, max: 359, step: 1, value: az, on: { input: (e) => { az = +e.target.value; refresh(); } } });
+    const play = h("button.mini", { title: "Faire tourner l'aperçu", on: { click: () => { if (spin) { clearInterval(spin); spin = null; play.textContent = "▶"; return; } play.textContent = "⏸"; spin = setInterval(() => { if (!document.body.contains(img)) { clearInterval(spin); return; } az = (az + 6) % 360; turn.value = az; refresh(); }, 140); } } }, "▶");
+    const m = modal("Objet tout fait", h("div.procedural",
+      h("div.procleft", img, h("div.scrub", play, turn)),
+      h("div.form", h("label.row", "Objet", pick), knobs, h("label.row", "Nom", name),
+        h("p.muted", "Cotes en centimètres. L'objet est rangé dans les Assets avec son orbite complète (72 images), sans passer par une machine : compte une demi-minute."))),
+      [{ label: "Annuler" }, { label: "Ajouter à la banque", primary: true, click: async () => {
+        toast("Fabrication de l'orbite (une demi-minute)…", "info", 9000);
+        const f = this.bankUI.tab === "asset" && this.bankUI.folder && this.bankUI.folder !== "·" ? this.bankUI.folder : "";
+        try {
+          const it = await post("procedural/create", { key: cur.key, params: vals, name: name.value.trim(), folder: f });
+          this.bankUI.tab = "asset"; await this.bankUI.reload(); this.bankUI.reveal(it.id);
+        } catch (e) { toast("Objet refusé : " + e.message, "error", 9000); return false; }
+      } }]);
+    m.box.classList.add("wide");
+    build();
   }
   // decks de montage : plusieurs par storyboard, enregistres avec lui
   decks() {
@@ -552,7 +708,7 @@ class App {
   async integratePage(style) {
     const pg = this.page(), todo = this.editor.geom.panels.filter((g) => { const p = pg.panels[g.id] || {}; return p.bg || (p.layers || []).length; });
     if (!todo.length) return toast("Aucune case composée sur cette page.");
-    if (!confirm(`Lancer Integrate (${style === "dessin" ? "dessin" : "photoréaliste"}) sur ${todo.length} case(s) ?`)) return;
+    if (!confirm(`Lancer Integrate (${(INTEGRATE_STYLES.find(([k]) => k === style) || INTEGRATE_STYLES[2])[1].toLowerCase()}) sur ${todo.length} case(s) ?`)) return;
     let n = 0;
     for (const g of todo) {
       try {
@@ -601,7 +757,7 @@ class App {
       // dépliant : reste ouvert ou fermé d'un élément à l'autre
       const fold = (key, label, ...rows) => { this.folds = this.folds || { sh: true, gs: true, wig: false };
         return h("details.fold", { open: !!this.folds[key], on: { toggle: (e) => { this.folds[key] = e.target.open; } } }, h("summary", label), ...rows); };
-      if (sp && sp.vec) box.append(h("div", { title: "Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin." }, range("Trait ⓘ", l.lw || 0, -2, 6, 0.1, (x) => { l.lw = x; }, "lw")),
+      if (sp && sp.vec) box.append(h("div", { title: "Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin, jusqu'à un filet." }, range("Trait ⓘ", l.lw || 0, -12, 6, 0.1, (x) => { l.lw = x; }, "lw")),
         fold("wig", "Tremblé du trait", range("Tremblé", l.hand || 0, 0, 10, 0.1, (x) => { l.hand = x; }, "hand"), range("Ondulation", l.wave ?? 4, 0.5, 12, 0.1, (x) => { l.wave = x; }, "hand")),
         h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
           swatch(l.col || "#ffffff", (c) => { l.col = c; this.editor.render(true); this.commitSoon("col"); }),
@@ -632,7 +788,9 @@ class App {
           h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, range("Flou ⓘ", gs.b ?? 1, 0, 4, 0.05, (x) => putg("b", x), "cast")),
           range("Épaisseur", gs.h ?? 1, 0.2, 4, 0.05, (x) => putg("h", x), "cast"),
           h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, range("Décalage ↔ ⓘ", gs.dx || 0, -0.6, 0.6, 0.005, (x) => putg("dx", x), "cast"), range("Décalage ↕", gs.dy || 0, -0.6, 0.6, 0.005, (x) => putg("dy", x), "cast")),
-          range("Largeur", gs.w ?? 0.8, 0.2, 2.5, 0.01, (x) => putg("w", x), "cast")));
+          range("Largeur", gs.w ?? 0.8, 0.2, 2.5, 0.01, (x) => putg("w", x), "cast"),
+          h("div", { title: "Déforme le contour de l'ombre. 0 : ovale net. Tout à droite : une tache abstraite. Ondulation courte = bord déchiqueté, longue = grandes vagues. Forme : une autre tache, au hasard." },
+            range("Tremblé ⓘ", gs.hand || 0, 0, 10, 0.1, (x) => putg("hand", x), "cast"), range("Ondulation", gs.wave ?? 4, 0.5, 12, 0.1, (x) => putg("wave", x), "cast"), range("Forme", gs.seed || 0, 0, 40, 1, (x) => putg("seed", x), "cast"))));
       }
       box.append(
         h("div.row", h("button.mini" + (l.flip ? ".on" : ""), { on: { click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); this.refreshInspector(); } } }, "⇋ Miroir"),
@@ -697,14 +855,26 @@ class App {
           h("span.muted", bg.orbit ? "Maj + glisser dans la case : recadrer" : "Glisser dans la case : recadrer")));
       sync();
     } else this.syncPan = null;
+    box.append(h("button", { title: "Vue de dessus de la case : la caméra en bas, le décor en haut, chaque élément posé à sa profondeur. Glisser une carte : haut / bas = sa profondeur, gauche / droite = sa place. C'est la même position que dans le montage.", on: { click: () => this.depthDialog(this.sel.panel) } }, "⬒ Profondeur (vue de dessus)"));
     box.append(h("h4", { title: "0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre)." }, "Profondeur de champ ⓘ"),
       h("label.row.check", h("input", { type: "checkbox", checked: dof.on, on: { change: (e) => { dof.on = e.target.checked; this.commit("dof"); this.editor.render(); } } }), "Flouter selon la profondeur"),
       range("Mise au point", dof.focus, 0, 1, 0.01, (x) => { dof.focus = x; dof.on = true; }, "dof"),
       range("Flou", dof.amount, 0, 60, 1, (x) => { dof.amount = x; dof.on = true; }, "dof"));
-    const style = h("select", [["photo", "Photoréaliste"], ["dessin", "Dessin"]].map(([v, t]) => h("option", { value: v, selected: v === (pan.style || this.guessStyle(pan)) }, t)));
+    const style = h("select", { title: INTEGRATE_STYLES.map(([, l, tip]) => l + " : " + tip).join("\n") }, INTEGRATE_STYLES.map(([v, t]) => h("option", { value: v, selected: v === (pan.style || this.guessStyle(pan)) }, t)));
     style.addEventListener("change", () => { pan.style = style.value; this.commitSoon("style"); });
     const extra = h("input", { type: "text", placeholder: "Consigne en plus (facultatif) : « night, rain »…" });
-    box.append(h("h4", "Image finale"), h("label.row", "Rendu", style), extra,
+    // moteur d'Integrate : choisi une fois, applique a tous les Integrate (cases, clic droit, « Tout en… »)
+    const engNow = (this.info.settings.render || {}).integrate_engine || "";
+    const engList = INTEGRATE_ENGINES.some(([k]) => k === engNow) ? INTEGRATE_ENGINES : [...INTEGRATE_ENGINES, [engNow, engNow.replace(/^fal:/, "fal · ")]];
+    const engine = h("select", { title: "Le moteur qui calcule Integrate. Ce choix est gardé et s'applique à tous les Integrate, jusqu'à ce que tu le changes." },
+      engList.map(([k, t]) => h("option", { value: k, selected: k === engNow }, t)), h("option", { value: "+" }, "Autre modèle fal…"));
+    engine.addEventListener("change", async () => {
+      let v = engine.value;
+      if (v === "+") { const m = (prompt("Identifiant du modèle d'édition sur fal (il doit accepter plusieurs images en « image_urls ») :", "fal-ai/") || "").trim(); if (!m || m === "fal-ai/") { engine.value = engNow; return; } v = "fal:" + m; }
+      await put("settings", { render: { integrate_engine: v } }); this.info = await get("info");
+      toast("Moteur d'Integrate enregistré : " + (v ? v.replace(/^fal:/, "fal · ") : "automatique") + "."); this.refreshInspector();
+    });
+    box.append(h("h4", "Image finale"), h("label.row", "Rendu", style), h("label.row", "Moteur", engine), extra,
       h("div.row", h("button.primary", { title: "Une seule image, lumière et ombres unifiées", on: { click: () => this.integrate(style.value, extra.value.trim()) } }, "✦ Integrate"),
         h("button", { title: "Orbite 360° de toute la case", on: { click: () => this.panelOrbit() } }, "↻ Orbite de la case")));
     if (pan.integrated || pan.orbit) {
@@ -807,6 +977,7 @@ class App {
     const fres = h("select", [["480P", "480P · le moins cher (≈ 0,31 $ l'orbite de 5 s)"], ["768P", "768P (≈ 0,375 $)"], ["2K", "2K"], ["4K", "4K"]].map(([v, t]) => h("option", { value: v, selected: v === (s.fal.orbit_resolution || "768P") }, t)));
     const fcon = h("input", { type: "number", min: 1, max: 20, step: 1, value: s.fal.concurrency || 3 });
     const pw = f(s.server.password || "", "vide = pas de mot de passe", "password");
+    const lib = s.library || {}, lurl = f(lib.url || "", "https://…/bibliotheque"), luser = f(lib.user || "", "identifiant"), lpw = secret(lib.password, "mot de passe de la bibliothèque");
     modal("Réglages", h("div.form.settings",
       h("h4", "Machines ComfyUI"),
       h("div.wstatus", ws.length ? ws.map((w) => h("div", h("span.dot." + (w.online ? (w.orbit ? "ok" : "wait") : "err")), ` ${w.name} · ${w.online ? (w.gpu || "en ligne") : "injoignable"}`,
@@ -820,6 +991,8 @@ class App {
       h("p.muted", "Sur fal, l'orbite H3 + LoRA dure 5 s au minimum ; « minimax/h3-max/camera-controls » accepte 3 s. Sur fal : image, détourage et orbite essayés ; édition pas encore."),
       h("h4", { title: "Pour le bouton « Générer une voix » du montage. La clé reste sur ce poste." }, "ElevenLabs (voix) ⓘ"), h("div.row.keyrow", h("span", "Clé ElevenLabs"), ekey, paste(ekey)),
       h("label.row", "Modèle de voix", emodel),
+      h("h4", { title: "Un dossier de personnages tout faits, hébergé en ligne et protégé par un mot de passe. On y pioche depuis la banque : bouton « 📦 Paquets »." }, "Bibliothèque en ligne ⓘ"),
+      h("label.row", "Adresse", lurl), h("label.row", "Identifiant", luser), h("div.row.keyrow", h("span", "Mot de passe"), lpw, paste(lpw)),
       h("h4", "Accès"), h("label.row", "Mot de passe de l'application", pw),
       h("p.muted", `Données (banque et storyboards) : ${s.data}`)),
       [{ label: "Annuler" }, { label: "Enregistrer", primary: true, click: async () => {
@@ -828,7 +1001,8 @@ class App {
           .map((p) => (p.length > 1 ? { name: p[0], url: p[1], enabled: true } : { name: p[0], url: p[0], enabled: true }));
         await put("settings", { workers: list, qbuilder_settings: qb.value.trim(), render: { orbit_length: +len.value, target: tgt.value },
                                 fal: { key: key.value.trim(), orbit_resolution: fres.value, concurrency: Math.max(1, Math.min(20, +fcon.value || 3)), orbit: orbit.value.trim(), edit: edit.value.trim(), t2i: t2i.value.trim() },
-                                elevenlabs: { key: ekey.value.trim(), model: emodel.value.trim() || "eleven_multilingual_v2" }, server: { password: pw.value } });
+                                elevenlabs: { key: ekey.value.trim(), model: emodel.value.trim() || "eleven_multilingual_v2" }, server: { password: pw.value },
+                                library: { url: lurl.value.trim(), user: luser.value.trim(), password: lpw.value } });
         this.info = await get("info"); toast("Réglages enregistrés."); this.pollWorkers();
       } }]);
   }
@@ -868,6 +1042,19 @@ class App {
 // ------------------------------------------------------------------ outils
 const fmt = (v) => (Math.abs(v) >= 10 || Number.isInteger(v) ? String(Math.round(v)) : v.toFixed(2));
 function transposeIf(page, layout) { return page.width > page.height ? transpose(layout) : layout; }
+const CID = Math.random().toString(36).slice(2, 10);       // cet onglet, pour que le serveur reconnaisse ses propres enregistrements
+// moteurs d'Integrate : [valeur du reglage render.integrate_engine, nom]. Seul Qwen Image Edit Plus a servi sur fal.
+const INTEGRATE_ENGINES = [
+  ["", "Automatique (mes machines, sinon fal)"],
+  ["local", "Mes machines · Qwen-Image-Edit"],
+  ["fal:fal-ai/qwen-image-edit-plus", "fal · Qwen Image Edit Plus"],
+  ["fal:fal-ai/nano-banana/edit", "fal · Nano Banana (non essayé)"],
+  ["fal:fal-ai/bytedance/seedream/v4/edit", "fal · Seedream 4 (non essayé)"]];
+// rendus d'Integrate : [cle envoyee au serveur (poses.INTEGRATE), nom, ce que ca fait]
+const INTEGRATE_STYLES = [
+  ["encre", "Encrage (net et fidèle)", "met la case dessinée au propre, à l'encre, sans rien redessiner : silhouettes, têtes et proportions verrouillées"],
+  ["dessin", "Dessin (storyboard)", "redessine le collage en un seul dessin de storyboard, plus libre"],
+  ["photo", "Photoréaliste", "en fait une seule photographie, lumière et ombres unifiées"]];
 function defaultIntegrate(style) {
   return style === "dessin"
     ? "Redraw this rough collage as one coherent storyboard drawing in a single consistent line style. Keep every character and object exactly where it is, same pose, same size, same framing."

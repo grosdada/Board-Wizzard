@@ -5,3 +5,5 @@ __pycache__/
 *.tmp
 # cartes de bouches tirees d une planche qui n est pas a nous (tools/mouths.py les refabrique)
 app/web/mouths/
+# pages d essai locales
+app/web/zz-*.html

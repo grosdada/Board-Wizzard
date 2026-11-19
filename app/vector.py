@@ -43,15 +43,25 @@ def _paths(mask, origin=(0, 0), holes=True):
     return "".join(out)
 
 
+def _stroke(ink, q=75):
+    """Epaisseur du trait d'un dessin, en pixels sur-echantillonnes : mesuree sur l'axe des traits."""
+    dist = cv2.distanceTransform(ink, cv2.DIST_L2, 3)
+    ridge = dist[(dist > 0) & (dist >= cv2.dilate(dist, np.ones((3, 3), np.uint8)))]
+    return 2 * float(np.percentile(ridge, q)) if ridge.size else 0.0
+
+
 def _hollow(ink):
     """Aplats noirs (la peau d'un mannequin : tete, cou, mains) vides en ne gardant que leur contour : ils deviennent
     des formes blanches au trait, comme le reste du dessin."""
-    k = 7 * UP + 1                                                # plus large qu'un trait : il ne reste que le coeur des aplats
+    # plus large qu'un trait : il ne reste que le coeur des aplats. L'epaisseur du trait est mesuree sur le dessin
+    # (un corps au trait gras a des traits de plus de 7 px : sans cela ils etaient pris pour des aplats et vides).
+    stroke = _stroke(ink)
+    k = int(max(7 * UP + 1, round(2.6 * stroke))) | 1
     core = cv2.erode(ink, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
     if not core.any():
         return ink
     blob = cv2.dilate(core, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k + 2, k + 2))) & ink      # l'aplat entier
-    ring = 3 * UP + 1                                             # epaisseur du contour garde
+    ring = int(max(3 * UP + 1, round(2 * stroke))) | 1   # (l'erosion retire la moitie du noyau de chaque cote)               # epaisseur du contour garde : celle du trait du dessin
     inner = cv2.erode(blob, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ring, ring)))
     return (ink & (1 - inner)).astype(np.uint8)
 
@@ -64,15 +74,16 @@ def frame(src, hollow=False):
     grey = cv2.GaussianBlur(cv2.cvtColor(big[..., :3], cv2.COLOR_RGB2GRAY), (0, 0), 1.0)
     if im[..., 3].min() > 250:                                    # image pleine (un decor) : tout le cadre est du papier
         ink = (grey < 175).astype(np.uint8)
-        return w, h, "M0 0H%dV%dH0Z" % (w, h), _paths(ink), []
+        return w, h, "M0 0H%dV%dH0Z" % (w, h), _paths(ink), [], _stroke(ink, 50) / UP
     solid = cv2.GaussianBlur(big[..., 3], (0, 0), 1.2) > 128
     ink = ((grey < 175) & solid).astype(np.uint8)
+    sw = _stroke(ink, 50) / UP                                    # epaisseur du trait, en unites du dessin
     if hollow:
         ink = _hollow(ink)
     # silhouette : arrondie (le rebouchage des dessins laisse de petites marches), mais jamais plus petite que l'encre
     soft = cv2.GaussianBlur(big[..., 3], (0, 0), 2.0 * UP) > 128
     body = (soft | (cv2.dilate(ink, np.ones((3, 3), np.uint8)) > 0)).astype(np.uint8)
-    return w, h, _paths(body), _paths(ink), _parts(body, ink)
+    return w, h, _paths(body), _paths(ink), _parts(body, ink), sw
 
 
 GAP = 2 * UP + 1      # les traits sont epaissis d'autant pour refermer les petits trous entre deux formes
@@ -115,9 +126,10 @@ def orbit(folder, n, hollow=False):
     if cv2 is None:
         return False
     folder = Path(folder)
-    frames, w, h = [], 0, 0
+    frames, w, h, sws = [], 0, 0, []
     for i in range(n):
-        w, h, body, ink, parts = frame(folder / ("%03d.webp" % i), hollow)
+        w, h, body, ink, parts, sw = frame(folder / ("%03d.webp" % i), hollow)
+        sws.append(sw)
         frames.append({"body": body, "ink": ink, "parts": parts} if parts else {"body": body, "ink": ink})
-    (folder / "vec.json").write_text(json.dumps({"w": w, "h": h, "frames": frames}, separators=(",", ":")), encoding="utf-8")
+    (folder / "vec.json").write_text(json.dumps({"w": w, "h": h, "sw": round(float(np.median(sws)), 2) if sws else 0, "frames": frames}, separators=(",", ":")), encoding="utf-8")
     return True

@@ -10,7 +10,9 @@ import hmac
 import json
 import mimetypes
 import re
+import shutil
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -19,11 +21,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import jobs, poses, settings, sprites, store, eleven
+from . import jobs, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"
 VERSION = "0.1"
 MAX_BODY = 80 * 1024 * 1024
+MAX_PACK = 40 * 1024 ** 3                                    # un paquet de personnages (recu sur disque, pas en memoire)
 mimetypes.add_type("image/webp", ".webp")
 mimetypes.add_type("text/javascript", ".js")
 
@@ -72,7 +75,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_file(self, path, cache="no-cache"):
+    def send_file(self, path, cache="no-cache", download=None):
         path = Path(path)
         if not path.is_file():
             return self.send_json({"error": "introuvable"}, 404)
@@ -100,6 +103,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(end - start + 1))
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Cache-Control", cache)
+        if download:
+            self.send_header("Content-Disposition", 'attachment; filename="%s"' % re.sub(r'[^A-Za-z0-9._-]', "-", download))
         if code == 206:
             self.send_header("Content-Range", "bytes %d-%d/%d" % (start, end, size))
         self.end_headers()
@@ -168,6 +173,8 @@ class Handler(BaseHTTPRequestHandler):
         path = unquote(url.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
         length = int(self.headers.get("Content-Length") or 0)
+        if path == "/api/bank/import" and method == "POST":         # paquet de personnages : trop lourd pour la memoire
+            return self.import_pack(length, q)
         if length > MAX_BODY:
             self.send_json({"error": "envoi trop lourd"}, 413)
             self.close_connection = True
@@ -203,6 +210,32 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self.send_json({"error": "%s : %s" % (e.__class__.__name__, e)}, 500)
 
+    def import_pack(self, length, q):
+        """Recoit un paquet .bwpack sur le disque local, morceau par morceau, puis le verse dans la banque."""
+        if not self._allowed() or length <= 0 or length > MAX_PACK:
+            self.close_connection = True
+            return self.send_json({"error": "connexion requise" if not self._allowed() else "paquet vide ou trop lourd"}, 413 if self._allowed() else 401)
+        tmp = Path(tempfile.mkdtemp(prefix="bwpack_"))
+        try:
+            left = length
+            with open(tmp / "p.bwpack", "wb") as f:
+                while left > 0:
+                    chunk = self.rfile.read(min(1 << 20, left))
+                    if not chunk:
+                        raise ConnectionError("envoi interrompu")
+                    f.write(chunk)
+                    left -= len(chunk)
+            self.send_json(packs.import_pack(tmp / "p.bwpack", replace=q.get("replace") == "1"))
+        except (BrokenPipeError, ConnectionError):
+            self.close_connection = True
+        except ValueError as e:
+            self.send_json({"error": str(e)}, 400)
+        except Exception as e:                                       # noqa: BLE001
+            traceback.print_exc()
+            self.send_json({"error": "%s : %s" % (e.__class__.__name__, e)}, 500)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def redirect(self, to):
         self.send_response(302)
         self.send_header("Location", to)
@@ -217,6 +250,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(store.safe(WEB, "/".join(parts[1:])))
         if parts[0] == "bank" and len(parts) > 2:
             return self.send_file(store.safe(store.item_dir(parts[1]), "/".join(parts[2:])), "max-age=86400")
+        if parts[0] == "parts" and len(parts) == 3:                 # elements de visage du portrait-robot
+            return self.send_file(store.safe(store._dir("parts"), "/".join(parts[1:])), "max-age=86400")
         if parts[0] == "audio" and len(parts) == 2:                 # fichiers de la banque audio
             return self.send_file(store.safe(store._dir("audio"), parts[1]), "max-age=86400")
         if parts[0] == "projects" and len(parts) > 2:
@@ -282,6 +317,44 @@ class Handler(BaseHTTPRequestHandler):
             elif method == "DELETE":
                 return self.send_json({"moved": store.remove_folder(q.get("name", ""), q.get("kind", "")), "folders": store.list_folders()})
             return self.send_json(store.list_folders())
+        if head == "parts":                                         # banque d'elements de visage du portrait-robot
+            if len(seg) == 2 and method == "POST":                  # un element dessine a la main : corps brut = le PNG
+                if not body:
+                    raise ApiError("dessin manquant")
+                return self.send_json(parts.add_drawn(seg[1], q.get("name", ""), body))
+            if len(seg) == 3 and method == "DELETE":
+                parts.remove(seg[1], seg[2])
+                return self.send_json({"ok": True})
+            return self.send_json(parts.catalogue())
+        if head == "procedural":                                    # objets tout faits : dessines et tournes sans calcul
+            d = data or {}
+            if seg[1:] == ["preview"] and method == "POST":
+                import io
+                buf = io.BytesIO()
+                procedural.preview(d.get("key", ""), d.get("params") or {}, float(d.get("az", 30))).save(buf, "PNG")
+                img = buf.getvalue()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(img)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return self.wfile.write(img)
+            if seg[1:] == ["create"] and method == "POST":
+                return self.send_json(procedural.create(d.get("key", ""), d.get("params") or {}, (d.get("name") or "").strip(), d.get("folder", "")))
+            return self.send_json(procedural.catalogue())
+        if head == "library":                                       # bibliotheque en ligne de personnages
+            if seg[1:2] == ["thumb"] and len(seg) == 3:
+                img = packs.library_thumb(seg[2])
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(img)))
+                self.send_header("Cache-Control", "max-age=3600")
+                self.end_headers()
+                return self.wfile.write(img)
+            if seg[1:] == ["import"] and method == "POST":
+                d = data or {}
+                return self.send_json(packs.library_import(d.get("id", ""), replace=bool(d.get("replace"))))
+            return self.send_json(packs.library_index())
         if head == "bank":
             return self.api_bank(method, seg[1:], q, data, body)
         if head == "projects":
@@ -308,6 +381,20 @@ class Handler(BaseHTTPRequestHandler):
                 if q.get("prepare", "1") != "0":
                     jobs.prepare(it["id"], orbit=q.get("orbit", "1") != "0", **self._follow(q))
                 return self.send_json(store.load_item(it["id"]))
+        if seg[0] == "export" and method == "GET":                  # paquet .bwpack : des elements, ou tout un dossier
+            ids = packs.select([i for i in (q.get("ids") or "").split(",") if i] or None, q.get("folder"), q.get("kind"))
+            busy = {(j.get("params") or {}).get("item") for j in S.public(True)}
+            hot = [i for i in ids if i in busy]
+            if hot:
+                raise ApiError("encore en calcul : %s. Attendre la fin avant d'exporter." % ", ".join(hot), 409)
+            tmp = Path(tempfile.mkdtemp(prefix="bwpack_"))
+            try:
+                packs.export(ids, tmp / "p.bwpack")
+                asked = [i for i in (q.get("ids") or "").split(",") if i]
+                name = (asked[0] if len(asked) == 1 else store.slug(q.get("folder") or "banque")) + packs.EXT
+                return self.send_file(tmp / "p.bwpack", "no-store", download=name)
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
         if seg[0] == "generate" and method == "POST":
             d = data or {}
             if not (d.get("prompt") or "").strip():
@@ -318,18 +405,40 @@ class Handler(BaseHTTPRequestHandler):
                                      **({"seed": int(d["seed"])} if d.get("seed") else {})},
                         "Création · %s" % (d.get("name") or d["prompt"][:30]), **self.job_opts(d))
             return self.send_json({"job": jid})
+        if seg[0] == "assemble" and method == "POST":               # portrait-robot : un corps de la banque + une tete en traces
+            d = data or {}
+            try:
+                return self.send_json(store.assemble((d.get("name") or "").strip(), d.get("body", ""), d.get("face") or {}, d.get("folder", "")))
+            except (OSError, ValueError) as e:
+                raise ApiError("assemblage impossible : %s" % e)
         iid = seg[0]
         if len(seg) == 1:
             if method == "PUT":
-                keep = {k: v for k, v in (data or {}).items() if k in ("name", "style", "facing", "tags", "folder")}
-                return self.send_json(store.mutate_item(iid, lambda x: x.update(keep)))
+                keep = {k: v for k, v in (data or {}).items() if k in ("name", "style", "facing", "tags", "folder", "face", "body", "cover")}
+                if keep.get("body"):
+                    store.load_item(keep["body"])
+                if "cover" in keep and keep["cover"] not in (store.resolve(store.load_item(iid)).get("variants") or {}):   # variante principale (vignette de la banque)
+                    raise ApiError("variante inconnue : %s" % keep["cover"])
+                return self.send_json(store.resolve(store.mutate_item(iid, lambda x: x.update(keep))))
             if method == "DELETE":
                 store.delete_item(iid)
                 return self.send_json({"ok": True})
-            return self.send_json(store.load_item(iid))
+            return self.send_json(store.resolve(store.load_item(iid)))
         act, d = seg[1], data or {}
         opts = self.job_opts(d)
         it = store.load_item(iid)
+        if it.get("body"):
+            raise ApiError("ce personnage est un assemblage : les poses et les orbites se calculent sur son corps (« %s »)" % it["body"])
+        if act == "zones":                                          # zones suspectes d'une orbite (vides remplis a tort ?)
+            return self.send_json(retouch.zones(iid, q.get("variant", "base")))
+        if act == "punch" and method == "POST":                     # vider une zone remplie a tort (sous un bras)
+            return self.send_json(retouch.punch(iid, d.get("variant", "base"), d.get("frame", 0), d.get("x", 0), d.get("y", 0),
+                                                spread=d.get("spread", True)))
+        if act == "lasso" and method == "POST":                     # retouche a la main : vider ou remplir la zone entouree
+            return self.send_json(retouch.lasso(iid, d.get("variant", "base"), d.get("frame", 0), d.get("points") or [],
+                                                mode=d.get("mode", "vider"), lines=bool(d.get("lines"))))
+        if act == "restore" and method == "POST":                   # remettre les images d'avant les retouches
+            return self.send_json(retouch.restore(iid, d.get("variant", "base")))
         if act == "prepare":
             made = jobs.prepare(iid, orbit=d.get("orbit", True), pose_keys=d.get("poses") or [], target=opts["target"],
                                 fal_key=opts["_fal_key"], prio=2 if d.get("low") else 1)
@@ -361,7 +470,11 @@ class Handler(BaseHTTPRequestHandler):
                 x["variants"][vid]["orbit"]["snaps"] = {k: int(v) for k, v in (d.get("snaps") or {}).items()}
             return self.send_json(store.mutate_item(iid, apply))
         if act == "variant" and method == "DELETE" and len(seg) == 3 and seg[2] != "base":
-            return self.send_json(store.mutate_item(iid, lambda x: x["variants"].pop(seg[2], None)))
+            def drop(x):
+                x["variants"].pop(seg[2], None)
+                if x.get("cover") == seg[2]:                        # la principale supprimee : retour a « base »
+                    x.pop("cover", None)
+            return self.send_json(store.mutate_item(iid, drop))
         raise ApiError("route inconnue", 404)
 
     def _follow(self, q):
@@ -381,13 +494,24 @@ class Handler(BaseHTTPRequestHandler):
             if method == "PUT":
                 with store._lock:
                     old = store.load_project(pid)
+                    # un autre onglet (ou un autre appareil) a enregistre apres la version que celui-ci connait : on
+                    # refuse, sinon son vieil etat ecraserait le travail fait ailleurs
+                    cid, ui = (data or {}).pop("_cid", None), old.get("ui") or {}
+                    if int((data or {}).get("rev", 0)) < int(ui.get("rev", 0)) and ui.get("cid") != cid:
+                        raise ApiError("ce storyboard a été modifié dans un autre onglet ou sur un autre appareil : "
+                                       "recharge la page avant de continuer, pour ne pas écraser ce travail", 409)
                     new = merge_project(data, old)
                     new["id"] = pid
+                    new["ui"] = {"cid": cid, "rev": int(new.get("rev", 0)) + 1}
                     return self.send_json(store.save_project(new))
             if method == "DELETE":
                 store.delete_project(pid)
                 return self.send_json({"ok": True})
             return self.send_json(store.load_project(pid))
+        if seg[1] == "history":                                     # versions gardees du storyboard
+            if method == "POST":
+                return self.send_json(store.restore_project(pid, (data or {}).get("file", "")))
+            return self.send_json(store.project_history(pid))
         act, d = seg[1], data or {}
         pdir = store.project_dir(pid)
         if act == "rev":
@@ -441,10 +565,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"file": rel})
         if act == "integrate" and method == "POST":
             store.safe(pdir, d["flat"])
-            jid = S.add("panel_integrate", {"project": pid, "panel": d["panel"], "flat": d["flat"],
-                                            "style": d.get("style", "photo"), "prompt": d.get("prompt", ""),
-                                            "extra": d.get("extra", "")},
-                        "Integrate · case %s" % d["panel"], **self.job_opts(d))
+            opts = self.job_opts(d)
+            eng = d.get("engine") if d.get("engine") is not None else (settings.load()["render"].get("integrate_engine") or "")
+            params = {"project": pid, "panel": d["panel"], "flat": d["flat"], "style": d.get("style", "photo"),
+                      "prompt": d.get("prompt", ""), "extra": d.get("extra", "")}
+            if eng == "local":                                      # moteur choisi pour Integrate : il passe avant la cible generale
+                opts["target"] = "local"
+            elif eng.startswith("fal:") and eng[4:].strip():
+                opts["target"] = "fal"
+                params["edit_model"] = eng[4:].strip()
+            jid = S.add("panel_integrate", params, "Integrate · case %s" % d["panel"], **opts)
             return self.send_json({"job": jid})
         if act == "orbit" and method == "POST":
             store.safe(pdir, d["flat"])

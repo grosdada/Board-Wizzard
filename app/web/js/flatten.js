@@ -3,6 +3,8 @@
 // mieux sur une image nette ; le flou reste un reglage d'affichage).
 import { loadImage } from "./api.js";
 import { drawImage } from "./draw.js";
+import { faceOps, headReady, opsCanvas } from "./face.js";
+import { frameToAngle, variantOf, lineWidth } from "./model.js";
 import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
@@ -50,7 +52,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     if (!q) return;
     ctx.save();
     ctx.filter = `blur(${(q.blur * kx).toFixed(2)}px)`; ctx.globalAlpha = q.a; ctx.fillStyle = q.col;
-    ctx.scale(kx, ky); ctx.beginPath(); ctx.ellipse(q.cx, q.cy, q.rx, q.ry, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.scale(kx, ky); ctx.fill(new Path2D(q.d));
     ctx.restore();
   };
   for (let i = 0; i < layers.length; i++) {
@@ -59,7 +61,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     const vf = await vecReady(sp);
     if (vf) {                                              // dessin en traces : dessine en vectoriel, a la taille du canvas
       const box = layerBox(local, l, { w: vf.w, h: vf.h }), sc = Math.min(box.w / vf.w, box.h / vf.h);
-      const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), inkc = inkFill(l), st = inkStroke(l.lw, col, inkc), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);
+      const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), inkc = inkFill(l), st = inkStroke(l.lw, col, inkc, vf.sw), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);
       const body = new Path2D(vf.body), ink = new Path2D(vf.ink);
       cast(l, box);
       ctx.save();
@@ -68,6 +70,9 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       if (l.rz) { ctx.translate(box.x + box.w / 2, box.y + box.h / 2); ctx.rotate(l.rz * Math.PI / 180); ctx.translate(-(box.x + box.w / 2), -(box.y + box.h / 2)); }
       if (l.flip) { ctx.translate(2 * (box.x + box.w / 2), 0); ctx.scale(-1, 1); }
       ctx.translate(tx, ty); ctx.scale(sc, sc);
+      const hd = item.face ? await headReady(sp) : null, orb = (variantOf(item, l.v) || {}).orbit;      // portrait-robot : la tete en traces
+      const fo = hd ? faceOps(item.face, hd, vf.w, vf.h, orb ? frameToAngle(orb, sp.i) * Math.PI / 180 : 0, { peau: col, trait: inkc, lw: lineWidth(vf.sw, l.lw) }) : null;
+      if (fo) opsCanvas(ctx, fo.under);
       ctx.fillStyle = col; ctx.fill(body);
       ctx.save(); ctx.clip(body);
       const shd = shadeOf(l.sh, vf.h, col, inkc);
@@ -83,6 +88,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       ctx.fillStyle = inkc; ctx.fill(ink, "evenodd");
       if (st.width > 0) { ctx.strokeStyle = st.color; ctx.lineWidth = st.width; ctx.lineJoin = "round"; ctx.stroke(ink); }
       ctx.restore();
+      if (fo) opsCanvas(ctx, fo.over);
       if (st.outline > 0) { ctx.strokeStyle = "#111111"; ctx.lineWidth = st.outline; ctx.stroke(body); }
       ctx.restore();
       continue;

@@ -1,6 +1,7 @@
 // Banque : personnages, decors, assets. Vignettes a glisser dans les cases, import, generation, fiche d'un element
 // (orbite a faire tourner, reperes d'axes, poses a generer).
 import { h, get, post, put, del, upload, toast, modal } from "./api.js";
+import { openPortrait, portraitThumb } from "./portrait.js";
 import { sprite, preload, variantOf, AXES, nearestAxis, angleToFrame, frameToAngle } from "./model.js";
 
 const KINDS = [["character", "Personnages"], ["decor", "Décors"], ["asset", "Assets"], ["audio", "Audio"]];
@@ -22,6 +23,8 @@ export class Bank {
     host.addEventListener("drop", (e) => {
       host.classList.remove("drop");
       if (this.tab === "audio") { const snd = [...e.dataTransfer.files].filter((f) => /^(audio|video)\//.test(f.type)); if (snd.length) { e.preventDefault(); this.importAudio(snd); } return; }
+      const packs = [...e.dataTransfer.files].filter((f) => /\.bwpack$/i.test(f.name));
+      if (packs.length) { e.preventDefault(); this.importPacks(packs); return; }
       const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith("image/"));
       if (files.length) { e.preventDefault(); this.importDialog(files); }
     });
@@ -67,7 +70,9 @@ export class Bank {
         this.folder && this.folder !== "·" ? h("button.mini", { title: `Renommer le dossier « ${this.folder} »`, on: { click: () => this.renameFolder() } }, "✎") : "",
         this.folder && this.folder !== "·" ? h("button.mini.danger", { title: `Supprimer le dossier « ${this.folder} » (ses éléments ne sont pas supprimés)`, on: { click: () => this.deleteFolder() } }, "🗑") : ""),
       h("div.bank-bar", search, h("button.mini", { title: isAudio ? "Importer des fichiers son" : "Importer des images", on: { click: () => pick.click() } }, "＋ Importer"),
-        isAudio ? "" : h("button.mini", { title: "Générer à partir d'une description", on: { click: () => this.generateDialog() } }, "✨ Générer"), pick),
+        isAudio ? "" : h("button.mini", { title: "Générer à partir d'une description", on: { click: () => this.generateDialog() } }, "✨ Générer"),
+        this.tab === "character" ? h("button.mini", { title: "Portrait-robot : assembler un personnage à partir d'un corps et d'une tête en tracés, sans calcul", on: { click: () => openPortrait(this) } }, "🧩 Portrait-robot") : "",
+        isAudio ? "" : h("button.mini", { title: "Paquets de personnages : exporter ce dossier dans un fichier, importer un paquet reçu, ou piocher dans la bibliothèque en ligne", on: { click: () => this.packDialog() } }, "📦 Paquets"), pick),
       grid);
     this.grid = grid;
   }
@@ -113,9 +118,26 @@ export class Bank {
     return h("span.fin", h("input", { type: "text", value: value || "", placeholder: "Dossier (projet)…", list: id }),
       h("datalist", { id }, this.folders(kind).map((f) => h("option", { value: f }))));
   }
+  reveal(id) {                       // montre ou se trouve un element : son onglet, son dossier, sa vignette mise en avant
+    const it = this.app.bank.get(id);
+    if (!it) return toast("Cet élément n'est plus dans la banque.", "error");
+    this.tab = it.kind; localStorage.setItem("bw.tab", it.kind);
+    this.folder = it.folder || ""; this.query = "";
+    this.render();
+    const card = this.grid.querySelector(`.card[data-id="${id}"]`);
+    if (!card) return;
+    card.scrollIntoView({ block: "center", behavior: "smooth" });
+    card.classList.remove("found"); void card.offsetWidth; card.classList.add("found");
+    setTimeout(() => card.classList.remove("found"), 4000);
+    toast(`« ${it.name} » : ${it.folder ? "dossier « " + it.folder + " »" : "sans dossier"}.`);
+  }
   renderGrid() {
     const q = this.query;
     for (const c of this.grid.children) if (c.dataset.name) c.style.display = !q || c.dataset.name.includes(q) ? "" : "none";
+  }
+
+  cover(it) {                         // variante principale : vignette de la banque et variante posee au glisser
+    return it.cover && it.variants && it.variants[it.cover] ? it.cover : "base";
   }
 
   thumb(it, vid = "base") {
@@ -162,18 +184,77 @@ export class Bank {
   card(it) {
     const vs = Object.values(it.variants || {}), orbits = vs.filter((v) => v.orbit).length;
     const busy = this.app.jobsFor(it.id);
-    const c = h("div.card." + it.kind, { draggable: true, title: it.name + " : glisser dans une case, cliquer pour la fiche",
+    const c = h("div.card." + it.kind, { draggable: true, "data-id": it.id, title: it.name + " : glisser dans une case, cliquer pour la fiche",
       "data-name": (it.name + " " + (it.tags || []).join(" ")).toLowerCase(),
       on: {
-        dragstart: (e) => { e.dataTransfer.setData("application/x-bw-item", JSON.stringify({ id: it.id, v: "base" })); e.dataTransfer.effectAllowed = "copy"; },
+        dragstart: (e) => { e.dataTransfer.setData("application/x-bw-item", JSON.stringify({ id: it.id, v: this.cover(it) })); e.dataTransfer.effectAllowed = "copy"; },
         click: () => this.openItem(it.id),
       } },
-      h("img", { src: this.thumb(it), loading: "lazy", draggable: false, alt: "" }),
+      it.face ? portraitThumb(h("div.card-svg"), it) : h("img", { src: this.thumb(it, this.cover(it)), loading: "lazy", draggable: false, alt: "" }),
       h("div.card-name", it.name),
       h("div.card-meta", orbits ? h("span.b.ok", { title: "orbites prêtes" }, "↻ " + orbits) : h("span.b", "fixe"),
         vs.length > 1 ? h("span.b", vs.length - 1 + " var.") : null,
         busy ? h("span.b.busy", { title: "en calcul" }, "⏳ " + busy) : null));
     return c;
+  }
+
+  // ---------------------------------------------------------------- paquets (.bwpack) et bibliotheque en ligne
+  download(query) {                  // le navigateur enregistre le paquet fabrique par le serveur
+    const a = h("a", { href: "/api/bank/export?" + query, download: "" });
+    document.body.append(a); a.click(); a.remove();
+    toast("Le paquet se prépare : le téléchargement démarre quand il est prêt (un personnage complet pèse environ 150 Mo).", "info", 8000);
+  }
+  async importPacks(files, replace = false) {
+    const again = [];
+    for (const f of files) {
+      toast(`Import de ${f.name} (${(f.size / 1e6).toFixed(0)} Mo)…`, "info", 8000);
+      try {
+        const r = await upload("bank/import" + (replace ? "?replace=1" : ""), f);
+        const n = r.added.length + r.replaced.length;
+        if (n) toast(`${f.name} : ${n} élément${n > 1 ? "s" : ""} ${replace ? "remplacé" : "ajouté"}${n > 1 ? "s" : ""} (${[...r.added, ...r.replaced].map((x) => x.name).slice(0, 6).join(", ")}${n > 6 ? "…" : ""}).`);
+        if (r.skipped.length) { again.push(f); toast(`${f.name} : ${r.skipped.length} élément(s) déjà dans la banque, laissé(s) tel(s) quel(s).`); }
+      } catch (e) { toast(`${f.name} refusé : ${e.message}`, "error", 9000); }
+    }
+    await this.reload();
+    if (again.length && !replace && confirm("Certains éléments de ces paquets existent déjà dans la banque.\nLes remplacer par ceux du paquet ? (les anciens partent à la corbeille du dossier de données)")) await this.importPacks(again, true);
+  }
+  packDialog() {
+    const folder = this.folder && this.folder !== "·" ? this.folder : "", label = KINDS.find(([k]) => k === this.tab)[1].toLowerCase();
+    const n = [...this.app.bank.values()].filter((it) => it.kind === this.tab && (!folder || it.folder === folder || (it.folder || "").startsWith(folder + "/"))).length;
+    const pick = h("input", { type: "file", accept: ".bwpack", multiple: true, style: { display: "none" }, on: { change: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) { m.close(); this.importPacks(fs); } } } });
+    const libBox = h("div.libbox", h("p.muted", "Chargement de la bibliothèque…"));
+    const m = modal("Paquets de personnages", h("div.form",
+      h("p.muted", "Un paquet (.bwpack) contient un élément entier : image de base, détourages, toutes ses poses, leurs orbites et leurs tracés. On peut aussi glisser un paquet dans la banque."),
+      h("div.row.wrap", h("button.mini", { disabled: !n, title: "Un seul fichier avec tout le dossier affiché. Pour un seul élément : bouton « Exporter » de sa fiche.", on: { click: () => this.download(new URLSearchParams({ folder, kind: this.tab })) } },
+          `⬇ Exporter ${folder ? "le dossier « " + folder + " »" : "tous les " + label} (${n})`),
+        h("button.mini", { on: { click: () => pick.click() } }, "⬆ Importer un paquet…"), pick),
+      h("h4", "Bibliothèque en ligne"), libBox), [{ label: "Fermer" }]);
+    m.box.classList.add("wide");
+    get("library").then((idx) => {
+      const rows = idx.items.map((e) => ({ e, box: h("input", { type: "checkbox" }) }));
+      const go = h("button.primary", "Importer la sélection");
+      go.addEventListener("click", async () => {
+        const sel = rows.filter((r) => r.box.checked);
+        if (!sel.length) return toast("Coche au moins un élément.", "error");
+        go.disabled = true;
+        let done = 0;
+        for (const r of sel) {
+          go.textContent = `Import ${done + 1}/${sel.length} : ${r.e.name}…`;
+          try { await post("library/import", { id: r.e.id, replace: !!r.e.have }); done++; r.e.have = true; r.box.checked = false; r.tag.textContent = "✓ dans la banque"; }
+          catch (err) { toast(`${r.e.name} : ${err.message}`, "error", 9000); }
+        }
+        go.disabled = false; go.textContent = "Importer la sélection";
+        await this.reload();
+        toast(`${done} élément${done > 1 ? "s" : ""} importé${done > 1 ? "s" : ""} de la bibliothèque.`);
+      });
+      libBox.textContent = "";
+      libBox.append(h("p.muted", `« ${idx.name || "Bibliothèque"} » : ${idx.items.length} élément(s). Cocher un élément déjà dans la banque le remplace.`),
+        h("div.row.wrap", h("button.mini", { on: { click: () => rows.forEach((r) => { r.box.checked = !r.e.have; }) } }, "Cocher ce qui manque"), h("button.mini", { on: { click: () => rows.forEach((r) => { r.box.checked = false; }) } }, "Rien")),
+        h("div.liblist", rows.map((r) => h("label.libitem", r.box,
+          r.e.thumb ? h("img", { src: "/api/library/thumb/" + encodeURIComponent(r.e.thumb), loading: "lazy", alt: "" }) : h("span.libno", "🧩"),
+          h("span.libname", r.e.name, h("small", `${r.e.folder ? "📁 " + r.e.folder + " · " : ""}${r.e.variants} pose(s), ${r.e.orbits} orbite(s) · ${((r.e.bytes || r.e.size || 0) / 1e6).toFixed(0)} Mo`)),
+          (r.tag = h("span.muted", r.e.have ? "✓ dans la banque" : ""))))), go);
+    }).catch((err) => { libBox.textContent = ""; libBox.append(h("p.muted", err.message + ". L'adresse, l'identifiant et le mot de passe de la bibliothèque se donnent dans les réglages (⚙).")); });
   }
 
   // ---------------------------------------------------------------- import
@@ -231,6 +312,7 @@ export class Bank {
   // ---------------------------------------------------------------- fiche d'un element
   openItem(id) {
     const app = this.app;
+    if (app.bank.get(id)?.face) return openPortrait(this, app.bank.get(id));       // personnage assemble : sa fiche est le portrait-robot
     this.openId = id;
     let vid = "base", frame = 0;
     const it = () => app.bank.get(id);
@@ -241,18 +323,159 @@ export class Bank {
     const variants = h("div.variants");
     const poseBox = h("div.posebox");
     const head = h("div.item-head");
-    stage.append(img);
+    // loupe : la molette agrandit autour du pointeur (jusqu'a 10 fois) ; bouton du milieu, ou la main, pour se deplacer
+    const zwrap = h("div.zoomwrap"); zwrap.append(img); stage.append(zwrap);
+    let zoom = 1, ztx = 0, zty = 0, panMode = false, pan = null;
+    const zoomApply = () => {
+      const W = stage.clientWidth, H = stage.clientHeight;
+      if (zoom <= 1.001) { zoom = 1; ztx = zty = 0; }
+      ztx = Math.min(0, Math.max(W * (1 - zoom), ztx)); zty = Math.min(0, Math.max(H * (1 - zoom), zty));
+      zwrap.style.transform = `translate(${ztx}px, ${zty}px) scale(${zoom})`;
+      zwrap.style.setProperty("--z", zoom);       // les traits du lasso et des zones restent fins a tout zoom
+      zoomLabel.textContent = Math.round(zoom * 100) + " %";
+    };
+    const zoomAt = (factor, cx, cy) => {      // cx, cy : point de l'ecran qui ne doit pas bouger
+      const r = stage.getBoundingClientRect(), px = (cx ?? r.left + r.width / 2) - r.left, py = (cy ?? r.top + r.height / 2) - r.top;
+      const z2 = Math.min(10, Math.max(1, zoom * factor)), qx = (px - ztx) / zoom, qy = (py - zty) / zoom;
+      zoom = z2; ztx = px - z2 * qx; zty = py - z2 * qy; zoomApply();
+    };
+    stage.addEventListener("wheel", (e) => { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.25 : 0.8, e.clientX, e.clientY); }, { passive: false });
+    stage.addEventListener("pointerdown", (e) => {
+      if (e.button !== 1 && !panMode) return;
+      e.preventDefault(); e.stopImmediatePropagation(); stage.setPointerCapture(e.pointerId);
+      pan = { x: e.clientX, y: e.clientY, tx: ztx, ty: zty };
+    }, true);
+    stage.addEventListener("pointermove", (e) => { if (pan) { ztx = pan.tx + e.clientX - pan.x; zty = pan.ty + e.clientY - pan.y; zoomApply(); e.stopImmediatePropagation(); } }, true);
+    stage.addEventListener("pointerup", (e) => { if (pan) { pan = null; e.stopImmediatePropagation(); } }, true);
+    const zoomLabel = h("span.muted.zoomlabel", "100 %");
+    const handBtn = h("button.mini", { title: "Main : glisser pour se déplacer dans l'image agrandie (ou bouton du milieu de la souris). Recliquer pour revenir à l'outil.", on: { click: () => { panMode = !panMode; handBtn.classList.toggle("on", panMode); stage.classList.toggle("panning", panMode); } } }, "✋");
+    const zoomBar = h("div.zoombar", { title: "Molette sur l'image : agrandir ou réduire autour du pointeur" },
+      h("span.muted", { title: "Molette : agrandir. Barre d'espace tenue + glisser : se déplacer dans l'image." }, "🔍 Loupe :"), h("button.mini", { on: { click: () => zoomAt(0.8) } }, "−"), zoomLabel, h("button.mini", { on: { click: () => zoomAt(1.25) } }, "+"),
+      h("button.mini", { title: "Revenir à l'image entière", on: { click: () => { zoom = 1; zoomApply(); } } }, "1:1"), handBtn);
     const show = () => {
       const item = it(), v = variantOf(item, vid);
       if (!item || !v) return;
       const sp = sprite(item, vid, frame);
-      img.src = sp.url;
+      const pre = v.orbit ? preload(item, vid) : null, ready = !pre || !pre[sp.i] || pre[sp.i].complete;
+      if (ready) img.src = sp.url;            // image pas encore arrivee : on garde la precedente, sans saccade
+      else pre[sp.i].addEventListener("load", () => { if (frame === sp.i && it() === item) show(); }, { once: true });
+      if (pre) { const got = pre.filter((x) => x.complete).length; loadLabel.textContent = got < pre.length ? `chargement ${got}/${pre.length}` : ""; if (got < pre.length) setTimeout(() => { if (document.body.contains(stage)) loadLabel.textContent = pre.every((x) => x.complete) ? "" : `chargement ${pre.filter((x) => x.complete).length}/${pre.length}`; }, 600); }
+      drawZones();
       slider.max = Math.max(0, sp.n - 1); slider.value = sp.i; slider.disabled = sp.n < 2;
       axisLabel.textContent = v.orbit ? `image ${sp.i + 1}/${sp.n} · ${nearestAxis(v.orbit, sp.i)}` : (v.cut ? "image fixe détourée" : "image d'origine (pas encore détourée)");
     };
     slider.addEventListener("input", () => { frame = +slider.value; show(); });
+    // lecture : l'orbite tourne en boucle (24 images par seconde), en attendant les images pas encore arrivees
+    const loadLabel = h("span.muted.loadlabel");
+    let timer = null;
+    const stop = () => { clearInterval(timer); timer = null; playBtn.textContent = "▶"; };
+    const playBtn = h("button.mini.playbtn", { title: "Faire tourner l'orbite en boucle (barre d'espace). Recliquer pour arrêter.", on: { click: () => {
+      if (timer) return stop();
+      playBtn.textContent = "⏸";
+      timer = setInterval(() => {
+        if (!document.body.contains(stage)) return stop();
+        const v = variantOf(it(), vid);
+        if (!v || !v.orbit) return stop();
+        const pre = preload(it(), vid), next = (frame + 1) % v.orbit.n;
+        if (pre && pre[next] && !pre[next].complete) return;        // on attend l'image suivante
+        frame = next; show();
+      }, 1000 / 24);
+    } } }, "▶");
     let drag = null;
-    stage.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, f: frame }; stage.setPointerCapture(e.pointerId); e.preventDefault(); });
+    // lasso : on entoure une zone a la souris, elle est videe (ou remplie) sur l'image affichee
+    let lassoMode = "", lassoPts = null;
+    const lassoSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    lassoSvg.setAttribute("class", "lasso"); lassoSvg.style.display = "none"; zwrap.append(lassoSvg);
+    const lassoDraw = () => {
+      Object.assign(lassoSvg.style, { display: lassoPts ? "" : "none", left: img.offsetLeft + "px", top: img.offsetTop + "px", width: img.offsetWidth + "px", height: img.offsetHeight + "px" });
+      if (!lassoPts) return;
+      lassoSvg.setAttribute("viewBox", "0 0 1000 1000"); lassoSvg.setAttribute("preserveAspectRatio", "none");
+      lassoSvg.innerHTML = `<polygon points="${lassoPts.map((q) => (q[0] * 1000).toFixed(1) + "," + (q[1] * 1000).toFixed(1)).join(" ")}" class="${lassoMode}"/>`;
+    };
+    const lassoSet = (m) => { lassoMode = lassoMode === m ? "" : m; lassoPts = null; lassoDraw(); stage.style.cursor = lassoMode ? "crosshair" : ""; fixBar.querySelectorAll("[data-lasso]").forEach((b) => b.classList.toggle("on", b.dataset.lasso === lassoMode)); };
+    const lassoPt = (e) => { const r = img.getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; };
+    const lassoSend = async () => {
+      const pts = lassoPts; lassoPts = null;
+      if (!pts || pts.length < 6) { lassoDraw(); return; }
+      try {
+        const keepLines = !(fixBar.querySelector("input[data-lines]") || {}).checked;
+        await post(`bank/${id}/lasso`, { variant: vid, frame, points: pts, mode: lassoMode, lines: !keepLines });
+        await this.reload();                                        // l'outil reste arme : on passe a l'image suivante et on recommence
+      } catch (err) { toast(err.message, "error", 9000); }
+      lassoDraw();
+    };
+    stage.addEventListener("pointermove", (e) => { if (lassoPts) { lassoPts.push(lassoPt(e)); lassoDraw(); } });
+    stage.addEventListener("pointerup", () => { if (lassoPts) lassoSend(); });
+    const stepKey = (e) => {                   // fleches : image precedente / suivante, pour retoucher a la chaine
+      if (!document.body.contains(stage)) return document.removeEventListener("keydown", stepKey);
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target !== slider) return;
+      const v = variantOf(it(), vid);
+      if (!v || !v.orbit || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+      e.preventDefault(); frame = (frame + (e.key === "ArrowRight" ? 1 : -1) + v.orbit.n) % v.orbit.n; show();
+    };
+    document.addEventListener("keydown", stepKey);
+    // barre d'espace tenue : la main, pour se deplacer dans l'image agrandie sans quitter le lasso
+    let spaceHeld = false, handLocked = false;
+    const spaceKey = (e) => {
+      if (!document.body.contains(stage)) { document.removeEventListener("keydown", spaceKey); document.removeEventListener("keyup", spaceKey); return; }
+      if (e.code !== "Space" || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      e.preventDefault();
+      if (e.target && e.target.blur && e.target.tagName === "BUTTON") e.target.blur();      // sinon l'espace « clique » le dernier bouton
+      const down = e.type === "keydown";
+      if (down === spaceHeld) return;
+      spaceHeld = down;
+      if (down) handLocked = panMode;
+      panMode = down || handLocked; stage.classList.toggle("panning", panMode); handBtn.classList.toggle("on", panMode);
+    };
+    document.addEventListener("keydown", spaceKey); document.addEventListener("keyup", spaceKey);
+    let punching = false;
+    let zones = null, zonesFor = "";           // zones suspectes proposees par l'analyse, pour la variante affichee
+    const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    overlay.setAttribute("class", "zones"); stage.style.position = "relative"; zwrap.append(overlay);
+    const drawZones = () => {
+      const list = zones && zonesFor === vid ? zones.frames[String(frame)] || [] : [];
+      overlay.style.display = list.length ? "" : "none";
+      if (!list.length) return;
+      overlay.setAttribute("viewBox", `0 0 ${zones.w} ${zones.h}`);
+      Object.assign(overlay.style, { left: img.offsetLeft + "px", top: img.offsetTop + "px", width: img.offsetWidth + "px", height: img.offsetHeight + "px" });
+      overlay.innerHTML = list.map((z, i) => `<path d="${z.d}" class="${z.cls === "sur" ? "sure" : "doubt"}" data-i="${i}"><title>${z.cls === "sur" ? "Probablement un vide" : "Peut-être un vide"} : cliquer pour le vider (ici et sur les images voisines)</title></path>`).join("");
+    };
+    img.addEventListener("load", drawZones);
+    overlay.addEventListener("pointerdown", (e) => {
+      const i = e.target.dataset && e.target.dataset.i;
+      if (i === undefined) return;
+      e.stopPropagation(); e.preventDefault();
+      const z = zones.frames[String(frame)][+i];
+      punchAt(null, z);
+    });
+    const loadZones = async (quiet) => {
+      if (!quiet) toast("Analyse de l'orbite : recherche des vides remplis à tort (jusqu'à une minute)…", "info", 9000);
+      try {
+        zones = await get(`bank/${id}/zones?variant=${encodeURIComponent(vid)}`); zonesFor = vid;
+        const fs = Object.keys(zones.frames).map(Number).sort((a, b) => a - b);
+        if (!quiet) toast(fs.length ? `Zones suspectes sur ${fs.length} image(s). Rouge : probablement un vide. Orange : peut-être. Fais tourner l'orbite et clique celles à vider.` : "Aucune zone suspecte trouvée sur cette orbite.", "info", 9000);
+        if (!quiet && fs.length && !zones.frames[String(frame)]) frame = fs[0];
+        show();
+      } catch (err) { toast(err.message, "error", 9000); }
+    };
+    const punchAt = async (e, z) => {         // vider la zone cliquee (un vide rempli a tort), sur cette image et ses voisines
+      let x, y;
+      if (z) { x = z.x; y = z.y; } else {
+        const r = img.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return toast("Clique sur le personnage, dans la zone à vider.", "error");
+        x = (e.clientX - r.left) / r.width; y = (e.clientY - r.top) / r.height;
+      }
+      punching = false; stage.style.cursor = "";
+      toast("Zone en cours de vidage sur les images voisines, puis l'orbite est retracée (30 s environ)…", "info", 9000);
+      try {
+        const res = await post(`bank/${id}/punch`, { variant: vid, frame, x, y });
+        toast(`Zone vidée sur ${res.frames.length} image(s) de l'orbite.`); await this.reload();
+        if (zones) await loadZones(true);
+      } catch (err) { toast(err.message, "error", 9000); }
+    };
+    stage.addEventListener("pointerdown", () => { if (timer && !punching) stop(); }, true);
+    stage.addEventListener("pointerdown", (e) => { if (lassoMode && !punching) { e.preventDefault(); stage.setPointerCapture(e.pointerId); lassoPts = [lassoPt(e)]; lassoDraw(); return; }
+      if (punching) { e.preventDefault(); return punchAt(e); } drag = { x: e.clientX, f: frame }; stage.setPointerCapture(e.pointerId); e.preventDefault(); });
     stage.addEventListener("pointermove", (e) => {
       const v = variantOf(it(), vid);
       if (!drag || !v || !v.orbit) return;
@@ -292,20 +515,45 @@ export class Bank {
       }
       // variantes
       variants.textContent = "";
+      const main = this.cover(item);
       for (const [k, vv] of Object.entries(item.variants)) {
         const busy = app.jobsFor(id, k);
-        variants.append(h("div.var" + (k === vid ? ".on" : ""), { draggable: true, title: vv.label + " : cliquer pour voir, glisser dans une case",
+        const star = h("button.var-star" + (k === main ? ".on" : ""), { title: k === main ? "Variante principale : c'est elle qu'on voit dans la banque et qui se pose quand on glisse la carte" : "Faire de cette variante la principale (vignette de la banque, variante posée quand on glisse la carte)",
+          on: { click: async (e) => { e.stopPropagation(); if (k === main) return;
+            try { const r = await put("bank/" + id, { cover: k });
+              if (r && r.cover === k) toast(`« ${vv.label} » devient la variante principale.`);
+              else toast("Le serveur n'enregistre pas encore la variante principale : il faut le redémarrer.", "error");
+              await this.reload(); } catch (err) { toast(err.message, "error"); } } } }, k === main ? "★" : "☆");
+        const cross = item.body ? null : h("button.var-del", { title: k === "base" ? "La variante de base ne se supprime pas : son image de départ sert aux poses et aux autres variantes" : "Supprimer cette variante", disabled: k === "base",
+          on: { click: async (e) => { e.stopPropagation(); if (k === "base" || !confirm(`Supprimer la variante « ${vv.label} » de « ${item.name} » ?`)) return;
+            try { await del(`bank/${id}/variant/${k}`); if (vid === k) vid = "base"; await this.reload(); } catch (err) { toast(err.message, "error"); } } } }, "✕");
+        variants.append(h("div.var" + (k === vid ? ".on" : "") + (k === main ? ".main" : ""), { draggable: true, title: vv.label + " : cliquer pour voir, glisser dans une case",
           on: { click: () => { vid = k; frame = 0; build(true); },
                 dragstart: (e) => { e.dataTransfer.setData("application/x-bw-item", JSON.stringify({ id, v: k })); } } },
+          star, cross,
           h("img", { src: this.thumb(item, k), draggable: false, loading: "lazy" }), h("div.var-name", vv.label),
           h("div.card-meta", vv.orbit ? h("span.b.ok", "↻") : h("span.b", "fixe"), busy ? h("span.b.busy", "⏳") : null)));
       }
       // actions sur la variante
+      // retouches du detourage : bien en vue sous l'image
+      fixBar.textContent = "";
+      if (v.orbit) fixBar.append(h("b", "Corriger le détourage"),
+        h("div.row.wrap",
+          h("button.mini" + (lassoMode === "vider" ? ".on" : ""), { "data-lasso": "vider", title: "Entoure à la souris une zone blanche qui devrait être vide : elle devient transparente sur l'image affichée. L'outil reste actif : flèche droite pour l'image suivante, et on recommence. Recliquer le bouton pour le ranger.", on: { click: () => lassoSet("vider") } }, "✂ Lasso : vider"),
+          h("button.mini" + (lassoMode === "remplir" ? ".on" : ""), { "data-lasso": "remplir", title: "Entoure à la souris un trou dans le personnage : il est rebouché en blanc sur l'image affichée.", on: { click: () => lassoSet("remplir") } }, "🩹 Lasso : remplir"),
+          h("label.check", { title: "Coché : le lasso « vider » ne touche pas aux traits du dessin, seulement au blanc. Décoché : tout ce qui est entouré disparaît, traits compris." }, h("input", { type: "checkbox", checked: true, "data-lines": "1" }), "garder les traits")),
+        h("p.muted", "Lasso : choisis un fond de couleur, clique « Lasso : vider », puis entoure la zone à la souris sur l'image. Molette : agrandir. Barre d'espace tenue + glisser : se déplacer. Flèches ← → : changer d'image."),
+        h("div.row.wrap",
+          v.orbit ? h("button.mini", { title: "Analyse l'orbite et montre en couleur les zones blanches qui sont peut-être des vides remplis à tort (entre un bras et le corps, entre les jambes). Rouge : probablement. Orange : peut-être. Rien n'est vidé sans ton clic sur la zone.", on: { click: () => { if (zones && zonesFor === vid) { zones = null; drawZones(); } else loadZones(); } } }, "🔎 Vides suspects") : null,
+          v.orbit ? h("button.mini", { title: "Pour un vide rempli à tort (entre un bras et le corps, entre les jambes) : clique ce bouton, puis clique dans la zone sur l'image. Elle est vidée sur cette image et sur les voisines où elle existe. Mets un fond de couleur pour bien voir.", on: { click: () => { punching = true; stage.style.cursor = "crosshair"; toast("Clique maintenant dans la zone à vider, sur l'image."); } } }, "🕳 Vider une zone") : null,
+          v.orbit ? h("button.mini", { title: "Annule les retouches de cette orbite (zones vidées, rebouchage) : remet les images gardées avant", on: { click: async () => { if (!confirm("Remettre les images d'origine de cette orbite ?")) return; try { const r = await post(`bank/${id}/restore`, { variant: vid }); toast(`${r.frames} image(s) remise(s).`); await this.reload(); } catch (err) { toast(err.message, "error"); } } } }, "↩ Images d'origine") : null),
+        h("p.muted", "1. Mets un fond de couleur. 2. « Vides suspects » colore les zones blanches qui devraient peut-être être vides (rouge : probable, orange : possible). 3. Fais tourner et clique une zone colorée pour la vider, ici et sur les images voisines. Si la zone n'est pas colorée : « Vider une zone », puis clic dedans."));
       const acts = h("div.acts",
         h("button.mini", { on: { click: async () => { await post(`bank/${id}/orbit`, { variant: vid, seed: Math.floor(Math.random() * 1e6), target: target() });
           toast("Orbite relancée avec une autre graine."); app.pollSoon(); } } }, v.orbit ? "↻ Refaire l'orbite" : "↻ Générer l'orbite"),
         item.kind !== "decor" ? h("button.mini", { on: { click: async () => { await post(`bank/${id}/cut`, { variant: vid, target: target() }); app.pollSoon(); } } }, "✂ Refaire le détourage") : null,
         vid !== "base" ? h("button.mini.danger", { on: { click: async () => { await del(`bank/${id}/variant/${vid}`); vid = "base"; await this.reload(); } } }, "Supprimer cette variante") : null,
+        h("button.mini", { title: "Enregistre cet élément entier (poses, orbites, tracés) dans un fichier .bwpack à donner à quelqu'un", on: { click: () => this.download(new URLSearchParams({ ids: id })) } }, "📦 Exporter"),
         h("button.mini.danger", { on: { click: async () => { if (!confirm(`Retirer « ${item.name} » de la banque ? (il part à la corbeille du dossier de données)`)) return;
           await del("bank/" + id); m.close(); this.openId = null; this.reload(); } } }, "Retirer de la banque"));
       if (item.kind === "character") {   // planche de vues : sert de reference a l'orbite (dos, profil)
@@ -341,7 +589,14 @@ export class Bank {
       left.append(acts);
       show();
     };
-    const left = h("div.item-left", stage, h("div.scrub", slider, axisLabel), snapBar);
+    // fond de controle : sur une couleur vive, les trous du detourage (invisibles sur blanc) sautent aux yeux
+    const FONDS = [["", "Damier"], ["#ffffff", "Blanc"], ["#111111", "Noir"], ["#ff2bd6", "Magenta"], ["#19d14a", "Vert"], ["#f2c230", "Jaune"]];
+    const setBg = (c) => { stage.style.background = c || ""; localStorage.setItem("bw.ficheFond", c); bgBar.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.c === c)); };
+    const bgBar = h("div.bgbar", { title: "Fond de contrôle : sur une couleur vive, un trou dans le personnage se voit tout de suite. Fais tourner l'orbite pour vérifier chaque angle." },
+      h("span.muted", "Fond :"), FONDS.map(([c, l]) => h("button.mini", { "data-c": c, on: { click: () => setBg(c) } }, c ? h("i", { style: { background: c } }) : null, l)));
+    setBg(localStorage.getItem("bw.ficheFond") || "");
+    const fixBar = h("div.fixbar");
+    const left = h("div.item-left", stage, h("div.scrub", playBtn, slider, axisLabel, loadLabel), zoomBar, bgBar, fixBar, snapBar);
     const body = h("div.item", left, h("div.item-right", head, h("h4", "Variantes"), variants, poseBox));
     const m = modal("Fiche", body, [{ label: "Fermer", click: () => { this.openId = null; } }]);
     m.box.classList.add("wide");

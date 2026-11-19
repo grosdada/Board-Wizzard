@@ -1,0 +1,47 @@
+# Board Wizzard derrière Traefik (certificat Let's Encrypt automatique), une instance par personne.
+# Disposition sur le VPS :
+#   /home/claude/apps/board-wizzard/src/            clone git du dépôt (commun à toutes les instances)
+#   /home/claude/apps/board-wizzard/<nom>/          ce fichier + .env + state/
+#   /home/claude/apps/board-wizzard/<nom>/state/    local_settings.json, data/ (banque, storyboards), tmp/
+# Réglages dans un fichier .env à côté de celui-ci :
+#   BW_NAME=david
+#   BW_HOST=boardwizzard.placenta.cloud
+name: bw-${BW_NAME:?Renseigne BW_NAME dans .env}
+
+services:
+  board-wizzard:
+    build: ../src/deploy
+    image: board-wizzard:local
+    container_name: bw-${BW_NAME}
+    restart: unless-stopped
+    volumes:
+      # Tout ce qu'il faut sauvegarder est dans state/ ; le code est en lecture seule.
+      - ./state:/bw
+      - ../src/app:/bw/app:ro
+      - ../src/tools:/bw/tools:ro
+    networks:
+      - bw-network
+    # Le conteneur n'écrit que dans /bw et n'a aucun privilège.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8795/login', timeout=4)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=bw-${BW_NAME}_bw-network
+      - traefik.http.routers.bw-${BW_NAME}.rule=Host(`${BW_HOST:?Renseigne BW_HOST dans .env}`)
+      - traefik.http.routers.bw-${BW_NAME}.entrypoints=websecure
+      - traefik.http.routers.bw-${BW_NAME}.tls.certresolver=letsencrypt
+      - traefik.http.services.bw-${BW_NAME}.loadbalancer.server.port=8795
+
+networks:
+  bw-network:
+    driver: bridge

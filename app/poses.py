@@ -154,6 +154,23 @@ def orbit_subject(kind, name):
 
 
 INTEGRATE = {
+    # encrage : la case dessinee est mise au propre, sans rien redessiner (consigne de David, adaptee au noir et blanc)
+    "encre": ("Ink this rough black-and-white storyboard panel into one clean, finished ink drawing, with zero redesign. "
+              "Lock the outer silhouette and all internal shapes of every character and object: do not alter any line, "
+              "angle or proportion. HEADS MUST MATCH EXACTLY: keep the same skull volume, nose length, hairline, ear "
+              "shape, mouth, eye position, wrinkles and asymmetries. Do not fix anatomy, do not beautify. Keep identical "
+              "composition, scale, perspective, pose, spacing and framing; every character and object stays exactly "
+              "where it is. Only clean up the rendering on top of the original linework: confident black ink lines, tidy "
+              "contours, solid blacks where the drawing is already black, and a restrained, more realistic sense of "
+              "volume and material (cloth folds, skin, leather, wood, metal) suggested with sparse hatching or flat grey "
+              "tone only; shading must not cross or soften the contours. Unify everything into one single coherent "
+              "drawing in the same line style, with soft contact shadows under the feet and no cut-out edges. Black ink "
+              "on white paper; keep any halftone or flat tone already present, add no colour. No rounding, no smoothing, "
+              "no reinterpretation of volumes; preserve all distortions and caricature features as drawn. If uncertain, "
+              "do not invent details: stay subtle and neutral. Structural fidelity over polish: in any conflict, keep "
+              "the drawing's lines. Lock every head silhouette and all facial landmarks (brow, nose, mouth, chin, ears) "
+              "to the drawing; any deviation is an error. MANDATORY: no text on the image, no captions, no labels, no "
+              "watermarks, no speech balloons, no added frame."),
     # consigne retenue apres essais : « contact shadows » seul donnait des ombres noires decoupees
     "photo": ("Make this collage look like one single real photograph taken in this place. Keep every person and object "
               "exactly where it is, same pose, same size, same framing, same faces, hairstyles and costumes. Relight the "

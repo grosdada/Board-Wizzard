@@ -179,7 +179,7 @@ export function drawImage(draw, wpx, hpx) {
 
 // ------------------------------------------------------------------------------------------------ l'atelier
 /** Ouvre l'atelier de dessin pour une case. ratio = hauteur / largeur ; backdrop : url du decor a montrer dessous. */
-export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [] }) {
+export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = "Enregistrer le fond" }) {
   const H = W * ratio;
   const shapes = JSON.parse(JSON.stringify((draw && draw.shapes) || []));
   let tool = "rect", prim = "rect", path = "free", sel = null, drag = null, building = null, hover = null;
@@ -437,7 +437,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   tools(); props(); paint();
   const m = modal(title || "Dessiner le fond", h("div.draw-editor", h("div.draw-main", bar, ghostBar, extBar, h("div.draw-frame", svg), fxBox), side),
     [{ label: "Annuler", click: done },
-     { label: "Enregistrer le fond", primary: true, click: () => { finish(true); done(); onSave(Object.assign({ shapes }, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null)); toast("Fond dessiné enregistré."); } }]);
+     { label: saveLabel, primary: true, click: () => { finish(true); done(); onSave(Object.assign({ shapes }, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null)); toast("Fond dessiné enregistré."); } }]);
   m.box.classList.add("modal-wide");
   hist.watch(m.box);
   return m;

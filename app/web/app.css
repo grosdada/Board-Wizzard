@@ -149,6 +149,12 @@ label.row.range output { width: 34px; text-align: right; color: var(--muted); fo
 .var { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 4px; cursor: pointer; }
 .var.on { border-color: var(--accent); }
 .var img { width: 100%; height: 74px; object-fit: contain; }
+.var { position: relative; }
+.var.main { box-shadow: inset 0 0 0 1px #ffd27a; }
+.var-star, .var-del { position: absolute; top: 2px; z-index: 1; padding: 0 4px; font-size: 12px; line-height: 17px; border-radius: 5px; background: #000a; border: 0; color: #ddd; }
+.var-star { left: 2px; } .var-star.on { color: #ffd27a; }
+.var-del { right: 2px; opacity: 0; } .var:hover .var-del { opacity: 1; } .var-del:hover:not(:disabled) { background: var(--err); color: #fff; }
+.var-del:disabled { cursor: not-allowed; color: #777; }
 .var-name { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tiers { display: flex; gap: 5px; margin-bottom: 6px; }
 .poselist { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px 12px; margin-bottom: 8px; font-size: 12.5px; }
@@ -373,3 +379,58 @@ details.fold > summary:hover { opacity: 1; }
 
 .menu button.star.blue { background: #2f7fd6; }
 .menu button.star.blue:hover { background: #4a95e6; }
+
+/* portrait-robot */
+.pr { display: flex; gap: 14px; align-items: flex-start; }
+.pr-left { flex: 0 0 300px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; }
+.pr-stage { height: 460px; background: #fff; border-radius: 8px; cursor: ew-resize; touch-action: none; user-select: none; display: flex; align-items: center; justify-content: center; }
+.pr-stage svg { width: 100%; height: 100%; pointer-events: none; }
+.pr-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.pr-right h4 { margin: 6px 0 0; }
+.pr-bodies { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 4px; }
+.pr-body { flex: 0 0 54px; height: 96px; padding: 2px; background: #fff; border: 2px solid transparent; border-radius: 6px; cursor: pointer; }
+.pr-body.on { border-color: var(--accent, #e2603a); }
+.pr-body img { width: 100%; height: 100%; object-fit: contain; }
+.pr-parts { display: flex; flex-direction: column; gap: 5px; }
+.pr-row { display: flex; gap: 8px; align-items: center; }
+.pr-label { flex: 0 0 84px; color: var(--muted, #9aa); font-size: 12px; }
+.pr-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.pr-chips .mini.on { background: var(--accent); color: var(--accent-ink); }
+.pr-check { display: inline-flex; gap: 4px; align-items: center; margin-right: 8px; }
+.pr-row input[type=range] { flex: 1; }
+.card-svg { width: 100%; height: 104px; background: #fff; border-radius: 5px; overflow: hidden; }
+.card-svg svg { width: 100%; height: 100%; display: block; pointer-events: none; }
+.liblist { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px; max-height: 46vh; overflow: auto; margin: 8px 0; }
+.libitem { display: flex; align-items: center; gap: 8px; padding: 5px 7px; border: 1px solid var(--line, #3a3a3a); border-radius: 6px; cursor: pointer; }
+.libitem img, .libitem .libno { width: 44px; height: 44px; object-fit: contain; background: #fff; border-radius: 4px; flex: none; display: grid; place-items: center; }
+.libname { flex: 1; min-width: 0; display: flex; flex-direction: column; } .libname small { color: var(--muted); font-size: 11px; }
+.bgbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 0; }
+.bgbar button i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; border: 1px solid #0006; }
+.bgbar button.on { outline: 1px solid var(--accent, #6cc); }
+.stage svg.zones { position: absolute; pointer-events: none; }
+.stage svg.zones path { pointer-events: auto; cursor: pointer; stroke-width: calc(2px / var(--z, 1)); vector-effect: non-scaling-stroke; }
+.stage svg.zones path.sure { fill: rgba(230, 30, 30, .55); stroke: #e61e1e; }
+.stage svg.zones path.doubt { fill: rgba(255, 150, 0, .4); stroke: #ff9600; }
+.stage svg.zones path:hover { fill-opacity: .85; }
+.fixbar { border: 1px solid var(--line, #3a3a3a); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
+.fixbar b { display: block; margin-bottom: 6px; } .fixbar p { margin: 6px 0 0; font-size: 12px; }
+.playbtn { flex: none; min-width: 34px; } .loadlabel { flex: none; font-size: 11px; }
+.card.found { animation: bwfound 1s ease-in-out 4; outline: 3px solid #ffd23f; outline-offset: 2px; z-index: 2; }
+@keyframes bwfound { 50% { outline-color: transparent; transform: scale(1.06); } }
+.stage svg.lasso { position: absolute; pointer-events: none; }
+.stage svg.lasso polygon { fill: rgba(40, 200, 235, .3); stroke: #10b5e0; stroke-width: calc(1.5px / var(--z, 1)); vector-effect: non-scaling-stroke; stroke-dasharray: calc(5px / var(--z, 1)) calc(3px / var(--z, 1)); }
+.stage svg.lasso polygon.remplir { fill: rgba(255, 255, 255, .6); stroke: #ffd23f; }
+.fixbar button.on { outline: 2px solid var(--accent, #6cc); }
+.drawasset { margin-left: 10px; }
+.assetpick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.assetpick button.big { display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 16px; white-space: normal; height: auto; }
+.assetpick button.big b { font-size: 16px; } .assetpick button.big span { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.procedural { display: grid; grid-template-columns: 380px 1fr; gap: 18px; align-items: start; }
+.procview { width: 360px; height: 360px; background: #fff; border-radius: 8px; display: block; }
+.knobs { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+.stage { overflow: hidden; } .stage.panning { cursor: grab !important; }
+.zoomwrap { position: relative; width: 100%; height: 100%; display: grid; place-items: center; transform-origin: 0 0; grid-area: 1 / 1; }
+.zoombar { display: flex; align-items: center; gap: 5px; margin: 4px 0; } .zoomlabel { min-width: 44px; text-align: center; }
+.zoombar button.on { outline: 2px solid var(--accent, #6cc); }
+.depthview { width: 100%; max-height: 62vh; border-radius: 8px; display: block; touch-action: none; user-select: none; }
+.depthbox p { margin: 10px 0 0; }

@@ -11,8 +11,9 @@
 import { h, modal, toast, history, upload, get, post, put } from "./api.js";
 import { MOUTHS, SETS, MODES, SIMPLE, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter } from "./model.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
+import { faceFor, opsSvg } from "./face.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
 const CAM0 = { cx: 0.5, cy: 0.5, z: 1, rot: 0, dz: 0 };
@@ -126,20 +127,24 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const flip = l.flip ? `translate(${f1(2 * box.cx)} 0) scale(-1 1) ` : "";
       const gsd = groundShadow(l, box);                    // ombre portee : sous l'element
       const rz = s.rz || 0;                 // ce qui suit (dessin, bouche, cadre, poignees) tourne autour du centre
-      if (gsd) o += `<ellipse cx="${f1(gsd.cx)}" cy="${f1(gsd.cy)}" rx="${f1(gsd.rx)}" ry="${f1(gsd.ry)}" fill="${gsd.col}" opacity="${f3(gsd.a)}" style="pointer-events:none"${blur(depthOf(pan, li), gsd.blur)}/>`;
+      if (gsd) o += `<path d="${gsd.d}" fill="${gsd.col}" opacity="${f3(gsd.a)}" style="pointer-events:none"${blur(depthOf(pan, li), gsd.blur)}/>`;
       const o1 = o.length;
+      let lipAt = l.lip;
       if (vf) {
-        const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), ink = inkFill(l), st = inkStroke(s.lw, col, ink);
+        const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), ink = inkFill(l), st = inkStroke(s.lw, col, ink, vf.sw), tm = thinMask(`${pre}m-${l.id}`, vf.body, st.thin);
         const shd = shadeOf(l.sh && l.sh.on ? Object.assign({}, l.sh, { g: s.shg, w: s.shw, a: s.sha }) : null, vf.h, col, ink);
         let inner = "";
         if (shd) shadeShapes(l.sh, vf).forEach((pd, i) => { inner += `<clipPath id="${pre}s-${l.id}-${i}"><path d="${pd}"/></clipPath><g clip-path="url(#${pre}s-${l.id}-${i})"><path d="${pd}" fill="${shd.fill}"/><path d="${pd}" fill="${col}" transform="translate(${f1(l.flip ? -shd.dx : shd.dx)} ${f1(shd.dy)})"/></g>`; });
         // tremble anime (l.boil = { on, a : intensite, v : changements par seconde }) : le trait change de tremble en boucle, sur 4 dessins
         const boil = l.boil && l.boil.on ? l.boil : null;
         const lwf = wiggleFilter(`${pre}wg-${l.id}`, boil ? (boil.a ?? 2) : l.hand, l.wave, vf.w, vf.h, boil ? 5 + (Math.floor(t * (boil.v ?? 8)) % 4) * 13 : 5);
-        o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})">${lwf}<g${lwf ? ` filter="url(#${pre}wg-${l.id})"` : ""}><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="${col}" data-layer="${l.id}"/>` +
-          `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="${ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g></g></g>`;
+        // portrait-robot : la tete en traces, tournee comme le corps ; si le personnage parle, c'est la bouche du lip sync qui s'y pose
+        const fo = faceFor(it, sp, vf, angleOf(l, s.v, s.f), { peau: col, trait: ink, lw: lineWidth(vf.sw, s.lw), bouche: !(l.lip && l.lip.on) }, again), fattr = ` data-layer="${l.id}"`;
+        if (fo) lipAt = Object.assign({}, l.lip, { x: (tx + fo.mouth.x * sc - box.x) / box.w, y: (ty + fo.mouth.y * sc - box.y) / box.h, hw: 0, s: l.lip && l.lip.s != null ? l.lip.s : fo.mouth.s * sc / box.h });
+        o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})">${lwf}<g${lwf ? ` filter="url(#${pre}wg-${l.id})"` : ""}>${fo ? opsSvg(fo.under, fattr) : ""}${tm}<g${tm ? ` mask="url(#${pre}m-${l.id})"` : ""}><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="${col}" data-layer="${l.id}"/>` +
+          `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="${ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g>${fo ? opsSvg(fo.over, fattr) : ""}</g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
-      if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(l.lip, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l))}</g>`;   // lip sync : la bouche qui parle
+      if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(lipAt, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l))}</g>`;   // lip sync : la bouche qui parle
       if (sel === l.id) {
         o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
         { // croix au milieu : la glisser deplace l'element (comme dans les cases) ; partout ailleurs sur lui, glisser le fait tourner
@@ -336,7 +341,7 @@ export function openMontage(app, pid) {
       }
       if (sprite(it, cur().v, cur().f)?.vec) {
         const wig = (label, k, min, max, def) => { const out = h("output", (l[k] ?? def).toFixed(1)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.1, value: l[k] ?? def, on: { input: (e) => { l[k] = +e.target.value; out.textContent = (+e.target.value).toFixed(1); paint(); } } }), out); };
-        side.append(range("Trait", "lw", -2, 6, 0.1, (x) => (+x).toFixed(1)), fold("wig", "Tremblé du trait", wig("Tremblé", "hand", 0, 10, 0), wig("Ondulation", "wave", 0.5, 12, 4)),
+        side.append(range("Trait", "lw", -12, 6, 0.1, (x) => (+x).toFixed(1)), fold("wig", "Tremblé du trait", wig("Tremblé", "hand", 0, 10, 0), wig("Ondulation", "wave", 0.5, 12, 4)),
           h("label.row.check", { title: "Le trait tremble en boucle pendant la lecture, comme un dessin refait à chaque image" }, h("input", { type: "checkbox", checked: !!(l.boil && l.boil.on), on: { change: (e) => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: e.target.checked }); paint(); props(); } } }), "Animer le tremblé"),
           h("div.row.colrow", { title: "Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent." }, h("span", "Couleur"),
             swatch(l.col || "#ffffff", (c) => { l.col = c; paint(); }),
@@ -373,7 +378,9 @@ export function openMontage(app, pid) {
         if (gs.on) side.append(fold("gs", "Réglages de l'ombre portée",
           h("label.row.check", { title: "L'ombre prend la couleur choisie pour le contour du dessin, au lieu du noir" }, h("input", { type: "checkbox", checked: !!gs.ink, on: { change: (e) => putg("ink", e.target.checked) } }), "Couleur du contour"),
           plain("Opacité", "a", 0.05, 1, 0.35), h("div", { title: "0 : bord net. Vers la droite : de plus en plus floue." }, plain("Flou ⓘ", "b", 0, 4, 1)), plain("Largeur", "w", 0.2, 2.5, 0.8), plain("Épaisseur", "h", 0.2, 4, 1),
-          h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, plain("Décalage ↔ ⓘ", "dx", -0.6, 0.6, 0), plain("Décalage ↕", "dy", -0.6, 0.6, 0))));
+          h("div", { title: "Pour la caler sous les pieds quand le personnage a l'air de flotter" }, plain("Décalage ↔ ⓘ", "dx", -0.6, 0.6, 0), plain("Décalage ↕", "dy", -0.6, 0.6, 0)),
+          h("div", { title: "Déforme le contour de l'ombre. 0 : ovale net. Tout à droite : une tache abstraite. Ondulation courte = bord déchiqueté, longue = grandes vagues. Forme : une autre tache, au hasard." },
+            plain("Tremblé ⓘ", "hand", 0, 10, 0), plain("Ondulation", "wave", 0.5, 12, 4), plain("Forme", "seed", 0, 40, 0))));
       }
     }
     keyBar();

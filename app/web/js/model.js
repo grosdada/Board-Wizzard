@@ -15,13 +15,15 @@ export function variantOf(item, vid) {
 export function sprite(item, vid, f) {
   const v = variantOf(item, vid);
   if (!v) return null;
+  const id = item.src || item.id;                           // personnage assemble : les images sont celles de son corps
   if (v.orbit && v.orbit.n) {
     const n = v.orbit.n, i = ((Math.round(f || 0) % n) + n) % n;
-    return { url: `/bank/${item.id}/${v.orbit.dir}/${pad3(i)}.webp`, w: v.orbit.w, h: v.orbit.h, n, i, orbit: true,
-             vec: v.orbit.vec ? `/bank/${item.id}/${v.orbit.dir}/vec.json?v=${v.orbit.vt || 0}` : null };
+    return { url: `/bank/${id}/${v.orbit.dir}/${pad3(i)}.webp?t=${v.orbit.t || 0}`, w: v.orbit.w, h: v.orbit.h, n, i, orbit: true,
+             vec: v.orbit.vec ? `/bank/${id}/${v.orbit.dir}/vec.json?v=${v.orbit.vt || 0}` : null,
+             head: v.orbit.head ? `/bank/${id}/${v.orbit.dir}/head.json?v=${v.orbit.vt || 0}` : null };   // tete suivie (corps de mannequin)
   }
-  if (v.cut) return { url: `/bank/${item.id}/${v.cut}?t=${v.t || 0}`, w: v.cw || item.w, h: v.ch || item.h, n: 1, i: 0 };
-  return { url: `/bank/${item.id}/${v.ref}`, w: item.w || 1, h: item.h || 1, n: 1, i: 0, raw: true };
+  if (v.cut) return { url: `/bank/${id}/${v.cut}?t=${v.t || 0}`, w: v.cw || item.w, h: v.ch || item.h, n: 1, i: 0 };
+  return { url: `/bank/${id}/${v.ref}`, w: item.w || 1, h: item.h || 1, n: 1, i: 0, raw: true };
 }
 
 // ---- dessins en traces : vec.json d'une orbite = { w, h, frames: [{ body, ink }] }, charge une fois puis garde
@@ -40,7 +42,7 @@ export function vecFrame(sp, onReady) {
   if (e.data === null) { if (onReady && e.wait.length < 4) e.wait.push(onReady); return null; }
   if (!e.data) return null;
   const fr = e.data.frames[sp.i];
-  return fr ? { w: e.data.w, h: e.data.h, body: fr.body, ink: fr.ink, parts: fr.parts || [] } : null;
+  return fr ? { w: e.data.w, h: e.data.h, sw: e.data.sw || 0, body: fr.body, ink: fr.ink, parts: fr.parts || [] } : null;
 }
 export function vecReady(sp) { return new Promise((ok) => { const f = vecFrame(sp, () => ok(vecFrame(sp))); if (f || !sp || !sp.vec || (vecs.get(sp.vec) || {}).data === false) ok(f); }); }
 /** Ombre graphique d'un dessin en traces, sans calcul : la silhouette moins elle-meme decalee vers la lumiere laisse
@@ -50,8 +52,8 @@ export function vecReady(sp) { return new Promise((ok) => { const f = vecFrame(s
  *  wave : longueur des ondulations. w, h : taille du dessin dans ses unites. Rend le balisage du filtre SVG, ou "". */
 export function wiggleFilter(id, hand, wave, w, h, seed = 5) {
   if (!(hand > 0)) return "";
-  const amp = hand * h / 380, pad = amp + 4;
-  return `<filter id="${id}" filterUnits="userSpaceOnUse" x="${(-pad).toFixed(1)}" y="${(-pad).toFixed(1)}" width="${(w + 2 * pad).toFixed(1)}" height="${(h + 2 * pad).toFixed(1)}" color-interpolation-filters="sRGB">` +
+  const amp = hand * h / 380, pad = amp + 4, px = pad + w * 0.3, top = pad + h * 0.15;   // large : une tete du portrait-robot depasse du dessin du corps
+  return `<filter id="${id}" filterUnits="userSpaceOnUse" x="${(-px).toFixed(1)}" y="${(-top).toFixed(1)}" width="${(w + 2 * px).toFixed(1)}" height="${(h + top + pad).toFixed(1)}" color-interpolation-filters="sRGB">` +
     `<feTurbulence type="fractalNoise" baseFrequency="${(55 / (Math.max(0.5, wave ?? 4) * h)).toFixed(5)}" numOctaves="2" seed="${seed}"/>` +
     `<feDisplacementMap in="SourceGraphic" scale="${amp.toFixed(2)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
 }
@@ -69,22 +71,30 @@ export function shadeOf(sh, h, col = "#ffffff", ink = "#111111") {
  *  l'ombre rough, sur la silhouette seule ; les formes sont rangees de la plus grande a la plus petite). */
 export function shadeShapes(sh, vf) { return [vf.body].concat((vf.parts || []).slice(0, Math.max(0, Math.round((sh && sh.k) || 0)))); }
 /** Trait d'un dessin en traces : epaisseur ajoutee (lw > 0 : plus epais, < 0 : plus fin), en unites du dessin. */
-export function inkStroke(lw, col = "#ffffff", ink = "#111111") { const t = +lw || 0; return { color: t >= 0 ? ink : col, width: Math.abs(t), outline: 0 }; }
+export function inkStroke(lw, col = "#ffffff", ink = "#111111", sw = 0) { const t = thinMax(+lw || 0, sw); return { color: t >= 0 ? ink : col, width: Math.abs(t), outline: 0, thin: t < 0 ? -t : 0 }; }
+/** Un trait ne s'affine pas jusqu'a disparaitre : il en reste toujours un filet (sw : epaisseur du trait du dessin, si connue). */
+export function thinMax(lw, sw) { return lw < 0 ? Math.max(lw, sw > 0 ? -(sw - 0.45) : -2) : lw; }
+/** Trait affine : la silhouette recule d'autant, sinon un lisere de la couleur du corps deborde du trait. Rend le balisage
+ *  d'un masque SVG (a poser avant le dessin) ou "". */
+export function thinMask(id, body, thin) { return thin > 0 ? `<mask id="${id}" maskUnits="userSpaceOnUse" x="-50" y="-50" width="4000" height="4000"><path d="${body}" fill="#fff" stroke="#000" stroke-width="${thin.toFixed(2)}" stroke-linejoin="round"/></mask>` : ""; }
+/** Epaisseur du trait affiche d'un dessin (celle du dessin, plus le reglage du calque), pour accorder ce qu'on lui ajoute. */
+export function lineWidth(sw, lw) { return sw > 0 ? Math.max(0.45, sw + thinMax(+lw || 0, sw)) : 0; }
 /** Couleur du trait d'un dessin en traces (l.ink) : noir par defaut. Tout ce qui est noir dans le dessin la prend. */
 export function inkFill(l) { return l && /^#[0-9a-f]{6}$/i.test(l.ink || "") ? l.ink : "#111111"; }   // pas de contour de silhouette : il inventerait des traits la ou le dessin n'en a pas
 
 export function frameUrls(item, vid) {
   const v = variantOf(item, vid);
   if (!v || !v.orbit) return [];
-  return Array.from({ length: v.orbit.n }, (_, i) => `/bank/${item.id}/${v.orbit.dir}/${pad3(i)}.webp`);
+  return Array.from({ length: v.orbit.n }, (_, i) => `/bank/${item.src || item.id}/${v.orbit.dir}/${pad3(i)}.webp?t=${v.orbit.t || 0}`);
 }
 
 const keep = new Map();                       // images gardees en memoire : le glisser-tourner ne clignote pas
 export function preload(item, vid) {
   const key = item.id + "/" + vid + "/" + ((variantOf(item, vid) || {}).orbit || {}).dir;
-  if (keep.has(key)) return;
+  if (keep.has(key)) return keep.get(key);
   keep.set(key, frameUrls(item, vid).map((u) => { const im = new Image(); im.src = u; return im; }));
   if (keep.size > 14) keep.delete(keep.keys().next().value);
+  return keep.get(key);                     // les images, pour savoir lesquelles sont deja arrivees
 }
 
 // ---- axes : les reperes (snaps) d'une orbite donnent l'angle de chaque image, par morceaux
@@ -154,8 +164,26 @@ export function groundShadow(l, box) {
   const g = l.gs;
   if (!g || !g.on) return null;
   const rx = box.w * 0.5 * (g.w ?? 0.8), ry = Math.max(1.5, rx * 0.17 * (g.h ?? 1));
-  return { cx: (box.cx ?? box.x + box.w / 2) + (g.dx || 0) * box.h, cy: box.y + box.h - ry * 0.15 + (g.dy || 0) * box.h, rx, ry, a: g.a ?? 0.35,
-           blur: Math.min(rx, ry) * 0.4 * (g.b ?? 1), col: g.ink ? inkFill(l) : "#000000" };
+  const q = { cx: (box.cx ?? box.x + box.w / 2) + (g.dx || 0) * box.h, cy: box.y + box.h - ry * 0.15 + (g.dy || 0) * box.h, rx, ry, a: g.a ?? 0.35,
+              blur: Math.min(rx, ry) * 0.4 * (g.b ?? 1), col: g.ink ? inkFill(l) : "#000000" };
+  q.d = blobPath(q, g.hand || 0, g.wave ?? 4, g.seed || 0);
+  return q;
+}
+/** Contour d'une ombre portee : l'ellipse, ou la meme deformee (hand : force 0..10, wave : longueur des ondulations,
+ *  seed : autre forme). Un trace et non un filtre : le meme dans la case, au montage et dans l'image aplatie. */
+export function blobPath(q, hand, wave, seed = 0) {
+  const f = (x) => x.toFixed(1);
+  if (!(hand > 0)) return `M${f(q.cx - q.rx)} ${f(q.cy)}a${f(q.rx)} ${f(q.ry)} 0 1 0 ${f(2 * q.rx)} 0a${f(q.rx)} ${f(q.ry)} 0 1 0 ${f(-2 * q.rx)} 0Z`;
+  const rnd = (i) => { const x = Math.sin((seed + 1) * 127.1 + i * 311.7) * 43758.5453; return x - Math.floor(x); };
+  const f0 = Math.max(1, Math.round(12 / Math.max(0.5, wave))), A = hand / 10;
+  const hs = [[f0, 1], [f0 * 2 + 1, 0.5], [f0 * 3 + 2, 0.28], [1, 0.6]];             // lobes, puis leurs details, puis un grand desequilibre
+  const noise = (t, k) => hs.reduce((n, [fr, am], i) => n + am * Math.sin(fr * t + rnd(i + k) * 6.283), 0) / 2.38;
+  const N = 180, pts = [];
+  for (let i = 0; i < N; i++) {
+    const t = i / N * Math.PI * 2, r = Math.max(0.06, 1 + A * 1.5 * noise(t, 0));
+    pts.push([q.cx + Math.cos(t) * q.rx * r + A * q.rx * 0.35 * noise(t, 20), q.cy + Math.sin(t) * q.ry * r + A * q.rx * 0.45 * noise(t, 40)]);
+  }
+  return "M" + pts.map((p) => f(p[0]) + " " + f(p[1])).join("L") + "Z";
 }
 // profondeur 0 (premier plan) a 1 (fond) : par defaut, l'ordre d'empilement
 export function depthOf(panel, i) {

@@ -49,6 +49,22 @@ def frame_stats(frames):
     return sum(diffs) / len(diffs) / 255.0 * 100, dark
 
 
+def singles(frames):
+    """Indices des images a garder quand une orbite est « exposee a deux » (chaque image y est deux fois de suite,
+    comme les videos H3 de fal : 124 images pour 62 dessins). Rend tous les indices si ce n'est pas le cas."""
+    n = len(frames)
+    if n < 12:
+        return list(range(n))
+    small = [np.asarray((Image.open(f) if not isinstance(f, Image.Image) else f).convert("L").resize((96, 96)), dtype=np.float32) for f in frames]
+    d = np.array([float(np.abs(a - b).mean()) for a, b in zip(small, small[1:])])
+    even, odd = float(np.median(d[0::2])), float(np.median(d[1::2]))
+    if even < 0.35 * odd:                                           # paires (0,1), (2,3)...
+        return list(range(0, n, 2))
+    if odd < 0.35 * even:                                           # paires (1,2), (3,4)...
+        return [0] + list(range(1, n, 2))
+    return list(range(n))
+
+
 def build_orbit(rgb_video, matte_video, dest, height=None, fill=False):
     """Ecrit dest/000.webp... et renvoie {n, w, h, ext, motion, dark, cover}. matte_video None : decor, sans alpha."""
     height = height or settings.load()["render"]["frame_height"]
@@ -58,6 +74,9 @@ def build_orbit(rgb_video, matte_video, dest, height=None, fill=False):
         rgb = _extract(rgb_video, tmp / "rgb")
         if len(rgb) > 2:
             rgb = rgb[:-1]                                   # derniere image = premiere
+        keep = singles(rgb)                                  # video exposee a deux : une seule image de chaque paire
+        doubled = len(keep) < len(rgb)
+        rgb = [rgb[i] for i in keep]
         motion, dark = frame_stats(rgb)
         if dest.exists():
             shutil.rmtree(dest)
@@ -72,7 +91,8 @@ def build_orbit(rgb_video, matte_video, dest, height=None, fill=False):
                 im.save(dest / ("%03d.webp" % i), quality=84, method=4)
             return {"n": len(rgb), "w": w, "h": h, "ext": "webp", "alpha": False, "motion": round(motion, 2),
                     "dark": round(dark, 2), "cover": 1.0}
-        mat = _extract(matte_video, tmp / "mat")[:len(rgb)]
+        mat = _extract(matte_video, tmp / "mat")
+        mat = [mat[i] for i in keep if i < len(mat)] if doubled else mat[:len(rgb)]
         alphas = []
         for f in mat:
             a = np.asarray(Image.open(f).convert("L"), dtype=np.uint8)
@@ -103,7 +123,7 @@ def build_orbit(rgb_video, matte_video, dest, height=None, fill=False):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def fill_holes(a):
+def fill_holes(a, rim=True):
     """Dessin sur papier blanc : le detourage troue l'interieur blanc du sujet. Tout ce que la silhouette enferme
     (non relie au bord de l'image) redevient opaque. Le contour est d'abord epaissi pour refermer les traits qui ne
     se rejoignent pas (un pantalon dessine d'un trait ouvert), puis l'interieur trouve est retreci d'autant."""
@@ -118,8 +138,41 @@ def fill_holes(a):
     thick = im.filter(ImageFilter.MaxFilter(k))
     ImageDraw.floodfill(thick, (0, 0), 128)                    # 128 = exterieur
     inner = Image.fromarray(((np.asarray(thick) != 128) * 255).astype(np.uint8)).filter(ImageFilter.MinFilter(k))
-    inner = np.asarray(inner.crop((k, k, k + sw, k + sh)).resize((w, h), Image.BICUBIC)) > 127      # bords sans marches
-    return np.where(inner & ~solid, 255, a).astype(np.uint8)
+    up = lambda m: np.asarray(m.crop((k, k, k + sw, k + sh)).resize((w, h), Image.BICUBIC)) > 127      # bords sans marches
+    # loin du bord, tout est opaque : le detourage laisse aussi des zones a moitie transparentes (un dos tout blanc)
+    # que le seuil ci-dessus prend pour du plein, et le decor se voit au travers
+    deep = up(inner.filter(ImageFilter.MinFilter(5)))
+    if not rim:                                                # image deja rebouchee une fois : seulement le coeur,
+        import cv2                                             # et pas les vrais vides (nets, a zero) qu'on y a rouverts
+        zero = (deep & (a < 14)).astype(np.uint8)
+        n, lab, stats, _ = cv2.connectedComponentsWithStats(zero, connectivity=8)
+        big = np.isin(lab, [i for i in range(1, n) if stats[i, cv2.CC_STAT_AREA] >= 150])
+        return np.where(deep & ~big, 255, a).astype(np.uint8)
+    return np.where(deep | (up(_closed(inner, small, k)) & ~solid), 255, a).astype(np.uint8)
+
+
+def _closed(inner, small, k):
+    """Retire de l'interieur trouve les coins que l'epaississement a refermes a tort (l'angle entre un bras et le corps) :
+    un morceau ajoute qui donne largement sur l'exterieur n'est pas enferme par la silhouette."""
+    import cv2
+    inn = np.asarray(inner) > 127
+    sol = np.zeros(inn.shape, bool)
+    sol[k:k + small.size[1], k:k + small.size[0]] = np.asarray(small) > 127
+    ext = (~sol).astype(np.uint8)
+    cv2.floodFill(ext, None, (0, 0), 2)                        # 2 = dehors, sans epaississement
+    ext = ext == 2
+    add = (inn & ~sol).astype(np.uint8)
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(add, connectivity=4)
+    out = inn.copy()
+    ker = np.ones((3, 3), np.uint8)
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] < 4:
+            continue
+        m = (lab == i).astype(np.uint8)
+        ring = (cv2.dilate(m, ker) > 0) & (m == 0)
+        if ring.sum() and (ring & ext).sum() / ring.sum() > 0.25:
+            out[m > 0] = False
+    return Image.fromarray((out * 255).astype(np.uint8))
 
 
 def _bbox(mask, pad=0):

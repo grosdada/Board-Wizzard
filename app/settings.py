@@ -32,9 +32,12 @@ DEFAULTS = {
         "matte_video": "fal-ai/birefnet/v2/video",
     },
     "elevenlabs": {"key": "", "model": "eleven_multilingual_v2"},      # voix de synthese du montage (lip sync)
+    # bibliotheque en ligne de personnages (dossier de paquets .bwpack servi en HTTPS, voir app/packs.py)
+    "library": {"url": "", "user": "", "password": ""},
     "render": {
         "target": "auto",                # local | fal | auto (machines d'abord, fal si aucune)
         "orbit_length": 73,              # images a 24 i/s, forme 17k+5 : 73 = 3 s, 124 = 5,2 s
+        "integrate_engine": "",          # moteur d'Integrate : "" (comme le reste), "local", ou "fal:<modele d'edition>"
         "sheet": True,                   # planche de vues (dos, profil) avant l'orbite d'un personnage
         "megapixels": 0.6,
         "steps": 28,
@@ -72,6 +75,8 @@ def save(patch):
             patch["elevenlabs"].pop("key")
         if (patch.get("server") or {}).get("password", "").startswith("••"):
             patch["server"].pop("password")
+        if (patch.get("library") or {}).get("password", "").startswith("••"):
+            patch["library"].pop("password")
         raw = _merge(raw, patch)
         if "workers" in patch:
             raw["workers"] = patch["workers"]
@@ -112,5 +117,7 @@ def public():
     s.setdefault("elevenlabs", {})["key"] = ("••••" + ekey[-4:]) if ekey else ""
     if s["server"].get("password"):
         s["server"]["password"] = "••••"
+    if (s.get("library") or {}).get("password"):
+        s["library"]["password"] = "••••"
     s["data"] = str(DATA)
     return s
