@@ -56,9 +56,10 @@ def mirror(pts):
 
 
 class Canvas:
-    def __init__(self, seed=1):
-        self.ink = Image.new("L", (F * SS, FH * SS), 0)
-        self.fill = Image.new("L", (F * SS, FH * SS), 0)
+    def __init__(self, seed=1, w=F, h=FH):
+        self.W, self.H = w, h
+        self.ink = Image.new("L", (w * SS, h * SS), 0)
+        self.fill = Image.new("L", (w * SS, h * SS), 0)
         self.rnd = random.Random(seed)
 
     def line(self, pts, w=4.0, ends=(0.3, 0.3), wob=0.9, closed=False, straight=False, on=None):
@@ -99,7 +100,7 @@ class Canvas:
         ImageDraw.Draw(self.ink).polygon([(x * SS, y * SS) for x, y in smooth(pts, True)], fill=0)
 
     def layer(self):
-        return Image.new("L", (F * SS, FH * SS), 0)
+        return Image.new("L", (self.W * SS, self.H * SS), 0)
 
     def stamp(self, layer, mask_pts=None, curved=True):
         """Pose un calque d'encre, eventuellement decoupe par une forme (l'iris coupe par les paupieres)."""
@@ -110,12 +111,12 @@ class Canvas:
         self.ink = ImageChops.lighter(self.ink, layer)
 
     def result(self):
-        ink = np.asarray(self.ink.filter(ImageFilter.GaussianBlur(SS * 0.3)).resize((F, FH), Image.LANCZOS))
-        fill = np.asarray(self.fill.filter(ImageFilter.GaussianBlur(SS * 0.5)).resize((F, FH), Image.LANCZOS))
+        ink = np.asarray(self.ink.filter(ImageFilter.GaussianBlur(SS * 0.3)).resize((self.W, self.H), Image.LANCZOS))
+        fill = np.asarray(self.fill.filter(ImageFilter.GaussianBlur(SS * 0.5)).resize((self.W, self.H), Image.LANCZOS))
         a = np.maximum(ink, fill)
         grey = (255 - ink).astype(np.uint8)
         ys, xs = np.where(a > 24)
-        x0, x1, y0, y1 = max(0, xs.min() - 4), min(F, xs.max() + 5), max(0, ys.min() - 4), min(FH, ys.max() + 5)
+        x0, x1, y0, y1 = max(0, xs.min() - 4), min(self.W, xs.max() + 5), max(0, ys.min() - 4), min(self.H, ys.max() + 5)
         im = Image.fromarray(np.dstack([grey, grey, grey, a])).crop((x0, y0, x1, y1))
         return im, [round((x0 + x1) / 2, 1), round((y0 + y1) / 2, 1), int(x1 - x0)]
 
@@ -133,6 +134,7 @@ VISAGE = dict(top=150,        # sommet du crane
               crane=1.0,      # hauteur du crane (bombe > 1, plat < 1)
               dbl=0,          # double menton
               joue=0,         # joues : > 0 pleines, < 0 creuses
+              profil=None,    # contour mesure sur une photo (Transposer), a la place de la machoire calculee
               trait=5.0)
 
 
@@ -168,15 +170,19 @@ def visage(seed=1, **kw):
     right = []
     for u in np.cos(np.linspace(0, math.pi / 2, 30)):          # le crane : une ellipse plus ou moins bombee
         right.append((CX + p["wf"] / 2 * max(0.0, 1 - u ** e) ** (1 / e), 330 - (330 - top) * u))
-    right += [(CX + side(float(y)), float(y)) for y in np.arange(336, jy, 6.0)]
-    # de l'angle de la machoire au bas du menton : une part « machoire » (droite si anguleuse, ronde sinon) et une part
-    # « menton » (large et plate, ronde, ou pointue) qui se fondent, sans decrochement
-    nj = 2.0 - 1.0 * p["ja"]
-    nc = {"pointu": 1.05, "carre": 6.0}.get(p["cs"], 2.6)
-    wch = p["wch"] / 2
-    for th in np.linspace(0, math.pi / 2, 60):
-        co, si = max(0.0, math.cos(th)), math.sin(th)
-        right.append((CX + wch * co ** (2 / nc) + (p["wj"] / 2 - wch) * co ** (2 / nj), jy + (chin - jy) * si ** (2 / 2.0)))
+    if p.get("profil"):                            # contour mesure (Transposer) : [(y, demi-largeur)] des tempes au menton
+        right += [(CX + float(hw), float(y)) for y, hw in p["profil"] if y > 334]
+        right.append((CX, float(chin)))
+    else:
+        right += [(CX + side(float(y)), float(y)) for y in np.arange(336, jy, 6.0)]
+        # de l'angle de la machoire au bas du menton : une part « machoire » (droite si anguleuse, ronde sinon) et une part
+        # « menton » (large et plate, ronde, ou pointue) qui se fondent, sans decrochement
+        nj = 2.0 - 1.0 * p["ja"]
+        nc = {"pointu": 1.05, "carre": 6.0}.get(p["cs"], 2.6)
+        wch = p["wch"] / 2
+        for th in np.linspace(0, math.pi / 2, 60):
+            co, si = max(0.0, math.cos(th)), math.sin(th)
+            right.append((CX + wch * co ** (2 / nc) + (p["wj"] / 2 - wch) * co ** (2 / nj), jy + (chin - jy) * si ** (2 / 2.0)))
     pts = right + mirror(right[1:-1])[::-1]
     arr, _ = resample(pts + pts[:1], 4.0)                           # lissage ferme : efface les decrochements aux raccords
     k = int(5 + 9 * (1 - p["ja"]))
