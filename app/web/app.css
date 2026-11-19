@@ -470,3 +470,6 @@ button.lang b { font-weight: 500; } button.lang b.on { color: var(--accent); fon
 .idk-brick.on { outline: 2px solid #10b5e0; }
 .idk-brick i { position: absolute; top: 1px; right: 4px; font-style: normal; font-size: 10px; opacity: .55; }
 .idk-brick i:hover { opacity: 1; color: #e05a4a; }
+/* reglages : bouton « ? » du guide des cles personnelles */
+button.keyhelp { border-radius: 50%; width: 22px; height: 22px; padding: 0; font-weight: 700; }
+.keyguide ol { padding-left: 20px; line-height: 1.5; } .keyguide li { margin: 4px 0; } .keyguide a { color: var(--accent); }

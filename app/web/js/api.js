@@ -5,6 +5,8 @@ export async function api(method, path, body, raw) {
   const opt = { method, headers: {} };
   const falKey = localStorage.getItem("bw.falKey");      // cle fal de ce navigateur (collegue) : jamais ecrite cote serveur
   if (falKey) opt.headers["X-Fal-Key"] = falKey;
+  const elevenKey = localStorage.getItem("bw.elevenKey");  // cle ElevenLabs de ce navigateur : seulement sur les appels de voix
+  if (elevenKey && /(^|\/)tts(\/|\?|$)/.test(path)) opt.headers["X-Eleven-Key"] = elevenKey;
   if (raw !== undefined) { opt.body = raw; opt.headers["Content-Type"] = "application/octet-stream"; }
   else if (body !== undefined) { opt.body = JSON.stringify(body); opt.headers["Content-Type"] = "application/json"; }
   const r = await fetch("/api/" + path, opt);

@@ -221,7 +221,7 @@ def server_texts():
         tree = ast.parse(f.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             msg = None
-            if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call) and getattr(node.exc.func, "id", "") in ("ApiError", "ValueError", "RuntimeError") and node.exc.args:
+            if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call) and getattr(node.exc.func, "id", "") in ("ApiError", "ValueError", "RuntimeError", "FalError", "ElevenError") and node.exc.args:
                 msg = node.exc.args[0]
             elif isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "add" and getattr(node.func.value, "id", "") == "S" and len(node.args) >= 3:
                 msg = node.args[2]

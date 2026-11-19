@@ -495,6 +495,8 @@ class Scheduler:
     # ---- file
     def add(self, kind, params, title, target="auto", _fal_key=None, prio=None, own_key=False):
         """own_key : tache d'un invite non VIP, qui ne peut pas utiliser la cle fal du serveur (seulement la sienne)."""
+        if own_key and not _fal_key:                   # sinon la tache attendrait sans fin : aucun fil ne peut la prendre
+            raise ValueError("aucune clé fal : entre ta clé dans Réglages › fal (cloud) › « Ma clé (ce navigateur) »")
         if target not in ("local", "fal", "auto"):
             target = "auto"
         if target == "auto":

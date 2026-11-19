@@ -368,9 +368,16 @@ class Handler(BaseHTTPRequestHandler):
         return not (self.me or {}).get("vip")
 
     def eleven_key(self):
-        if self.own_key():
-            raise ApiError("la voix ElevenLabs est réservée aux comptes VIP", 403)
-        return (settings.load().get("elevenlabs") or {}).get("key")
+        """Cle ElevenLabs d'un appel de voix : celle du navigateur (en-tete X-Eleven-Key) d'abord, sinon celle du serveur pour
+        l'admin et les invites VIP. Jamais journalisee ni renvoyee."""
+        mine = (self.headers.get("X-Eleven-Key") or "").strip()
+        if mine:
+            return mine
+        if not self.own_key():
+            k = (settings.load().get("elevenlabs") or {}).get("key")
+            if k:
+                return k
+        raise ApiError("aucune clé ElevenLabs : entre ta clé dans Réglages › ElevenLabs (voix) › « Ma clé (ce navigateur) »", 403)
 
     def api(self, method, seg, q, data, body):
         head = seg[0]

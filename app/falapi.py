@@ -64,7 +64,7 @@ class FalProvider:
 
     def __init__(self, key, job):
         if not key:
-            raise FalError("aucune clé fal (Réglages › fal)")
+            raise FalError("aucune clé fal : entre ta clé dans Réglages › fal (cloud) › « Ma clé (ce navigateur) »")
         self.key, self.job = key, job
         self.cfg = settings.load()["fal"]
 

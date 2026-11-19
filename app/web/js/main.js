@@ -1009,6 +1009,8 @@ class App {
     const key = secret(s.fal.key, tt("clé fal du poste")), myKey = secret(localStorage.getItem("bw.falKey") || "", tt("ma clé fal (reste dans ce navigateur)"));
     const orbit = f(s.fal.orbit), edit = f(s.fal.edit), t2i = f(s.fal.t2i);
     const el = s.elevenlabs || {}, ekey = secret(el.key, tt("clé ElevenLabs du poste")), emodel = f(el.model || "eleven_multilingual_v2");
+    const myEkey = secret(localStorage.getItem("bw.elevenKey") || "", tt("ma clé ElevenLabs (reste dans ce navigateur)"));
+    const help = (which) => h("button.mini.keyhelp", { type: "button", title: tt("Comment obtenir ma clé ?"), on: { click: (e) => { e.preventDefault(); this.keyGuide(which); } } }, "?");
     const fres = h("select", [["480P", tt("480P · le moins cher (≈ 0,31 $ l'orbite de 5 s)")], ["768P", "768P (≈ 0,375 $)"], ["2K", "2K"], ["4K", "4K"]].map(([v, t]) => h("option", { value: v, selected: v === (s.fal.orbit_resolution || "768P") }, t)));
     const fcon = h("input", { type: "number", min: 1, max: 20, step: 1, value: s.fal.concurrency || 3 });
     const me = (this.info && this.info.me) || { role: "admin", vip: true, password: !!s.server.password }, guest = me.role === "guest";
@@ -1020,11 +1022,12 @@ class App {
       h("label.col", tt("Une machine par ligne : nom | adresse"), workers),
       h("label.col", tt("Réglages de Workflows Q-builder (ses machines sont reprises)"), qb),
       h("h4", tt("Calcul")), h("label.row", tt("Durée d'une orbite"), len), h("label.row", tt("Où calculer par défaut"), tgt),
-      h("h4", "fal (cloud)"), h("div.row.keyrow", h("span", tt("Clé du poste")), key, paste(key)), h("div.row.keyrow", h("span", tt("Ma clé (ce navigateur)")), myKey, paste(myKey)),
+      h("h4", "fal (cloud)"), h("div.row.keyrow", h("span", tt("Clé du poste")), key, paste(key)), h("div.row.keyrow", h("span", tt("Ma clé (ce navigateur)")), myKey, paste(myKey), help("fal")),
       h("label.row", tt("Résolution de l'orbite"), fres), h("label.row", tt("Calculs fal en même temps"), fcon),
       h("label.row", tt("Modèle orbite"), orbit), h("label.row", tt("Modèle édition / Integrate"), edit), h("label.row", tt("Modèle image"), t2i),
       h("p.muted", tt("Sur fal, l'orbite H3 + LoRA dure 5 s au minimum ; « minimax/h3-max/camera-controls » accepte 3 s. Sur fal : image, détourage et orbite essayés ; édition pas encore.")),
       h("h4", { title: tt("Pour le bouton « Générer une voix » du montage. La clé reste sur ce poste.") }, tt("ElevenLabs (voix) ⓘ")), h("div.row.keyrow", h("span", tt("Clé ElevenLabs")), ekey, paste(ekey)),
+      h("div.row.keyrow", h("span", tt("Ma clé (ce navigateur)")), myEkey, paste(myEkey), help("eleven")),
       h("label.row", tt("Modèle de voix"), emodel),
       h("h4", { title: tt("Un dossier de personnages tout faits, hébergé en ligne et protégé par un mot de passe. On y pioche depuis la banque : bouton « 📦 Paquets ».") }, tt("Bibliothèque en ligne ⓘ")),
       h("label.row", tt("Adresse"), lurl), h("label.row", tt("Identifiant"), luser), h("div.row.keyrow", h("span", tt("Mot de passe")), lpw, paste(lpw)),
@@ -1039,6 +1042,7 @@ class App {
       h("p.muted", tt`Données (banque et storyboards) : ${s.data}`)),
       [{ label: tt("Annuler") }, { label: tt("Enregistrer"), primary: true, click: async () => {
         if (myKey.value.trim()) localStorage.setItem("bw.falKey", myKey.value.trim()); else localStorage.removeItem("bw.falKey");
+        if (myEkey.value.trim()) localStorage.setItem("bw.elevenKey", myEkey.value.trim()); else localStorage.removeItem("bw.elevenKey");
         if (locked) { toast(tt("Clé de ce navigateur enregistrée.")); return; }
         const list = workers.value.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p[0])
           .map((p) => (p.length > 1 ? { name: p[0], url: p[1], enabled: true } : { name: p[0], url: p[0], enabled: true }));
@@ -1048,6 +1052,30 @@ class App {
                                 library: { url: lurl.value.trim(), user: luser.value.trim(), password: lpw.value } });
         this.info = await get("info"); toast(tt("Réglages enregistrés.")); this.pollWorkers();
       } }]);
+  }
+
+  // petit guide pour obtenir sa propre cle (fal ou ElevenLabs) et la coller dans « Ma clé (ce navigateur) »
+  keyGuide(which) {
+    const link = (url, text) => h("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, text);
+    const eleven = which === "eleven";
+    const steps = eleven ? [
+      [tt("Crée un compte sur "), link("https://elevenlabs.io", "elevenlabs.io"), tt(" (ou connecte-toi).")],
+      [tt("Ouvre la page des clés d'API : "), link("https://elevenlabs.io/app/settings/api-keys", "elevenlabs.io/app/settings/api-keys"), tt(" (dans leur application : rubrique Developers, onglet API Keys).")],
+      [tt("Crée une clé et donne-lui un nom. Si des droits sont demandés, autorise au moins la synthèse vocale (Text to Speech) et la lecture des voix (Voices).")],
+      [tt("Copie la clé tout de suite : elle ne s'affiche qu'une fois.")],
+      [tt("Reviens ici, clique « Coller » à côté de « Ma clé (ce navigateur) » dans la rubrique ElevenLabs, puis « Enregistrer ».")],
+    ] : [
+      [tt("Crée un compte sur "), link("https://fal.ai", "fal.ai"), tt(" (ou connecte-toi) et ajoute des crédits sur ton compte.")],
+      [tt("Ouvre la page des clés : "), link("https://fal.ai/dashboard/keys", "fal.ai/dashboard/keys"), "."],
+      [tt("Clique « Create Key », donne-lui un nom ; pour les droits, « API » suffit.")],
+      [tt("Copie la clé tout de suite : elle ne s'affiche qu'une fois.")],
+      [tt("Reviens ici, clique « Coller » à côté de « Ma clé (ce navigateur) » dans la rubrique fal, puis « Enregistrer ».")],
+    ];
+    modal(eleven ? tt("Ma clé ElevenLabs : mode d'emploi") : tt("Ma clé fal : mode d'emploi"), h("div.form.keyguide",
+      h("ol", steps.map((st) => h("li", ...st))),
+      h("p.muted", eleven ? tt("La clé reste dans ce navigateur : elle n'est pas enregistrée sur le serveur et les autres comptes ne la voient pas. Les voix générées sont décomptées de ton compte ElevenLabs, selon ton abonnement.")
+        : tt("La clé reste dans ce navigateur : elle n'est pas enregistrée sur le serveur et les autres comptes ne la voient pas. Les calculs envoyés à fal (images, orbites) sont facturés sur ton compte fal."))),
+      [{ label: tt("Fermer"), primary: true }]);
   }
 
   // comptes invites, geres par l'admin : un invite travaille sur la meme banque et les memes storyboards, sans toucher aux
