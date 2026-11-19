@@ -41,6 +41,7 @@ const patterns = () => PATS || (PATS = Object.entries(DICT.server).filter(([k]) 
 function trs(s) {
   if (DICT.server[s] != null) return DICT.server[s];
   if (DICT.ui[s] != null) return DICT.ui[s];
+  if (DICT.parts && DICT.parts[s] != null) return DICT.parts[s];          // noms des elements du portrait-robot
   for (const [re, en] of patterns()) {
     const m = s.match(re);
     if (!m) continue;

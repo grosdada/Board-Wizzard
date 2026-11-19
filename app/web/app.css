@@ -463,3 +463,10 @@ p.error { color: var(--err); margin: 4px 0 0; min-height: 1.2em; }
 /* bouton de langue (barre du haut) */
 button.lang { font-size: 12px; letter-spacing: .04em; color: var(--muted); }
 button.lang b { font-weight: 500; } button.lang b.on { color: var(--accent); font-weight: 700; }
+/* portrait-robot : briques des elements poses (choisir un element cache sous un autre) */
+.idk-bricks { display: flex; flex-wrap: wrap; gap: 5px; }
+.idk-brick { position: relative; display: flex; align-items: center; gap: 5px; padding: 3px 18px 3px 3px; border: 1px solid var(--line, #444); border-radius: 6px; background: var(--panel2, #222); cursor: pointer; font-size: 11px; }
+.idk-brick img { width: 26px; height: 26px; object-fit: contain; background: #fff; border-radius: 3px; pointer-events: none; }
+.idk-brick.on { outline: 2px solid #10b5e0; }
+.idk-brick i { position: absolute; top: 1px; right: 4px; font-style: normal; font-size: 10px; opacity: .55; }
+.idk-brick i:hover { opacity: 1; color: #e05a4a; }

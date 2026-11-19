@@ -154,16 +154,16 @@ class App {
 
   // ---------------------------------------------------------------- annuler / enregistrer
   snapshot() { const P = this.project; return JSON.stringify({ pages: P.pages, nextId: P.nextId, name: P.name, decks: P.decks || [], deckCur: P.deckCur || null }); }
-  commit(kind) {
+  commit(kind, merge = false) {      // merge : reglage continu (curseur, molette, fleches) ; un geste fini fait toujours une etape
     const now = Date.now(), snap = this.snapshot();
     if (snap === this.last) return;
-    if (!(kind && kind === this.lastKind && now - this.lastAt < 1200)) {       // meme geste repete : une seule etape
+    if (!(merge && kind && kind === this.lastKind && now - this.lastAt < 1200)) {
       this.undo.push(this.last); if (this.undo.length > 80) this.undo.shift();
     }
     this.redo = []; this.last = snap; this.lastKind = kind; this.lastAt = now;
     this.save();
   }
-  commitSoon(kind) { (this._soon = this._soon || debounce((k) => this.commit(k), 350))(kind); }
+  commitSoon(kind) { (this._soon = this._soon || debounce((k) => this.commit(k, true), 350))(kind); }
   restore(snap) {
     Object.assign(this.project, JSON.parse(snap));
     this.pageIndex = Math.min(this.pageIndex, this.project.pages.length - 1);
@@ -469,7 +469,8 @@ class App {
   // Meme schema et memes donnees que le bouton « Profondeur » du montage : l.d (0 devant, 1 au fond) et l.x. Regler ici
   // ou la-bas revient au meme : c'est la place de l'element dans l'espace de la case.
   depthDialog(pid) {
-    const pan = this.page().panels[pid], g = this.geo(pid);
+    let pan = this.page().panels[pid];
+    const g = this.geo(pid);
     if (!pan || !g || !(pan.layers || []).length) return toast(tt("Pose d'abord des éléments dans la case."));
     const W = 1000, H = W * g.bbox.h / g.bbox.w, bb = { x0: 0, y0: 0, w: W, h: H }, DY0 = 0.8, DY1 = 0.14;
     const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg");
@@ -520,6 +521,22 @@ class App {
       paint(); this.editor.render(true);
     });
     svg.addEventListener("pointerup", () => { if (drag) { drag = null; this.commit("depth"); this.editor.render(); this.refreshInspector(); } });
+    // Ctrl+Z / Ctrl+Y (Cmd sur Mac) : la meme annulation que la case, puisque c'est la meme case
+    const onKey = (e) => {
+      if (!document.body.contains(svg)) return document.removeEventListener("keydown", onKey);
+      const backs = document.querySelectorAll(".modal-back");
+      if (backs[backs.length - 1] !== svg.closest(".modal-back") || !(e.ctrlKey || e.metaKey)) return;
+      if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
+      const k = e.key.toLowerCase();
+      if (k !== "z" && k !== "y") return;
+      e.preventDefault();
+      if (k === "y" || e.shiftKey) this.doRedo(); else this.doUndo();
+      pan = this.page().panels[pid];
+      if (!pan || !(pan.layers || []).length) { m.close(); return; }
+      if (sel && !pan.layers.some((x) => x.id === sel)) sel = null;
+      paint();
+    };
+    document.addEventListener("keydown", onKey);
     paint();
     const m = modal(tt`Profondeur · case ${g.order}`, h("div.depthbox", svg,
       h("p.muted", tt("La case vue de dessus : la caméra en bas, le décor en haut. Glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; à gauche ou à droite, elle se déplace dans le cadre. L'élément le plus loin passe derrière les autres. C'est la même position que dans le montage (bouton « Profondeur ») : régler ici ou là-bas revient au même."))),

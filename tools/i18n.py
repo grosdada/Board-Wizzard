@@ -234,9 +234,10 @@ def server_texts():
                 continue
             elif isinstance(node, ast.Assign) and any(isinstance(t, ast.Subscript) and isinstance(t.slice, ast.Constant) and t.slice.value in SHOWN for t in node.targets):
                 msg = node.value
-            s = fmt_of(msg) if msg is not None else None
-            if s and shown(s):
-                out.append((s, "%s:%d" % (f.name, node.lineno)))
+            for m in ([msg.body, msg.orelse] if isinstance(msg, ast.IfExp) else [msg]):   # « a » if x else « b » : les deux
+                s = fmt_of(m) if m is not None else None
+                if s and shown(s):
+                    out.append((s, "%s:%d" % (f.name, node.lineno)))
     return out
 
 
@@ -315,13 +316,14 @@ def main():
         problems.append("serveur : lecture impossible (%s)" % e)
         stexts = []
     seen = set()
+    parts = en.get("parts", {})                               # noms des elements du portrait-robot : la liste change souvent
     for s, where in stexts:
         if s in seen:
             continue
         seen.add(s)
-        if s not in srv and s not in ui and s not in ignore:
+        if s not in srv and s not in ui and s not in parts and s not in ignore:
             problems.append("serveur %s  sans traduction : %r" % (where, s))
-    for d, name in ((ui, "ui"), (srv, "server")):
+    for d, name in ((ui, "ui"), (srv, "server"), (en.get("parts", {}), "parts")):
         for k, v in d.items():
             if not isinstance(v, str) or not v.strip():
                 problems.append("en.json %s  traduction vide : %r" % (name, k))

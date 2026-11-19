@@ -74,7 +74,7 @@ export function dragByHeader(box, handle) {
 
 /** Annulation dans un atelier (dessin du fond, montage) : get() rend l'etat, set(etat) le remet. `max` actions gardees.
  *  watch(el) : note l'etat peu apres chaque geste dans el. keydown(e) : Ctrl+Z, Ctrl+Maj+Z, Ctrl+Y ; vrai si traite. */
-export function history(get, set, max = 5) {
+export function history(get, set, max = 15) {
   let stack = [JSON.stringify(get())], at = 0, timer = 0;
   const snap = () => {
     clearTimeout(timer);

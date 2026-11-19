@@ -3,7 +3,7 @@
 // Les elements viennent de la banque d'elements (data/parts, /api/parts) ; on peut en dessiner de nouveaux dans l'atelier.
 // Le visage monte part dans la banque comme une image a part entiere.
 import { tt, tr } from "./i18n.js";
-import { h, get, del, upload, toast, modal } from "./api.js";
+import { h, get, del, upload, toast, modal, history } from "./api.js";
 import { openDrawEditor, drawImage } from "./draw.js";
 
 const S = 1000;                                  // cote de la feuille, en unites
@@ -27,7 +27,8 @@ export async function openIdentikit(bankUI) {
   const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", `0 0 ${S} ${S}`); svg.setAttribute("class", "idk-stage");
   const name = h("input", { type: "text", placeholder: tt("Nom du personnage") });
-  const tabs = h("div.idk-tabs"), grid = h("div.idk-grid"), knobs = h("div.idk-knobs");
+  const tabs = h("div.idk-tabs"), grid = h("div.idk-grid"), knobs = h("div.idk-knobs"), bricksBox = h("div.idk-bricks");
+  let pinned = false, brickSig = "";                // pinned : choisi par sa brique, il se deplace meme s'il est recouvert
   const sorted = () => layers.slice().sort((a, b) => ORDER.indexOf(a.cat) - ORDER.indexOf(b.cat) || a.n - b.n);
   const tf = (l) => `translate(${l.x} ${l.y}) rotate(${l.rot}) scale(${l.flip ? -1 : 1} 1)`;
   const paint = () => {
@@ -36,6 +37,21 @@ export async function openIdentikit(bankUI) {
       return `<g transform="${tf(l)}" data-n="${l.n}"><image href="/parts/${l.file}" x="${-w / 2}" y="${-hh / 2}" width="${w}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"/>` +
         (sel === l.n ? `<rect x="${-w / 2}" y="${-hh / 2}" width="${w}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
     }).join("") + grips();
+    bricks();
+  };
+  // briques : une par element pose, pour choisir celui qu'un autre recouvre (des sourcils sous une coupe)
+  const bricks = () => {
+    const sig = sorted().map((l) => l.n + ":" + l.file).join(",") + "|" + sel;
+    if (sig === brickSig) return;
+    brickSig = sig; bricksBox.textContent = "";
+    if (!layers.length) return;
+    bricksBox.append(...sorted().map((l) => {
+      const label = (cats.find((c) => c.key === l.cat) || {}).label || l.cat;
+      return h("div.idk-brick" + (l.n === sel ? ".on" : ""), { title: tt`${label} · ${l.name} : cliquer pour le choisir, même s'il est caché sous un autre`,
+        on: { click: () => { sel = l.n; pinned = true; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } paint(); props(); } } },
+        h("img", { src: "/parts/" + l.file, alt: "", draggable: false }), h("span", label),
+        h("i", { title: tt("Retirer du visage"), on: { click: (e) => { e.stopPropagation(); sel = l.n; removeSel(); } } }, "✕"));
+    }));
   };
   // poignees autour de l'element choisi : coins = taille, cotes = etirer, rond du haut = tourner ; taille constante a l'ecran
   const unit = () => { const r = svg.getBoundingClientRect(); return r.width ? S / r.width : 2; };
@@ -61,7 +77,7 @@ export async function openIdentikit(bankUI) {
     if (!l) return;
     knobs.querySelectorAll("input[data-k]").forEach((i) => { const k = i.dataset.k; i.value = l[k]; i.nextElementSibling.textContent = (+l[k]).toFixed(+i.step < 1 ? 2 : 0); });
   };
-  const removeSel = () => { layers = layers.filter((x) => x.n !== sel); sel = null; paint(); props(); marks(); };
+  const removeSel = () => { layers = layers.filter((x) => x.n !== sel); sel = null; pinned = false; paint(); props(); marks(); };
   const range = (label, key, min, max, step, title) => {
     const l = layers.find((x) => x.n === sel), out = h("output", (+l[key]).toFixed(step < 1 ? 2 : 0));
     return h("label.row.range", { title: title || "" }, label, h("input", { type: "range", min, max, step, value: l[key], "data-k": key, on: { input: (e) => { l[key] = +e.target.value; out.textContent = (+l[key]).toFixed(step < 1 ? 2 : 0); paint(); } } }), out);
@@ -78,12 +94,13 @@ export async function openIdentikit(bankUI) {
         h("button.mini", { title: tt("Remet la taille et la place de départ"), on: { click: () => { const p = PLACE[l.cat]; Object.assign(l, { x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: false }); paint(); props(); } } }, tt("↺ Place de départ")),
         h("button.mini.danger", { title: tt("Ou touche Suppr"), on: { click: removeSel } }, tt("Retirer du visage"))));
   };
-  const put = async (cat, it) => {
+  const put = async (cat, it, quiet) => {
     const r = await ratioOf(it.file), p = PLACE[cat] || [500, 500, 300];
     let l = MANY.has(cat) ? null : layers.find((x) => x.cat === cat);
     if (l) Object.assign(l, { id: it.id, name: it.name, file: it.file, r });       // meme place, meme taille : on compare les nez d'un clic
     else { l = { n: uidN++, cat, id: it.id, name: it.name, file: it.file, r, x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: false }; layers.push(l); }
     sel = l.n; paint(); props(); marks();
+    if (!quiet) hist.snap();
   };
   const marks = () => grid.querySelectorAll("[data-id]").forEach((b) => b.classList.toggle("on", layers.some((l) => l.cat === cur.key && l.id === b.dataset.id)));
   const showCat = () => {
@@ -128,6 +145,14 @@ export async function openIdentikit(bankUI) {
       drag = { l: cl, grip, p0: local(cl, pt(e)), w: cl.w, kx: cl.kx, ky: cl.ky };
       e.preventDefault(); return;
     }
+    if (pinned && cl) {                             // choisi par sa brique : on le prend s'il est sous la souris, meme recouvert
+      const q = local(cl, pt(e));
+      if (Math.abs(q.x) <= cl.w * cl.kx / 2 && Math.abs(q.y) <= cl.w * cl.r * cl.ky / 2) {
+        svg.setPointerCapture(e.pointerId); const p = pt(e); drag = { l: cl, dx: cl.x - p.x, dy: cl.y - p.y };
+        e.preventDefault(); return;
+      }
+    }
+    pinned = false;
     const n = +(e.target.dataset && e.target.dataset.n), l = layers.find((x) => x.n === n);
     sel = l ? l.n : null;
     if (l) { svg.setPointerCapture(e.pointerId); const p = pt(e); drag = { l, dx: l.x - p.x, dy: l.y - p.y }; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } }
@@ -149,7 +174,7 @@ export async function openIdentikit(bankUI) {
     }
     paint(); sync();
   });
-  svg.addEventListener("pointerup", () => { drag = null; });
+  svg.addEventListener("pointerup", () => { if (drag) { drag = null; hist.snap(); } });   // un glisser fini = une etape
   svg.addEventListener("wheel", (e) => { const l = layers.find((x) => x.n === sel); if (!l) return; e.preventDefault(); l.w = Math.round(Math.min(950, Math.max(30, l.w * (e.deltaY < 0 ? 1.05 : 0.95)))); paint(); sync(); }, { passive: false });
   // clic droit sur un element pose : petit menu
   svg.addEventListener("contextmenu", (e) => {
@@ -165,7 +190,7 @@ export async function openIdentikit(bankUI) {
       i > 0 ? [tt("▼ Descendre d'un cran"), () => swap(same[i - 1])] : null,
       [tt("✕ Retirer du visage"), removeSel, true]].filter(Boolean);
     document.querySelector(".menu")?.remove();
-    const box = h("div.menu.mt-menu", items.map(([label, fn, danger]) => h("button" + (danger ? ".danger" : ""), { on: { click: () => { box.remove(); fn(); } } }, label)));
+    const box = h("div.menu.mt-menu", items.map(([label, fn, danger]) => h("button" + (danger ? ".danger" : ""), { on: { click: () => { box.remove(); fn(); hist.snap(); } } }, label)));
     document.body.append(box);
     const r = box.getBoundingClientRect();
     box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px";
@@ -173,17 +198,23 @@ export async function openIdentikit(bankUI) {
     const close = (ev) => { if (!box.contains(ev.target)) { box.remove(); document.removeEventListener("pointerdown", close, true); } };
     setTimeout(() => document.addEventListener("pointerdown", close, true), 0);
   });
-  // clavier, tant que l'atelier est ouvert : Suppr retire, fleches deplacent
+  // annuler (Ctrl+Z, 15 pas) : ajout, retrait, deplacement, taille, rotation, miroir des elements ; pas la selection
+  const hist = history(() => layers, (st) => {
+    layers = st; if (!layers.some((l) => l.n === sel)) { sel = null; pinned = false; }
+    uidN = Math.max(uidN, ...layers.map((l) => l.n + 1)); paint(); props(); marks();
+  }, 15);
+  // clavier, tant que l'atelier est ouvert : Ctrl+Z / Ctrl+Y annulent, Suppr retire, fleches deplacent
   const onKey = (e) => {
     if (!document.body.contains(svg)) return document.removeEventListener("keydown", onKey);
-    if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
     const backs = document.querySelectorAll(".modal-back");
     if (backs[backs.length - 1] !== svg.closest(".modal-back")) return;          // une autre fenetre (dessin) est par-dessus
+    if (hist.keydown(e)) return;                    // dans un champ de texte, c'est l'annulation du navigateur qui joue
+    if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
     const l = layers.find((x) => x.n === sel);
     if (!l) return;
-    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeSel(); return; }
+    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeSel(); hist.snap(); return; }
     const d = e.shiftKey ? 10 : 1, mv = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[e.key];
-    if (mv) { e.preventDefault(); l.x += mv[0]; l.y += mv[1]; paint(); }
+    if (mv) { e.preventDefault(); l.x += mv[0]; l.y += mv[1]; paint(); hist.snap(); }
   };
   document.addEventListener("keydown", onKey);
 
@@ -191,13 +222,13 @@ export async function openIdentikit(bankUI) {
     layers = []; sel = null;
     for (const key of ["visage", "oreilles", "yeux", "sourcils", "nez", "bouche", "cheveux"]) {
       const c = cats.find((k) => k.key === key);
-      if (c && c.items.length) await put(key, c.items[Math.floor(Math.random() * c.items.length)]);
+      if (c && c.items.length) await put(key, c.items[Math.floor(Math.random() * c.items.length)], true);
     }
     for (const key of ["moustache", "barbe", "lunettes"]) {
       const c = cats.find((k) => k.key === key);
-      if (c && c.items.length && Math.random() < 0.3) await put(key, c.items[Math.floor(Math.random() * c.items.length)]);
+      if (c && c.items.length && Math.random() < 0.3) await put(key, c.items[Math.floor(Math.random() * c.items.length)], true);
     }
-    sel = null; paint(); props();
+    sel = null; paint(); props(); hist.snap();                      // un tirage = une seule etape
   };
   const render = async () => {                     // l'image du visage monte : fond blanc, elements dans l'ordre
     const N = 1024, k = N / S, c = document.createElement("canvas"); c.width = c.height = N;
@@ -211,7 +242,7 @@ export async function openIdentikit(bankUI) {
     return new Promise((ok) => c.toBlob(ok, "image/png"));
   };
   const m = modal(tt("Portrait-robot"), h("div.idk",
-    h("div.idk-left", svg, h("div.row.wrap", h("button.mini", { title: tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
+    h("div.idk-left", svg, bricksBox, h("div.row.wrap", h("button.mini", { title: tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
       h("button.mini", { on: { click: () => { layers = []; sel = null; paint(); props(); marks(); } } }, tt("Tout retirer"))), knobs),
     h("div.idk-right", h("label.row", tt("Nom"), name), tabs, grid)),
     [{ label: tt("Fermer") }, { label: tt("Ajouter à la banque"), primary: true, click: async () => {
@@ -227,5 +258,6 @@ export async function openIdentikit(bankUI) {
       } catch (e) { toast(tt("Portrait refusé : ") + e.message, "error", 9000); return false; }
     } }]);
   m.box.classList.add("wide", "idk-box");
+  hist.watch(m.box);                                // chaque geste dans la fenetre note l'etat (souris, curseurs, menus)
   showCat(); paint(); props();
 }

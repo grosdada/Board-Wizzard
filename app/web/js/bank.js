@@ -418,6 +418,27 @@ export class Bank {
       e.preventDefault(); frame = (frame + (e.key === "ArrowRight" ? 1 : -1) + v.orbit.n) % v.orbit.n; show();
     };
     document.addEventListener("keydown", stepKey);
+    // annuler / retablir une retouche du detourage (lasso, zone videe, images d'origine) : 15 pas par orbite, cote serveur
+    const retouchUndo = async (redo) => {
+      const v = variantOf(it(), vid);
+      if (!v || !v.orbit) return;
+      try {
+        const r = await post(`bank/${id}/undo`, { variant: vid, redo });
+        if (r.frames && r.frames.length === 1) frame = r.frames[0];        // on montre l'image remise
+        await this.reload();
+        toast(redo ? tt`Retouche rétablie (encore ${r.redo} à rétablir).` : tt`Retouche annulée (encore ${r.undo} à annuler).`);
+      } catch (err) { toast(err.message, "error"); }
+    };
+    const undoKey = (e) => {
+      if (!document.body.contains(stage)) return document.removeEventListener("keydown", undoKey);
+      if (!(e.ctrlKey || e.metaKey) || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+      const backs = document.querySelectorAll(".modal-back");
+      if (backs[backs.length - 1] !== stage.closest(".modal-back")) return;
+      const k = e.key.toLowerCase();
+      if (k !== "z" && k !== "y") return;
+      e.preventDefault(); retouchUndo(k === "y" || e.shiftKey);
+    };
+    document.addEventListener("keydown", undoKey);
     // barre d'espace tenue : la main, pour se deplacer dans l'image agrandie sans quitter le lasso
     let spaceHeld = false, handLocked = false;
     const spaceKey = (e) => {
@@ -550,6 +571,8 @@ export class Bank {
         h("div.row.wrap",
           v.orbit ? h("button.mini", { title: tt("Analyse l'orbite et montre en couleur les zones blanches qui sont peut-être des vides remplis à tort (entre un bras et le corps, entre les jambes). Rouge : probablement. Orange : peut-être. Rien n'est vidé sans ton clic sur la zone."), on: { click: () => { if (zones && zonesFor === vid) { zones = null; drawZones(); } else loadZones(); } } }, tt("🔎 Vides suspects")) : null,
           v.orbit ? h("button.mini", { title: tt("Pour un vide rempli à tort (entre un bras et le corps, entre les jambes) : clique ce bouton, puis clique dans la zone sur l'image. Elle est vidée sur cette image et sur les voisines où elle existe. Mets un fond de couleur pour bien voir."), on: { click: () => { punching = true; stage.style.cursor = "crosshair"; toast(tt("Clique maintenant dans la zone à vider, sur l'image.")); } } }, tt("🕳 Vider une zone")) : null,
+          v.orbit ? h("button.mini", { title: tt("Annule la dernière retouche de cette orbite (Ctrl+Z), jusqu'à 15 pas"), on: { click: () => retouchUndo(false) } }, tt("↶ Annuler la retouche")) : null,
+          v.orbit ? h("button.mini", { title: tt("Rétablit la retouche annulée (Ctrl+Y)"), on: { click: () => retouchUndo(true) } }, tt("↷ Rétablir")) : null,
           v.orbit ? h("button.mini", { title: tt("Annule les retouches de cette orbite (zones vidées, rebouchage) : remet les images gardées avant"), on: { click: async () => { if (!confirm(tt("Remettre les images d'origine de cette orbite ?"))) return; try { const r = await post(`bank/${id}/restore`, { variant: vid }); toast(tt`${r.frames} image(s) remise(s).`); await this.reload(); } catch (err) { toast(err.message, "error"); } } } }, tt("↩ Images d'origine")) : null),
         h("p.muted", tt("1. Mets un fond de couleur. 2. « Vides suspects » colore les zones blanches qui devraient peut-être être vides (rouge : probable, orange : possible). 3. Fais tourner et clique une zone colorée pour la vider, ici et sur les images voisines. Si la zone n'est pas colorée : « Vider une zone », puis clic dedans.")));
       const acts = h("div.acts",

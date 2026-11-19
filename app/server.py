@@ -552,6 +552,10 @@ class Handler(BaseHTTPRequestHandler):
                                                 mode=d.get("mode", "vider"), lines=bool(d.get("lines"))))
         if act == "restore" and method == "POST":                   # remettre les images d'avant les retouches
             return self.send_json(retouch.restore(iid, d.get("variant", "base")))
+        if act == "undo" and method == "POST":                      # Ctrl+Z / Ctrl+Y d'une retouche (15 pas par orbite)
+            return self.send_json(retouch.undo(iid, d.get("variant", "base"), redo=bool(d.get("redo"))))
+        if act == "undo":                                           # combien de pas a annuler / retablir
+            return self.send_json(retouch.undo_state(iid, q.get("variant", "base")))
         if act == "prepare":
             made = jobs.prepare(iid, orbit=d.get("orbit", True), pose_keys=d.get("poses") or [], target=opts["target"],
                                 fal_key=opts["_fal_key"], prio=2 if d.get("low") else 1)

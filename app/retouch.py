@@ -15,6 +15,105 @@ from . import settings, store, vector
 
 BACKUP = settings.DATA / "backup" / "trous"
 MAX_SHARE = 0.30          # une zone plus grande que ca n'est pas un vide : c'est le corps
+UNDO = settings.DATA / "backup" / "annuler"   # annulation des retouches : <element>/<dossier de l'orbite>/{undo,redo}/<pas>/
+UNDO_STEPS = 15
+NEW = "_crees.txt"                            # dans un pas : les fichiers qui n'existaient pas avant
+
+
+# ------------------------------------------------------------------ annuler / retablir une retouche (Ctrl+Z, 15 pas)
+class _Step:
+    """Un pas d'annulation : avant de reecrire un fichier de l'orbite, on en garde la version d'avant (une fois par pas)."""
+    def __init__(self, d, odir):
+        self.folder = d / odir
+        self.base = UNDO / d.name / odir
+        self.dir = self.base / "undo" / ("%d" % time.time_ns())
+
+    def keep(self, path):
+        rel = path.relative_to(self.folder)
+        if not path.exists():                                       # fichier cree par la retouche : l'annulation le retire
+            self.dir.mkdir(parents=True, exist_ok=True)
+            with open(self.dir / NEW, "a", encoding="utf-8") as fh:
+                fh.write(rel.as_posix() + "\n")
+            return
+        dest = self.dir / rel
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, dest)
+
+    def close(self):
+        """Pas termine : la pile de retablissement est videe, on ne garde que les UNDO_STEPS derniers pas."""
+        shutil.rmtree(self.base / "redo", ignore_errors=True)
+        steps = sorted((self.base / "undo").iterdir(), key=lambda x: int(x.name)) if (self.base / "undo").is_dir() else []
+        for old in steps[:-UNDO_STEPS]:
+            shutil.rmtree(old, ignore_errors=True)
+
+
+def _stack(base, which):
+    d = base / which
+    return sorted(d.iterdir(), key=lambda x: int(x.name)) if d.is_dir() else []
+
+
+def undo_state(item_id, variant):
+    it = store.load_item(item_id)
+    o = (it["variants"].get(variant) or {}).get("orbit") or {}
+    if not o.get("dir"):
+        return {"undo": 0, "redo": 0}
+    base = UNDO / store.item_dir(item_id).name / o["dir"]
+    return {"undo": len(_stack(base, "undo")), "redo": len(_stack(base, "redo"))}
+
+
+def undo(item_id, variant, redo=False):
+    """Annule (ou retablit) la derniere retouche de cette orbite : remet les fichiers gardes, garde l'etat courant pour
+    l'autre sens, et change la version des images pour qu'elles se rechargent. Rend {undo, redo, frames}."""
+    it = store.load_item(item_id)
+    o = (it["variants"].get(variant) or {}).get("orbit") or {}
+    if not o.get("dir"):
+        raise ValueError("cette variante n'a pas d'orbite détourée")
+    d = store.item_dir(item_id)
+    folder, base = d / o["dir"], UNDO / d.name / o["dir"]
+    src, dst = ("redo", "undo") if redo else ("undo", "redo")
+    steps = _stack(base, src)
+    if not steps:
+        raise ValueError("rien à rétablir" if redo else "rien à annuler")
+    step = steps[-1]
+    back = base / dst / ("%d" % time.time_ns())
+    frames, created = [], []
+
+    def save_current(rel):                                          # l'etat courant part dans l'autre pile
+        cur = folder / rel
+        if cur.exists():
+            (back / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(cur, back / rel)
+        else:
+            created.append(rel)
+    for f in sorted(step.rglob("*")):
+        if not f.is_file() or f.name == NEW:
+            continue
+        rel = f.relative_to(step)
+        save_current(rel)
+        (folder / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, folder / rel)
+        if f.suffix == ".webp" and f.stem.isdigit():
+            frames.append(int(f.stem))
+    if (step / NEW).exists():                                       # ce que la retouche avait cree disparait
+        from pathlib import PurePosixPath
+        for line in (step / NEW).read_text(encoding="utf-8").split():
+            rel = PurePosixPath(line)
+            if (folder / rel).exists():
+                save_current(rel)
+                (folder / rel).unlink()
+    if created:
+        back.mkdir(parents=True, exist_ok=True)
+        (back / NEW).write_text("".join(r.as_posix() + "\n" for r in created), encoding="utf-8")
+    shutil.rmtree(step, ignore_errors=True)
+    now = int(time.time())
+
+    def bump(v):
+        oo = (v["variants"].get(variant) or {}).get("orbit") or {}
+        if oo.get("dir") == o["dir"]:
+            oo["t"] = oo["vt"] = now
+    store.mutate_item(item_id, bump)
+    return {"undo": len(_stack(base, "undo")), "redo": len(_stack(base, "redo")), "frames": sorted(frames)}
 
 
 def _keep(d, path):
@@ -35,10 +134,12 @@ def _zones(path):
     return im, lab, stats, int(solid.sum()), ink
 
 
-def _cut(d, path, im, mask, ink):
+def _cut(d, path, im, mask, ink, step=None):
     """Rend transparente la zone (elargie jusqu'au trait qui la borde) et reecrit l'image."""
     wide = (cv2.dilate(mask.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0) & (ink == 0)
     _keep(d, path)
+    if step:
+        step.keep(path)
     im[..., 3][wide] = 0
     Image.fromarray(im).save(path, quality=86, method=4)
 
@@ -70,7 +171,9 @@ def punch(item_id, variant, frame, x, y, spread=True):
     if stats[k, cv2.CC_STAT_AREA] > MAX_SHARE * total:
         raise ValueError("cette zone est trop grande pour être un vide : c'est le corps du personnage")
     first = lab == k
-    _cut(d, path(f0), im, first, ink)
+    step = _Step(d, o["dir"])
+    step.keep(folder / "vec.json")
+    _cut(d, path(f0), im, first, ink, step)
     done = [f0]
     if spread:
         for step in (1, -1):                                        # la meme zone, d'image en image, tant qu'elle existe
@@ -91,11 +194,12 @@ def punch(item_id, variant, frame, x, y, spread=True):
                 if over < 0.35 * a1 or a2 > 2.2 * a1 + 200 or a2 > MAX_SHARE * total2:
                     break                                           # la zone s'est ouverte, a disparu, ou a fusionne avec le corps
                 prev = lab2 == k2
-                _cut(d, path(f), im2, prev, ink2)
+                _cut(d, path(f), im2, prev, ink2, step)
                 done.append(f)
     if o.get("vec"):
         _keep(d, folder / "vec.json")
         vector.orbit(folder, n, "mannequin" in (it.get("tags") or []))
+    step.close()
     now = int(time.time())
 
     def bump(v):
@@ -103,7 +207,7 @@ def punch(item_id, variant, frame, x, y, spread=True):
         if oo.get("dir") == o["dir"]:
             oo["t"] = oo["vt"] = now
     store.mutate_item(item_id, bump)
-    return {"frames": sorted(done)}
+    return dict(undo_state(item_id, variant), frames=sorted(done))
 
 
 def lasso(item_id, variant, frame, points, mode="vider", lines=False):
@@ -130,6 +234,9 @@ def lasso(item_id, variant, frame, points, mode="vider", lines=False):
     cv2.fillPoly(mask, [poly], 1)
     mask = mask > 0
     _keep(d, p)
+    step = _Step(d, o["dir"])
+    step.keep(p)
+    step.keep(folder / "vec.json")
     if mode == "remplir":
         hole = mask & (im[..., 3] < 128)
         im[..., :3][hole] = 255
@@ -155,8 +262,9 @@ def lasso(item_id, variant, frame, points, mode="vider", lines=False):
         oo = (v["variants"].get(variant) or {}).get("orbit") or {}
         if oo.get("dir") == o["dir"]:
             oo["t"] = oo["vt"] = now
+    step.close()
     store.mutate_item(item_id, bump)
-    return {"frame": f, "pixels": int(mask.sum())}
+    return dict(undo_state(item_id, variant), frame=f, pixels=int(mask.sum()))
 
 
 def dedupe(item_id, variant):
@@ -238,15 +346,21 @@ def restore(item_id, variant):
     src = BACKUP / d.name / o.get("dir", "-")
     if not o.get("n") or not src.is_dir():
         raise ValueError("aucune image d'origine gardée pour cette orbite")
+    if any(int(p.stem) >= int(o["n"]) for p in src.glob("*.webp") if p.stem.isdigit()):
+        raise ValueError("les images d'origine datent d'avant le dédoublonnage de cette orbite : elles ne se remettent plus")
     back = 0
+    step = _Step(d, o["dir"])
+    step.keep(d / o["dir"] / "vec.json")
     for p in src.glob("*.webp"):
+        step.keep(d / o["dir"] / p.name)
         shutil.copy2(p, d / o["dir"] / p.name)
         back += 1
+    step.close()
     if o.get("vec"):
         vector.orbit(d / o["dir"], int(o["n"]), "mannequin" in (it.get("tags") or []))
     now = int(time.time())
     store.mutate_item(item_id, lambda v: (v["variants"][variant]["orbit"].update(t=now, vt=now)))
-    return {"frames": back}
+    return dict(undo_state(item_id, variant), frames=back)
 
 
 # ------------------------------------------------------------------ vides remplis a tort : reperage automatique
