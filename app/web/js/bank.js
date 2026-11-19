@@ -272,13 +272,17 @@ export class Bank {
     const tier = h("select", h("option", { value: 0 }, tt("Aucune pose pour l'instant")), h("option", { value: 1 }, tt("Poses essentielles (7)")),
                    h("option", { value: 2 }, tt("Poses complètes (16)")), h("option", { value: 3 }, tt("Toutes les poses (26)")));
     const tierRow = h("label.row", tt("Poses à générer"), tier);
-    const sync = () => { tierRow.style.display = kind.value === "character" ? "" : "none"; };
+    const review = h("select", { title: tt("Lancer les orbites : seul le contrôle automatique trie, les orbites partent directement. Vérifier avant : les poses attendent dans la fiche que tu gardes, refasses ou jettes chacune.") },
+      h("option", { value: "0" }, tt("Lancer les orbites")), h("option", { value: "1" }, tt("Vérifier avant les orbites")));
+    const reviewRow = h("label.row", tt("Orbites des poses"), review);
+    const sync = () => { tierRow.style.display = kind.value === "character" ? "" : "none"; reviewRow.style.display = kind.value === "character" && +tier.value > 0 ? "" : "none"; };
+    tier.addEventListener("change", sync);
     kind.addEventListener("change", sync); sync();
     modal(tt`Ajouter à la banque (${files.length} image${files.length > 1 ? "s" : ""})`, h("div.form",
       h("div.previews", files.slice(0, 8).map((f) => h("img", { src: URL.createObjectURL(f) }))),
       h("label.row", tt("Type"), kind), h("label.row", tt("Nom"), name), h("label.row", tt("Dossier"), folder), h("label.row", tt("Rendu"), style),
       h("label.row", tt("L'image montre le sujet de"), facing),
-      h("label.row.check", orbit, tt("Générer l'orbite 360° (≈ 3 min par machine)")), tierRow,
+      h("label.row.check", orbit, tt("Générer l'orbite 360° (≈ 3 min par machine)")), tierRow, reviewRow,
       h("p.muted", tt("Le mieux : un seul sujet, entier, sur un fond simple. L'orbite est détourée image par image."))),
       [{ label: tt("Annuler") }, { label: tt("Ajouter"), primary: true, click: async () => {
         const keys = this.app.info.poses.character.filter((p) => p.tier <= +tier.value).map((p) => p.key);
@@ -288,7 +292,7 @@ export class Bank {
                                           folder: folder.querySelector("input").value.trim() });
           try {
             const it = await upload("bank?" + q, f);
-            if (kind.value === "character" && keys.length) await post(`bank/${it.id}/prepare`, { orbit: orbit.checked, poses: keys, target: target() });
+            if (kind.value === "character" && keys.length) await post(`bank/${it.id}/prepare`, { orbit: orbit.checked, review: review.value === "1", poses: keys, target: target() });
           } catch (err) { toast(`${f.name} : ${err.message}`, "error"); }
         }
         this.tab = kind.value;
@@ -636,18 +640,20 @@ export class Bank {
         const have = new Set(Object.values(item.variants).map((x) => x.pose));
         const boxes = cat.map((p) => ({ p, el: h("input", { type: "checkbox", "data-pose": p.key, disabled: have.has(p.key), checked: have.has(p.key) }) }));
         const custom = h("input", { type: "text", placeholder: item.kind === "decor" ? tt("Autre ambiance (en anglais de préférence)…") : tt("Autre pose : « leaning on a wall, smoking »…") });
-        const orbit = h("input", { type: "checkbox", checked: true });
+        const launch = async (review) => {
+          const keys = boxes.filter((b) => b.el.checked && !b.el.disabled).map((b) => b.p.key);
+          if (!keys.length && !custom.value.trim()) return toast(tt("Coche au moins une pose."), "error");
+          const r = await post(`bank/${id}/prepare`, { orbit: true, review, poses: keys, custom: custom.value.trim() ? [custom.value.trim()] : [], target: target() });
+          toast(tt`${r.jobs.length} tâche(s) lancée(s).`); custom.value = ""; app.pollSoon();
+        };
         poseBox.append(h("h4", item.kind === "decor" ? tt("Ambiances à générer") : tt("Poses à générer")),
           h("div.tiers", [1, 2, 3].map((t) => h("button.mini", { on: { click: () => boxes.forEach((b) => { if (!b.el.disabled) b.el.checked = b.p.tier <= t; }) } },
             tr(app.info.poses.tiers[t]))), h("button.mini", { on: { click: () => boxes.forEach((b) => { if (!b.el.disabled) b.el.checked = false; }) } }, tt("Rien"))),
           h("div.poselist", boxes.map((b) => h("label.check" + (b.el.disabled ? ".done" : ""), b.el, tr(b.p.label)))),
-          custom, h("label.row.check", orbit, tt("Avec l'orbite 360° de chaque pose")),
-          h("button.primary", { on: { click: async () => {
-            const keys = boxes.filter((b) => b.el.checked && !b.el.disabled).map((b) => b.p.key);
-            if (!keys.length && !custom.value.trim()) return toast(tt("Coche au moins une pose."), "error");
-            const r = await post(`bank/${id}/prepare`, { orbit: orbit.checked, poses: keys, custom: custom.value.trim() ? [custom.value.trim()] : [], target: target() });
-            toast(tt`${r.jobs.length} tâche(s) lancée(s).`); custom.value = ""; app.pollSoon();
-          } } }, tt("Générer la sélection")));
+          custom,
+          h("div.row.wrap.pose-go",
+            h("button.primary", { title: tt("Seul le contrôle automatique trie les poses ; l'orbite de chaque pose retenue part tout de suite."), on: { click: () => launch(false) } }, tt("Lancer les orbites")),
+            h("button.primary", { title: tt("Les poses sont générées et détourées, puis attendent : tu gardes, refais ou jettes chacune ; seules celles que tu gardes partent en orbite."), on: { click: () => launch(true) } }, tt("Vérifier avant les orbites"))));
       }
       body.querySelector(".acts")?.remove();
       left.append(acts);

@@ -182,10 +182,8 @@
   "Autre ambiance (en anglais de préférence)…": "Another mood (preferably in English)…",
   "Autre pose : « leaning on a wall, smoking »…": "Another pose: « leaning on a wall, smoking »…",
   "Ambiances à générer": "Moods to generate",
-  "Avec l'orbite 360° de chaque pose": "With the 360° orbit of each pose",
   "Coche au moins une pose.": "Tick at least one pose.",
   "{0} tâche(s) lancée(s).": "{0} task(s) started.",
-  "Générer la sélection": "Generate the selection",
   "Damier": "Checkerboard",
   "Blanc": "White",
   "Noir": "Black",
@@ -1162,8 +1160,12 @@
   "✓ Tout garder ({0})": "✓ Keep all ({0})",
   "Écartées par le contrôle automatique": "Discarded by the automatic check",
   "Leur visage ressemblait moins au dessin d'origine (fidélité sous 0,85). Repêche celles qui te vont, ou refais-les.": "Their face looked less like the original drawing (fidelity below 0.85). Rescue the ones you like, or redo them.",
-  "Les poses sont générées et détourées, puis attendent « Garder » dans la fiche du personnage avant que leur orbite parte.": "The poses are generated and cut out, then wait for « Keep » in the character's sheet before their orbit starts.",
-  "Attendre ma validation avant les orbites des poses": "Wait for my approval before the poses' orbits"
+  "Lancer les orbites : seul le contrôle automatique trie, les orbites partent directement. Vérifier avant : les poses attendent dans la fiche que tu gardes, refasses ou jettes chacune.": "Start the orbits: only the automatic check sorts, the orbits start directly. Check before: the poses wait in the sheet for you to keep, redo or discard each one.",
+  "Lancer les orbites": "Start the orbits",
+  "Vérifier avant les orbites": "Check before the orbits",
+  "Orbites des poses": "Poses' orbits",
+  "Seul le contrôle automatique trie les poses ; l'orbite de chaque pose retenue part tout de suite.": "Only the automatic check sorts the poses; the orbit of each kept pose starts right away.",
+  "Les poses sont générées et détourées, puis attendent : tu gardes, refais ou jettes chacune ; seules celles que tu gardes partent en orbite.": "The poses are generated and cut out, then wait: you keep, redo or discard each one; only the ones you keep go to orbit."
  },
  "server": {
   "Parle": "Speaks",
@@ -1328,7 +1330,8 @@
   "fal n'a pas rendu la vidéo du masque": "fal did not return the mask video",
   "fal refuse la clé (%d) : %s": "fal refuses the key (%d): %s",
   "aucune clé ElevenLabs : entre ta clé dans Réglages › ElevenLabs (voix) › « Ma clé (ce navigateur) »": "no ElevenLabs key: enter your key in Settings › ElevenLabs (voices) › « My key (this browser) »",
-  "action inconnue : %s": "unknown action: %s"
+  "action inconnue : %s": "unknown action: %s",
+  "cette voix est une voix clonée restée vide (aucun enregistrement dedans) : choisis-en une autre, ou ajoute-lui un échantillon sur elevenlabs.io": "this voice is a cloned voice left empty (no recording in it): choose another one, or add a sample to it on elevenlabs.io"
  },
  "parts": {
   "Anguleux": "Angular",

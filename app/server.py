@@ -576,11 +576,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(retouch.undo_state(iid, q.get("variant", "base")))
         if act == "prepare":
             made = jobs.prepare(iid, orbit=d.get("orbit", True), pose_keys=d.get("poses") or [], target=opts["target"],
-                                fal_key=opts["_fal_key"], prio=2 if d.get("low") else 1, own_key=opts["own_key"])
+                                fal_key=opts["_fal_key"], prio=2 if d.get("low") else 1, own_key=opts["own_key"],
+                                review=bool(d.get("review")))
             for c in d.get("custom") or []:
                 if (c or "").strip():
                     made.append(S.add("item_pose", {"item": iid, "pose": "", "custom": c.strip(),
-                                                    "orbit": d.get("orbit", True)},
+                                                    "orbit": d.get("orbit", True), "review": bool(d.get("review"))},
                                       "Pose · %s · %s" % (it["name"], c.strip()[:30]), **opts))
             return self.send_json({"jobs": made})
         if act == "orbit":
@@ -630,7 +631,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not v.get("orbit") and not S.pending("item_orbit", item=iid, variant=vid):
                     made.append(S.add("item_orbit", {"item": iid, "variant": vid}, "Orbite · %s · %s" % (it["name"], v.get("label") or vid), **opts))
             elif act == "redo":
-                params = {"item": iid, "pose": v.get("pose", ""), "variant": vid, "orbit": True, "seed": random.randint(1, 10 ** 6)}
+                params = {"item": iid, "pose": v.get("pose", ""), "variant": vid, "orbit": True, "review": True, "seed": random.randint(1, 10 ** 6)}
                 if not v.get("pose"):
                     params["custom"] = v.get("custom") or v.get("label") or ""
                 made.append(S.add("item_pose", params, "Pose · %s · %s" % (it["name"], v.get("label") or vid), **opts))

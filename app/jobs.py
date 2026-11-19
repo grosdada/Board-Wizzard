@@ -247,8 +247,8 @@ def run_item_pose(job, prov):
     it = store.load_item(p["item"])
     d = store.item_dir(it["id"])
     label, prompt = poses.pose_prompt(it["kind"], p.get("pose", ""), it.get("style", "photo"), p.get("custom", ""))
-    # validation : la pose est generee et detouree, puis attend « Garder » dans la fiche avant son orbite
-    validate = bool(p.get("orbit", True)) and bool(settings.load()["render"].get("validate_poses", True))
+    # « Vérifier avant les orbites » (choisi en preparant) : la pose est generee et detouree, puis attend « Garder »
+    validate = bool(p.get("orbit", True)) and bool(p.get("review"))
     score, rejected = None, False
     tmp = _tmp()
     try:
@@ -405,7 +405,7 @@ def add_item(kind, name, image_path, style="photo", tags=None, facing="face", fo
     return store.mutate_item(it["id"], apply)
 
 
-def prepare(item_id, orbit=True, pose_keys=(), target="auto", fal_key=None, prio=1, own_key=False):
+def prepare(item_id, orbit=True, pose_keys=(), target="auto", fal_key=None, prio=1, own_key=False, review=False):
     """Met en file ce qu'il faut pour qu'un element soit utilisable : detourage, orbite de base, poses demandees."""
     it = store.load_item(item_id)
     follow = {"target": target, "_fal_key": fal_key, "prio": prio, "own_key": own_key}
@@ -420,7 +420,7 @@ def prepare(item_id, orbit=True, pose_keys=(), target="auto", fal_key=None, prio
         if key in have or SCHEDULER.pending("item_pose", item=item_id, pose=key):
             continue
         hit = poses.find(it["kind"], key)
-        made.append(SCHEDULER.add("item_pose", {"item": item_id, "pose": key, "orbit": orbit},
+        made.append(SCHEDULER.add("item_pose", {"item": item_id, "pose": key, "orbit": orbit, "review": bool(review)},
                                   "Pose · %s · %s" % (it["name"], hit[0] if hit else key), **follow))
     return made
 

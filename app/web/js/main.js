@@ -1010,7 +1010,6 @@ class App {
     const workers = h("textarea", { rows: 4, placeholder: "HITCHCOCK | http://192.168.1.60:8188" }, (s.workers || []).map((w) => `${w.name} | ${w.url}`).join("\n"));
     const qb = f(s.qbuilder_settings, tt("…\\Workflows-Q-Builder\\local_settings.json"));
     const len = h("select", [[73, tt("3 s (73 images)")], [90, "3,75 s"], [107, "4,5 s"], [124, tt("5,2 s (124 images)")]].map(([v, t]) => h("option", { value: v, selected: v === s.render.orbit_length }, t)));
-    const validate = h("input", { type: "checkbox", checked: (s.render || {}).validate_poses !== false });
     const tgt = h("select", [["auto", tt("Auto : machines d'abord, fal sinon")], ["local", tt("Machines seulement")], ["fal", tt("fal seulement")]].map(([v, t]) => h("option", { value: v, selected: v === s.render.target }, t)));
     // champ secret : toujours masque, jamais propose par l'historique du navigateur, avec un bouton pour coller
     const secret = (v, ph) => h("input", { type: "password", value: v ?? "", placeholder: ph || "", autocomplete: "new-password", name: "bw-" + uid(), spellcheck: "false", "data-lpignore": "true", "data-1p-ignore": "true" });
@@ -1032,8 +1031,7 @@ class App {
       this.noMachines() ? null : h("h4", tt("Machines ComfyUI")),
       ...(this.noMachines() ? [h("p.muted", tt("Compte invité : les machines du poste ne te sont pas ouvertes. Tes calculs (images, poses, orbites, Integrate) partent sur fal avec ta propre clé, celle de « Ma clé (ce navigateur) » dans la rubrique fal ci-dessous."))]
         : [wbox, h("label.col", tt("Une machine par ligne : nom | adresse"), workers), h("label.col", tt("Réglages de Workflows Q-builder (ses machines sont reprises)"), qb)]),
-      h("h4", tt("Calcul")), h("label.row", tt("Durée d'une orbite"), len),
-      h("label.row.check", { title: tt("Les poses sont générées et détourées, puis attendent « Garder » dans la fiche du personnage avant que leur orbite parte.") }, validate, tt("Attendre ma validation avant les orbites des poses")), this.noMachines() ? null : h("label.row", tt("Où calculer par défaut"), tgt),
+      h("h4", tt("Calcul")), h("label.row", tt("Durée d'une orbite"), len), this.noMachines() ? null : h("label.row", tt("Où calculer par défaut"), tgt),
       h("h4", "fal (cloud)"), h("div.row.keyrow", h("span", tt("Clé du poste")), key, paste(key)), h("div.row.keyrow", h("span", tt("Ma clé (ce navigateur)")), myKey, paste(myKey), help("fal")),
       h("label.row", tt("Résolution de l'orbite"), fres), h("label.row", tt("Calculs fal en même temps"), fcon),
       h("label.row", tt("Modèle orbite"), orbit), h("label.row", tt("Modèle édition / Integrate"), edit), h("label.row", tt("Modèle image"), t2i),
@@ -1058,7 +1056,7 @@ class App {
         if (locked) { toast(tt("Clé de ce navigateur enregistrée.")); return; }
         const list = workers.value.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p[0])
           .map((p) => (p.length > 1 ? { name: p[0], url: p[1], enabled: true } : { name: p[0], url: p[0], enabled: true }));
-        await put("settings", { workers: list, qbuilder_settings: qb.value.trim(), render: { orbit_length: +len.value, target: tgt.value, validate_poses: validate.checked },
+        await put("settings", { workers: list, qbuilder_settings: qb.value.trim(), render: { orbit_length: +len.value, target: tgt.value },
                                 fal: { key: key.value.trim(), orbit_resolution: fres.value, concurrency: Math.max(1, Math.min(20, +fcon.value || 3)), orbit: orbit.value.trim(), edit: edit.value.trim(), t2i: t2i.value.trim() },
                                 elevenlabs: { key: ekey.value.trim(), model: emodel.value.trim() || "eleven_multilingual_v2" },
                                 library: { url: lurl.value.trim(), user: luser.value.trim(), password: lpw.value } });
