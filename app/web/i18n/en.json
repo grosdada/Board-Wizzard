@@ -1165,7 +1165,21 @@
   "Vérifier avant les orbites": "Check before the orbits",
   "Orbites des poses": "Poses' orbits",
   "Seul le contrôle automatique trie les poses ; l'orbite de chaque pose retenue part tout de suite.": "Only the automatic check sorts the poses; the orbit of each kept pose starts right away.",
-  "Les poses sont générées et détourées, puis attendent : tu gardes, refais ou jettes chacune ; seules celles que tu gardes partent en orbite.": "The poses are generated and cut out, then wait: you keep, redo or discard each one; only the ones you keep go to orbit."
+  "Les poses sont générées et détourées, puis attendent : tu gardes, refais ou jettes chacune ; seules celles que tu gardes partent en orbite.": "The poses are generated and cut out, then wait: you keep, redo or discard each one; only the ones you keep go to orbit.",
+  "Œil gauche": "Left eye",
+  "Œil droit": "Right eye",
+  "Sourcil gauche": "Left eyebrow",
+  "Sourcil droit": "Right eyebrow",
+  "Moustache, côté gauche": "Moustache, left side",
+  "Moustache, côté droit": "Moustache, right side",
+  "Verre gauche": "Left lens",
+  "Verre droit": "Right lens",
+  "Oreille gauche": "Left ear",
+  "Oreille droite": "Right ear",
+  "Coupe la paire en deux : chaque côté se place, se règle et se retire séparément (un œil plus haut que l'autre…)": "Splits the pair in two: each side is placed, adjusted and removed separately (one eye higher than the other…)",
+  "✂ Séparer": "✂ Split",
+  "Remet la paire entière, à sa place de départ": "Puts the whole pair back, at its starting place",
+  "⧉ Réunir": "⧉ Rejoin"
  },
  "server": {
   "Parle": "Speaks",

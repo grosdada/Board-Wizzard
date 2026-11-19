@@ -21,6 +21,12 @@ const ratioOf = (file, t) => new Promise((ok) => {
   const im = new Image(); im.onload = () => { ratios.set(key, im.naturalHeight / im.naturalWidth); ok(ratios.get(key)); }; im.onerror = () => ok(1); im.src = "/parts/" + key;
 });
 const url = (l) => `/parts/${l.file}?t=${l.t || 0}`;
+// elements dessines en paire (deux yeux sur une image) : separables en deux moities reglables chacune
+const SPLIT = new Set(["yeux", "sourcils", "moustache", "lunettes"]);
+// cadre d'un calque : une moitie (half « l » ou « r » : moitie gauche ou droite de l'image) n'a que la moitie de la largeur
+const boxW = (l) => l.w * l.kx * (l.half ? 0.5 : 1), boxH = (l) => l.w * l.r * l.ky;
+// ou poser l'image entiere pour que la moitie montree soit centree sur le calque (le reste est coupe)
+const imgX = (l) => { const W = l.w * l.kx; return l.half === "l" ? -W / 4 : l.half === "r" ? -3 * W / 4 : -W / 2; };
 // masque au-dessus d'une coupe (ou d'un couvre-chef) : "cap" = hauteur du dessus de la coupe (part de la hauteur de
 // l'image, 0 = haut) a 48 abscisses regulieres. Rend des polygones, dans le repere de l'element, du ciel jusqu'au profil.
 function capPolys(l) {
@@ -70,21 +76,52 @@ export async function openIdentikit(bankUI) {
           `<g transform="${tf(l)}">${polys.map((p) => `<polygon points="${p.map((q) => q[0].toFixed(1) + "," + q[1].toFixed(1)).join(" ")}" fill="#000"/>`).join("")}</g></mask>`;
         acc = `<g mask="url(#${id})">${acc}</g>`;
       }
-      const w = l.w * l.kx, hh = l.w * l.r * l.ky;
-      acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${-w / 2}" y="${-hh / 2}" width="${w}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"/>` +
-        (sel === l.n ? `<rect x="${-w / 2}" y="${-hh / 2}" width="${w}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
+      const W = l.w * l.kx, hh = boxH(l), bw = boxW(l);
+      if (l.half) defs += `<clipPath id="idkh${l.n}"><rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}"/></clipPath>`;
+      acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${imgX(l)}" y="${-hh / 2}" width="${W}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"${l.half ? ` clip-path="url(#idkh${l.n})"` : ""}/>` +
+        (sel === l.n ? `<rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
     }
     svg.innerHTML = `<defs>${defs}</defs><rect width="${S}" height="${S}" fill="#fff"/>` + acc + grips();
     bricks();
   };
+  // nom d'un calque : sa categorie, ou le cote pour une moitie de paire et pour chaque oreille (cote de l'ecran)
+  const HALVES = { yeux: [tt("Œil gauche"), tt("Œil droit")], sourcils: [tt("Sourcil gauche"), tt("Sourcil droit")],
+    moustache: [tt("Moustache, côté gauche"), tt("Moustache, côté droit")], lunettes: [tt("Verre gauche"), tt("Verre droit")], oreilles: [tt("Oreille gauche"), tt("Oreille droite")] };
+  const nameOf = (l) => {
+    const two = HALVES[l.cat];
+    if (two && (l.half || (l.cat === "oreilles" && layers.filter((x) => x.cat === "oreilles").length === 2))) {
+      const left = l.half ? (l.half === "l") !== !!l.flip : l.x < S / 2;
+      return two[left ? 0 : 1];
+    }
+    return (cats.find((c) => c.key === l.cat) || {}).label || l.cat;
+  };
+  // separer une paire : deux calques, chacun montre sa moitie, centre au milieu de SA moitie ; rien ne bouge a l'ecran
+  const split = (l) => {
+    if (!l || l.half || !SPLIT.has(l.cat)) return;
+    const W = l.w * l.kx, s = l.flip ? -1 : 1, a = l.rot * Math.PI / 180;
+    const at = (lx) => ({ x: l.x + Math.cos(a) * s * lx, y: l.y + Math.sin(a) * s * lx });
+    const mk = (half, lx) => Object.assign({}, l, at(lx), { n: uidN++, half, pair: l.n });
+    const L = mk("l", -W / 4), R = mk("r", W / 4);
+    layers = layers.filter((x) => x !== l).concat([L, R]);
+    sel = L.n; userSel = true; paint(); props(); marks(); hist.snap();
+  };
+  // reunir : la paire entiere revient, a sa place de depart
+  const join = (l) => {
+    if (!l || !l.half) return;
+    const both = layers.filter((x) => x.half && x.pair === l.pair && x.cat === l.cat);
+    const f = Object.assign({}, l, { n: uidN++ });
+    delete f.half; delete f.pair; home(f);
+    layers = layers.filter((x) => !both.includes(x)).concat([f]);
+    sel = f.n; userSel = true; paint(); props(); marks(); hist.snap();
+  };
   // briques : une par element pose, pour choisir celui qu'un autre recouvre (des sourcils sous une coupe)
   const bricks = () => {
-    const sig = sorted().map((l) => l.n + ":" + l.file).join(",") + "|" + sel;
+    const sig = sorted().map((l) => l.n + ":" + l.file + ":" + nameOf(l)).join(",") + "|" + sel;
     if (sig === brickSig) return;
     brickSig = sig; bricksBox.textContent = "";
     if (!layers.length) return;
     bricksBox.append(...sorted().map((l) => {
-      const label = (cats.find((c) => c.key === l.cat) || {}).label || l.cat;
+      const label = nameOf(l);
       return h("div.idk-brick" + (l.n === sel ? ".on" : ""), { title: tt`${label} · ${l.name} : cliquer pour le choisir, même s'il est caché sous un autre`,
         on: { click: () => { sel = l.n; pinned = true; userSel = true; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } paint(); props(); } } },
         h("img", { src: url(l), alt: "", draggable: false }), h("span", label),
@@ -96,7 +133,7 @@ export async function openIdentikit(bankUI) {
   const grips = () => {
     const l = layers.find((x) => x.n === sel);
     if (!l) return "";
-    const u = unit(), w = l.w * l.kx / 2, hh = l.w * l.r * l.ky / 2, g = 5 * u, top = -hh - 26 * u;
+    const u = unit(), w = boxW(l) / 2, hh = boxH(l) / 2, g = 5 * u, top = -hh - 26 * u;
     const sq = (k, x, y, cur) => `<rect class="idk-grip" data-h="${k}" x="${x - g}" y="${y - g}" width="${2 * g}" height="${2 * g}" style="cursor:${cur}" stroke-width="${1.5 * u}"/>`;
     return `<g transform="${tf(l)}">` +
       `<line x1="0" y1="${-hh}" x2="0" y2="${top}" stroke="#10b5e0" stroke-width="${1.5 * u}" pointer-events="none"/>` +
@@ -124,16 +161,18 @@ export async function openIdentikit(bankUI) {
     knobs.textContent = "";
     const l = layers.find((x) => x.n === sel);
     if (!l) { knobs.append(h("p.muted", tt("Clique un élément dans la liste pour le poser. Sur le visage : glisser pour le déplacer, molette pour sa taille ; poignées des coins = taille, des côtés = étirer, rond du haut = tourner (Maj : crans de 15°). Flèches : déplacer (Maj : de dix). Suppr : retirer. Clic droit : miroir, empilement. Un seul élément par catégorie (sauf les signes) : en choisir un autre le remplace à la même place."))); return; }
-    const label = (cats.find((c) => c.key === l.cat) || {}).label || l.cat;
-    knobs.append(h("b", `${label} · ${l.name}`),
+    knobs.append(h("b", `${nameOf(l)} · ${l.name}`),
       range(tt("Taille"), "w", 30, 950, 1), range(tt("Largeur"), "kx", 0.2, 4, 0.01, tt("Étire ou resserre l'élément en largeur")), range(tt("Hauteur"), "ky", 0.2, 4, 0.01, tt("Étire ou tasse l'élément en hauteur")),
       range(tt("Rotation"), "rot", -180, 180, 1),
       h("div.row.wrap", h("button.mini", { on: { click: () => { l.flip = !l.flip; paint(); } } }, tt("⇋ Miroir")),
         h("button.mini", { title: tt("Remet la taille et la place de départ"), on: { click: () => { home(l); paint(); props(); } } }, tt("↺ Place de départ")),
+        SPLIT.has(l.cat) && !l.half ? h("button.mini", { title: tt("Coupe la paire en deux : chaque côté se place, se règle et se retire séparément (un œil plus haut que l'autre…)"), on: { click: () => split(l) } }, tt("✂ Séparer")) : null,
+        l.half ? h("button.mini", { title: tt("Remet la paire entière, à sa place de départ"), on: { click: () => join(l) } }, tt("⧉ Réunir")) : null,
         h("button.mini.danger", { title: tt("Ou touche Suppr"), on: { click: removeSel } }, tt("Retirer du visage"))));
   };
   // place de depart d'un calque : celle de son element (p0), sinon celle de la categorie ; le jumeau d'une oreille garde son miroir
-  const home = (l) => { const p = l.p0 || PLACE[l.cat] || [500, 500, 300]; Object.assign(l, { x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: !!l.twin }); };
+  const halfOff = (l, p) => (l.half ? (l.half === "l" ? -1 : 1) * p[2] / 4 : 0);      // une moitie se place a un quart de la largeur
+  const home = (l) => { const p = l.p0 || PLACE[l.cat] || [500, 500, 300]; Object.assign(l, { x: p[0] + halfOff(l, p), y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: !!l.twin }); };
   const put = async (cat, it, quiet) => {
     const r = await ratioOf(it.file, it.t);
     const spot = (twin) => { const p = it.place || PLACE[cat] || [500, 500, 300]; return twin ? [S - p[0], p[1], p[2]] : [p[0], p[1], p[2]]; };
@@ -141,8 +180,9 @@ export async function openIdentikit(bankUI) {
       x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: twin, twin, p0: p }; };
     const swapIn = (l) => {                         // meme categorie : le nouvel element prend la place de l'ancien
       const p = spot(!!(l.twin && it.pair)), old = l.p0 || PLACE[cat] || [l.x, l.y, l.w];
-      if (l.x === old[0] && l.y === old[1] && l.w === old[2] && l.kx === 1 && l.ky === 1) Object.assign(l, { x: p[0], y: p[1], w: p[2] });
-      else Object.assign(l, { x: l.x + p[0] - old[0], y: l.y + p[1] - old[1], w: Math.round(l.w * p[2] / old[2]) });   // regle a la main : decalage et echelle gardes
+      const ox = old[0] + halfOff(l, old), nx = p[0] + halfOff(l, p);             // une moitie : par rapport a la place de sa moitie
+      if (l.x === ox && l.y === old[1] && l.w === old[2] && l.kx === 1 && l.ky === 1) Object.assign(l, { x: nx, y: p[1], w: p[2] });
+      else Object.assign(l, { x: l.x + nx - ox, y: l.y + p[1] - old[1], w: Math.round(l.w * p[2] / old[2]) });   // regle a la main : decalage et echelle gardes
       if (!it.pair && l.twin) l.flip = false;
       Object.assign(l, { id: it.id, name: it.name, file: it.file, t: it.t || 0, cap: it.cap || null, r, p0: p, twin: !!(l.twin && it.pair) });
     };
@@ -152,6 +192,9 @@ export async function openIdentikit(bankUI) {
       if (!ears.length) { l = fresh(false); layers.push(l, fresh(true)); }
       else if (mine && ears.length > 1) { swapIn(mine); l = mine; }   // une oreille choisie a la main : on ne remplace qu'elle
       else { ears.forEach(swapIn); if (ears.length === 1) layers.push(fresh(!ears[0].twin)); l = ears[0]; }
+    } else if (layers.some((x) => x.cat === cat && x.half)) {   // paire separee : les deux moities changent, chacune garde son reglage
+      const halves = layers.filter((x) => x.cat === cat && x.half);
+      halves.forEach(swapIn); l = halves.find((x) => x.n === sel) || halves[0];
     } else {
       l = MANY.has(cat) ? null : layers.find((x) => x.cat === cat);
       if (cat === "oreilles" && l) layers = layers.filter((x) => x.cat !== cat || x === l);   // une oreille dessinee seule remplace la paire
@@ -205,7 +248,7 @@ export async function openIdentikit(bankUI) {
     }
     if (pinned && cl) {                             // choisi par sa brique : on le prend s'il est sous la souris, meme recouvert
       const q = local(cl, pt(e));
-      if (Math.abs(q.x) <= cl.w * cl.kx / 2 && Math.abs(q.y) <= cl.w * cl.r * cl.ky / 2) {
+      if (Math.abs(q.x) <= boxW(cl) / 2 && Math.abs(q.y) <= boxH(cl) / 2) {
         svg.setPointerCapture(e.pointerId); const p = pt(e); drag = { l: cl, dx: cl.x - p.x, dy: cl.y - p.y };
         e.preventDefault(); return;
       }
@@ -244,6 +287,8 @@ export async function openIdentikit(bankUI) {
     const swap = (o) => { [l.n, o.n] = [o.n, l.n]; sel = l.n; paint(); props(); };
     const items = [[tt("⇋ Miroir"), () => { l.flip = !l.flip; paint(); }],
       [tt("↺ Place de départ"), () => { home(l); paint(); props(); }],
+      SPLIT.has(l.cat) && !l.half ? [tt("✂ Séparer"), () => split(l)] : null,
+      l.half ? [tt("⧉ Réunir"), () => join(l)] : null,
       i < same.length - 1 ? [tt("▲ Monter d'un cran"), () => swap(same[i + 1])] : null,
       i > 0 ? [tt("▼ Descendre d'un cran"), () => swap(same[i - 1])] : null,
       [tt("✕ Retirer du visage"), removeSel, true]].filter(Boolean);
@@ -302,8 +347,10 @@ export async function openIdentikit(bankUI) {
       }
       const im = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = url(l); });
       if (!im) continue;
-      const w = l.w * l.kx * k, hh = l.w * l.r * l.ky * k;
-      x.save(); x.translate(l.x * k, l.y * k); x.rotate(l.rot * Math.PI / 180); x.scale(l.flip ? -1 : 1, 1); x.drawImage(im, -w / 2, -hh / 2, w, hh); x.restore();
+      const W = l.w * l.kx * k, hh = boxH(l) * k, bw = boxW(l) * k;
+      x.save(); x.translate(l.x * k, l.y * k); x.rotate(l.rot * Math.PI / 180); x.scale(l.flip ? -1 : 1, 1);
+      if (l.half) { x.beginPath(); x.rect(-bw / 2, -hh / 2, bw, hh); x.clip(); }      // une moitie : seulement sa moitie de l'image
+      x.drawImage(im, imgX(l) * k, -hh / 2, W, hh); x.restore();
     }
     const out = c.getContext("2d"); out.fillStyle = "#fff"; out.fillRect(0, 0, N, N); out.drawImage(a, 0, 0);
     return new Promise((ok) => c.toBlob(ok, "image/png"));
