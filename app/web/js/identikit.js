@@ -7,17 +7,45 @@ import { h, get, del, upload, toast, modal, history } from "./api.js";
 import { openDrawEditor, drawImage } from "./draw.js";
 
 const S = 1000;                                  // cote de la feuille, en unites
-// place et taille de depart de chaque categorie (centre x, y ; largeur), et ordre d'empilement (du fond vers le dessus)
+// place et taille de depart d'une categorie (centre x, y ; largeur), quand l'element n'a pas la sienne ("place" de /api/parts)
 const PLACE = { oreilles: [500, 500, 700], visage: [500, 540, 560], barbe: [500, 740, 400], bouche: [500, 670, 210], moustache: [500, 625, 230],
                 nez: [500, 545, 130], yeux: [500, 445, 300], sourcils: [500, 385, 320], signes: [640, 560, 90], lunettes: [500, 445, 350],
                 cheveux: [500, 330, 620], "couvre-chef": [500, 220, 560] };
-const ORDER = Object.keys(PLACE);
+// ordre d'empilement, du dessous vers le dessus : les oreilles restent sous la forme du visage
+const ORDER = ["oreilles", "visage", "barbe", "bouche", "moustache", "nez", "yeux", "sourcils", "signes", "lunettes", "cheveux", "couvre-chef"];
 const MANY = new Set(["signes"]);                // categories ou l'on peut poser plusieurs elements
 const ratios = new Map();                        // fichier -> hauteur / largeur
-const ratioOf = (file) => new Promise((ok) => {
-  if (ratios.has(file)) return ok(ratios.get(file));
-  const im = new Image(); im.onload = () => { ratios.set(file, im.naturalHeight / im.naturalWidth); ok(ratios.get(file)); }; im.onerror = () => ok(1); im.src = "/parts/" + file;
+const ratioOf = (file, t) => new Promise((ok) => {
+  const key = file + "?t=" + (t || 0);                 // un element refait garde son nom : la version fait la difference
+  if (ratios.has(key)) return ok(ratios.get(key));
+  const im = new Image(); im.onload = () => { ratios.set(key, im.naturalHeight / im.naturalWidth); ok(ratios.get(key)); }; im.onerror = () => ok(1); im.src = "/parts/" + key;
 });
+const url = (l) => `/parts/${l.file}?t=${l.t || 0}`;
+// masque au-dessus d'une coupe (ou d'un couvre-chef) : "cap" = hauteur du dessus de la coupe (part de la hauteur de
+// l'image, 0 = haut) a 48 abscisses regulieres. Rend des polygones, dans le repere de l'element, du ciel jusqu'au profil.
+function capPolys(l) {
+  const cap = l.cap;
+  if (!Array.isArray(cap) || !cap.length) return [];
+  const n = cap.length, v = cap.slice(), w = l.w * l.kx, hh = l.w * l.r * l.ky, TOP = -4 * S;
+  for (let i = 0; i < n; i++) if (v[i] == null) {           // trou entre deux colonnes connues : on interpole ; un bord sans voisin reste libre
+    let a = i - 1, b = i + 1;
+    while (a >= 0 && cap[a] == null) a--;
+    while (b < n && cap[b] == null) b++;
+    if (a >= 0 && b < n) v[i] = cap[a] + (cap[b] - cap[a]) * (i - a) / (b - a);
+  }
+  const X = (i) => -w / 2 + i / n * w, Y = (y) => -hh / 2 + y * hh, out = [];
+  for (let i = 0; i < n; i++) {
+    if (v[i] == null) continue;
+    let j = i;
+    while (j + 1 < n && v[j + 1] != null) j++;
+    const pts = [[X(i), TOP], [X(i), Y(v[i])]];
+    for (let k = i; k <= j; k++) pts.push([X(k + 0.5), Y(v[k])]);
+    pts.push([X(j + 1), Y(v[j])], [X(j + 1), TOP]);
+    out.push(pts);
+    i = j;
+  }
+  return out;
+}
 
 export async function openIdentikit(bankUI) {
   let cats;
@@ -28,15 +56,25 @@ export async function openIdentikit(bankUI) {
   svg.setAttribute("viewBox", `0 0 ${S} ${S}`); svg.setAttribute("class", "idk-stage");
   const name = h("input", { type: "text", placeholder: tt("Nom du personnage") });
   const tabs = h("div.idk-tabs"), grid = h("div.idk-grid"), knobs = h("div.idk-knobs"), bricksBox = h("div.idk-bricks");
-  let pinned = false, brickSig = "";                // pinned : choisi par sa brique, il se deplace meme s'il est recouvert
+  let pinned = false, brickSig = "", userSel = false;   // userSel : choisi a la main (clic, brique), pas seulement pose                // pinned : choisi par sa brique, il se deplace meme s'il est recouvert
   const sorted = () => layers.slice().sort((a, b) => ORDER.indexOf(a.cat) - ORDER.indexOf(b.cat) || a.n - b.n);
   const tf = (l) => `translate(${l.x} ${l.y}) rotate(${l.rot}) scale(${l.flip ? -1 : 1} 1)`;
   const paint = () => {
-    svg.innerHTML = `<rect width="${S}" height="${S}" fill="#fff"/>` + sorted().map((l) => {
+    // chaque coupe (ou couvre-chef) masque, au-dessus de son profil, tout ce qui est pose dessous : le crane ne depasse pas
+    let acc = "", defs = "";
+    for (const l of sorted()) {
+      const polys = capPolys(l);
+      if (polys.length && acc) {
+        const id = "idkcap" + l.n, B = 4 * S;
+        defs += `<mask id="${id}" maskUnits="userSpaceOnUse" x="${-B}" y="${-B}" width="${3 * B}" height="${3 * B}"><rect x="${-B}" y="${-B}" width="${3 * B}" height="${3 * B}" fill="#fff"/>` +
+          `<g transform="${tf(l)}">${polys.map((p) => `<polygon points="${p.map((q) => q[0].toFixed(1) + "," + q[1].toFixed(1)).join(" ")}" fill="#000"/>`).join("")}</g></mask>`;
+        acc = `<g mask="url(#${id})">${acc}</g>`;
+      }
       const w = l.w * l.kx, hh = l.w * l.r * l.ky;
-      return `<g transform="${tf(l)}" data-n="${l.n}"><image href="/parts/${l.file}" x="${-w / 2}" y="${-hh / 2}" width="${w}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"/>` +
+      acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${-w / 2}" y="${-hh / 2}" width="${w}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"/>` +
         (sel === l.n ? `<rect x="${-w / 2}" y="${-hh / 2}" width="${w}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
-    }).join("") + grips();
+    }
+    svg.innerHTML = `<defs>${defs}</defs><rect width="${S}" height="${S}" fill="#fff"/>` + acc + grips();
     bricks();
   };
   // briques : une par element pose, pour choisir celui qu'un autre recouvre (des sourcils sous une coupe)
@@ -48,8 +86,8 @@ export async function openIdentikit(bankUI) {
     bricksBox.append(...sorted().map((l) => {
       const label = (cats.find((c) => c.key === l.cat) || {}).label || l.cat;
       return h("div.idk-brick" + (l.n === sel ? ".on" : ""), { title: tt`${label} · ${l.name} : cliquer pour le choisir, même s'il est caché sous un autre`,
-        on: { click: () => { sel = l.n; pinned = true; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } paint(); props(); } } },
-        h("img", { src: "/parts/" + l.file, alt: "", draggable: false }), h("span", label),
+        on: { click: () => { sel = l.n; pinned = true; userSel = true; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } paint(); props(); } } },
+        h("img", { src: url(l), alt: "", draggable: false }), h("span", label),
         h("i", { title: tt("Retirer du visage"), on: { click: (e) => { e.stopPropagation(); sel = l.n; removeSel(); } } }, "✕"));
     }));
   };
@@ -91,15 +129,35 @@ export async function openIdentikit(bankUI) {
       range(tt("Taille"), "w", 30, 950, 1), range(tt("Largeur"), "kx", 0.2, 4, 0.01, tt("Étire ou resserre l'élément en largeur")), range(tt("Hauteur"), "ky", 0.2, 4, 0.01, tt("Étire ou tasse l'élément en hauteur")),
       range(tt("Rotation"), "rot", -180, 180, 1),
       h("div.row.wrap", h("button.mini", { on: { click: () => { l.flip = !l.flip; paint(); } } }, tt("⇋ Miroir")),
-        h("button.mini", { title: tt("Remet la taille et la place de départ"), on: { click: () => { const p = PLACE[l.cat]; Object.assign(l, { x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: false }); paint(); props(); } } }, tt("↺ Place de départ")),
+        h("button.mini", { title: tt("Remet la taille et la place de départ"), on: { click: () => { home(l); paint(); props(); } } }, tt("↺ Place de départ")),
         h("button.mini.danger", { title: tt("Ou touche Suppr"), on: { click: removeSel } }, tt("Retirer du visage"))));
   };
+  // place de depart d'un calque : celle de son element (p0), sinon celle de la categorie ; le jumeau d'une oreille garde son miroir
+  const home = (l) => { const p = l.p0 || PLACE[l.cat] || [500, 500, 300]; Object.assign(l, { x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: !!l.twin }); };
   const put = async (cat, it, quiet) => {
-    const r = await ratioOf(it.file), p = PLACE[cat] || [500, 500, 300];
-    let l = MANY.has(cat) ? null : layers.find((x) => x.cat === cat);
-    if (l) Object.assign(l, { id: it.id, name: it.name, file: it.file, r });       // meme place, meme taille : on compare les nez d'un clic
-    else { l = { n: uidN++, cat, id: it.id, name: it.name, file: it.file, r, x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: false }; layers.push(l); }
-    sel = l.n; paint(); props(); marks();
+    const r = await ratioOf(it.file, it.t);
+    const spot = (twin) => { const p = it.place || PLACE[cat] || [500, 500, 300]; return twin ? [S - p[0], p[1], p[2]] : [p[0], p[1], p[2]]; };
+    const fresh = (twin) => { const p = spot(twin); return { n: uidN++, cat, id: it.id, name: it.name, file: it.file, t: it.t || 0, cap: it.cap || null, r,
+      x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: twin, twin, p0: p }; };
+    const swapIn = (l) => {                         // meme categorie : le nouvel element prend la place de l'ancien
+      const p = spot(!!(l.twin && it.pair)), old = l.p0 || PLACE[cat] || [l.x, l.y, l.w];
+      if (l.x === old[0] && l.y === old[1] && l.w === old[2] && l.kx === 1 && l.ky === 1) Object.assign(l, { x: p[0], y: p[1], w: p[2] });
+      else Object.assign(l, { x: l.x + p[0] - old[0], y: l.y + p[1] - old[1], w: Math.round(l.w * p[2] / old[2]) });   // regle a la main : decalage et echelle gardes
+      if (!it.pair && l.twin) l.flip = false;
+      Object.assign(l, { id: it.id, name: it.name, file: it.file, t: it.t || 0, cap: it.cap || null, r, p0: p, twin: !!(l.twin && it.pair) });
+    };
+    let l;
+    if (it.pair) {                                  // oreilles : l'image est celle de droite ; deux calques, le jumeau en miroir
+      const ears = layers.filter((x) => x.cat === cat), mine = userSel && ears.find((x) => x.n === sel);
+      if (!ears.length) { l = fresh(false); layers.push(l, fresh(true)); }
+      else if (mine && ears.length > 1) { swapIn(mine); l = mine; }   // une oreille choisie a la main : on ne remplace qu'elle
+      else { ears.forEach(swapIn); if (ears.length === 1) layers.push(fresh(!ears[0].twin)); l = ears[0]; }
+    } else {
+      l = MANY.has(cat) ? null : layers.find((x) => x.cat === cat);
+      if (cat === "oreilles" && l) layers = layers.filter((x) => x.cat !== cat || x === l);   // une oreille dessinee seule remplace la paire
+      if (l) swapIn(l); else { l = fresh(false); layers.push(l); }
+    }
+    sel = l.n; userSel = false; paint(); props(); marks();
     if (!quiet) hist.snap();
   };
   const marks = () => grid.querySelectorAll("[data-id]").forEach((b) => b.classList.toggle("on", layers.some((l) => l.cat === cur.key && l.id === b.dataset.id)));
@@ -154,7 +212,7 @@ export async function openIdentikit(bankUI) {
     }
     pinned = false;
     const n = +(e.target.dataset && e.target.dataset.n), l = layers.find((x) => x.n === n);
-    sel = l ? l.n : null;
+    sel = l ? l.n : null; userSel = !!l;
     if (l) { svg.setPointerCapture(e.pointerId); const p = pt(e); drag = { l, dx: l.x - p.x, dy: l.y - p.y }; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } }
     paint(); props(); e.preventDefault();
   });
@@ -185,7 +243,7 @@ export async function openIdentikit(bankUI) {
     const same = sorted().filter((x) => x.cat === l.cat), i = same.indexOf(l);
     const swap = (o) => { [l.n, o.n] = [o.n, l.n]; sel = l.n; paint(); props(); };
     const items = [[tt("⇋ Miroir"), () => { l.flip = !l.flip; paint(); }],
-      [tt("↺ Place de départ"), () => { const p = PLACE[l.cat]; Object.assign(l, { x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: false }); paint(); props(); }],
+      [tt("↺ Place de départ"), () => { home(l); paint(); props(); }],
       i < same.length - 1 ? [tt("▲ Monter d'un cran"), () => swap(same[i + 1])] : null,
       i > 0 ? [tt("▼ Descendre d'un cran"), () => swap(same[i - 1])] : null,
       [tt("✕ Retirer du visage"), removeSel, true]].filter(Boolean);
@@ -232,13 +290,22 @@ export async function openIdentikit(bankUI) {
   };
   const render = async () => {                     // l'image du visage monte : fond blanc, elements dans l'ordre
     const N = 1024, k = N / S, c = document.createElement("canvas"); c.width = c.height = N;
-    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, N, N);
+    const a = document.createElement("canvas"); a.width = a.height = N;            // les calques, sur fond transparent
+    const x = a.getContext("2d");
     for (const l of sorted()) {
-      const im = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = "/parts/" + l.file; });
+      const polys = capPolys(l);
+      if (polys.length) {                           // comme a l'ecran : la coupe rabote ce qui depasse au-dessus d'elle
+        x.save(); x.globalCompositeOperation = "destination-out";
+        x.translate(l.x * k, l.y * k); x.rotate(l.rot * Math.PI / 180); x.scale((l.flip ? -1 : 1) * k, k);
+        for (const p of polys) { x.beginPath(); p.forEach((q, i) => (i ? x.lineTo(q[0], q[1]) : x.moveTo(q[0], q[1]))); x.closePath(); x.fill(); }
+        x.restore();
+      }
+      const im = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = url(l); });
       if (!im) continue;
       const w = l.w * l.kx * k, hh = l.w * l.r * l.ky * k;
       x.save(); x.translate(l.x * k, l.y * k); x.rotate(l.rot * Math.PI / 180); x.scale(l.flip ? -1 : 1, 1); x.drawImage(im, -w / 2, -hh / 2, w, hh); x.restore();
     }
+    const out = c.getContext("2d"); out.fillStyle = "#fff"; out.fillRect(0, 0, N, N); out.drawImage(a, 0, 0);
     return new Promise((ok) => c.toBlob(ok, "image/png"));
   };
   const m = modal(tt("Portrait-robot"), h("div.idk",
