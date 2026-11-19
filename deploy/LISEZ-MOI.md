@@ -36,6 +36,13 @@ tar czf /home/claude/backups/bw-david-$(date +%F).tgz --exclude=state/tmp --excl
 find /home/claude/backups -name 'bw-*.tgz' -mtime +7 -delete
 ```
 
+## Machines ComfyUI du réseau local
+
+Le VPS est dans le réseau Tailscale de David (`vps-placenta`) : les machines se déclarent dans `state/local_settings.json`
+de l'instance avec leur adresse Tailscale (`"workers": [{"name": "FORD", "url": "http://100.x.x.x:8188"}]`,
+`"render": {"target": "auto"}`). La liste est relue à chaud, sans redémarrage. ComfyUI doit écouter sur le réseau
+(`--listen 0.0.0.0`). Le VPS porte l'étiquette `tag:vps`, que la politique Tailscale limite au port 8188 des machines.
+
 ## À savoir
 
 - Aucune clé sur le serveur : chaque utilisateur entre sa clé fal dans les réglages de son navigateur.
