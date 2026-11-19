@@ -552,14 +552,15 @@ class Scheduler:
             if j["status"] != "queued" or worker["name"] in j.get("_avoid", ()):
                 continue
             cap = CAPS[j["kind"]]
+            own = bool(j.get("own_key"))                       # invite non VIP : jamais les machines du poste, fal avec sa cle
             if mode == "local":
-                if j["target"] == "fal" or not self.worker_caps(worker["url"], 120).get(cap):
+                if own or j["target"] == "fal" or not self.worker_caps(worker["url"], 120).get(cap):
                     continue
             else:
                 key = fal_key_for(j)
-                if not key or j["target"] == "local":
+                if not key or (j["target"] == "local" and not own):
                     continue
-                if j["target"] == "auto" and self._local_can(cap):
+                if j["target"] == "auto" and not own and self._local_can(cap):
                     continue
             j.update({"status": "running", "worker": worker["name"], "started": time.time(), "progress": ""})
             j["attempts"] += 1
