@@ -1142,7 +1142,28 @@
   "pas de clé fal": "no fal key",
   "Compte invité : tes calculs partent sur fal avec ta propre clé.": "Guest account: your jobs go to fal with your own key.",
   "Compte invité : entre ta clé fal dans Réglages › fal › « Ma clé (ce navigateur) » pour lancer des calculs.": "Guest account: enter your fal key in Settings › fal › « My key (this browser) » to run jobs.",
-  "Compte invité : les machines du poste ne te sont pas ouvertes. Tes calculs (images, poses, orbites, Integrate) partent sur fal avec ta propre clé, celle de « Ma clé (ce navigateur) » dans la rubrique fal ci-dessous.": "Guest account: this computer's machines are not open to you. Your jobs (images, poses, orbits, Integrate) go to fal with your own key, the one in « My key (this browser) » in the fal section below."
+  "Compte invité : les machines du poste ne te sont pas ouvertes. Tes calculs (images, poses, orbites, Integrate) partent sur fal avec ta propre clé, celle de « Ma clé (ce navigateur) » dans la rubrique fal ci-dessous.": "Guest account: this computer's machines are not open to you. Your jobs (images, poses, orbits, Integrate) go to fal with your own key, the one in « My key (this browser) » in the fal section below.",
+  "{0} orbite(s) en file.": "{0} orbit(s) queued.",
+  "Jeter la pose « {0} » ?": "Discard the pose « {0} »?",
+  "Voir cette pose en grand": "Show this pose large",
+  "Ressemblance du visage avec le dessin d'origine (1 = identique ; sous 0,85 la pose est écartée)": "How close the face is to the original drawing (1 = identical; below 0.85 the pose is discarded)",
+  "fidélité {0}": "fidelity {0}",
+  "⏳ en calcul": "⏳ computing",
+  "La nouvelle génération n'a pas abouti.": "The new generation did not succeed.",
+  "Garder cette pose : son orbite part en file": "Keep this pose: its orbit is queued",
+  "Repêcher": "Rescue",
+  "Garder": "Keep",
+  "Refaire cette pose (nouvelle génération, autre graine)": "Redo this pose (new generation, another seed)",
+  "Refaire": "Redo",
+  "Supprimer cette pose": "Delete this pose",
+  "Jeter": "Discard",
+  "Poses à valider": "Poses to approve",
+  "Les poses sont générées et détourées ; leur orbite ne part que quand tu cliques « Garder ».": "The poses are generated and cut out; their orbit only starts when you click « Keep ».",
+  "✓ Tout garder ({0})": "✓ Keep all ({0})",
+  "Écartées par le contrôle automatique": "Discarded by the automatic check",
+  "Leur visage ressemblait moins au dessin d'origine (fidélité sous 0,85). Repêche celles qui te vont, ou refais-les.": "Their face looked less like the original drawing (fidelity below 0.85). Rescue the ones you like, or redo them.",
+  "Les poses sont générées et détourées, puis attendent « Garder » dans la fiche du personnage avant que leur orbite parte.": "The poses are generated and cut out, then wait for « Keep » in the character's sheet before their orbit starts.",
+  "Attendre ma validation avant les orbites des poses": "Wait for my approval before the poses' orbits"
  },
  "server": {
   "Parle": "Speaks",
@@ -1306,7 +1327,8 @@
   "aucune clé fal : entre ta clé dans Réglages › fal (cloud) › « Ma clé (ce navigateur) »": "no fal key: enter your key in Settings › fal (cloud) › « My key (this browser) »",
   "fal n'a pas rendu la vidéo du masque": "fal did not return the mask video",
   "fal refuse la clé (%d) : %s": "fal refuses the key (%d): %s",
-  "aucune clé ElevenLabs : entre ta clé dans Réglages › ElevenLabs (voix) › « Ma clé (ce navigateur) »": "no ElevenLabs key: enter your key in Settings › ElevenLabs (voices) › « My key (this browser) »"
+  "aucune clé ElevenLabs : entre ta clé dans Réglages › ElevenLabs (voix) › « Ma clé (ce navigateur) »": "no ElevenLabs key: enter your key in Settings › ElevenLabs (voices) › « My key (this browser) »",
+  "action inconnue : %s": "unknown action: %s"
  },
  "parts": {
   "Anguleux": "Angular",

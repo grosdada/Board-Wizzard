@@ -247,6 +247,9 @@ def run_item_pose(job, prov):
     it = store.load_item(p["item"])
     d = store.item_dir(it["id"])
     label, prompt = poses.pose_prompt(it["kind"], p.get("pose", ""), it.get("style", "photo"), p.get("custom", ""))
+    # validation : la pose est generee et detouree, puis attend « Garder » dans la fiche avant son orbite
+    validate = bool(p.get("orbit", True)) and bool(settings.load()["render"].get("validate_poses", True))
+    score, rejected = None, False
     tmp = _tmp()
     try:
         base = d / it["variants"]["base"]["ref"]
@@ -273,8 +276,11 @@ def run_item_pose(job, prov):
                 if score >= 0.9:
                     break
             _log_pose(it["id"], p.get("pose") or label, best[0])
+            score = round(float(best[0]), 3)
             if best[0] < DRAW_MIN:
-                raise RuntimeError("pose écartée : le visage du dessin n'était pas respecté (fidélité %.2f)" % best[0])
+                if not validate:
+                    raise RuntimeError("pose écartée : le visage du dessin n'était pas respecté (fidélité %.2f)" % best[0])
+                rejected = True                                  # gardee quand meme, montree comme ecartee : a repecher ou refaire
             png = best[1]
         else:
             png = prov.edit([base], prompt, _seed(job), tmp)
@@ -284,8 +290,16 @@ def run_item_pose(job, prov):
             same = [k for k, v in x["variants"].items() if p.get("pose") and v.get("pose") == p["pose"]]
             vid = p.get("variant") or (same[0] if same else store.variant_id(x, p.get("pose") or label))
             box["vid"] = vid
-            x["variants"].setdefault(vid, {"label": label, "pose": p.get("pose", ""), "ref": "v/%s/ref.png" % vid,
-                                           "cut": None, "orbit": None})
+            v = x["variants"].setdefault(vid, {"label": label, "pose": p.get("pose", ""), "ref": "v/%s/ref.png" % vid,
+                                               "cut": None, "orbit": None})
+            if p.get("custom"):
+                v["custom"] = p["custom"]
+            if p.get("variant"):                                 # pose refaite : l'ancien detourage et l'ancienne orbite ne valent plus
+                v["cut"], v["orbit"] = None, None
+            if validate:
+                v["review"] = {"state": "rejected" if rejected else "pending", "score": score, "at": int(time.time())}
+            else:
+                v.pop("review", None)
         store.mutate_item(it["id"], apply)
         vid = box["vid"]
         sprites.normalize(png, d / ("v/%s/ref.png" % vid))
@@ -295,7 +309,7 @@ def run_item_pose(job, prov):
               "own_key": bool(job.get("own_key"))}
     if it["kind"] != "decor":
         SCHEDULER.add("item_cut", {"item": it["id"], "variant": vid}, "Détourage · %s · %s" % (it["name"], label), **follow)
-    if p.get("orbit", True):
+    if p.get("orbit", True) and not validate:
         SCHEDULER.add("item_orbit", {"item": it["id"], "variant": vid}, "Orbite · %s · %s" % (it["name"], label), **follow)
 
 

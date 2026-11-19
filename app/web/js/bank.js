@@ -326,6 +326,7 @@ export class Bank {
     const snapBar = h("div.snapbar");
     const variants = h("div.variants");
     const poseBox = h("div.posebox");
+    const reviewBox = h("div.reviewbox");          // poses a valider avant leur orbite
     const head = h("div.item-head");
     // loupe : la molette agrandit autour du pointeur (jusqu'a 10 fois) ; bouton du milieu, ou la main, pour se deplacer
     const zwrap = h("div.zoomwrap"); zwrap.append(img); stage.append(zwrap);
@@ -589,6 +590,42 @@ export class Bank {
             h("button.mini", { title: tt("Recalcule les vues de dos et de profil ; relance ensuite l'orbite pour qu'elle s'en serve"), on: { click: async () => { await post(`bank/${id}/sheet`, { redo: true, target: target() }); toast(tt("Planche de vues relancée.")); app.pollSoon(); } } }, Object.keys(sh).length ? tt("↻ Refaire la planche") : tt("Faire la planche"))),
           h("div.sheet-views", Object.entries(sh).map(([k, rel]) => h("figure", h("img", { src: `/bank/${id}/${rel}?t=${item.sheet_t || 0}`, loading: "lazy" }), h("figcaption", names[k] || k))))));
       }
+      // poses a valider : generees et detourees, leur orbite attend « Garder » (reglage « attendre ma validation »)
+      reviewBox.textContent = "";
+      const rev = Object.entries(item.variants).filter(([k, vv]) => k !== "base" && vv.review);
+      if (rev.length) {
+        const busyOf = (k) => app.jobs.filter((j) => (j.status === "queued" || j.status === "running") && j.params.item === id && j.params.variant === k).length;
+        const act = async (k, action) => {
+          try { const r = await post(`bank/${id}/review`, { variant: k, action, target: target() });
+            if (action !== "redo") toast(tt`${r.jobs.length} orbite(s) en file.`); await this.reload(); app.pollSoon(); }
+          catch (err) { toast(err.message, "error"); }
+        };
+        const drop = async (k, vv) => {
+          if (!confirm(tt`Jeter la pose « ${tr(vv.label)} » ?`)) return;
+          try { await del(`bank/${id}/variant/${k}`); if (vid === k) vid = "base"; await this.reload(); } catch (err) { toast(err.message, "error"); }
+        };
+        const card = ([k, vv]) => {
+          const st = vv.review.state, sc = vv.review.score, busy = busyOf(k);
+          return h("div.rev" + (st === "rejected" ? ".bad" : "") + (k === vid ? ".on" : ""),
+            h("img", { src: this.thumb(item, k), loading: "lazy", draggable: false, title: tt("Voir cette pose en grand"), on: { click: () => { vid = k; frame = 0; build(true); } } }),
+            h("div.var-name", tr(vv.label)),
+            sc != null ? h("div.rev-score", { title: tt("Ressemblance du visage avec le dessin d'origine (1 = identique ; sous 0,85 la pose est écartée)") }, tt`fidélité ${sc.toFixed(2)}`) : null,
+            busy ? h("div.muted", tt("⏳ en calcul")) : h("div.rev-acts",
+              st === "redo" ? h("div.rev-note", tt("La nouvelle génération n'a pas abouti.")) : null,
+              h("button.mini.primary", { title: tt("Garder cette pose : son orbite part en file"), on: { click: () => act(k, "keep") } }, st === "rejected" ? tt("Repêcher") : tt("Garder")),
+              h("button.mini", { title: tt("Refaire cette pose (nouvelle génération, autre graine)"), on: { click: () => act(k, "redo") } }, tt("Refaire")),
+              h("button.mini.danger", { title: tt("Supprimer cette pose"), on: { click: () => drop(k, vv) } }, tt("Jeter"))));
+        };
+        const ok = rev.filter(([, vv]) => vv.review.state !== "rejected"), bad = rev.filter(([, vv]) => vv.review.state === "rejected");
+        const waiting = ok.filter(([k, vv]) => vv.review.state === "pending" && !busyOf(k));
+        reviewBox.append(...[h("h4", tt("Poses à valider")),
+          h("p.muted", tt("Les poses sont générées et détourées ; leur orbite ne part que quand tu cliques « Garder ».")),
+          waiting.length > 1 ? h("button.mini.primary", { on: { click: () => act(null, "keep_all") } }, tt`✓ Tout garder (${waiting.length})`) : null,
+          ok.length ? h("div.revgrid", ok.map(card)) : null,
+          bad.length ? h("h4", tt("Écartées par le contrôle automatique")) : null,
+          bad.length ? h("p.muted", tt("Leur visage ressemblait moins au dessin d'origine (fidélité sous 0,85). Repêche celles qui te vont, ou refais-les.")) : null,
+          bad.length ? h("div.revgrid", bad.map(card)) : null].filter(Boolean));
+      }
       // catalogue de poses
       const cat = app.info.poses[item.kind] || [];
       if (light) {                       // seulement les poses devenues disponibles
@@ -624,7 +661,7 @@ export class Bank {
     setBg(localStorage.getItem("bw.ficheFond") || "");
     const fixBar = h("div.fixbar");
     const left = h("div.item-left", stage, h("div.scrub", playBtn, slider, axisLabel, loadLabel), zoomBar, bgBar, fixBar, snapBar);
-    const body = h("div.item", left, h("div.item-right", head, h("h4", tt("Variantes")), variants, poseBox));
+    const body = h("div.item", left, h("div.item-right", head, reviewBox, h("h4", tt("Variantes")), variants, poseBox));
     const m = modal(tt("Fiche"), body, [{ label: tt("Fermer"), click: () => { this.openId = null; } }]);
     m.box.classList.add("wide");
     this.refreshItem = () => { if (document.body.contains(body)) build(true); else { this.openId = null; } };

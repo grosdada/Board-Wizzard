@@ -604,6 +604,8 @@ class Handler(BaseHTTPRequestHandler):
             def apply(x):
                 x["variants"][vid]["orbit"]["snaps"] = {k: int(v) for k, v in (d.get("snaps") or {}).items()}
             return self.send_json(store.mutate_item(iid, apply))
+        if act == "review" and method == "POST":                    # poses a valider : garder (orbite), refaire, tout garder
+            return self.send_json(self._review(iid, it, d, opts))
         if act == "variant" and method == "DELETE" and len(seg) == 3 and seg[2] != "base":
             def drop(x):
                 x["variants"].pop(seg[2], None)
@@ -611,6 +613,31 @@ class Handler(BaseHTTPRequestHandler):
                     x.pop("cover", None)
             return self.send_json(store.mutate_item(iid, drop))
         raise ApiError("route inconnue", 404)
+
+    def _review(self, iid, it, d, opts):
+        """Validation des poses avant leur orbite. action : keep (la pose part en orbite), keep_all (toutes celles qui
+        attendent, pas les ecartees), redo (nouvelle generation de la pose, autre graine)."""
+        import random
+        S = jobs.SCHEDULER
+        act, made = d.get("action"), []
+        vids = [k for k, v in it["variants"].items() if (v.get("review") or {}).get("state") == "pending"] if act == "keep_all" else [d.get("variant")]
+        for vid in vids:
+            v = it["variants"].get(vid)
+            if not v or vid == "base":
+                raise ApiError("variante inconnue : %s" % vid)
+            if act in ("keep", "keep_all"):
+                store.mutate_item(iid, lambda x, vid=vid: x["variants"][vid].pop("review", None))
+                if not v.get("orbit") and not S.pending("item_orbit", item=iid, variant=vid):
+                    made.append(S.add("item_orbit", {"item": iid, "variant": vid}, "Orbite · %s · %s" % (it["name"], v.get("label") or vid), **opts))
+            elif act == "redo":
+                params = {"item": iid, "pose": v.get("pose", ""), "variant": vid, "orbit": True, "seed": random.randint(1, 10 ** 6)}
+                if not v.get("pose"):
+                    params["custom"] = v.get("custom") or v.get("label") or ""
+                made.append(S.add("item_pose", params, "Pose · %s · %s" % (it["name"], v.get("label") or vid), **opts))
+                store.mutate_item(iid, lambda x, vid=vid: x["variants"][vid].__setitem__("review", dict(x["variants"][vid].get("review") or {}, state="redo")))
+            else:
+                raise ApiError("action inconnue : %s" % act)
+        return {"jobs": made, "item": store.resolve(store.load_item(iid))}
 
     def _follow(self, q):
         return {"target": q.get("target", "auto"), "fal_key": self.headers.get("X-Fal-Key") or None,
