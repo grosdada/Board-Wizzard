@@ -8,7 +8,10 @@ vu de face, sur fond transparent.
   data/parts/style.png                 (facultatif) une planche de reference : les elements sont alors dessines dans son
                                        trait, par le modele d'edition, au lieu du modele d'image seul
 
-CATEGORIES : cle -> (nom, plein (le blanc enferme reste opaque : True, False, ou "petits" vides seulement), cadrage, [(nom, description en anglais)]).
+CATEGORIES : cle -> (nom, decoupe, cadrage, elements). Decoupe : True (le blanc enferme reste opaque), False (trait seul),
+"petits" (seuls les petits vides se referment), "vert" (dessine sur une tete verte qu'on efface), "visage" (silhouette
+pleine, oreilles retirees), "fond" (trait ouvert pose sur un fond blanc qui epouse sa forme).
+(nom, decoupe, cadrage, [(nom, description en anglais)]).
 Les descriptions restent generiques : aucun personnage ni dessinateur n'est cite.
 """
 import json
@@ -18,7 +21,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from . import settings, sprites, store
 
@@ -29,7 +32,7 @@ ALONE = ("Only this single element, centred, large, seen strictly from the front
          "No face around it, no head, no other feature, no frame, no text, no caption.")
 
 CATEGORIES = {
-    "visage": ("Forme du visage", True, "the bare outline of a head and neck seen from the front, completely empty inside: "
+    "visage": ("Forme du visage", "visage", "the bare outline of a head and neck seen from the front, completely empty inside: "
                "no eyes, no nose, no mouth, no hair, no ears", [
         ("Ovale", "regular oval face"), ("Rond", "round chubby face"), ("Carré", "square face with a strong jaw"),
         ("Long", "very long narrow face"), ("Triangle", "wide forehead narrowing to a pointed chin"),
@@ -41,7 +44,7 @@ CATEGORIES = {
         ("Rectangle", "long rectangular face with a flat chin"), ("Joufflu", "face with very full round cheeks"),
         ("Front bombé", "face with a huge bulging forehead and a small lower half"), ("Menton en galoche", "face with a long jutting chin"),
         ("Bajoues", "old sagging face with drooping jowls"), ("Tête d'œuf", "egg-shaped head, wider at the top")]),
-    "cheveux": ("Cheveux", "petits", "a head of hair alone, as a wig seen from the front, with an empty opening where the face would be", [
+    "cheveux": ("Cheveux", "vert", "a hairstyle", [
         ("Dégarni", "balding: bare top, hair only on the sides"), ("Courts", "short neat hair"), ("Brosse", "flat-top crew cut"),
         ("Raie de côté", "side-parted combed hair"), ("Frange", "straight fringe covering the forehead"),
         ("Mi-longs", "shoulder-length untidy hair"), ("Longs raides", "long straight hair falling on both sides"),
@@ -51,7 +54,7 @@ CATEGORIES = {
         ("Coupe au bol", "bowl cut"), ("Carré", "chin-length bob"), ("Tresses", "long braids on both sides"),
         ("Dreadlocks", "thick dreadlocks"), ("Couronne", "bald head with a ring of hair around the sides and a few strands on top"),
         ("Banane", "big rockabilly quiff"), ("Ondulés", "wavy medium hair")]),
-    "yeux": ("Yeux", True, "a pair of eyes alone, both eyes side by side, no eyebrows, no nose, no make-up", [
+    "yeux": ("Yeux", True, "a pair of eyes alone, both eyes side by side, drawn with a simple clean line, absolutely no eyebrows above, nothing between the two eyes, no nose, no eyelash make-up", [
         ("Petits ronds", "small round beady eyes"), ("En amande", "almond-shaped eyes"), ("Tombants", "sad drooping eyes"),
         ("Bridés", "narrow slanted eyes"), ("Globuleux", "bulging round eyes"), ("Cernés", "tired eyes with heavy bags underneath"),
         ("Mi-clos", "half-closed suspicious eyes"), ("Écarquillés", "wide-open staring eyes"), ("Rapprochés", "small eyes set very close together"),
@@ -69,16 +72,32 @@ CATEGORIES = {
         ("Inégaux", "one eyebrow raised high, the other low"), ("Longs retombants", "very long eyebrows hanging down at the ends"),
         ("Épilés", "very thin drawn-on eyebrows"), ("En touffes", "eyebrows made of a few rough tufts"), ("Inquiets", "worried eyebrows raised in the middle"),
         ("Écartés", "small eyebrows set far apart"), ("Bas", "heavy low eyebrows")]),
-    "nez": ("Nez", False, "a nose alone, seen strictly from the front, symmetrical, both nostrils visible", [
-        ("Droit", "straight regular nose"), ("Aquilin", "hooked aquiline nose"), ("Épaté", "broad flat nose"),
-        ("Retroussé", "small upturned nose"), ("Bulbeux", "big bulbous round nose"), ("Cassé", "crooked broken boxer's nose"),
-        ("Long pointu", "very long pointed nose"), ("Court", "tiny short button nose"), ("Narines larges", "nose with wide flaring nostrils"),
-        ("Busqué", "large bony nose with a bump"),
-        ("En trompette", "long nose turned up at the tip"), ("Écrasé", "flattened squashed nose"), ("Fin", "very thin delicate nose"),
-        ("Gros triangulaire", "big triangular nose"), ("Patate", "shapeless lumpy potato nose"), ("Tordu", "nose bent to one side"),
-        ("Narines pincées", "narrow nose with pinched nostrils"), ("Rond", "small round ball nose"), ("Long tombant", "long drooping nose hanging over the lip"),
-        ("Large court", "short very wide nose")]),
-    "bouche": ("Bouche", True, "a mouth alone", [
+    # d'apres la recherche sur les coffrets de police et le portrait parle de Bertillon : de face, un nez se distingue par
+    # la largeur de son arete, sa pointe, sa base (narines visibles ou cachees), ses ailes, sa longueur et son axe
+    "nez": ("Nez", "fond", "a human nose alone, seen strictly from the front, drawn with a few clean ink lines", [
+        ("Moyen droit", "nose with two parallel bridge lines of medium width, a small rounded tip, nostrils barely visible"),
+        ("Étroit long", "very long thin nose: narrow bridge, narrow tip, narrow base, nostril wings close to the tip"),
+        ("Court retroussé", "very short nose with the tip tilted up, both nostril openings fully visible as two dark ovals"),
+        ("Pointe plongeante", "nose whose tip hangs down below the nostril wings, nostrils hidden, the base forming a downward arrow"),
+        ("Ailes évasées", "nose with a medium bridge and very wide rounded nostril wings flaring far beyond the tip"),
+        ("Écrasé", "flattened nose: very low flat wide bridge, broad flat tip, wide horizontal base"),
+        ("Arête large", "nose with a bridge equally wide from top to bottom, like a column with straight parallel sides and a squared base"),
+        ("Racine étroite base large", "nose with a narrow pinched top widening steadily into a broad triangular base"),
+        ("Racine large pointe fine", "nose broad at the top between the eyes, narrowing downward to a small narrow tip"),
+        ("Bout en boule", "nose with a narrow bridge ending in a large round ball tip much wider than the bridge"),
+        ("Bout pointu", "nose whose bridge lines converge to a sharp narrow pointed tip, with small thin nostril wings"),
+        ("Bout bilobé", "nose whose tip is divided into two lobes by a short vertical groove"),
+        ("Bout carré", "nose with a flat-fronted box-shaped tip showing two distinct corners"),
+        ("Bosse médiane", "nose whose bridge bulges outward at mid-height, narrow above and below the bump"),
+        ("Tordu", "crooked nose: the whole bridge curves to one side in a single C-shaped bend, tip off-centre"),
+        ("Cassé en S", "broken nose: the bridge has two opposite bends like an S, with uneven nostril wings"),
+        ("Narines pincées", "nose with thin nostril wings pressed against the tip, nostrils as two narrow vertical slits"),
+        ("Narines rondes", "nose with large circular nostril openings facing forward and thin rims"),
+        ("Ailes charnues", "nose with thick fleshy nostril wings, deep curved grooves beside them, heavy rounded base"),
+        ("Cloison basse", "nose whose central partition hangs clearly below the nostril wings, a long nostril visible on each side of it"),
+        ("Petit bouton", "tiny button nose: almost no bridge lines, a small round tip and two dot nostrils"),
+        ("Grand nez fort", "huge long wide nose with a heavy broad tip and large nostril wings")]),
+    "bouche": ("Bouche", True, "a mouth alone, lips drawn as a simple clean outline, no nostrils, no nose, no chin, no hatching, no shading", [
         ("Fine serrée", "thin tight-lipped mouth"), ("Lippue", "thick full lips"), ("Sourire en coin", "crooked smirk"),
         ("Tombante", "sour down-turned mouth"), ("Dents visibles", "half-open mouth showing teeth"), ("Moue", "pouting mouth"),
         ("Grande", "very wide mouth"), ("Petite", "tiny pinched mouth"), ("Lèvre pendante", "mouth with a heavy hanging lower lip"),
@@ -102,7 +121,7 @@ CATEGORIES = {
         ("Fer à cheval", "horseshoe moustache going down to the chin"), ("Touffue courte", "short bushy moustache"), ("Asymétrique", "uneven scruffy moustache"),
         ("Pyramide", "small triangular moustache"), ("Lampe", "small lampshade moustache"), ("Fine relevée", "thin moustache with upturned ends"),
         ("Blanche", "bushy white moustache drawn in outline"), ("Poivre et sel", "moustache drawn with scattered strokes"), ("Très large", "moustache as wide as the face")]),
-    "barbe": ("Barbe", "petits", "a beard alone, as a false beard seen from the front, with an empty opening for the mouth", [
+    "barbe": ("Barbe", "vert", "a beard, with no moustache at all and a bare upper lip", [
         ("Bouc", "goatee"), ("Courte", "short full beard"), ("Longue", "long bushy beard"), ("Favoris", "big side whiskers alone, left and right"),
         ("Trois jours", "stubble drawn as short scattered dots and dashes"), ("Collier", "chinstrap beard without moustache"),
         ("Barbiche", "small pointed chin tuft"), ("Carrée", "square trimmed beard"), ("En pointe", "long pointed beard"), ("Fourchue", "forked beard"),
@@ -122,7 +141,7 @@ CATEGORIES = {
         ("Cicatrice", "a long stitched scar"), ("Grain de beauté", "a mole"), ("Taches de rousseur", "a scatter of freckles"),
         ("Rides de la bouche", "deep lines from the nose to the corners of the mouth, left and right"),
         ("Bandeau", "an eye patch with its strap"), ("Pansement", "a sticking plaster")]),
-    "couvre-chef": ("Couvre-chef", "petits", "a hat alone, seen from the front, as worn on a head", [
+    "couvre-chef": ("Couvre-chef", "vert", "a hat, on a completely bald head with no hair", [
         ("Casquette", "flat cap"), ("Bonnet", "woollen beanie"), ("Feutre", "fedora hat"), ("Béret", "beret"), ("Capuche", "hood up")]),
 }
 
@@ -132,8 +151,11 @@ def slug(name):
 
 
 def prompt_for(cat, desc):
-    label, _, framing, _ = CATEGORIES[cat]
-    return "Drawing of %s: %s. %s %s" % (framing, desc, ALONE, STYLE)
+    label, full, framing, _ = CATEGORIES[cat]
+    if full == "vert":                                              # la description d'abord : elle pese plus
+        return ("%s: %s, %sOnly the %s is drawn, in black ink with white highlights, on a pure white empty background. "
+                "No text, no frame. %s" % (framing.capitalize(), desc, GREEN, framing.split(",")[0].replace("a ", "", 1), STYLE))
+    return "%s. It is a drawing of %s. %s %s" % (desc.capitalize(), framing, ALONE, STYLE)      # la description d'abord
 
 
 def index():
@@ -211,6 +233,147 @@ def cut(png, dest, full, size=512):
     return im.size
 
 
+def no_ears(im):
+    """Forme de visage sans oreilles : les oreilles sont une categorie a part, posee dessous. On retire de la silhouette
+    ce qui depasse sur les cotes, puis on referme le contour d'un trait."""
+    import cv2
+    arr = np.asarray(im.convert("RGBA")).copy()
+    S = (arr[..., 3] > 128).astype(np.uint8)
+    ys, xs = np.where(S > 0)
+    if not len(xs):
+        return im
+    x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
+    W, H, cx = x1 - x0 + 1, y1 - y0 + 1, (x0 + x1) / 2
+    k = max(9, int(0.45 * W)) | 1                                    # plus grand qu'une oreille dans tous les sens
+    O = cv2.morphologyEx(S, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    n, lab, st, cen = cv2.connectedComponentsWithStats(((S > 0) & (O == 0)).astype(np.uint8), connectivity=8)
+    ears = np.zeros(S.shape, bool)
+    for i in range(1, n):
+        ax, ay, aw, ah, area = (int(v) for v in st[i])
+        if area > 0.003 * S.sum() and abs(cen[i][0] - cx) > 0.30 * W and y0 + 0.18 * H < cen[i][1] < y0 + 0.80 * H and ah > 0.07 * H:
+            ears |= lab == i
+    if not ears.any():
+        return im
+    ears = cv2.dilate(ears.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+    S2 = ((S > 0) & ~ears).astype(np.uint8)
+    S2 = cv2.morphologyEx(S2, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+    n2, lab2, st2, _ = cv2.connectedComponentsWithStats(S2, connectivity=8)
+    if n2 > 2:                                                       # miettes d'oreille detachees
+        S2 = (lab2 == 1 + int(np.argmax(st2[1:, cv2.CC_STAT_AREA]))).astype(np.uint8)
+    grey = arr[..., 0].astype(np.int32)
+    ink = (grey < 150) & (arr[..., 3] > 128)
+    t = max(3, int(round(0.012 * W))) | 1                              # epaisseur du trait qui referme
+    ring = (S2 > 0) & (cv2.erode(S2, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * t + 1, 2 * t + 1))) == 0)
+    seam = ring & (cv2.dilate(ears.astype(np.uint8), np.ones((2 * t + 9, 2 * t + 9), np.uint8)) > 0)     # seulement la ou l'oreille etait
+    out = np.full(arr.shape, 255, np.uint8)
+    out[..., 3] = np.where(S2 > 0, 255, 0)
+    dark = (ink & (S2 > 0)) | seam
+    for c in range(3):
+        out[..., c] = np.where(seam, 20, np.where(S2 > 0, arr[..., c], 255))
+    out[..., 3] = np.asarray(Image.fromarray(out[..., 3]).filter(ImageFilter.GaussianBlur(0.7)))
+    return Image.fromarray(out)
+
+
+def backing(im, share=0.16):
+    """Pose un fond blanc derriere un element fait de traits ouverts (un nez) : il cache alors ce qui est dessous, au lieu
+    de n'etre qu'un trait. Le fond epouse la forme : les traits sont refermes largement, puis l'interieur est rempli."""
+    import cv2
+    arr = np.asarray(im.convert("RGBA")).copy()
+    a = arr[..., 3]
+    ink = (a > 60).astype(np.uint8)
+    k = max(15, int(0.5 * max(arr.shape[:2]))) | 1                    # on referme tres large, puis on remplit : le fond
+    pad = k                                                           # epouse les traits, sans deborder comme une enveloppe
+    big = cv2.copyMakeBorder(ink, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=0)
+    closed = cv2.morphologyEx(big, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    hull = np.zeros_like(closed)
+    cs, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.drawContours(hull, cs, -1, 1, -1)
+    hull = hull[pad:-pad, pad:-pad]
+    soft = np.asarray(Image.fromarray((hull * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1.0)))
+    for c in range(3):                                               # la ou il n'y avait rien : blanc
+        arr[..., c] = np.where(a < 30, 255, arr[..., c])
+    arr[..., 3] = np.maximum(a, soft)
+    return Image.fromarray(arr)
+
+
+def recut(cat):
+    """Redecoupe tous les elements d'une categorie a partir de leurs images d'origine (data/parts/_brut), sans regenerer."""
+    full, n = CATEGORIES[cat][1], 0
+    for raw in sorted((ROOT / "_brut" / cat).glob("*.png")):
+        dest = ROOT / cat / raw.name
+        if not dest.exists():
+            continue                                                 # element retire de la banque : il le reste
+        try:
+            _cut_any(raw, dest, full)
+            n += 1
+        except ValueError as e:
+            print("ECHEC %s / %s : %s" % (cat, raw.stem, e), flush=True)
+    return n
+
+
+def _cut_any(png, dest, full):
+    if full == "vert":
+        return cut_green(png, dest)
+    if full == "visage":
+        w, h = cut(png, dest, True)
+        im = no_ears(Image.open(dest))
+        im.save(dest)
+        return im.size
+    if full == "fond":
+        w, h = cut(png, dest, False)
+        im = backing(Image.open(dest))
+        im.save(dest)
+        return im.size
+    return cut(png, dest, full)
+
+
+def cut_green(png, dest, size=512):
+    """Element dessine sur une tete de mannequin verte unie (cheveux, barbe, chapeau) : le vert et le papier autour
+    deviennent transparents, l'element reste opaque, blancs interieurs compris (une meche claire cache ce qui est dessous)."""
+    import cv2
+    rgb = np.asarray(Image.open(png).convert("RGB")).astype(np.int32)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    green = ((g - np.maximum(r, b)) > 28).astype(np.uint8)
+    # la tete : le plus grand aplat vert d'un seul tenant. Les reflets verts entre les meches restent des cheveux.
+    core = cv2.erode(green, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(core, connectivity=8)
+    if n < 2:
+        raise ValueError("pas de tête verte dans l'image")
+    big = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    # elargie : elle reprend son bord, et avale le trait qui cerne la tete, le cou et les oreilles
+    head = cv2.dilate((lab == big).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))) > 0
+    grey = (0.3 * r + 0.59 * g + 0.11 * b)
+    grey = np.where((green > 0) & ~head, 255, grey)                 # reflet vert dans les cheveux : une meche claire
+    paper = ((grey > 225) & ~head).astype(np.uint8)
+    lab2 = np.pad(paper, 1, constant_values=1)
+    cv2.floodFill(lab2, None, (0, 0), 2)                             # le papier relie au bord : dehors
+    outside = lab2[1:-1, 1:-1] == 2
+    alpha = np.where(head | outside, 0, 255).astype(np.uint8)
+    alpha = cv2.morphologyEx(alpha, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))     # miettes, restes de trait du cou
+    nn, l3, st3, _ = cv2.connectedComponentsWithStats((alpha > 0).astype(np.uint8), connectivity=8)
+    if nn > 2:                                                       # petits morceaux detaches (bout d'oreille, de cou) : enleves
+        keep = [i for i in range(1, nn) if st3[i, cv2.CC_STAT_AREA] >= 0.04 * st3[1:, cv2.CC_STAT_AREA].max()]
+        alpha = np.where(np.isin(l3, keep), alpha, 0).astype(np.uint8)
+    alpha = np.asarray(Image.fromarray(alpha).filter(ImageFilter.GaussianBlur(0.8)))
+    ys, xs = np.where(alpha > 40)
+    if len(xs) < 300:
+        raise ValueError("rien à garder : pas d'élément autour de la tête verte")
+    if head.mean() < 0.03:
+        raise ValueError("pas de tête verte dans l'image")
+    x0, x1, y0, y1 = max(0, xs.min() - 4), min(rgb.shape[1], xs.max() + 5), max(0, ys.min() - 4), min(rgb.shape[0], ys.max() + 5)
+    ink = np.clip(grey, 0, 255).astype(np.uint8)
+    ink = np.where(ink > 205, 255, ink)
+    im = Image.fromarray(np.dstack([ink, ink, ink, alpha])).crop((int(x0), int(y0), int(x1), int(y1)))
+    im.thumbnail((size, size), Image.LANCZOS)
+    Path(dest).parent.mkdir(parents=True, exist_ok=True)
+    im.save(dest)
+    return im.size
+
+
+GREEN = ("shown on a featureless mannequin head seen from the front: the whole head, face, ears and neck are one flat solid "
+         "bright green shape (pure green-screen green), with no eyes, no nose, no mouth, no outline inside. ")
+
+
 def make(cat, name, desc, prov, seed=11, redo=False):
     """Genere un element et le range. Rend sa fiche, ou None s'il existait deja."""
     _, full, _, _ = CATEGORIES[cat]
@@ -229,7 +392,7 @@ def make(cat, name, desc, prov, seed=11, redo=False):
         raw = ROOT / "_brut" / cat / (pid + ".png")
         raw.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(png, raw)                                   # l'image d'origine, pour juger et redecouper
-        w, h = cut(png, dest, full)
+        w, h = _cut_any(png, dest, full)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return {"id": pid, "name": name, "file": "%s/%s.png" % (cat, pid), "w": w, "h": h, "seed": seed}

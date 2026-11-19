@@ -434,3 +434,22 @@ details.fold > summary:hover { opacity: 1; }
 .zoombar button.on { outline: 2px solid var(--accent, #6cc); }
 .depthview { width: 100%; max-height: 62vh; border-radius: 8px; display: block; touch-action: none; user-select: none; }
 .depthbox p { margin: 10px 0 0; }
+.idk { display: grid; grid-template-columns: minmax(320px, 46vh) 1fr; gap: 18px; align-items: start; }
+.idk-stage { width: 100%; aspect-ratio: 1; background: #fff; border-radius: 8px; display: block; touch-action: none; user-select: none; cursor: default; }
+.idk-stage image { cursor: move; }
+.idk-grip { fill: #fff; stroke: #10b5e0; }
+.idk-grip:hover { fill: #10b5e0; }
+.idk-left { display: flex; flex-direction: column; gap: 8px; } .idk-knobs b { display: block; margin: 4px 0; }
+.idk-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; } .idk-tabs button.on { outline: 2px solid var(--accent, #6cc); }
+.idk-tabs .count { opacity: .6; margin-left: 5px; font-size: 11px; }
+.idk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; max-height: 58vh; overflow: auto; padding: 2px; }
+.idk-el { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px; height: auto; background: #f4efe2; color: #222; border-radius: 6px; }
+.idk-el img { width: 86px; height: 86px; object-fit: contain; pointer-events: none; }
+.idk-el span { font-size: 11px; line-height: 1.15; text-align: center; white-space: normal; }
+.idk-el.on { outline: 3px solid #10b5e0; }
+.idk-el i { position: absolute; top: 2px; right: 4px; font-style: normal; font-size: 11px; opacity: 0; color: #a22; cursor: pointer; padding: 2px 4px; }
+.idk-el:hover i { opacity: 1; }
+.idk-el.add { background: transparent; color: inherit; border: 1px dashed var(--line, #555); justify-content: center; min-height: 118px; } .idk-el.add b { font-size: 26px; }
+.modal.idk-box { width: min(1180px, 96vw); }
+
+p.error { color: var(--err); margin: 4px 0 0; min-height: 1.2em; }

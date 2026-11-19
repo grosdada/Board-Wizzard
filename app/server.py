@@ -138,28 +138,30 @@ class Handler(BaseHTTPRequestHandler):
         m = re.search(r"(?:^|;\s*)bw=([0-9a-f]{64})", self.headers.get("Cookie") or "")
         return bool(m and hmac.compare_digest(m.group(1), tok))
 
-    def _login(self, body):
-        try:
-            pw = json.loads(body.decode("utf-8") or "{}").get("password", "")
-        except ValueError:
-            pw = ""
+    def _check(self, pw):
+        """Verifie le mot de passe, avec le frein aux essais. Rend True, ou repond l'erreur et rend False."""
         good = settings.load()["server"].get("password") or ""
         ip = (self.headers.get("X-Forwarded-For") or self.client_address[0]).split(",")[0].strip()
         now = time.time()
         with _FAILS_LOCK:                                           # frein aux essais : apres 5 erreurs, attente qui double
             n, until = _FAILS.get(ip, (0, 0))
             if now < until:
-                return self.send_json({"error": "trop d'essais : réessayer dans %d s" % int(until - now + 1)}, 429)
-        if not good or not hmac.compare_digest(pw.encode(), good.encode()):
+                self.send_json({"error": "trop d'essais : réessayer dans %d s" % int(until - now + 1)}, 429)
+                return False
+        if not good or not hmac.compare_digest(str(pw).encode(), good.encode()):
             with _FAILS_LOCK:
                 n += 1
                 _FAILS[ip] = (n, now + min(3600, 30 * 2 ** (n - 5)) if n >= 5 else 0)
                 if len(_FAILS) > 5000:
                     _FAILS.clear()
             time.sleep(1)
-            return self.send_json({"error": "mot de passe refusé"}, 403)
+            self.send_json({"error": "mot de passe refusé"}, 403)
+            return False
         with _FAILS_LOCK:
             _FAILS.pop(ip, None)
+        return True
+
+    def _send_cookie(self):
         body = b'{"ok": true}'
         secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") or "").lower() == "https" else ""
         self.send_response(200)
@@ -168,6 +170,32 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Set-Cookie", "bw=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000%s" % (self._token(), secure))
         self.end_headers()
         self.wfile.write(body)
+
+    def _login(self, body):
+        try:
+            pw = json.loads(body.decode("utf-8") or "{}").get("password", "")
+        except ValueError:
+            pw = ""
+        if self._check(pw):
+            self._send_cookie()
+
+    def _password(self, data):
+        """Mon compte : changer le mot de passe de l'application. Il faut donner l'actuel ; reste possible quand les
+        reglages sont verrouilles (instance en ligne). Les autres navigateurs connectes devront se reconnecter."""
+        data = data or {}
+        new = str(data.get("new") or "")
+        good = settings.load()["server"].get("password") or ""
+        if len(new) < 8:
+            raise ApiError("le nouveau mot de passe doit faire au moins 8 caractères", 400)
+        if new.startswith("••"):
+            raise ApiError("ce mot de passe ne peut pas commencer par des points", 400)
+        if good:
+            if not self._check(data.get("old") or ""):
+                return
+        elif settings.load()["server"].get("lock_settings"):
+            raise ApiError("sur cette instance, le premier mot de passe se met dans local_settings.json", 403)
+        settings.save({"server": {"password": new}})
+        self._send_cookie()
 
     # ---------------------------------------------------------------- aiguillage
     def do_GET(self):
@@ -286,6 +314,8 @@ class Handler(BaseHTTPRequestHandler):
         if head == "info":
             return self.send_json({"version": VERSION, "settings": settings.public(), "poses": poses.catalogue(),
                                    "axes": sprites.AXES})
+        if head == "password" and method == "POST":
+            return self._password(data)
         if head == "settings":
             if method == "PUT":
                 if settings.load()["server"].get("lock_settings"):

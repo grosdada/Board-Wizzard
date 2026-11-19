@@ -225,6 +225,10 @@ class App {
         Object.assign(page, { format: f.id, width: f.w, height: f.h }); this.commit("format"); this.refresh(); } } },
         FORMATS.map((f) => h("option", { value: f.id, selected: f.id === page.format }, f.label)))),
       num("Gouttière", "gutter", 0, 200), num("Marge", "margin", 0, 400), num("Trait", "strokeWidth", 0, 40),
+      h("details.fold", { open: !!(page.hand > 0) }, h("summary", "Tremblé du contour"), ...[["Tremblé", "hand", 0, 10, 0], ["Ondulation", "wave", 0.5, 12, 4]].map(([label, key, min, max, def]) => {
+        const val = page[key] ?? def, out = h("output", fmt(val));
+        return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.1, value: val,
+          on: { input: (e) => { page[key] = +e.target.value; out.textContent = fmt(page[key]); this.editor.render(); this.commitSoon("page-hand"); } } }), out); })),
       col("Fond de page", "bg"), col("Fond des cases", "fill"), col("Couleur du trait", "stroke"),
       h("h3", "Toute la page"),
       h("div.row", h("button.mini", { title: "Chaque case composée devient un dessin homogène", on: { click: () => this.integratePage("dessin") } }, "✦ Tout en dessin"),
@@ -976,7 +980,7 @@ class App {
     const el = s.elevenlabs || {}, ekey = secret(el.key, "clé ElevenLabs du poste"), emodel = f(el.model || "eleven_multilingual_v2");
     const fres = h("select", [["480P", "480P · le moins cher (≈ 0,31 $ l'orbite de 5 s)"], ["768P", "768P (≈ 0,375 $)"], ["2K", "2K"], ["4K", "4K"]].map(([v, t]) => h("option", { value: v, selected: v === (s.fal.orbit_resolution || "768P") }, t)));
     const fcon = h("input", { type: "number", min: 1, max: 20, step: 1, value: s.fal.concurrency || 3 });
-    const pw = f(s.server.password || "", "vide = pas de mot de passe", "password");
+    const locked = !!s.server.lock_settings;
     const lib = s.library || {}, lurl = f(lib.url || "", "https://…/bibliotheque"), luser = f(lib.user || "", "identifiant"), lpw = secret(lib.password, "mot de passe de la bibliothèque");
     modal("Réglages", h("div.form.settings",
       h("h4", "Machines ComfyUI"),
@@ -993,17 +997,42 @@ class App {
       h("label.row", "Modèle de voix", emodel),
       h("h4", { title: "Un dossier de personnages tout faits, hébergé en ligne et protégé par un mot de passe. On y pioche depuis la banque : bouton « 📦 Paquets »." }, "Bibliothèque en ligne ⓘ"),
       h("label.row", "Adresse", lurl), h("label.row", "Identifiant", luser), h("div.row.keyrow", h("span", "Mot de passe"), lpw, paste(lpw)),
-      h("h4", "Accès"), h("label.row", "Mot de passe de l'application", pw),
+      h("h4", "Mon compte"),
+      h("div.row", h("span", s.server.password ? "L'application est protégée par un mot de passe." : "L'application n'a pas de mot de passe."),
+        h("button.mini", { type: "button", on: { click: () => this.passwordDialog(!!s.server.password) } }, s.server.password ? "🔑 Changer le mot de passe…" : "🔑 Mettre un mot de passe…")),
+      locked ? h("p.muted", "Instance en ligne : les autres réglages de cette page sont verrouillés. Les clés fal et ElevenLabs « de ce navigateur » et le mot de passe restent modifiables.") : null,
       h("p.muted", `Données (banque et storyboards) : ${s.data}`)),
       [{ label: "Annuler" }, { label: "Enregistrer", primary: true, click: async () => {
         if (myKey.value.trim()) localStorage.setItem("bw.falKey", myKey.value.trim()); else localStorage.removeItem("bw.falKey");
+        if (locked) { toast("Clé de ce navigateur enregistrée."); return; }
         const list = workers.value.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p[0])
           .map((p) => (p.length > 1 ? { name: p[0], url: p[1], enabled: true } : { name: p[0], url: p[0], enabled: true }));
         await put("settings", { workers: list, qbuilder_settings: qb.value.trim(), render: { orbit_length: +len.value, target: tgt.value },
                                 fal: { key: key.value.trim(), orbit_resolution: fres.value, concurrency: Math.max(1, Math.min(20, +fcon.value || 3)), orbit: orbit.value.trim(), edit: edit.value.trim(), t2i: t2i.value.trim() },
-                                elevenlabs: { key: ekey.value.trim(), model: emodel.value.trim() || "eleven_multilingual_v2" }, server: { password: pw.value },
+                                elevenlabs: { key: ekey.value.trim(), model: emodel.value.trim() || "eleven_multilingual_v2" },
                                 library: { url: lurl.value.trim(), user: luser.value.trim(), password: lpw.value } });
         this.info = await get("info"); toast("Réglages enregistrés."); this.pollWorkers();
+      } }]);
+  }
+
+  // mon compte : changer le mot de passe de l'application (l'actuel est demande)
+  passwordDialog(has) {
+    const fld = (ph) => h("input", { type: "password", placeholder: ph, autocomplete: "new-password", spellcheck: "false" });
+    const old = fld("mot de passe actuel"), n1 = fld("au moins 8 caractères"), n2 = fld("le même, une seconde fois");
+    const err = h("p.error");
+    const show = h("input", { type: "checkbox", on: { change: () => [old, n1, n2].forEach((i) => { i.type = show.checked ? "text" : "password"; }) } });
+    modal(has ? "Changer le mot de passe" : "Mettre un mot de passe", h("div.form",
+      has ? h("label.row", "Mot de passe actuel", old) : null,
+      h("label.row", "Nouveau mot de passe", n1), h("label.row", "Confirmer", n2),
+      h("label.row", "Afficher ce que je tape", show), err,
+      h("p.muted", "Les autres navigateurs connectés à cette application devront se reconnecter avec le nouveau mot de passe.")),
+      [{ label: "Annuler" }, { label: "Enregistrer", primary: true, click: async () => {
+        err.textContent = "";
+        if (n1.value.length < 8) { err.textContent = "Le nouveau mot de passe doit faire au moins 8 caractères."; return false; }
+        if (n1.value !== n2.value) { err.textContent = "Les deux saisies du nouveau mot de passe sont différentes."; return false; }
+        try { await post("password", { old: old.value, new: n1.value }); }
+        catch (e) { err.textContent = "Refusé : " + (e.message || e); return false; }
+        toast("Mot de passe changé.");
       } }]);
   }
 

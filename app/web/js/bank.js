@@ -2,6 +2,7 @@
 // (orbite a faire tourner, reperes d'axes, poses a generer).
 import { h, get, post, put, del, upload, toast, modal } from "./api.js";
 import { openPortrait, portraitThumb } from "./portrait.js";
+import { openIdentikit } from "./identikit.js";
 import { sprite, preload, variantOf, AXES, nearestAxis, angleToFrame, frameToAngle } from "./model.js";
 
 const KINDS = [["character", "Personnages"], ["decor", "Décors"], ["asset", "Assets"], ["audio", "Audio"]];
@@ -71,7 +72,7 @@ export class Bank {
         this.folder && this.folder !== "·" ? h("button.mini.danger", { title: `Supprimer le dossier « ${this.folder} » (ses éléments ne sont pas supprimés)`, on: { click: () => this.deleteFolder() } }, "🗑") : ""),
       h("div.bank-bar", search, h("button.mini", { title: isAudio ? "Importer des fichiers son" : "Importer des images", on: { click: () => pick.click() } }, "＋ Importer"),
         isAudio ? "" : h("button.mini", { title: "Générer à partir d'une description", on: { click: () => this.generateDialog() } }, "✨ Générer"),
-        this.tab === "character" ? h("button.mini", { title: "Portrait-robot : assembler un personnage à partir d'un corps et d'une tête en tracés, sans calcul", on: { click: () => openPortrait(this) } }, "🧩 Portrait-robot") : "",
+        this.tab === "character" ? h("button.mini", { title: "Portrait-robot, comme ceux de la police : monter un visage en superposant des éléments dessinés (forme du visage, cheveux, yeux, nez, bouche…), ou dessiner les siens", on: { click: () => openIdentikit(this) } }, "🧩 Portrait-robot") : "",
         isAudio ? "" : h("button.mini", { title: "Paquets de personnages : exporter ce dossier dans un fichier, importer un paquet reçu, ou piocher dans la bibliothèque en ligne", on: { click: () => this.packDialog() } }, "📦 Paquets"), pick),
       grid);
     this.grid = grid;

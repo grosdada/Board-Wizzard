@@ -221,10 +221,14 @@ export class Editor {
       }
       svg.append(grp);
     }
+    const pw = wiggleFilter("wg-page", page.hand, page.wave, page.width, page.height, 7);   // tremble du contour des cases
+    if (pw) defs.insertAdjacentHTML("beforeend", pw);
+    const strokes = s("g", { filter: pw ? "url(#wg-page)" : null, class: "panel-stroke" });
     for (const g of this.geom.panels) {
-      svg.append(s("polygon", { points: pts(g.poly), fill: "none", stroke: page.stroke, "stroke-width": page.strokeWidth,
+      strokes.append(s("polygon", { points: pts(g.poly), fill: "none", stroke: page.stroke, "stroke-width": page.strokeWidth,
                                 "stroke-linejoin": "miter", class: "panel-stroke" }));
     }
+    svg.append(strokes);
     for (const g of this.geom.panels) {
       if (g.id === sel.panel && !sel.layer) svg.append(s("polygon", { points: pts(g.poly), class: "sel-outline" }));
       if (g.id === this.dropTarget) svg.append(s("polygon", { points: pts(g.poly), class: "drop-outline" }));

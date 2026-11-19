@@ -6,6 +6,7 @@
   python tools/parts.py generer --machine 2           choisit la machine ComfyUI (numero dans la liste) ; --fal : sur fal
   python tools/parts.py planches                      planches de controle dans data/qa/parts/<categorie>.jpg
   python tools/parts.py retirer nez aquilin           enleve un element rate
+  python tools/parts.py redecouper visage nez         refait la decoupe depuis les images d'origine, sans regenerer
 
 Si data/parts/style.png existe, les elements sont dessines dans le trait de cette planche (modele d'edition) ; sinon
 par le modele d'image seul. L'image d'origine de chaque element est gardee dans data/parts/_brut/.
@@ -21,7 +22,7 @@ from app import falapi, jobs, parts, settings  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("action", choices=["liste", "generer", "planches", "retirer"])
+    ap.add_argument("action", choices=["liste", "generer", "planches", "retirer", "redecouper"])
     ap.add_argument("noms", nargs="*")
     ap.add_argument("--seul", default="")
     ap.add_argument("--graine", type=int, default=11)
@@ -38,6 +39,10 @@ def main():
         parts.remove(a.noms[0], parts.slug(a.noms[1]))
         return
     cats = [c for c in (a.noms or parts.CATEGORIES) if c in parts.CATEGORIES]
+    if a.action == "redecouper":                                    # sans regenerer : depuis les images d'origine
+        for c in cats:
+            print(c, parts.recut(c), "élément(s) redécoupé(s)")
+        return
     if a.action == "planches":
         for c in cats:
             d = parts.sheet(c, settings.DATA / "qa" / "parts" / (c + ".jpg"))
