@@ -1331,7 +1331,8 @@
   "fal refuse la clé (%d) : %s": "fal refuses the key (%d): %s",
   "aucune clé ElevenLabs : entre ta clé dans Réglages › ElevenLabs (voix) › « Ma clé (ce navigateur) »": "no ElevenLabs key: enter your key in Settings › ElevenLabs (voices) › « My key (this browser) »",
   "action inconnue : %s": "unknown action: %s",
-  "cette voix est une voix clonée restée vide (aucun enregistrement dedans) : choisis-en une autre, ou ajoute-lui un échantillon sur elevenlabs.io": "this voice is a cloned voice left empty (no recording in it): choose another one, or add a sample to it on elevenlabs.io"
+  "cette voix est une voix clonée restée vide (aucun enregistrement dedans) : choisis-en une autre, ou ajoute-lui un échantillon sur elevenlabs.io": "this voice is a cloned voice left empty (no recording in it): choose another one, or add a sample to it on elevenlabs.io",
+  "sans échantillon : inutilisable": "no sample: unusable"
  },
  "parts": {
   "Anguleux": "Angular",

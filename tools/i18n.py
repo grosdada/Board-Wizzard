@@ -341,7 +341,7 @@ def main():
     return 1 if problems else 0
 
 
-EXTRA_SERVER = set()                                          # cles serveur gardees a la main (ex. messages hors raise)
+EXTRA_SERVER = {"sans échantillon : inutilisable"}           # cles serveur gardees a la main (textes hors raise / dictionnaires)
 
 
 def wrap(path):

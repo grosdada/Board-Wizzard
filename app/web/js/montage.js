@@ -548,7 +548,7 @@ export function openMontage(app, pid) {
     const area = h("textarea", { rows: 3, placeholder: tt("Ce que dit le personnage…"), style: { width: "100%", boxSizing: "border-box" }, on: { input: (e) => { tts.text = e.target.value; } } });
     area.value = tts.text;
     const pick = h("select", { on: { change: (e) => { tts.voice = e.target.value; localStorage.setItem("bw.ttsVoice", tts.voice); } } }, h("option", { value: "" }, ttsVoices ? tt("Choisir une voix…") : tt("Chargement des voix…")));
-    const fill = () => { pick.textContent = ""; pick.append(h("option", { value: "" }, tt("Choisir une voix…")), ...ttsVoices.map((v) => h("option", { value: v.id, selected: v.id === tts.voice, title: v.info }, v.name + (v.info ? " · " + v.info : "")))); };
+    const fill = () => { pick.textContent = ""; pick.append(h("option", { value: "" }, tt("Choisir une voix…")), ...ttsVoices.map((v) => h("option", { value: v.id, selected: v.id === tts.voice && !v.empty, title: tr(v.info), disabled: !!v.empty }, v.name + (v.info ? " · " + tr(v.info) : "")))); };
     if (ttsVoices) fill();
     else get("tts/voices").then((v) => { ttsVoices = v; fill(); }).catch((e) => { pick.textContent = ""; pick.append(h("option", { value: "" }, tt("Voix indisponibles"))); note.textContent = e.message; });
     const note = h("div.muted", "");
