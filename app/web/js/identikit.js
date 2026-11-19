@@ -223,6 +223,7 @@ export async function openIdentikit(bankUI) {
   const drawOne = () => {
     const cat = cur;
     openDrawEditor({ draw: null, ratio: 1, backdrop: null, title: tt`Dessiner : ${cat.label}`, saveLabel: tt("Ajouter à la banque d'éléments"),
+      axis: ["yeux", "sourcils", "oreilles", "moustache", "lunettes"].includes(cat.key),
       onSave: async (d) => {
         if (!d.shapes.length) return;
         const nm = (prompt(tt("Nom de cet élément :"), cat.label + tt(" dessiné")) || "").trim();

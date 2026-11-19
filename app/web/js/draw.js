@@ -3,7 +3,7 @@
 //   { id, t (primitive ou trace, voir PRIMS et PATHS), p: [[x, y]...] en fraction de la case, r (rotation en degres),
 //     stroke: "#111111" | "#ffffff" | "none", sw (epaisseur), fill: none | white | black | tone | grad,
 //     tone, tone2 (0 = blanc, 1 = noir), ga (angle du degrade), dot (taille de la trame), form: points | lignes | croix,
-//     ha (angle de la trame) }
+//     ha (angle de la trame), mx (primitive retournee gauche-droite par « Miroir ») }
 // La trame est faite par le navigateur : un motif en « cones » de gris + le ton voulu, puis un seuil. Les points
 // grossissent donc tout seuls la ou le ton fonce, sans dessiner chaque point.
 import { tt, tr } from "./i18n.js";
@@ -52,7 +52,7 @@ function geom(sh, H) {
     return sh.t === "blob" ? d + "Z" : d;
   }
   const [a, b] = P, x0 = Math.min(a[0], b[0]), y0 = Math.min(a[1], b[1]), x1 = Math.max(a[0], b[0]), y1 = Math.max(a[1], b[1]);
-  const w = x1 - x0, hh = y1 - y0, cy = (y0 + y1) / 2, at = (u, v) => [x0 + u * w, y0 + v * hh];
+  const w = x1 - x0, hh = y1 - y0, cy = (y0 + y1) / 2, at = (u, v) => [x0 + (sh.mx ? 1 - u : u) * w, y0 + v * hh];   // mx : retournee
   switch (sh.t) {
     case "rrect": { const r = Math.min(w, hh) * 0.2; return `M${f1(x0 + r)} ${f1(y0)}H${f1(x1 - r)}Q${f1(x1)} ${f1(y0)} ${f1(x1)} ${f1(y0 + r)}V${f1(y1 - r)}Q${f1(x1)} ${f1(y1)} ${f1(x1 - r)} ${f1(y1)}H${f1(x0 + r)}Q${f1(x0)} ${f1(y1)} ${f1(x0)} ${f1(y1 - r)}V${f1(y0 + r)}Q${f1(x0)} ${f1(y0)} ${f1(x0 + r)} ${f1(y0)}Z`; }
     case "ellipse": return `M${f1(x0)} ${f1(cy)}a${f1(w / 2)} ${f1(hh / 2)} 0 1 0 ${f1(w)} 0a${f1(w / 2)} ${f1(hh / 2)} 0 1 0 ${f1(-w)} 0Z`;
@@ -180,7 +180,7 @@ export function drawImage(draw, wpx, hpx) {
 
 // ------------------------------------------------------------------------------------------------ l'atelier
 /** Ouvre l'atelier de dessin pour une case. ratio = hauteur / largeur ; backdrop : url du decor a montrer dessous. */
-export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = tt("Enregistrer le fond") }) {
+export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = tt("Enregistrer le fond"), axis = false }) {
   const H = W * ratio;
   const shapes = JSON.parse(JSON.stringify((draw && draw.shapes) || []));
   let tool = "rect", prim = "rect", path = "free", sel = null, drag = null, building = null, hover = null;
@@ -200,8 +200,10 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     back.innerHTML = `<rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(ww)}" height="${f1(hh)}" fill="${big ? "#ebe8e0" : "#ffffff"}"/><rect width="${W}" height="${f1(H)}" fill="#ffffff"/>` +
       (backdrop ? `<image href="${backdrop}" width="${W}" height="${f1(H)}" preserveAspectRatio="xMidYMid slice" opacity="0.35"/>` : "");
     const k = ww / W;                                       // le cadre de la case reste lisible quand on dezoome
-    guide.innerHTML = big ? `<rect width="${W}" height="${f1(H)}" fill="none" stroke="#e2603a" stroke-width="${f1(2.5 * k)}" stroke-dasharray="${f1(12 * k)} ${f1(8 * k)}"/>` +
-      tt`<text x="${f1(6 * k)}" y="${f1(-6 * k)}" font-size="${f1(15 * k)}" fill="#e2603a">la case</text>` : "";
+    guide.innerHTML = (big ? `<rect width="${W}" height="${f1(H)}" fill="none" stroke="#e2603a" stroke-width="${f1(2.5 * k)}" stroke-dasharray="${f1(12 * k)} ${f1(8 * k)}"/>` +
+      tt`<text x="${f1(6 * k)}" y="${f1(-6 * k)}" font-size="${f1(15 * k)}" fill="#e2603a">la case</text>` : "") +
+      // element en paire (yeux, oreilles…) : l'axe du milieu, pour dessiner un cote puis « Miroir » ; il n'est pas enregistre
+      (axis ? `<line x1="${W / 2}" y1="0" x2="${W / 2}" y2="${f1(H)}" stroke="#2bb3a3" stroke-opacity="0.55" stroke-width="${f1(1.5 * k)}" stroke-dasharray="${f1(10 * k)} ${f1(8 * k)}"/>` : "");
   };
   zone();
   // fantome : les personnages de la case par-dessus le dessin, en transparence, pour dessiner autour d'eux
@@ -289,6 +291,26 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     }
     over.innerHTML = o;
   }
+  // miroir gauche-droite par rapport a l'axe vertical du milieu de la case : la forme choisie, sinon tout le dessin.
+  // Les copies sont des formes ordinaires ; l'original reste.
+  function mirror() {
+    finish(true);
+    hist.snap();                                           // l'etat d'avant : Ctrl+Z retire le miroir d'un coup, et seulement lui
+    const src = tool === "select" && sel ? shapes.filter((x) => x.id === sel) : shapes.slice();   // en dessinant : tout le dessin
+    if (!src.length) { toast(tt("Rien à retourner : dessine d'abord une forme.")); return; }
+    const copies = src.map((sh) => {
+      const c = JSON.parse(JSON.stringify(sh));
+      c.id = uid(); c.p = c.p.map(([x, y]) => [1 - x, y]);
+      if (c.r) c.r = -c.r;
+      if (PRIMS[c.t]) c.mx = !c.mx;                          // une primitive se dessine dans sa boite : on la retourne
+      if (c.ga != null) c.ga = (540 - c.ga) % 360;
+      if (c.ha != null) c.ha = (180 - c.ha + 180) % 180;
+      return c;
+    });
+    shapes.push(...copies);
+    sel = copies.length === 1 ? copies[0].id : null;
+    paint(); props(); hist.snap();
+  }
   function finish(keep) {                                  // termine la forme point par point
     const b = building; building = null; hover = null;
     if (!b) return;
@@ -348,6 +370,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     };
     bar.append(h("button.mini" + (tool === "select" ? ".on" : ""), { type: "button", title: tt("Choisir, déplacer, étirer, tourner"), on: { click: () => pickTool("select") } }, tt("↖ Sélection")),
       drop(tt("Primitives"), PRIMS, prim), drop(tt("Tracés"), PATHS, path),
+      h("button.mini", { type: "button", title: tt("Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite"), on: { click: mirror } }, tt("⇋ Miroir")),
       h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout le dessin de ce fond ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); } } } }, tt("Tout effacer")));
   }
   // point de la souris en fraction de la case, par la matrice du SVG : juste meme si l'image n'occupe pas tout son cadre a l'ecran

@@ -1179,7 +1179,9 @@
   "Coupe la paire en deux : chaque côté se place, se règle et se retire séparément (un œil plus haut que l'autre…)": "Splits the pair in two: each side is placed, adjusted and removed separately (one eye higher than the other…)",
   "✂ Séparer": "✂ Split",
   "Remet la paire entière, à sa place de départ": "Puts the whole pair back, at its starting place",
-  "⧉ Réunir": "⧉ Rejoin"
+  "⧉ Réunir": "⧉ Rejoin",
+  "Rien à retourner : dessine d'abord une forme.": "Nothing to flip: draw a shape first.",
+  "Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite": "Adds a left-right mirrored copy (around the middle of the frame) of the whole drawing, or only of the shape selected with the Selection tool: an eye drawn on the left gives its twin on the right"
  },
  "server": {
   "Parle": "Speaks",
