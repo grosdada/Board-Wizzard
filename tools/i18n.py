@@ -214,6 +214,8 @@ def server_texts():
             out += [(c, "procedural (choix)") for c in q.get("choices", [])]
     from app import sprites                                    # noqa: E402
     out += [(a, "sprites.AXES") for a in sprites.AXES]
+    from app import bodydraw                                   # noqa: E402
+    out += [(n, "bodydraw.CORPS_VARIANTES") for n, _ in bodydraw.CORPS_VARIANTES]
     for c in parts.catalogue():
         out.append((c["label"], "parts"))
         out += [(it["name"], "parts (element)") for it in c["items"] if not it.get("mine")]
@@ -341,7 +343,7 @@ def main():
     return 1 if problems else 0
 
 
-EXTRA_SERVER = {"sans échantillon : inutilisable"}           # cles serveur gardees a la main (textes hors raise / dictionnaires)
+EXTRA_SERVER = {"sans échantillon : inutilisable", "Transposé"}           # cles serveur gardees a la main (textes hors raise / dictionnaires)
 
 
 def wrap(path):

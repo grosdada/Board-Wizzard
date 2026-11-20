@@ -3,7 +3,7 @@
 // Les elements viennent de la banque d'elements (data/parts, /api/parts) ; on peut en dessiner de nouveaux dans l'atelier.
 // Le visage monte part dans la banque comme une image a part entiere.
 import { tt, tr } from "./i18n.js";
-import { h, get, del, upload, toast, modal, history, put as apiPut } from "./api.js";
+import { h, get, post, del, upload, toast, modal, history, put as apiPut } from "./api.js";
 import { openDrawEditor, drawImage } from "./draw.js";
 
 const S = 1000;                                  // cote de la feuille, en unites
@@ -62,7 +62,10 @@ export async function openIdentikit(bankUI) {
   svg.setAttribute("viewBox", `0 0 ${S} ${S}`); svg.setAttribute("class", "idk-stage");
   const name = h("input", { type: "text", placeholder: tt("Nom du personnage") });
   const tabs = h("div.idk-tabs"), grid = h("div.idk-grid"), knobs = h("div.idk-knobs"), bricksBox = h("div.idk-bricks");
-  let pinned = false, brickSig = "", userSel = false;   // userSel : choisi a la main (clic, brique), pas seulement pose                // pinned : choisi par sa brique, il se deplace meme s'il est recouvert
+  let pinned = false, brickSig = "", userSel = false;
+  let photo = null;                                  // portrait transpose, montre en fond pour comparer : {url, w, h, M (2 x 3), on, op}
+  const BODY = { key: "__corps", label: tt("🧍 Corps"), items: [] };
+  let bodies = null, bodyPick = null, bodyUrl = null;   // corps choisi pour le personnage entier, et son apercu   // userSel : choisi a la main (clic, brique), pas seulement pose                // pinned : choisi par sa brique, il se deplace meme s'il est recouvert
   const sorted = () => layers.slice().sort((a, b) => ORDER.indexOf(a.cat) - ORDER.indexOf(b.cat) || a.n - b.n);
   const tf = (l) => `translate(${l.x} ${l.y}) rotate(${l.rot}) scale(${l.flip ? -1 : 1} 1)`;
   const paint = () => {
@@ -81,7 +84,8 @@ export async function openIdentikit(bankUI) {
       acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${imgX(l)}" y="${-hh / 2}" width="${W}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"${l.half ? ` clip-path="url(#idkh${l.n})"` : ""}/>` +
         (sel === l.n ? `<rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
     }
-    svg.innerHTML = `<defs>${defs}</defs><rect width="${S}" height="${S}" fill="#fff"/>` + acc + grips();
+    const ph = photo && photo.on ? (() => { const M = photo.M; return `<image href="${photo.url}" width="${photo.w}" height="${photo.h}" preserveAspectRatio="none" opacity="${photo.op}" pointer-events="none" transform="matrix(${M[0][0]} ${M[1][0]} ${M[0][1]} ${M[1][1]} ${M[0][2]} ${M[1][2]})"/>`; })() : "";
+    svg.innerHTML = `<defs>${defs}</defs><rect width="${S}" height="${S}" fill="#fff"/>` + ph + acc + grips();
     bricks();
   };
   // nom d'un calque : sa categorie, ou le cote pour une moitie de paire et pour chaque oreille (cote de l'ecran)
@@ -213,8 +217,10 @@ export async function openIdentikit(bankUI) {
   const marks = () => grid.querySelectorAll("[data-id]").forEach((b) => b.classList.toggle("on", layers.some((l) => l.cat === cur.key && l.id === b.dataset.id)));
   const showCat = () => {
     tabs.textContent = "";
-    tabs.append(...cats.map((c) => h("button.mini" + (c === cur ? ".on" : ""), { on: { click: () => { cur = c; showCat(); } } }, c.label, h("span.count", String(c.items.length)))));
+    tabs.append(...cats.map((c) => h("button.mini" + (c === cur ? ".on" : ""), { on: { click: () => { cur = c; showCat(); } } }, c.label, h("span.count", String(c.items.length)))),
+      h("button.mini.idk-bodytab" + (cur === BODY ? ".on" : ""), { title: tt("Poser la tête sur un corps : le personnage entier part dans la banque"), on: { click: () => { cur = BODY; showCat(); } } }, BODY.label));
     grid.textContent = "";
+    if (cur === BODY) { showBodies(); return; }
     grid.append(...cur.items.map((it) => h("button.idk-el", { "data-id": it.id, title: it.name + (it.mine ? tt(" (dessiné ici)") : ""), on: { click: () => put(cur.key, it) } },
       h("img", { src: `/parts/${it.file}?t=${it.t || 0}`, loading: "lazy", alt: "" }), h("span", it.name),
       h("b.edit", { title: it.mine && it.editable ? tt("Éditer ce dessin (ses formes se rouvrent)") : tt("Éditer : retoucher par-dessus cette image ; donne un nouvel élément, l'original reste"), on: { click: (e) => { e.stopPropagation(); editPart(cur.key, it); } } }, "✏"),
@@ -390,9 +396,11 @@ export async function openIdentikit(bankUI) {
     }
     sel = null; paint(); props(); hist.snap();                      // un tirage = une seule etape
   };
-  const render = async () => {                     // l'image du visage monte : fond blanc, elements dans l'ordre
-    const N = 1024, k = N / S, c = document.createElement("canvas"); c.width = c.height = N;
-    const a = document.createElement("canvas"); a.width = a.height = N;            // les calques, sur fond transparent
+  // l'image du visage monte, elements dans l'ordre : wpx x hpx pixels, k = wpx / 1000 ; white : fond blanc (sinon
+  // transparent, pour poser la tete sur un corps : cadre 1000 x 1300 de l'atelier, menton en y = 880)
+  const render = async (wpx = 1024, hpx = 1024, white = true) => {
+    const k = wpx / S, c = document.createElement("canvas"); c.width = wpx; c.height = hpx;
+    const a = document.createElement("canvas"); a.width = wpx; a.height = hpx;     // les calques, sur fond transparent
     const x = a.getContext("2d");
     for (const l of sorted()) {
       const polys = capPolys(l);
@@ -409,21 +417,114 @@ export async function openIdentikit(bankUI) {
       if (l.half) { x.beginPath(); x.rect(-bw / 2, -hh / 2, bw, hh); x.clip(); }      // une moitie : seulement sa moitie de l'image
       x.drawImage(im, imgX(l) * k, -hh / 2, W, hh); x.restore();
     }
-    const out = c.getContext("2d"); out.fillStyle = "#fff"; out.fillRect(0, 0, N, N); out.drawImage(a, 0, 0);
+    const out = c.getContext("2d");
+    if (white) { out.fillStyle = "#fff"; out.fillRect(0, 0, wpx, hpx); }
+    out.drawImage(a, 0, 0);
     return new Promise((ok) => c.toBlob(ok, "image/png"));
   };
+  // ---- corps : la tete posee sur un des corps encres (le serveur compose, comme pour la banque)
+  const composeBody = async () => {
+    const head = await render(1000, 1300, false);
+    const r = await fetch("/api/bodies/compose?body=" + encodeURIComponent(bodyPick), { method: "POST", body: head });
+    if (!r.ok) { let msg = tt("erreur ") + r.status; try { msg = tr((await r.json()).error); } catch (e) { /* message par defaut */ } throw new Error(msg); }
+    return r.blob();
+  };
+  const showBodies = async () => {
+    grid.textContent = "";
+    if (!bodies) { try { bodies = await get("bodies"); } catch (e) { grid.append(h("p.muted", e.message)); return; } }
+    if (cur !== BODY) return;
+    grid.textContent = "";
+    grid.append(h("div.idk-bodyprev", !bodyPick ? h("p.muted", tt("Choisis un corps : l'aperçu montre le personnage entier, avec la tête du portrait-robot. « Ajouter à la banque » proposera alors la tête seule ou le personnage entier."))
+        : !layers.length ? h("p.muted", tt("Pose d'abord une tête : l'aperçu la mettra sur ce corps."))
+        : bodyUrl ? h("img", { src: bodyUrl, alt: "" }) : h("p.muted", tt("Composition…"))),
+      ...bodies.map((b) => h("button.idk-el" + (b.id === bodyPick ? ".on" : ""), { disabled: !b.ready, title: b.ready ? tr(b.name) : tt("Ce corps n'est pas encore encré"), on: { click: () => pickBody(b.id) } },
+        b.ready ? h("img", { src: `/bodies/${b.id}.png`, loading: "lazy", alt: "" }) : null, h("span", tr(b.name)))));
+    if (bodyPick) grid.append(h("div.row.idk-bodyacts", h("button.mini", { title: tt("Recompose l'aperçu avec la tête telle qu'elle est maintenant"), on: { click: () => pickBody(bodyPick, true) } }, tt("↻ Actualiser l'aperçu")),
+      h("button.mini", { title: tt("Ne plus proposer de corps : la tête seule part dans la banque"), on: { click: () => { bodyPick = null; bodyUrl = null; showBodies(); } } }, tt("Sans corps"))));
+  };
+  const pickBody = async (id, again) => {
+    if (!again && bodyPick === id) { bodyPick = null; bodyUrl = null; return showBodies(); }
+    bodyPick = id; bodyUrl = null; showBodies();
+    if (!layers.length) return;
+    try { bodyUrl = URL.createObjectURL(await composeBody()); } catch (e) { toast(e.message, "error"); }
+    if (cur === BODY) showBodies();
+  };
+  // ---- transposer un portrait : reperage du visage dans le navigateur (MediaPipe), la photo ne part jamais ;
+  // le serveur trace visage, yeux, sourcils, nez et bouche a partir des seuls points
+  let detector = null;
+  const getDetector = async () => {
+    if (detector) return detector;
+    const mp = await import("/web/vendor/mediapipe/vision_bundle.mjs");
+    const files = await mp.FilesetResolver.forVisionTasks("/web/vendor/mediapipe/wasm");
+    detector = await mp.FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: "/web/vendor/mediapipe/face_landmarker.task" },
+      runningMode: "IMAGE", numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true });
+    return detector;
+  };
+  const photoBox = h("div.idk-photo");
+  const photoUi = () => {
+    photoBox.textContent = "";
+    if (!photo) return;
+    const op = h("input", { type: "range", min: 0.05, max: 1, step: 0.05, value: photo.op, on: { input: (e) => { photo.op = +e.target.value; paint(); } } });
+    photoBox.append(h("label.check", h("input", { type: "checkbox", checked: photo.on, on: { change: (e) => { photo.on = e.target.checked; paint(); } } }), tt("Photo en fond")),
+      h("label.row.range", tt("Opacité"), op),
+      h("p.muted", tt("Cheveux, barbe, lunettes et oreilles restent à choisir à la main.")));
+  };
+  const transposeFile = async (f) => {
+    const src = URL.createObjectURL(f);
+    let img;
+    try { img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error(tt("image illisible"))); i.src = src; }); }
+    catch (e) { return toast(e.message, "error"); }
+    toast(tt("Repérage du visage…"));
+    let r;
+    try { r = (await getDetector()).detect(img); }
+    catch (e) { return toast(tt("Le repérage du visage n'a pas pu démarrer : ") + e.message, "error", 9000); }
+    const lm = r.faceLandmarks && r.faceLandmarks[0];
+    if (!lm) return toast(tt("Aucun visage trouvé sur cette image."), "error", 7000);
+    const W = img.naturalWidth, H = img.naturalHeight;
+    const points = lm.map((p) => [p.x * W, p.y * H, p.z * W]);
+    const shapes = Object.fromEntries((((r.faceBlendshapes || [])[0] || {}).categories || []).map((c) => [c.categoryName, c.score]));
+    const mt = (r.facialTransformationMatrixes || [])[0];
+    const matrix = mt ? [0, 1, 2, 3].map((i) => [0, 1, 2, 3].map((j) => mt.data[j * 4 + i])) : null;   // rangee par colonnes dans MediaPipe
+    let res;
+    try { res = await post("transpose", { points, shapes, matrix }); }
+    catch (e) { return toast(e.message, "error", 9000); }
+    const repl = new Set(res.calques.map((c) => c.cat));
+    layers = layers.filter((l) => !repl.has(l.cat));
+    for (const c of res.calques) {
+      const ratio = await ratioOf(c.file, 0);
+      layers.push({ n: uidN++, cat: c.cat, id: "transpose-" + c.cat, name: tr(c.name), file: c.file, t: 0, cap: null, r: ratio,
+        x: c.place[0], y: c.place[1], w: c.place[2], kx: 1, ky: 1, rot: 0, flip: false, p0: c.place });
+    }
+    photo = { url: src, w: W, h: H, M: res.photo, on: true, op: photo ? photo.op : 0.35 };
+    sel = null; paint(); props(); marks(); hist.snap(); photoUi();
+    const e = res.etat || {};
+    toast(tt("Visage transposé : forme du visage, yeux, sourcils, nez et bouche. Cheveux, barbe, lunettes et oreilles restent à choisir à la main.") +
+      (e.sourire > 0.5 || e.bouche_ouverte > 0.3 ? " " + tt("La photo souriait ou avait la bouche ouverte : la bouche a été ramenée au repos.") : ""), "info", 10000);
+  };
+  const fileIn = h("input", { type: "file", accept: "image/*", style: { display: "none" }, on: { change: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) transposeFile(f); } } });
+  // petit choix a deux reponses (null si on annule)
+  const choose = (title, text, opts) => new Promise((ok) => {
+    modal(title, h("div.form", h("p", text)), [{ label: tt("Annuler"), click: () => ok(null) }, ...opts.map(([v, l]) => ({ label: l, primary: true, click: () => ok(v) }))]);
+  });
   const m = modal(tt("Portrait-robot"), h("div.idk",
     h("div.idk-left", svg, bricksBox, h("div.row.wrap", h("button.mini", { title: tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
-      h("button.mini", { on: { click: () => { layers = []; sel = null; paint(); props(); marks(); } } }, tt("Tout retirer"))), knobs),
+      h("button.mini", { title: tt("Reconstruit le visage d'une photo de face avec les éléments du portrait-robot. La photo reste dans ce navigateur : seuls les points du visage partent."), on: { click: () => fileIn.click() } }, tt("📷 Transposer un portrait…")), fileIn,
+      h("button.mini", { on: { click: () => { layers = []; sel = null; paint(); props(); marks(); } } }, tt("Tout retirer"))), photoBox, knobs),
     h("div.idk-right", h("label.row", tt("Nom"), name), tabs, grid)),
     [{ label: tt("Fermer") }, { label: tt("Ajouter à la banque"), primary: true, click: async () => {
       if (!layers.length) { toast(tt("Pose au moins un élément."), "error"); return false; }
       const nm = name.value.trim() || tt("Portrait-robot");
+      let withBody = false;
+      if (bodyPick) {
+        const c = await choose(tt("Ajouter à la banque"), tt("Le personnage entier, avec le corps choisi, ou seulement la tête ?"), [["head", tt("Tête seule")], ["body", tt("Avec ce corps")]]);
+        if (!c) return false;
+        withBody = c === "body";
+      }
       const orbit = confirm(tt("Calculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : il reste une image fixe, tu pourras lancer l'orbite plus tard depuis sa fiche."));
       try {
         sel = null; paint();
-        const blob = await render();
-        const it = await upload("bank?" + new URLSearchParams({ kind: "character", name: nm, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", file: "portrait.png", folder: "Portraits-robots" }), blob);
+        const blob = withBody ? await composeBody() : await render();
+        const it = await upload("bank?" + new URLSearchParams({ kind: "character", name: nm, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", file: withBody ? "personnage.png" : "portrait.png", folder: "Portraits-robots" }), blob);
         bankUI.tab = "character"; await bankUI.reload(); bankUI.reveal(it.id); bankUI.app.pollSoon();
         toast(tt`« ${nm} » est dans la banque, dossier Portraits-robots.` + (orbit ? tt(" Son orbite est en calcul.") : ""));
       } catch (e) { toast(tt("Portrait refusé : ") + e.message, "error", 9000); return false; }

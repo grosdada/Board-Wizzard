@@ -33,3 +33,4 @@ alive-bubbles.js: Georgia, "Times New Roman", Times, serif
 alive-bubbles.js: "Trebuchet MS", "Segoe UI", Arial, Helvetica, sans-serif
 alive-bubbles.js: Impact, "Haettenschweiler", "Arial Black", "Arial Narrow Bold", sans-serif
 alive-bubbles.js:  ed on
+identikit.js: IMAGE

@@ -486,3 +486,13 @@ button.keyhelp { border-radius: 50%; width: 22px; height: 22px; padding: 0; font
 /* portrait-robot : bouton « Éditer » sur la vignette d'un element */
 .idk-el b.edit { position: absolute; top: 2px; left: 4px; font-weight: 400; font-size: 11px; opacity: 0; cursor: pointer; padding: 2px 4px; color: #2b6fd6; }
 .idk-el:hover b.edit { opacity: 1; }
+/* portrait-robot : photo transposee en fond, onglet et apercu des corps */
+.idk-photo:empty { display: none; }
+.idk-photo { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.idk-photo .muted { width: 100%; margin: 0; font-size: 11px; }
+.idk-bodyprev { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; min-height: 90px; background: #fff; border-radius: 6px; padding: 6px; }
+.idk-bodyprev img { max-height: 46vh; max-width: 100%; object-fit: contain; }
+.idk-bodyprev .muted { color: #555; text-align: center; padding: 0 12px; }
+.idk-bodyacts { grid-column: 1 / -1; }
+.idk-el:disabled { opacity: .45; cursor: not-allowed; }
+.idk-tabs .idk-bodytab { margin-left: 8px; }

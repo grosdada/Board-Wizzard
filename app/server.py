@@ -7,6 +7,7 @@ Mot de passe facultatif (server.password dans local_settings.json) : indispensab
 import argparse
 import hashlib
 import hmac
+import io
 import json
 import mimetypes
 import re
@@ -29,6 +30,8 @@ MAX_BODY = 80 * 1024 * 1024
 MAX_PACK = 40 * 1024 ** 3                                    # un paquet de personnages (recu sur disque, pas en memoire)
 mimetypes.add_type("image/webp", ".webp")
 mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/javascript", ".mjs")                # MediaPipe (repérage du visage, « Transposer »)
+mimetypes.add_type("application/wasm", ".wasm")
 
 
 class ApiError(Exception):
@@ -350,6 +353,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(store.safe(WEB, "/".join(parts[1:])))
         if parts[0] == "bank" and len(parts) > 2:
             return self.send_file(store.safe(store.item_dir(parts[1]), "/".join(parts[2:])), "max-age=86400")
+        if parts[0] == "bodies" and len(parts) == 2:                # corps encres du portrait-robot
+            return self.send_file(store.safe(settings.DATA / "bodies", parts[1]), "max-age=3600")
         if parts[0] == "parts" and len(parts) == 3:                 # elements de visage du portrait-robot
             return self.send_file(store.safe(store._dir("parts"), "/".join(parts[1:])), "max-age=86400")
         if parts[0] == "audio" and len(parts) == 2:                 # fichiers de la banque audio
@@ -475,6 +480,15 @@ class Handler(BaseHTTPRequestHandler):
             if seg[1:] == ["create"] and method == "POST":
                 return self.send_json(procedural.create(d.get("key", ""), d.get("params") or {}, (d.get("name") or "").strip(), d.get("folder", "")))
             return self.send_json(procedural.catalogue())
+        if head == "transpose" and method == "POST":                # portrait-robot : points d'un visage -> elements traces
+            return self.send_json(self._transpose(data or {}))
+        if head == "bodies":                                        # corps du portrait-robot (tete posee dessus)
+            from . import bodydraw
+            if len(seg) == 1:
+                return self.send_json([{"id": store.slug(n), "name": n, "ready": (settings.DATA / "bodies" / (store.slug(n) + ".png")).exists()}
+                                       for n, _ in bodydraw.CORPS_VARIANTES])
+            if seg[1:] == ["compose"] and method == "POST":         # la tete (PNG 1000 x 1300, cadre de l'atelier) posee sur un corps
+                return self._compose(body, q.get("body", ""))
         if head == "library":                                       # bibliotheque en ligne de personnages
             if not self.me["vip"]:
                 raise ApiError("la bibliothèque en ligne est réservée aux comptes VIP", 403)
@@ -618,6 +632,58 @@ class Handler(BaseHTTPRequestHandler):
                     x.pop("cover", None)
             return self.send_json(store.mutate_item(iid, drop))
         raise ApiError("route inconnue", 404)
+
+    def _transpose(self, d):
+        """« Transposer » : les points d'un portrait (reperes dans le navigateur, la photo ne vient pas ici) -> visage, yeux,
+        sourcils, nez, bouche traces a leurs cotes, ranges dans data/parts/_t-<id>/ (pas une categorie : 30 gardes)."""
+        from . import transpose
+        pts = d.get("points")
+        if not isinstance(pts, list) or len(pts) < 468:
+            raise ApiError("aucun visage repéré sur cette image")
+        cotes, etat = transpose.fit(pts, d.get("shapes") or {}, d.get("matrix") or None)
+        if abs(etat.get("lacet", 0)) > 6 or abs(etat.get("tangage", 0)) > 14:
+            raise ApiError("visage tourné (%d° de côté, %d° en hauteur) : il faut un portrait bien de face, ni de profil ni de trois quarts"
+                           % (round(etat.get("lacet", 0)), round(etat.get("tangage", 0))))
+        root = store._dir("parts")
+        tid = "%d" % time.time_ns()
+        folder = root / ("_t-" + tid)
+        folder.mkdir(parents=True, exist_ok=True)
+        calques = []
+        for cat in ("visage", "yeux", "sourcils", "nez", "bouche"):
+            if cat not in cotes:
+                continue
+            im, place = transpose.draw(cat, cotes[cat])
+            im.save(folder / (cat + ".png"))
+            calques.append({"cat": cat, "file": "_t-%s/%s.png" % (tid, cat), "place": [float(v) for v in place], "name": "Transposé"})
+        for old in sorted(root.glob("_t-*"), key=lambda p: p.stat().st_mtime)[:-30]:   # menage : les 30 derniers
+            shutil.rmtree(old, ignore_errors=True)
+        _, M = transpose.frame(pts)
+        return {"etat": etat, "calques": calques, "photo": [[float(v) for v in row] for row in M]}
+
+    def _compose(self, raw, nom):
+        """Personnage entier : la tete envoyee par l'atelier sur le corps `nom` (bodydraw), fond blanc. Rend le PNG."""
+        from . import bodydraw
+        from PIL import Image
+        if not raw:
+            raise ApiError("image manquante")
+        names = {store.slug(n): n for n, _ in bodydraw.CORPS_VARIANTES}
+        if store.slug(nom) not in names:
+            raise ApiError("corps inconnu : %s" % nom)
+        tete = Image.open(io.BytesIO(raw)).convert("RGBA")
+        if tete.size != (1000, 1300):
+            tete = tete.resize((1000, 1300), Image.LANCZOS)
+        out = bodydraw.personnage(tete, nom=names[store.slug(nom)])
+        flat = Image.new("RGB", out.size, "white")
+        flat.paste(out, mask=out.split()[3])
+        buf = io.BytesIO()
+        flat.save(buf, "PNG")
+        img = buf.getvalue()
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(img)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(img)
 
     def _review(self, iid, it, d, opts):
         """Validation des poses avant leur orbite. action : keep (la pose part en orbite), keep_all (toutes celles qui
