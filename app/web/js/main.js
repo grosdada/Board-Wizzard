@@ -368,14 +368,31 @@ class App {
     const boxes = others.map((g) => [g, h("input", { type: "checkbox" })]);
     const all = h("button.mini", { on: { click: (e) => { e.preventDefault(); const on = boxes.some(([, c]) => !c.checked); boxes.forEach(([, c]) => { c.checked = on; }); } } }, tt("Toutes / aucune"));
     modal(tt`Copier « ${item ? item.name : tt("l'élément")} » vers…`, h("div.form",
-      h("p.muted", tt("L'élément est ajouté dans les cases cochées avec la même pose, le même axe, la même place et la même taille. Le reste de ces cases n'est pas touché.")),
+      h("p.muted", tt("L'élément est ajouté dans les cases cochées avec la même pose, le même axe, la même place et la même taille. Si une case a déjà des éléments, on te demandera de les garder ou de les remplacer.")),
       h("div.checks", boxes.map(([g, c]) => h("label.row.check", c, tt`Case ${g.order}`))), h("div.row", all)),
       [{ label: tt("Annuler") }, { label: tt("Copier"), primary: true, click: () => {
         const to = boxes.filter(([, c]) => c.checked).map(([g]) => g);
         if (!to.length) { toast(tt("Coche au moins une case."), "error"); return false; }
-        for (const g of to) { const pan = pg.panels[g.id] || (pg.panels[g.id] = {}); (pan.layers = pan.layers || []).push(Object.assign(clone(l), { id: uid() })); pan.show = "layers"; }
-        this.commit("copy-layer"); this.editor.render(); this.refreshInspector();
-        toast(tt`Élément copié vers ${to.map((g) => g.order).join(", ")}.`);
+        // une case d'arrivee qui a deja des elements (calques) : ajouter, ou remplacer ses elements ; son fond, ses bulles
+        // et ses reperes ne sont jamais touches (la copie ne porte que sur un element)
+        const apply = (replace) => {
+          for (const g of to) {
+            const pan = pg.panels[g.id] || (pg.panels[g.id] = {});
+            if (replace && pan.layers && pan.layers.length) {
+              if (pan.anim && pan.anim.tracks) for (const x of pan.layers) delete pan.anim.tracks[x.id];   // les pistes des elements retires
+              pan.layers = [];
+            }
+            (pan.layers = pan.layers || []).push(Object.assign(clone(l), { id: uid() })); pan.show = "layers";
+          }
+          this.commit("copy-layer"); this.editor.render(); this.refreshInspector();   // une seule etape : Ctrl+Z annule tout
+          toast((replace ? tt("Éléments remplacés dans ") : tt("Élément copié vers ")) + to.map((g) => g.order).join(", ") + ".");
+        };
+        const full = to.filter((g) => ((pg.panels[g.id] || {}).layers || []).length);
+        if (!full.length) return apply(false);
+        modal(tt("Case déjà occupée"), h("div.form",
+          h("p", full.length > 1 ? tt`Les cases ${full.map((g) => g.order).join(", ")} contiennent déjà des éléments.` : tt`La case ${full[0].order} contient déjà ${(pg.panels[full[0].id].layers || []).length} élément(s).`),
+          h("p.muted", tt("Ajouter : la copie s'ajoute, rien n'est retiré. Remplacer : la copie prend la place des éléments de la case ; le fond, les bulles et les repères restent."))),
+          [{ label: tt("Annuler") }, { label: tt("Ajouter aux éléments"), primary: true, click: () => apply(false) }, { label: tt("Remplacer les éléments"), primary: true, click: () => apply(true) }]);
       } }]);
   }
 
