@@ -2,7 +2,7 @@
 // unis ou en degrade. panel.draw = { shapes: [...] }. Une forme :
 //   { id, t (primitive ou trace, voir PRIMS et PATHS), p: [[x, y]...] en fraction de la case, r (rotation en degres),
 //     stroke: "#111111" | "#ffffff" | "none", sw (epaisseur), fill: none | white | black | tone | grad,
-//     tone, tone2 (0 = blanc, 1 = noir), ga (angle du degrade), dot (taille de la trame), form: points | lignes | croix,
+//     tone, tone2 (0 = blanc, 1 = noir), ga (angle du degrade), dot (taille de la trame), form: points | lignes | croix | triple | carres | cercles | vagues | grain,
 //     ha (angle de la trame), mx (primitive retournee gauche-droite par « Miroir ») }
 // La trame est faite par le navigateur : un motif en « cones » de gris + le ton voulu, puis un seuil. Les points
 // grossissent donc tout seuls la ou le ton fonce, sans dessiner chaque point.
@@ -35,7 +35,8 @@ export function fillOf(sh) {
   if (f === "tone" || f === "grad") return { on: true, col: "#ffffff", tr: f };
   return { on: true, col: "#ffffff", tr: "none" };
 }
-const FORMS = { points: tt("Points"), lignes: tt("Lignes"), croix: tt("Croisillons") };
+const FORMS = { points: tt("Points"), lignes: tt("Lignes"), croix: tt("Croisillons"), triple: tt("Hachures en trois sens"), carres: tt("Carrés"),
+                cercles: tt("Cercles concentriques"), vagues: tt("Lignes ondulées"), grain: tt("Grain") };
 const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, col: "#ffffff" };   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
 
 function geom(sh, H) {
@@ -137,15 +138,36 @@ export function drawSvg(draw, H, pre) {
     if (!open && fl.on) one += `<path ${tag} d="${d}" fill="${fl.col}"/>`;          // la couleur, puis la trame par-dessus
     if (!open && fl.on && fl.tr !== "none") {
       const s = Math.max(4, sh.dot), rot = `rotate(${f1(sh.ha)})`;
-      const cell = (pid, grad) => `<pattern id="${pid}" width="${f1(s)}" height="${f1(s)}" patternUnits="userSpaceOnUse" patternTransform="${rot}${grad === "l2" ? " rotate(90)" : ""}"><rect width="${f1(s)}" height="${f1(s)}" fill="url(#${id}${grad === "l2" ? "l" : grad})"/></pattern>`;
+      // une case du motif : un champ de gris (noir au coeur du motif), seuille plus bas selon le ton ; turn tourne le motif
+      const cell = (pid, grad, turn = 0) => `<pattern id="${pid}" width="${f1(s)}" height="${f1(s)}" patternUnits="userSpaceOnUse" patternTransform="${rot}${turn ? ` rotate(${turn})` : ""}"><rect width="${f1(s)}" height="${f1(s)}" fill="url(#${id}${grad})"/></pattern>`;
       defs += `<radialGradient id="${id}r" cx="0.5" cy="0.5" r="0.72"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/></radialGradient>` +
         `<linearGradient id="${id}l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="0.5" stop-color="#000"/><stop offset="1" stop-color="#fff"/></linearGradient>` +
         `<clipPath id="${id}c"><path d="${d}"/></clipPath>`;
       const rect = (fill, extra = "") => `<rect x="${f1(bx.x)}" y="${f1(bx.y)}" width="${f1(bx.w)}" height="${f1(bx.h)}" fill="${fill}"${extra}/>`;
       let cone;
+      const pad = s * 2, big = (fill) => `<rect x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" fill="${fill}"/>`;
+      const seed = [...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
       if (sh.form === "lignes") { defs += cell(id + "p", "l"); cone = rect(`url(#${id}p)`); }
-      else if (sh.form === "croix") { defs += cell(id + "p", "l") + cell(id + "q", "l2"); cone = rect(`url(#${id}p)`) + rect(`url(#${id}q)`, ` style="mix-blend-mode:darken"`); }
-      else { defs += cell(id + "p", "r"); cone = rect(`url(#${id}p)`); }
+      else if (sh.form === "croix") { defs += cell(id + "p", "l") + cell(id + "q", "l", 90); cone = rect(`url(#${id}p)`) + rect(`url(#${id}q)`, ` style="mix-blend-mode:darken"`); }
+      else if (sh.form === "triple") {                     // trois hachures a 60 degres
+        defs += cell(id + "p", "l") + cell(id + "q", "l", 60) + cell(id + "u", "l", 120);
+        cone = rect(`url(#${id}p)`) + rect(`url(#${id}q)`, ` style="mix-blend-mode:darken"`) + rect(`url(#${id}u)`, ` style="mix-blend-mode:darken"`);
+      } else if (sh.form === "carres") {                   // deux lignes croisees, noir seulement la ou elles se recouvrent
+        defs += cell(id + "p", "l") + cell(id + "q", "l", 90); cone = rect(`url(#${id}p)`) + rect(`url(#${id}q)`, ` style="mix-blend-mode:lighten"`);
+      } else if (sh.form === "cercles") {                  // anneaux autour du centre de la forme
+        defs += `<radialGradient id="${id}o" gradientUnits="userSpaceOnUse" cx="${f1(bx.cx)}" cy="${f1(bx.cy)}" r="${f1(s / 2)}" spreadMethod="reflect"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/></radialGradient>`;
+        cone = rect(`url(#${id}o)`);
+      } else if (sh.form === "vagues") {                   // lignes deplacees par un bruit lent : gravure ondulee
+        defs += cell(id + "p", "l") + `<filter id="${id}w" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">` +
+          `<feTurbulence type="fractalNoise" baseFrequency="${(0.2 / s).toFixed(5)}" numOctaves="2" seed="${seed}"/><feDisplacementMap in="SourceGraphic" scale="${f1(s * 3.5)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
+        cone = `<g filter="url(#${id}w)">${big(`url(#${id}p)`)}</g>`;
+      } else if (sh.form === "grain") {                    // grain irregulier, facon aquatinte
+        defs += `<filter id="${id}n" filterUnits="userSpaceOnUse" x="${f1(bx.x)}" y="${f1(bx.y)}" width="${f1(bx.w)}" height="${f1(bx.h)}" color-interpolation-filters="sRGB">` +
+          `<feTurbulence type="fractalNoise" baseFrequency="${(3 / s).toFixed(4)}" numOctaves="2" seed="${seed}"/>` +
+          `<feColorMatrix type="matrix" values="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1"/>` +
+          `<feComponentTransfer>${["R", "G", "B"].map((c) => `<feFunc${c} type="linear" slope="3.4" intercept="-1.2"/>`).join("")}</feComponentTransfer></filter>`;
+        cone = `<rect x="${f1(bx.x)}" y="${f1(bx.y)}" width="${f1(bx.w)}" height="${f1(bx.h)}" fill="#fff" filter="url(#${id}n)"/>`;
+      } else { defs += cell(id + "p", "r"); cone = rect(`url(#${id}p)`); }
       let tone;
       if (fl.tr === "grad") {
         const a = sh.ga * Math.PI / 180, dx = Math.cos(a) / 2, dy = Math.sin(a) / 2;
