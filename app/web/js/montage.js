@@ -622,7 +622,7 @@ export function openMontage(app, pid) {
     const file = h("input", { type: "file", accept: "audio/*,video/mp4,.webm", style: { display: "none" }, on: { change: (e) => { const f = e.target.files[0]; if (f) setVoice(l, f, f.name); e.target.value = ""; } } });
     const micBtn = h("button.mini", { title: tt("Enregistre ta voix au micro ; clique encore pour arrêter"), on: { click: () => micro(l, micBtn) } }, rec ? tt("■ Arrêter l'enregistrement") : tt("● Micro"));
     const rows = [h("div.row.wrap", h("button.mini", { title: tt("Fichier son : wav, mp3, m4a, ogg, webm"), on: { click: () => file.click() } }, lip.src ? tt("Changer la voix…") : tt("Importer une voix…")), micBtn, file,
-      lip.src ? h("button.mini.danger", { title: tt("Retire la voix et ses bouches (la place de la bouche est gardée)"), on: { click: () => { const a = players.get(l.id); if (a) a.pause(); players.delete(l.id); delete l.lip.src; delete l.lip.cues; delete l.lip.name; delete l.lip.dur; paint(); props(); } } }, tt("Retirer")) : "")];
+      lip.src ? h("button.mini.danger", { title: tt("Retire la voix et ses bouches (la place de la bouche est gardée)"), on: { click: () => { const a = players.get(l.id); if (a) a.pause(); players.delete(l.id); delete l.lip.src; delete l.lip.cues; delete l.lip.name; delete l.lip.dur; delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, tt("Retirer")) : "")];
     rows.push(libBox(l), ttsBox(l));
     if (lip.src) {
       const [va, vb] = voiceSpan(lip);
@@ -843,6 +843,7 @@ export function openMontage(app, pid) {
   const playBtn = h("button.mini.mt-play", { on: { click: () => (playing ? stop() : play()) } }, tt("▶ Lecture"));
   function tick(now) {
     if (!playing) return;
+    if (!m.box.isConnected) return done();                 // fenetre fermee (croix, clic a cote) : plus de son ni d'image
     t += (now - last) / 1000; last = now;
     if (t >= anim.dur) { if (loop) t = 0; else { t = anim.dur; paint(); head(); return stop(); } }
     paint(); head(); voices(true);
@@ -863,6 +864,9 @@ export function openMontage(app, pid) {
     paint(); lanes(); props();
   });
   const key = (e) => {
+    // fenetre fermee sans « Annuler » ni « Enregistrer » (croix, clic a cote) : ce montage ne doit plus rien jouer. Sinon
+    // la barre d'espace relancait sa copie de la case, avec des voix retirees depuis : une voix fantome, sans piste.
+    if (!m.box.isConnected) return done();
     if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === " ") { e.preventDefault(); e.stopPropagation(); return playing ? stop() : play(); }
