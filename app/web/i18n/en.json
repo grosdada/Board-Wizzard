@@ -1296,7 +1296,11 @@
   "Carrés": "Squares",
   "Cercles concentriques": "Concentric circles",
   "Lignes ondulées": "Wavy lines",
-  "Grain": "Grain"
+  "Grain": "Grain",
+  "Comme le reste (Qwen-Image-Edit)": "Same as the rest (Qwen-Image-Edit)",
+  "fal · Nano Banana Pro : fidèle au trait et aux couleurs (payant)": "fal · Nano Banana Pro: true to the line and colours (paid)",
+  "Le modèle qui dessine les poses et la planche de vues (dos, profil). Le détourage et l'orbite restent sur tes machines.": "The model that draws the poses and the view sheet (back, profile). Cut-out and orbit stay on your machines.",
+  "Moteur des poses": "Pose engine"
  },
  "server": {
   "Parle": "Speaks",

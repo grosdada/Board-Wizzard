@@ -17,7 +17,7 @@ from . import comfy, settings
 QUEUE = "https://queue.fal.run/"
 ORBIT_LORA = {"path": "pablodawson/MiniMax-H3-360-Orbit-LoRA", "weight_name": "minimax_h3_flf2v_lora_v1.safetensors",
               "scale": 1.0}
-NO_SEED = ("flux-3", "seedream", "gpt-image")
+NO_SEED = ("flux-3", "seedream", "gpt-image", "nano-banana")
 RATIO_MODELS = ("nano-banana", "flux-3")
 
 

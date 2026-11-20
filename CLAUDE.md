@@ -34,6 +34,11 @@ souris. Sœur d'Alive-Comics (même découpage, mêmes bulles, même client Comf
   (Qwen-Image-Edit, `poses.SHEET_VIEWS`) dans `sheet/` ; elles partent en `character_1..4` du nœud H3 avec l'image de
   base. Sans elles un dessin tourne « à plat ». Réglage `render.sheet`.
 - **Poses** : `app/poses.py`. Une pose = Qwen-Image-Edit sur l'image de base, puis détourage et orbite propres.
+- **Moteur des poses** (`render.pose_engine`, Réglages › Calcul) : vide = Qwen comme le reste ; `fal:fal-ai/nano-banana-pro/edit` =
+  poses et planche de vues par Nano Banana Pro (`jobs._pose_prov`, prompt `poses.FAITHFUL`), détourage et orbite sur les
+  machines. Qwen redessine les dessins en couleur (lavis) ; Nano Banana Pro garde trait et remplissage. Une pose peut avoir
+  ses propres vues (`variants[v].sheet`, fichiers `v/<pose>/sheet/`) : l'orbite les prend à la place de celles de la base,
+  qui déteignent quand l'attitude diffère (bras en trop). Sans planche du tout, les profils sortent plats.
 - **Dessins** (`style: "dessin"`) : le détourage troue le blanc intérieur ; `sprites.fill_holes` rebouche ce que la
   silhouette enferme.
 - **Tâches** (`app/jobs.py`) : une procédure par type (`RUNNERS`), un fournisseur local (ComfyUI) ou fal avec les

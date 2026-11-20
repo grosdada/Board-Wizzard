@@ -44,6 +44,7 @@ DEFAULTS = {
         "target": "auto",                # local | fal | auto (machines d'abord, fal si aucune)
         "orbit_length": 73,              # images a 24 i/s, forme 17k+5 : 73 = 3 s, 124 = 5,2 s
         "integrate_engine": "",          # moteur d'Integrate : "" (comme le reste), "local", ou "fal:<modele d'edition>"
+        "pose_engine": "",               # moteur des poses et de la planche de vues : "" (comme le reste) ou "fal:<modele d'edition>"
         "sheet": True,                   # planche de vues (dos, profil) avant l'orbite d'un personnage
         "megapixels": 0.6,
         "steps": 28,

@@ -16,7 +16,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from . import comfy, poses, settings, sprites, store, vector, headtrack
+from . import comfy, falapi, poses, settings, sprites, store, vector, headtrack
 
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i", "item_sheet": "edit",
         "panel_integrate": "edit", "panel_orbit": "orbit"}
@@ -107,6 +107,19 @@ def run_item_cut(job, prov):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _pose_prov(job, prov):
+    """Moteur des poses et de la planche de vues. Reglage render.pose_engine = "fal:<modele>" : ces images-la partent sur
+    fal avec ce modele, quelle que soit la machine qui tient la tache ; le detourage et l'orbite restent ou ils sont.
+    Renvoie (fournisseur, nom du modele ou "")."""
+    eng = (settings.load()["render"].get("pose_engine") or "").strip()
+    if not eng.startswith("fal:") or not eng[4:].strip():
+        return prov, ""
+    job = job if job is not None else {}
+    fp = falapi.FalProvider(fal_key_for(job), job)
+    fp.cfg = dict(fp.cfg, edit=eng[4:].strip())
+    return fp, "fal " + eng[4:].strip()
+
+
 _sheet_locks, _sheet_guard = {}, threading.Lock()
 
 
@@ -122,6 +135,7 @@ def ensure_sheet(it, prov, job=None, redo=False):
         it = store.load_item(it["id"])
         have = {} if redo else dict(it.get("sheet") or {})
         base = d / it["variants"]["base"]["ref"]
+        eprov, model = _pose_prov(job, prov)
         for k, (view, _) in enumerate(poses.SHEET_VIEWS):
             if view in have and (d / have[view]).exists():
                 continue
@@ -129,7 +143,7 @@ def ensure_sheet(it, prov, job=None, redo=False):
                 job["progress"] = "planche de vues : %s" % view
             tmp = _tmp()
             try:
-                png = prov.edit([base], poses.sheet_prompt(view, it.get("style", "photo")), 31 + k, tmp)
+                png = eprov.edit([base], poses.sheet_prompt(view, it.get("style", "photo"), faithful=bool(model) and it.get("style") != "dessin"), 31 + k, tmp)
                 rel = "sheet/%s.png" % view
                 (d / "sheet").mkdir(parents=True, exist_ok=True)
                 if it.get("style") == "dessin":
@@ -139,7 +153,7 @@ def ensure_sheet(it, prov, job=None, redo=False):
                 have[view] = rel
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
-        store.mutate_item(it["id"], lambda x: x.update(sheet=have, sheet_t=int(time.time())))
+        store.mutate_item(it["id"], lambda x: x.update(sheet=have, sheet_t=int(time.time()), sheet_model=model or x.get("sheet_model", "")))
         return [d / have[v] for v, _ in poses.SHEET_VIEWS if v in have]
 
 
@@ -161,9 +175,14 @@ def run_item_orbit(job, prov):
     refs = None
     if it["kind"] == "character" and not p.get("no_sheet"):      # planche de vues d'abord : le dos et le profil servent de references
         try:
-            views = ensure_sheet(it, prov, job)
+            # une pose peut avoir ses propres vues (v/<pose>/sheet) : celles de la base, dans une autre attitude,
+            # deteignent sur l'orbite (bras en trop, mains qui retournent dans les poches)
+            vs = v.get("sheet") or {}
+            views = [d / vs[k] for k, _ in poses.SHEET_VIEWS if k in vs and (d / vs[k]).exists()]
+            own = bool(views)
+            views = views or ensure_sheet(it, prov, job)
             if views:
-                refs = {"character": [d / it["variants"]["base"]["ref"]] + views[:3]}
+                refs = {"character": [d / (v["ref"] if own else it["variants"]["base"]["ref"])] + views[:3]}
         except Exception:                                          # noqa: BLE001 : sans planche, l'orbite se fait comme avant
             refs = None
     for attempt in range(2):
@@ -264,6 +283,9 @@ def run_item_pose(job, prov):
     # « Vérifier avant les orbites » (choisi en preparant) : la pose est generee et detouree, puis attend « Garder »
     validate = bool(p.get("orbit", True)) and bool(p.get("review"))
     score, rejected, line = None, False, None
+    eprov, model = _pose_prov(job, prov)
+    if model and it["kind"] == "character" and it.get("style") != "dessin":   # moteur fidele : « un autre dessin du meme auteur »
+        label, prompt = poses.pose_prompt_faithful(p.get("pose", ""), p.get("custom", ""))
     tmp = _tmp()
     try:
         base = d / it["variants"]["base"]["ref"]
@@ -271,7 +293,7 @@ def run_item_pose(job, prov):
             # corps de mannequin (tete lisse, sans visage : la tete est ajoutee en traces par l'application). Pas de
             # visage a respecter : un seul tirage, pas de controle de fidelite.
             label, prompt = poses.pose_prompt_drawing(p.get("pose", ""), p.get("custom", ""))
-            cand = prov.edit([base], prompt, _seed(job), tmp)
+            cand = eprov.edit([base], prompt, _seed(job), tmp)
             png = tmp / "mannequin.png"
             sprites.ink(cand, png)
         elif it.get("style") == "dessin" and it["kind"] == "character":
@@ -283,7 +305,7 @@ def run_item_pose(job, prov):
             best, line = None, 1.0
             for k in range(DRAW_TRIES):
                 job["progress"] = "pose, tirage %d" % (k + 1)
-                cand = prov.edit([base], prompt, _seed(job) + 7919 * k, tmp)
+                cand = eprov.edit([base], prompt, _seed(job) + 7919 * k, tmp)
                 keep = tmp / ("cand_%d.png" % k)
                 sprites.ink(cand, keep)
                 score = sprites.face_score(base, keep)
@@ -307,7 +329,7 @@ def run_item_pose(job, prov):
                 rejected = True                                  # gardee quand meme, montree comme ecartee : a repecher ou refaire
             png = best[1]
         else:
-            png = prov.edit([base], prompt, _seed(job), tmp)
+            png = eprov.edit([base], prompt, _seed(job), tmp)
         box = {}
 
         def apply(x):
@@ -320,6 +342,10 @@ def run_item_pose(job, prov):
                 v["custom"] = p["custom"]
             if p.get("variant"):                                 # pose refaite : l'ancien detourage et l'ancienne orbite ne valent plus
                 v["cut"], v["orbit"] = None, None
+            if model:
+                v["model"] = model
+            else:
+                v.pop("model", None)
             if validate:
                 v["review"] = {"state": "rejected" if rejected else "pending", "score": score, "line": line, "at": int(time.time())}
             else:

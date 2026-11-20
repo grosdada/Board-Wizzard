@@ -109,6 +109,23 @@ def pose_prompt_drawing(key, custom=""):
                    "full body." % move)
 
 
+# Moteur fidele (render.pose_engine, Nano Banana Pro) : on demande « un autre dessin du meme auteur », sans rien dire du
+# personnage ni de la technique. Essaye le 20/11/2026 sur un dessin au crayon et au lavis : meme visage, meme trait,
+# meme remplissage, la ou Qwen-Image-Edit redessinait tout.
+FAITHFUL = ("It must look like another image of the same character made by the same artist, with the same tools, on the same "
+            "day. Keep the character strictly identical: same head shape, same face, same hair, same clothes, same body "
+            "proportions. Keep the technique strictly identical to the reference image: the same kind of outlines with the same "
+            "thickness and roughness, the same way of filling the shapes, the same texture, the same colours, the same level of "
+            "detail. Same plain background. Full body from head to feet, the character the same size in the frame. Do not "
+            "clean up, do not beautify, do not add detail, no new colours.")
+
+
+def pose_prompt_faithful(key, custom=""):
+    hit = find("character", key)
+    label, desc = hit if hit else (custom[:40] or key, custom or key)
+    return label, "Redraw this exact character in a new pose: %s. %s" % (desc, FAITHFUL)
+
+
 def pose_prompt(kind, key, style="photo", custom=""):
     """(nom affiche, prompt d'edition)."""
     hit = find(kind, key)
@@ -142,8 +159,11 @@ SHEET_STYLE = {
 }
 
 
-def sheet_prompt(view, style="photo"):
+def sheet_prompt(view, style="photo", faithful=False):
     desc = dict(SHEET_VIEWS)[view]
+    if faithful:                                     # le volume est dit en clair : c'est ce que l'orbite vient chercher ici
+        return ("%s Standing in the same pose. The head and the body keep real volume and thickness seen from this angle. %s"
+                % (desc, FAITHFUL))
     return desc + " " + SHEET_STYLE.get(style, SHEET_STYLE["photo"])
 
 
