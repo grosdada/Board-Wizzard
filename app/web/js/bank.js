@@ -147,7 +147,7 @@ export class Bank {
     if (!v) return "";
     if (v.orbit) return sprite(it, vid, 0).url;
     if (v.cut) return `/bank/${it.id}/${v.cut}?t=${v.t || 0}`;
-    return `/bank/${it.id}/${v.ref}`;
+    return `/bank/${it.id}/${v.ref}?t=${v.t || 0}`;
   }
 
   // ---- banque audio
@@ -585,6 +585,7 @@ export class Bank {
           toast(tt("Orbite relancée avec une autre graine.")); app.pollSoon(); } } }, v.orbit ? tt("↻ Refaire l'orbite") : tt("↻ Générer l'orbite")),
         item.kind !== "decor" ? h("button.mini", { on: { click: async () => { await post(`bank/${id}/cut`, { variant: vid, target: target() }); app.pollSoon(); } } }, tt("✂ Refaire le détourage")) : null,
         vid !== "base" ? h("button.mini.danger", { on: { click: async () => { await del(`bank/${id}/variant/${vid}`); vid = "base"; await this.reload(); } } }, tt("Supprimer cette variante")) : null,
+        item.kind === "character" && item.identikit ? h("button.mini", { title: tt("Rouvre l'atelier avec la composition de ce portrait-robot (éléments, places, miroirs, corps) ; à l'enregistrement : remplacer son image de base ou faire un nouveau personnage"), on: { click: () => { m.close(); this.openId = null; openIdentikit(this, { item }); } } }, tt("🧩 Éditer dans le portrait-robot")) : null,
         h("button.mini", { title: tt("Enregistre cet élément entier (poses, orbites, tracés) dans un fichier .bwpack à donner à quelqu'un"), on: { click: () => this.download(new URLSearchParams({ ids: id })) } }, tt("📦 Exporter")),
         h("button.mini.danger", { on: { click: async () => { if (!confirm(tt`Retirer « ${item.name} » de la banque ? (il part à la corbeille du dossier de données)`)) return;
           await del("bank/" + id); m.close(); this.openId = null; this.reload(); } } }, tt("Retirer de la banque")));

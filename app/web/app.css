@@ -437,6 +437,9 @@ details.fold > summary:hover { opacity: 1; }
 .idk { display: grid; grid-template-columns: minmax(320px, 46vh) 1fr; gap: 18px; align-items: start; }
 .idk-stage { width: 100%; aspect-ratio: 1; background: #fff; border-radius: 8px; display: block; touch-action: none; user-select: none; cursor: default; }
 .idk-stage image { cursor: move; }
+.idk-stagewrap { position: relative; } .idk-moveall { position: absolute; top: 6px; right: 6px; font-size: 18px; line-height: 1; padding: 3px 7px; opacity: 0.85; }
+.idk-moveall.on { background: #10b5e0; color: #fff; border-color: #10b5e0; opacity: 1; }
+.idk-warn { background: #fff3cd; color: #6b4a00; border: 1px solid #e0b84a; border-radius: 6px; padding: 8px 10px; }
 .idk-grip { fill: #fff; stroke: #10b5e0; }
 .idk-grip:hover { fill: #10b5e0; }
 .idk-left { display: flex; flex-direction: column; gap: 8px; } .idk-knobs b { display: block; margin: 4px 0; }

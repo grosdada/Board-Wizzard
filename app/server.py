@@ -563,7 +563,9 @@ class Handler(BaseHTTPRequestHandler):
         iid = seg[0]
         if len(seg) == 1:
             if method == "PUT":
-                keep = {k: v for k, v in (data or {}).items() if k in ("name", "style", "facing", "tags", "folder", "face", "body", "cover")}
+                keep = {k: v for k, v in (data or {}).items() if k in ("name", "style", "facing", "tags", "folder", "face", "body", "cover", "identikit")}
+                if "identikit" in keep:                             # composition du portrait-robot, pour le rouvrir dans l'atelier
+                    keep["identikit"] = self._keep_identikit(iid, keep["identikit"])
                 if keep.get("body"):
                     store.load_item(keep["body"])
                 if "cover" in keep and keep["cover"] not in (store.resolve(store.load_item(iid)).get("variants") or {}):   # variante principale (vignette de la banque)
@@ -578,6 +580,8 @@ class Handler(BaseHTTPRequestHandler):
         it = store.load_item(iid)
         if it.get("body"):
             raise ApiError("ce personnage est un assemblage : les poses et les orbites se calculent sur son corps (« %s »)" % it["body"])
+        if act == "rebase" and method == "POST":                    # portrait-robot reedite : nouvelle image de base (corps brut)
+            return self.send_json(self._rebase(iid, body))
         if act == "zones":                                          # zones suspectes d'une orbite (vides remplis a tort ?)
             return self.send_json(retouch.zones(iid, q.get("variant", "base")))
         if act == "punch" and method == "POST":                     # vider une zone remplie a tort (sous un bras)
@@ -659,6 +663,55 @@ class Handler(BaseHTTPRequestHandler):
             shutil.rmtree(old, ignore_errors=True)
         _, M = transpose.frame(pts)
         return {"etat": etat, "calques": calques, "photo": [[float(v) for v in row] for row in M]}
+
+    def _keep_identikit(self, iid, comp):
+        """Composition d'un portrait-robot gardee dans son element : les elements transposes (data/parts/_t-*, menage a 30)
+        sont recopies dans data/parts/_keep-<id>/ pour survivre au menage."""
+        if not isinstance(comp, dict) or not isinstance(comp.get("layers"), list):
+            raise ApiError("composition du portrait-robot illisible")
+        root = store._dir("parts")
+        for l in comp["layers"]:
+            f = str(l.get("file") or "")
+            if not f.startswith("_t-"):
+                continue
+            src = store.safe(root, f)
+            dest = root / ("_keep-" + iid) / ("%s-%s" % (f.split("/")[0][3:], Path(f).name))
+            if src.is_file():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dest)
+            if dest.is_file():
+                l["file"] = "_keep-%s/%s" % (iid, dest.name)
+        return comp
+
+    def _rebase(self, iid, raw):
+        """Remplace l'image de base d'un personnage (portrait-robot reedite). Rien n'est relance : le detourage et l'orbite
+        de base sont retires (l'ancienne image et l'ancienne variante sont gardees dans data/backup/rebase/), les poses
+        gardent l'ancien visage."""
+        if not raw:
+            raise ApiError("image manquante")
+        d = store.item_dir(iid)
+        it = store.load_item(iid)
+        back = settings.DATA / "backup" / "rebase" / iid / time.strftime("%Y%m%d-%H%M%S")
+        back.mkdir(parents=True, exist_ok=True)
+        for rel in ("v/base/ref.png", "thumb.jpg"):
+            if (d / rel).is_file():
+                shutil.copyfile(d / rel, back / Path(rel).name)
+        (back / "base.json").write_text(json.dumps(it["variants"].get("base"), ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp = settings.DATA / "tmp" / ("rebase_%d.png" % (time.time() * 1000))
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_bytes(raw)
+        try:
+            w, h = sprites.normalize(tmp, d / "v/base/ref.png")
+            sprites.thumb(d / "v/base/ref.png", d / "thumb.jpg")
+        finally:
+            tmp.unlink(missing_ok=True)
+
+        def apply(x):
+            x.update({"w": w, "h": h})
+            x["sheet"] = {}                                         # planche de vues de l'ancien visage : refaite avant la prochaine orbite
+            b = x["variants"]["base"]
+            b.update({"cut": None, "orbit": None, "t": int(time.time())})
+        return store.resolve(store.mutate_item(iid, apply))
 
     def _compose(self, raw, nom):
         """Personnage entier : la tete envoyee par l'atelier sur le corps `nom` (bodydraw), fond blanc. Rend le PNG."""

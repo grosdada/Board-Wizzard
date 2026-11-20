@@ -23,7 +23,7 @@ export function sprite(item, vid, f) {
              head: v.orbit.head ? `/bank/${id}/${v.orbit.dir}/head.json?v=${v.orbit.vt || 0}` : null };   // tete suivie (corps de mannequin)
   }
   if (v.cut) return { url: `/bank/${id}/${v.cut}?t=${v.t || 0}`, w: v.cw || item.w, h: v.ch || item.h, n: 1, i: 0 };
-  return { url: `/bank/${id}/${v.ref}`, w: item.w || 1, h: item.h || 1, n: 1, i: 0, raw: true };
+  return { url: `/bank/${id}/${v.ref}?t=${v.t || 0}`, w: item.w || 1, h: item.h || 1, n: 1, i: 0, raw: true };
 }
 
 // ---- dessins en traces : vec.json d'une orbite = { w, h, frames: [{ body, ink }] }, charge une fois puis garde

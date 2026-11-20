@@ -1,7 +1,8 @@
 // Portrait-robot, a la maniere des coffrets de la police : un visage se monte en superposant des elements dessines
 // (forme du visage, cheveux, yeux, sourcils, nez, bouche, oreilles, moustache, barbe, lunettes, signes, couvre-chef).
 // Les elements viennent de la banque d'elements (data/parts, /api/parts) ; on peut en dessiner de nouveaux dans l'atelier.
-// Le visage monte part dans la banque comme une image a part entiere.
+// Le visage monte part dans la banque comme une image a part entiere ; sa composition (item.identikit = { v, layers, off,
+// body }) y est gardee pour le rouvrir ici (« Editer dans le portrait-robot » sur sa fiche).
 import { tt, tr } from "./i18n.js";
 import { h, get, post, del, upload, toast, modal, history, put as apiPut } from "./api.js";
 import { openDrawEditor, drawImage } from "./draw.js";
@@ -53,7 +54,7 @@ function capPolys(l) {
   return out;
 }
 
-export async function openIdentikit(bankUI) {
+export async function openIdentikit(bankUI, edit = null) {   // edit : { item } a rouvrir avec sa composition
   let cats;
   try { cats = await get("parts"); } catch (e) { return toast(tt("Banque d'éléments indisponible : ") + e.message, "error"); }
   for (const c of cats) { c.label = tr(c.label); for (const it of c.items) if (!it.mine) it.name = tr(it.name); }   // noms venus du serveur : traduits a l'affichage
@@ -65,7 +66,17 @@ export async function openIdentikit(bankUI) {
   let pinned = false, brickSig = "", userSel = false;
   let photo = null;                                  // portrait transpose, montre en fond pour comparer : {url, w, h, M (2 x 3), on, op}
   const BODY = { key: "__corps", label: tt("🧍 Corps"), items: [] };
+  let multi = new Set(), moveAll = false, band = null;   // selection de groupe (rectangle, Maj+clic) ; « Deplacer tout » ; rectangle en cours
+  let off = { x: 0, y: 0 };                          // decalage de tout le visage (« Deplacer tout ») : les places de depart le suivent
   let bodies = null, bodyPick = null, bodyUrl = null;   // corps choisi pour le personnage entier, et son apercu   // userSel : choisi a la main (clic, brique), pas seulement pose                // pinned : choisi par sa brique, il se deplace meme s'il est recouvert
+  const comp0 = edit && edit.item && edit.item.identikit;
+  if (comp0 && Array.isArray(comp0.layers)) {        // reedition : la composition gardee dans l'element
+    layers = JSON.parse(JSON.stringify(comp0.layers));
+    uidN = Math.max(1, ...layers.map((l) => (l.n || 0) + 1));
+    off = Object.assign({ x: 0, y: 0 }, comp0.off);
+    bodyPick = comp0.body || null;
+    name.value = edit.item.name || "";
+  }
   const sorted = () => layers.slice().sort((a, b) => ORDER.indexOf(a.cat) - ORDER.indexOf(b.cat) || a.n - b.n);
   const tf = (l) => `translate(${l.x} ${l.y}) rotate(${l.rot}) scale(${l.flip ? -1 : 1} 1)`;
   const paint = () => {
@@ -82,10 +93,12 @@ export async function openIdentikit(bankUI) {
       const W = l.w * l.kx, hh = boxH(l), bw = boxW(l);
       if (l.half) defs += `<clipPath id="idkh${l.n}"><rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}"/></clipPath>`;
       acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${imgX(l)}" y="${-hh / 2}" width="${W}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"${l.half ? ` clip-path="url(#idkh${l.n})"` : ""}/>` +
-        (sel === l.n ? `<rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
+        (sel === l.n || multi.has(l.n) ? `<rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
     }
     const ph = photo && photo.on ? (() => { const M = photo.M; return `<image href="${photo.url}" width="${photo.w}" height="${photo.h}" preserveAspectRatio="none" opacity="${photo.op}" pointer-events="none" transform="matrix(${M[0][0]} ${M[1][0]} ${M[0][1]} ${M[1][1]} ${M[0][2]} ${M[1][2]})"/>`; })() : "";
-    svg.innerHTML = `<defs>${defs}</defs><rect width="${S}" height="${S}" fill="#fff"/>` + ph + acc + grips();
+    const bd = band ? `<rect x="${Math.min(band.x0, band.x1)}" y="${Math.min(band.y0, band.y1)}" width="${Math.abs(band.x1 - band.x0)}" height="${Math.abs(band.y1 - band.y0)}" fill="rgba(16,181,224,0.08)" stroke="#10b5e0" stroke-width="${1.5 * unit()}" stroke-dasharray="6 4" pointer-events="none"/>` : "";
+    svg.innerHTML = `<defs>${defs}</defs><rect width="${S}" height="${S}" fill="#fff"/>` + ph + acc + grips() + bd;
+    svg.style.cursor = moveAll ? "move" : "";
     bricks();
   };
   // nom d'un calque : sa categorie, ou le cote pour une moitie de paire et pour chaque oreille (cote de l'ecran)
@@ -120,14 +133,14 @@ export async function openIdentikit(bankUI) {
   };
   // briques : une par element pose, pour choisir celui qu'un autre recouvre (des sourcils sous une coupe)
   const bricks = () => {
-    const sig = sorted().map((l) => l.n + ":" + l.file + ":" + nameOf(l)).join(",") + "|" + sel;
+    const sig = sorted().map((l) => l.n + ":" + l.file + ":" + nameOf(l)).join(",") + "|" + sel + "|" + [...multi].join(",");
     if (sig === brickSig) return;
     brickSig = sig; bricksBox.textContent = "";
     if (!layers.length) return;
     bricksBox.append(...sorted().map((l) => {
       const label = nameOf(l);
-      return h("div.idk-brick" + (l.n === sel ? ".on" : ""), { title: tt`${label} · ${l.name} : cliquer pour le choisir, même s'il est caché sous un autre`,
-        on: { click: () => { sel = l.n; pinned = true; userSel = true; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } paint(); props(); } } },
+      return h("div.idk-brick" + (l.n === sel || multi.has(l.n) ? ".on" : ""), { title: tt`${label} · ${l.name} : cliquer pour le choisir, même s'il est caché sous un autre`,
+        on: { click: () => { sel = l.n; multi.clear(); pinned = true; userSel = true; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } paint(); props(); } } },
         h("img", { src: url(l), alt: "", draggable: false }), h("span", label),
         h("i", { title: tt("Retirer du visage"), on: { click: (e) => { e.stopPropagation(); sel = l.n; removeSel(); } } }, "✕"));
     }));
@@ -136,7 +149,7 @@ export async function openIdentikit(bankUI) {
   const unit = () => { const r = svg.getBoundingClientRect(); return r.width ? S / r.width : 2; };
   const grips = () => {
     const l = layers.find((x) => x.n === sel);
-    if (!l) return "";
+    if (!l || multi.size > 1) return "";
     const u = unit(), w = boxW(l) / 2, hh = boxH(l) / 2, g = 5 * u, top = -hh - 26 * u;
     const sq = (k, x, y, cur) => `<rect class="idk-grip" data-h="${k}" x="${x - g}" y="${y - g}" width="${2 * g}" height="${2 * g}" style="cursor:${cur}" stroke-width="${1.5 * u}"/>`;
     return `<g transform="${tf(l)}">` +
@@ -156,15 +169,31 @@ export async function openIdentikit(bankUI) {
     if (!l) return;
     knobs.querySelectorAll("input[data-k]").forEach((i) => { const k = i.dataset.k; i.value = l[k]; i.nextElementSibling.textContent = (+l[k]).toFixed(+i.step < 1 ? 2 : 0); });
   };
-  const removeSel = () => { layers = layers.filter((x) => x.n !== sel); sel = null; pinned = false; paint(); props(); marks(); };
+  const removeSel = () => { layers = layers.filter((x) => x.n !== sel && !multi.has(x.n)); sel = null; multi.clear(); pinned = false; paint(); props(); marks(); };
+  // deplacer ensemble : le groupe choisi, ou tout le visage (alors ses places de depart suivent : off, et la photo)
+  const shiftBy = (ls, dx, dy, all) => {
+    for (const l of ls) { l.x += dx; l.y += dy; if (all && l.p0) l.p0 = [l.p0[0] + dx, l.p0[1] + dy, l.p0[2]]; }
+    if (all) { off = { x: off.x + dx, y: off.y + dy }; if (photo) { photo.M[0][2] += dx; photo.M[1][2] += dy; } }
+  };
+  // cadre d'un calque dans la feuille (rotation comprise), pour la selection au rectangle
+  const aabb = (l) => {
+    const a = l.rot * Math.PI / 180, c = Math.abs(Math.cos(a)), s2 = Math.abs(Math.sin(a)), w = boxW(l) / 2, hh = boxH(l) / 2;
+    const ex = w * c + hh * s2, ey = w * s2 + hh * c;
+    return [l.x - ex, l.y - ey, l.x + ex, l.y + ey];
+  };
   const range = (label, key, min, max, step, title) => {
     const l = layers.find((x) => x.n === sel), out = h("output", (+l[key]).toFixed(step < 1 ? 2 : 0));
     return h("label.row.range", { title: title || "" }, label, h("input", { type: "range", min, max, step, value: l[key], "data-k": key, on: { input: (e) => { l[key] = +e.target.value; out.textContent = (+l[key]).toFixed(step < 1 ? 2 : 0); paint(); } } }), out);
   };
   const props = () => {
     knobs.textContent = "";
+    if (multi.size > 1) {
+      knobs.append(h("b", tt`${multi.size} éléments choisis`), h("p.muted", tt("Tire l'un d'eux pour les déplacer ensemble ; flèches : déplacer (Maj : de dix) ; Suppr : les retirer. Maj+clic : ajouter ou ôter un élément. Clic dans le vide : tout désélectionner.")),
+        h("div.row.wrap", h("button.mini.danger", { on: { click: () => { removeSel(); hist.snap(); } } }, tt("Retirer ces éléments"))));
+      return;
+    }
     const l = layers.find((x) => x.n === sel);
-    if (!l) { knobs.append(h("p.muted", tt("Clique un élément dans la liste pour le poser. Sur le visage : glisser pour le déplacer, molette pour sa taille ; poignées des coins = taille, des côtés = étirer, rond du haut = tourner (Maj : crans de 15°). Flèches : déplacer (Maj : de dix). Suppr : retirer. Clic droit : miroir, empilement. Un seul élément par catégorie (sauf les signes) : en choisir un autre le remplace à la même place."))); return; }
+    if (!l) { knobs.append(h("p.muted", tt("Clique un élément dans la liste pour le poser. Sur le visage : glisser pour le déplacer, molette pour sa taille ; poignées des coins = taille, des côtés = étirer, rond du haut = tourner (Maj : crans de 15°). Flèches : déplacer (Maj : de dix). Suppr : retirer. Clic droit : miroir, empilement. Un seul élément par catégorie (sauf les signes) : en choisir un autre le remplace à la même place. Glisser depuis le vide : choisir plusieurs éléments d'un coup ; ✥ en haut à droite : déplacer tout le visage."))); return; }
     knobs.append(h("b", `${nameOf(l)} · ${l.name}`),
       range(tt("Taille"), "w", 30, 950, 1), range(tt("Largeur"), "kx", 0.2, 4, 0.01, tt("Étire ou resserre l'élément en largeur")), range(tt("Hauteur"), "ky", 0.2, 4, 0.01, tt("Étire ou tasse l'élément en hauteur")),
       range(tt("Rotation"), "rot", -180, 180, 1),
@@ -178,7 +207,7 @@ export async function openIdentikit(bankUI) {
   // remplacer l'element d'un calque par un autre (meme categorie, ou le meme refait) : place du nouveau si le calque n'a
   // pas ete touche, sinon son decalage et son echelle sont gardes
   const swapper = (cat, it, r) => {
-    const spot = (twin) => { const p = it.place || PLACE[cat] || [500, 500, 300]; return twin ? [S - p[0], p[1], p[2]] : [p[0], p[1], p[2]]; };
+    const spot = (twin) => { const p = it.place || PLACE[cat] || [500, 500, 300]; return twin ? [S - p[0] + off.x, p[1] + off.y, p[2]] : [p[0] + off.x, p[1] + off.y, p[2]]; };
     const swapIn = (l) => {
       const p = spot(!!(l.twin && it.pair)), old = l.p0 || PLACE[cat] || [l.x, l.y, l.w];
       const ox = old[0] + halfOff(l, old), nx = p[0] + halfOff(l, p);             // une moitie : par rapport a la place de sa moitie
@@ -191,7 +220,7 @@ export async function openIdentikit(bankUI) {
   };
   // place de depart d'un calque : celle de son element (p0), sinon celle de la categorie ; le jumeau d'une oreille garde son miroir
   const halfOff = (l, p) => (l.half ? (l.half === "l" ? -1 : 1) * p[2] / 4 : 0);      // une moitie se place a un quart de la largeur
-  const home = (l) => { const p = l.p0 || PLACE[l.cat] || [500, 500, 300]; Object.assign(l, { x: p[0] + halfOff(l, p), y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: !!l.twin }); };
+  const home = (l) => { const p = l.p0 || (PLACE[l.cat] ? [PLACE[l.cat][0] + off.x, PLACE[l.cat][1] + off.y, PLACE[l.cat][2]] : [500, 500, 300]); Object.assign(l, { x: p[0] + halfOff(l, p), y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: !!l.twin }); };
   const put = async (cat, it, quiet) => {
     const r = await ratioOf(it.file, it.t);
     const { spot, swapIn } = swapper(cat, it, r);
@@ -302,6 +331,29 @@ export async function openIdentikit(bankUI) {
   const pt = (e) => { const r = svg.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * S, y: (e.clientY - r.top) / r.height * S }; };
   svg.addEventListener("pointerdown", (e) => {
     if (e.button === 2) return;                     // clic droit : le menu s'en charge
+    if (moveAll) {                                  // « Deplacer tout » : le visage entier suit la souris
+      if (!layers.length) return;
+      svg.setPointerCapture(e.pointerId); drag = { all: true, p: pt(e), done: { x: 0, y: 0 } };
+      e.preventDefault(); return;
+    }
+    const tn = +(e.target.dataset && e.target.dataset.n), tl = layers.find((x) => x.n === tn);
+    if (tl && e.shiftKey) {                         // Maj+clic : ajouter ou oter un element du groupe
+      if (!multi.size && sel != null) multi.add(sel);
+      if (multi.has(tl.n)) multi.delete(tl.n); else multi.add(tl.n);
+      sel = null; if (multi.size === 1) { sel = [...multi][0]; multi.clear(); }
+      paint(); props(); e.preventDefault(); return;
+    }
+    if (tl && multi.size > 1 && multi.has(tl.n)) {  // un element du groupe : tout le groupe suit
+      svg.setPointerCapture(e.pointerId); drag = { group: layers.filter((x) => multi.has(x.n)), p: pt(e), done: { x: 0, y: 0 } };
+      e.preventDefault(); return;
+    }
+    if (!tl && !(e.target.dataset && e.target.dataset.h)) {   // depuis le vide : rectangle de selection (un simple clic : tout deselectionner)
+      const p = pt(e); multi.clear(); sel = null; pinned = false;
+      band = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+      svg.setPointerCapture(e.pointerId); drag = { band: true };
+      paint(); props(); e.preventDefault(); return;
+    }
+    multi.clear();
     const grip = e.target.dataset && e.target.dataset.h, cl = layers.find((x) => x.n === sel);
     if (grip && cl) {                               // poignee de l'element choisi
       svg.setPointerCapture(e.pointerId);
@@ -324,6 +376,12 @@ export async function openIdentikit(bankUI) {
   svg.addEventListener("pointermove", (e) => {
     if (!drag) return;
     const p = pt(e), l = drag.l;
+    if (drag.band) { band.x1 = p.x; band.y1 = p.y; paint(); return; }
+    if (drag.all || drag.group) {
+      const dx = Math.round(p.x - drag.p.x) - drag.done.x, dy = Math.round(p.y - drag.p.y) - drag.done.y;
+      if (dx || dy) { shiftBy(drag.all ? layers : drag.group, dx, dy, !!drag.all); drag.done.x += dx; drag.done.y += dy; paint(); }
+      return;
+    }
     if (!drag.grip) { l.x = Math.round(p.x + drag.dx); l.y = Math.round(p.y + drag.dy); paint(); return; }
     if (drag.grip === "rot") {
       let a = Math.atan2(p.y - l.y, p.x - l.x) * 180 / Math.PI + 90;
@@ -337,14 +395,25 @@ export async function openIdentikit(bankUI) {
     }
     paint(); sync();
   });
-  svg.addEventListener("pointerup", () => { if (drag) { drag = null; hist.snap(); } });   // un glisser fini = une etape
-  svg.addEventListener("wheel", (e) => { const l = layers.find((x) => x.n === sel); if (!l) return; e.preventDefault(); l.w = Math.round(Math.min(950, Math.max(30, l.w * (e.deltaY < 0 ? 1.05 : 0.95)))); paint(); sync(); }, { passive: false });
+  svg.addEventListener("pointerup", () => {         // un glisser fini = une etape
+    if (drag && drag.band) {                        // les elements touches par le rectangle
+      const x0 = Math.min(band.x0, band.x1), x1 = Math.max(band.x0, band.x1), y0 = Math.min(band.y0, band.y1), y1 = Math.max(band.y0, band.y1);
+      band = null; drag = null;
+      if (x1 - x0 > 4 || y1 - y0 > 4) {
+        const hit = layers.filter((l) => { const b = aabb(l); return b[0] < x1 && b[2] > x0 && b[1] < y1 && b[3] > y0; });
+        if (hit.length === 1) { sel = hit[0].n; userSel = true; } else hit.forEach((l) => multi.add(l.n));
+      }
+      paint(); props(); return;
+    }
+    if (drag) { drag = null; hist.snap(); }
+  });
+  svg.addEventListener("wheel", (e) => { const l = layers.find((x) => x.n === sel); if (!l || multi.size > 1) return; e.preventDefault(); l.w = Math.round(Math.min(950, Math.max(30, l.w * (e.deltaY < 0 ? 1.05 : 0.95)))); paint(); sync(); }, { passive: false });
   // clic droit sur un element pose : petit menu
   svg.addEventListener("contextmenu", (e) => {
     const n = +(e.target.dataset && e.target.dataset.n), l = layers.find((x) => x.n === n) || (e.target.dataset?.h && layers.find((x) => x.n === sel));
     e.preventDefault();
     if (!l) return;
-    if (sel !== l.n) { sel = l.n; paint(); props(); }
+    if (sel !== l.n || multi.size) { sel = l.n; multi.clear(); paint(); props(); }
     const same = sorted().filter((x) => x.cat === l.cat), i = same.indexOf(l);
     const swap = (o) => { [l.n, o.n] = [o.n, l.n]; sel = l.n; paint(); props(); };
     const items = [[tt("⇋ Miroir"), () => { l.flip = !l.flip; paint(); }],
@@ -365,8 +434,11 @@ export async function openIdentikit(bankUI) {
     setTimeout(() => document.addEventListener("pointerdown", close, true), 0);
   });
   // annuler (Ctrl+Z, 15 pas) : ajout, retrait, deplacement, taille, rotation, miroir des elements ; pas la selection
-  const hist = history(() => layers, (st) => {
-    layers = st; if (!layers.some((l) => l.n === sel)) { sel = null; pinned = false; }
+  const hist = history(() => ({ layers, off, pm: photo ? [photo.M[0][2], photo.M[1][2]] : null }), (st) => {
+    layers = st.layers; off = st.off || { x: 0, y: 0 };
+    if (photo && st.pm) { photo.M[0][2] = st.pm[0]; photo.M[1][2] = st.pm[1]; }
+    multi = new Set([...multi].filter((n) => layers.some((l) => l.n === n)));
+    if (!layers.some((l) => l.n === sel)) { sel = null; pinned = false; }
     uidN = Math.max(uidN, ...layers.map((l) => l.n + 1)); paint(); props(); marks();
   }, 15);
   // clavier, tant que l'atelier est ouvert : Ctrl+Z / Ctrl+Y annulent, Suppr retire, fleches deplacent
@@ -376,16 +448,17 @@ export async function openIdentikit(bankUI) {
     if (backs[backs.length - 1] !== svg.closest(".modal-back")) return;          // une autre fenetre (dessin) est par-dessus
     if (hist.keydown(e)) return;                    // dans un champ de texte, c'est l'annulation du navigateur qui joue
     if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
-    const l = layers.find((x) => x.n === sel);
-    if (!l) return;
+    if (e.key === "Escape" && (moveAll || multi.size)) { e.preventDefault(); e.stopPropagation(); moveAll = false; multi.clear(); moveBtn.classList.remove("on"); paint(); props(); return; }
+    const l = layers.find((x) => x.n === sel), group = multi.size > 1 ? layers.filter((x) => multi.has(x.n)) : null;
+    if (!l && !group) return;
     if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeSel(); hist.snap(); return; }
     const d = e.shiftKey ? 10 : 1, mv = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[e.key];
-    if (mv) { e.preventDefault(); l.x += mv[0]; l.y += mv[1]; paint(); hist.snap(); }
+    if (mv) { e.preventDefault(); shiftBy(group || [l], mv[0], mv[1], false); paint(); hist.snap(); }
   };
   document.addEventListener("keydown", onKey);
 
   const random = async () => {
-    layers = []; sel = null;
+    layers = []; sel = null; multi.clear();
     for (const key of ["visage", "oreilles", "yeux", "sourcils", "nez", "bouche", "cheveux"]) {
       const c = cats.find((k) => k.key === key);
       if (c && c.items.length) await put(key, c.items[Math.floor(Math.random() * c.items.length)], true);
@@ -398,7 +471,7 @@ export async function openIdentikit(bankUI) {
   };
   // l'image du visage monte, elements dans l'ordre : wpx x hpx pixels, k = wpx / 1000 ; white : fond blanc (sinon
   // transparent, pour poser la tete sur un corps : cadre 1000 x 1300 de l'atelier, menton en y = 880)
-  const render = async (wpx = 1024, hpx = 1024, white = true) => {
+  const render = async (wpx = 1024, hpx = 1024, white = true, type = "image/png") => {
     const k = wpx / S, c = document.createElement("canvas"); c.width = wpx; c.height = hpx;
     const a = document.createElement("canvas"); a.width = wpx; a.height = hpx;     // les calques, sur fond transparent
     const x = a.getContext("2d");
@@ -420,7 +493,7 @@ export async function openIdentikit(bankUI) {
     const out = c.getContext("2d");
     if (white) { out.fillStyle = "#fff"; out.fillRect(0, 0, wpx, hpx); }
     out.drawImage(a, 0, 0);
-    return new Promise((ok) => c.toBlob(ok, "image/png"));
+    return new Promise((ok) => c.toBlob(ok, type, 0.92));
   };
   // ---- corps : la tete posee sur un des corps encres (le serveur compose, comme pour la banque)
   const composeBody = async () => {
@@ -502,29 +575,75 @@ export async function openIdentikit(bankUI) {
       (e.sourire > 0.5 || e.bouche_ouverte > 0.3 ? " " + tt("La photo souriait ou avait la bouche ouverte : la bouche a été ramenée au repos.") : ""), "info", 10000);
   };
   const fileIn = h("input", { type: "file", accept: "image/*", style: { display: "none" }, on: { change: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) transposeFile(f); } } });
+  // « Deplacer tout » : tant qu'il est allume, glisser deplace tout le visage (pour le recentrer)
+  const moveBtn = h("button.mini.idk-moveall", { title: tt("Déplacer tout : tant que ce bouton est allumé, glisser sur le portrait déplace tous les éléments ensemble (Échap pour arrêter)"),
+    on: { click: () => { moveAll = !moveAll; moveBtn.classList.toggle("on", moveAll); if (moveAll) { sel = null; multi.clear(); } paint(); props(); } } }, "✥");
+  // exporter le portrait compose : PNG transparent ou JPEG sur blanc, 2 pixels par unite du cadre
+  const exportMenu = (e) => {
+    document.querySelector(".menu")?.remove();
+    const go = async (fmt) => {
+      box.remove();
+      if (!layers.length) return toast(tt("Pose au moins un élément."), "error");
+      const jpg = fmt === "jpg", blob = await render(2 * S, 2 * S, jpg, jpg ? "image/jpeg" : "image/png");
+      const a = h("a", { href: URL.createObjectURL(blob), download: (name.value.trim() || tt("portrait-robot")).replace(/[\\/:*?"<>|]+/g, "_") + (jpg ? ".jpg" : ".png") });
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    };
+    const box = h("div.menu.mt-menu", h("button", { on: { click: () => go("png") } }, tt("PNG (fond transparent)")), h("button", { on: { click: () => go("jpg") } }, tt("JPEG (fond blanc)")));
+    document.body.append(box);
+    const r = box.getBoundingClientRect();
+    box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px";
+    box.style.top = Math.max(4, Math.min(e.clientY, innerHeight - r.height - 6)) + "px";
+    const close = (ev) => { if (!box.contains(ev.target)) { box.remove(); document.removeEventListener("pointerdown", close, true); } };
+    setTimeout(() => document.addEventListener("pointerdown", close, true), 0);
+  };
+  // composition gardee dans l'element de banque, pour le rouvrir ici
+  const composition = (withBody) => ({ v: 1, layers: JSON.parse(JSON.stringify(layers)), off, body: withBody ? bodyPick : null });
   // petit choix a deux reponses (null si on annule)
-  const choose = (title, text, opts) => new Promise((ok) => {
-    modal(title, h("div.form", h("p", text)), [{ label: tt("Annuler"), click: () => ok(null) }, ...opts.map(([v, l]) => ({ label: l, primary: true, click: () => ok(v) }))]);
+  const choose = (title, text, opts, warn) => new Promise((ok) => {
+    modal(title, h("div.form", h("p", text), warn ? h("p.idk-warn", warn) : null), [{ label: tt("Annuler"), click: () => ok(null) }, ...opts.map(([v, l]) => ({ label: l, primary: true, click: () => ok(v) }))]);
   });
-  const m = modal(tt("Portrait-robot"), h("div.idk",
-    h("div.idk-left", svg, bricksBox, h("div.row.wrap", h("button.mini", { title: tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
+  const m = modal(edit && edit.item ? tt`Portrait-robot : ${edit.item.name}` : tt("Portrait-robot"), h("div.idk",
+    h("div.idk-left", h("div.idk-stagewrap", svg, moveBtn), bricksBox, h("div.row.wrap", h("button.mini", { title: tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
       h("button.mini", { title: tt("Reconstruit le visage d'une photo de face avec les éléments du portrait-robot. La photo reste dans ce navigateur : seuls les points du visage partent."), on: { click: () => fileIn.click() } }, tt("📷 Transposer un portrait…")), fileIn,
-      h("button.mini", { on: { click: () => { layers = []; sel = null; paint(); props(); marks(); } } }, tt("Tout retirer"))), photoBox, knobs),
+      h("button.mini", { on: { click: () => { layers = []; sel = null; multi.clear(); paint(); props(); marks(); } } }, tt("Tout retirer")),
+      h("button.mini", { title: tt("Télécharge le portrait tel qu'il est affiché, en pleine définition, sans les poignées"), on: { click: (e) => exportMenu(e) } }, tt("⬇ Exporter le portrait ▾"))), photoBox, knobs),
     h("div.idk-right", h("label.row", tt("Nom"), name), tabs, grid)),
-    [{ label: tt("Fermer") }, { label: tt("Ajouter à la banque"), primary: true, click: async () => {
+    [{ label: tt("Fermer") }, { label: edit && edit.item ? tt("Enregistrer…") : tt("Ajouter à la banque"), primary: true, click: async () => {
       if (!layers.length) { toast(tt("Pose au moins un élément."), "error"); return false; }
       const nm = name.value.trim() || tt("Portrait-robot");
+      let replace = false;
+      if (edit && edit.item) {                      // reedition : remplacer l'image de base, ou un nouveau personnage
+        const old = edit.item, poses = Object.keys(old.variants || {}).filter((k) => k !== "base").length, orb = !!((old.variants || {}).base || {}).orbit;
+        const warn = poses || orb ? "⚠ " + tt`Attention : « ${old.name} » a déjà ${poses} pose(s)${orb ? tt(" et une orbite") : ""}. En remplaçant l'image de base, elles gardent l'ancien visage et deviennent périmées. Son détourage, son orbite de base et sa planche de vues sont retirés (l'ancienne image est gardée dans data/backup) ; rien n'est relancé : refais-les depuis sa fiche quand tu veux.` : "";
+        const c = await choose(tt("Enregistrer le portrait"), tt`Remplacer l'image de base de « ${old.name} », ou en faire un nouveau personnage ?`, [["replace", tt("Remplacer l'image de base")], ["new", tt("Nouveau personnage")]], warn);
+        if (!c) return false;
+        replace = c === "replace";
+      }
       let withBody = false;
       if (bodyPick) {
         const c = await choose(tt("Ajouter à la banque"), tt("Le personnage entier, avec le corps choisi, ou seulement la tête ?"), [["head", tt("Tête seule")], ["body", tt("Avec ce corps")]]);
         if (!c) return false;
         withBody = c === "body";
       }
+      if (replace) {
+        try {
+          sel = null; multi.clear(); paint();
+          const blob = withBody ? await composeBody() : await render();
+          const id = edit.item.id;
+          await upload(`bank/${id}/rebase`, blob);
+          edit.item = await apiPut("bank/" + id, { identikit: composition(withBody) });
+          bankUI.tab = "character"; await bankUI.reload(); bankUI.reveal(id);
+          toast(tt`L'image de base de « ${edit.item.name} » est remplacée. Rien n'est relancé : détourage et orbite se refont depuis sa fiche.`, "info", 9000);
+        } catch (e) { toast(tt("Portrait refusé : ") + e.message, "error", 9000); }
+        return false;                               // l'atelier reste ouvert
+      }
       const orbit = confirm(tt("Calculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : il reste une image fixe, tu pourras lancer l'orbite plus tard depuis sa fiche."));
       try {
-        sel = null; paint();
+        sel = null; multi.clear(); paint();
         const blob = withBody ? await composeBody() : await render();
         const it = await upload("bank?" + new URLSearchParams({ kind: "character", name: nm, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", file: withBody ? "personnage.png" : "portrait.png", folder: "Portraits-robots" }), blob);
+        try { await apiPut("bank/" + it.id, { identikit: composition(withBody) }); }   // pour le rouvrir dans l'atelier
+        catch (e) { toast(tt("Composition non gardée : ") + e.message, "error"); }
         bankUI.tab = "character"; await bankUI.reload(); bankUI.reveal(it.id); bankUI.app.pollSoon();
         toast(tt`« ${nm} » est dans la banque, dossier Portraits-robots.` + (orbit ? tt(" Son orbite est en calcul.") : ""));
       } catch (e) { toast(tt("Portrait refusé : ") + e.message, "error", 9000); return false; }

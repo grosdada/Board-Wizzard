@@ -422,7 +422,6 @@
   "Manga dynamique": "Dynamic manga",
   "Banque d'éléments indisponible : ": "Parts bank unavailable: ",
   "Nom du personnage": "Character name",
-  "Clique un élément dans la liste pour le poser. Sur le visage : glisser pour le déplacer, molette pour sa taille ; poignées des coins = taille, des côtés = étirer, rond du haut = tourner (Maj : crans de 15°). Flèches : déplacer (Maj : de dix). Suppr : retirer. Clic droit : miroir, empilement. Un seul élément par catégorie (sauf les signes) : en choisir un autre le remplace à la même place.": "Click a part in the list to place it. On the face: drag to move it, wheel for its size; corner handles = size, side handles = stretch, top circle = rotate (Shift: 15° steps). Arrows: move (Shift: by ten). Delete: remove. Right-click: mirror, stacking. One part per category (except the marks): picking another one replaces it in the same place.",
   "Largeur": "Width",
   "Étire ou resserre l'élément en largeur": "Stretches or narrows the part horizontally",
   "Hauteur": "Height",
@@ -1216,7 +1215,29 @@
   "📷 Transposer un portrait…": "📷 Transpose a portrait…",
   "Le personnage entier, avec le corps choisi, ou seulement la tête ?": "The whole character, with the chosen body, or only the head?",
   "Tête seule": "Head only",
-  "Avec ce corps": "With this body"
+  "Avec ce corps": "With this body",
+  "Clique un élément dans la liste pour le poser. Sur le visage : glisser pour le déplacer, molette pour sa taille ; poignées des coins = taille, des côtés = étirer, rond du haut = tourner (Maj : crans de 15°). Flèches : déplacer (Maj : de dix). Suppr : retirer. Clic droit : miroir, empilement. Un seul élément par catégorie (sauf les signes) : en choisir un autre le remplace à la même place. Glisser depuis le vide : choisir plusieurs éléments d'un coup ; ✥ en haut à droite : déplacer tout le visage.": "Click a part in the list to place it. On the face: drag to move it, wheel for its size; corner handles = size, side handles = stretch, top circle = rotate (Shift: 15° steps). Arrows: move (Shift: by ten). Delete: remove. Right-click: mirror, stacking. One part per category (except the marks): picking another one replaces it in the same place. Drag from an empty spot: select several elements at once; ✥ at the top right: move the whole face.",
+  "Rouvre l'atelier avec la composition de ce portrait-robot (éléments, places, miroirs, corps) ; à l'enregistrement : remplacer son image de base ou faire un nouveau personnage": "Reopens the workshop with this identikit's composition (elements, positions, mirrors, body); when saving: replace its base image or make a new character",
+  "🧩 Éditer dans le portrait-robot": "🧩 Edit in the identikit",
+  "{0} éléments choisis": "{0} elements selected",
+  "Tire l'un d'eux pour les déplacer ensemble ; flèches : déplacer (Maj : de dix) ; Suppr : les retirer. Maj+clic : ajouter ou ôter un élément. Clic dans le vide : tout désélectionner.": "Drag one of them to move them together; arrows: move (Shift: by ten); Delete: remove them. Shift+click: add or remove an element. Click on an empty spot: deselect all.",
+  "Retirer ces éléments": "Remove these elements",
+  "Déplacer tout : tant que ce bouton est allumé, glisser sur le portrait déplace tous les éléments ensemble (Échap pour arrêter)": "Move all: while this button is on, dragging on the portrait moves all elements together (Esc to stop)",
+  "portrait-robot": "identikit",
+  "PNG (fond transparent)": "PNG (transparent background)",
+  "JPEG (fond blanc)": "JPEG (white background)",
+  "Portrait-robot : {0}": "Identikit: {0}",
+  "Télécharge le portrait tel qu'il est affiché, en pleine définition, sans les poignées": "Downloads the portrait as shown, at full resolution, without the handles",
+  "⬇ Exporter le portrait ▾": "⬇ Export the portrait ▾",
+  "Attention : « {0} » a déjà {1} pose(s){2}. En remplaçant l'image de base, elles gardent l'ancien visage et deviennent périmées. Son détourage, son orbite de base et sa planche de vues sont retirés (l'ancienne image est gardée dans data/backup) ; rien n'est relancé : refais-les depuis sa fiche quand tu veux.": "Warning: “{0}” already has {1} pose(s){2}. If you replace the base image, they keep the old face and become outdated. Its cutout, base orbit and view sheet are removed (the old image is kept in data/backup); nothing is restarted: redo them from its card whenever you like.",
+  " et une orbite": " and an orbit",
+  "Enregistrer le portrait": "Save the portrait",
+  "Remplacer l'image de base de « {0} », ou en faire un nouveau personnage ?": "Replace the base image of “{0}”, or make it a new character?",
+  "Remplacer l'image de base": "Replace the base image",
+  "Nouveau personnage": "New character",
+  "L'image de base de « {0} » est remplacée. Rien n'est relancé : détourage et orbite se refont depuis sa fiche.": "The base image of “{0}” has been replaced. Nothing is restarted: redo the cutout and orbit from its card.",
+  "Composition non gardée : ": "Composition not kept: ",
+  "Enregistrer…": "Save…"
  },
  "server": {
   "Parle": "Speaks",
@@ -1399,7 +1420,8 @@
   "aucun visage repéré sur cette image": "no face found in this image",
   "visage tourné (%d° de côté, %d° en hauteur) : il faut un portrait bien de face, ni de profil ni de trois quarts": "face turned (%d° sideways, %d° up or down): a straight front portrait is needed, neither profile nor three-quarter",
   "corps inconnu : %s": "unknown body: %s",
-  "Transposé": "Transposed"
+  "Transposé": "Transposed",
+  "composition du portrait-robot illisible": "unreadable identikit composition"
  },
  "parts": {
   "Anguleux": "Angular",
