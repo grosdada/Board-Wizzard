@@ -155,7 +155,10 @@ export const TRACE = "trace", TRACE_NAME = tt("Bouche du dessin");
 /** Le jeu « trace » s'applique-t-il ? Choisi d'office quand la variante affichee a une bouche suivie et qu'aucun autre
  *  jeu n'a ete choisi. sp : sprite() de l'image affichee. */
 export const usesTrace = (lip, sp) => !!(lip && sp && sp.mouth && (!lip.set || lip.set === TRACE));
-const LEVEL = { A: 1, L: 1, O: 0.8, U: 0.8, E: 0.5, D: 0.5 };
+// Formes de la bouche qui parle : [hauteur, largeur, dents]. Trois familles bien distinctes : grande ouverte (A, L),
+// ronde et etroite (O, U), large et peu ouverte avec les dents (E, D).
+const FORM = { A: [1, 1, 0], L: [0.85, 1, 0], O: [1.05, 0.5, 0], U: [0.8, 0.4, 0], E: [0.5, 1, 1], D: [0.4, 0.9, 1] };
+const OPENING = 1.6;                                        // ouverture de base, en multiple de la descente mesuree
 /** Ca parle a l'instant t (son brut, avant le battement) : sinon c'est un silence. */
 export function speakingAt(lip, t) { const i = cueIndex(lip, t); return i >= 0 && !!lip.cues && !!lip.cues[i] && lip.cues[i] !== "X"; }
 const p2 = (p) => `${p[0].toFixed(2)} ${p[1].toFixed(2)}`;
@@ -173,21 +176,37 @@ function smooth(p, move = true) {
 export function traceMarkup(lip, m, t, id = "", fill = "#ffffff") {
   if (!lip || !lip.on || !m || !m.up || !speakingAt(lip, t)) return "";    // silence : le dessin intact
   const shape = cueAt(lip, t), closed = shape === "X" || shape === "M" || shape === "F", lw = lip.lw ?? 1, sw = m.stroke || 2;
+  const n = m.up.length, ow = lip.ow ?? 1, oh = lip.oh ?? 1, ink = (w) => `stroke="#111" stroke-width="${(sw * w).toFixed(2)}" stroke-linejoin="round" stroke-linecap="round"`;
+  const gap = m.lo ? Math.max(...m.up.map((p, i) => m.lo[i][1] - p[1])) : 0;
+  const open = !!m.open && !!m.lo && gap > 0.4 * (m.w || 1);  // vraiment ouverte ; sinon ce sont des levres dessinees autour d'une bouche fermee
+  const narrow = (pts, k) => { const cx = (pts[0][0] + pts[n - 1][0]) / 2; return pts.map((p) => [cx + (p[0] - cx) * k, p[1]]); };
+  const bulge = (i) => Math.pow(Math.sin(Math.PI * i / Math.max(1, n - 1)), 0.75);
   let d;
-  if (m.open) {                                             // bouche deja ouverte : temps ouverts = le dessin ; temps fermes = on la ferme
-    if (!closed || !m.cover || !m.lo) return "";
+  if (open) {                                               // bouche deja ouverte : A = le dessin ; les autres formes la remplacent
+    if (!m.cover) return "";
+    const f = FORM[shape] || FORM.A;
+    if (!closed && f[0] >= 0.85 && f[1] >= 1) return "";
+    const cover = `<path d="M${m.cover.map(p2).join("L")}Z" fill="${fill}"/>`;
     const mid = m.up.map((p, i) => [(p[0] + m.lo[i][0]) / 2, (p[1] + m.lo[i][1]) / 2]);
-    d = `<path d="M${m.cover.map(p2).join("L")}Z" fill="${fill}"/><path d="${smooth(mid)}" fill="none" stroke="#111" stroke-width="${(sw * 1.2 * lw).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    if (closed) d = `${cover}<path d="${smooth(mid)}" fill="none" ${ink(1.2 * lw)}/>`;
+    else {
+      const kh = Math.min(1.3, f[0] * oh) / 2, kw = Math.min(1, f[1] * ow);
+      const up = narrow(m.up.map((p, i) => [p[0], mid[i][1] - (mid[i][1] - p[1]) * 2 * kh]), kw), lo = narrow(m.lo.map((p, i) => [p[0], mid[i][1] + (p[1] - mid[i][1]) * 2 * kh]), kw);
+      d = `${cover}<path d="${smooth(up)}${smooth([...lo].reverse(), false)}Z" fill="#111" ${ink(lw)}/>`;
+      if (f[2]) d += `<path d="${smooth(up)}${smooth(up.map((p, i) => [p[0], p[1] + (lo[i][1] - p[1]) * 0.4]).reverse(), false)}Z" fill="#fff" ${ink(lw * 0.6)}/>`;
+    }
   } else {                                                  // bouche en trait : repos = le dessin ; ca parle = la levre du bas descend
     if (closed) return "";
-    const n = m.up.length, cx = (m.up[0][0] + m.up[n - 1][0]) / 2, ow = lip.ow ?? 1, drop = (m.drop || 0) * (lip.oh ?? 1) * (LEVEL[shape] ?? 1);
-    const up = m.up.map((p) => [cx + (p[0] - cx) * ow, p[1]]);
-    const lo = up.map((p, i) => [p[0], p[1] + drop * Math.pow(Math.sin(Math.PI * i / Math.max(1, n - 1)), 0.75)]).reverse();
-    d = `<path d="${smooth(up)}${smooth(lo, false)}Z" fill="#111" stroke="#111" stroke-width="${(sw * lw).toFixed(2)}" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const f = FORM[shape] || FORM.A, line = m.open && m.lo ? m.lo : m.up;    // levres dessinees : la bouche s'ouvre sous la ligne du bas
+    const drop = (m.drop || (m.w || 30) * 0.22) * OPENING * oh * f[0];
+    const up = narrow(line, Math.min(1.3, ow * f[1]));
+    const lo = up.map((p, i) => [p[0], p[1] + drop * bulge(i)]);
+    d = `<path d="${smooth(up)}${smooth([...lo].reverse(), false)}Z" fill="#111" ${ink(lw)}/>`;
+    if (f[2]) d += `<path d="${smooth(up)}${smooth(up.map((p, i) => [p[0], p[1] + (lo[i][1] - p[1]) * 0.45]).reverse(), false)}Z" fill="#fff" ${ink(lw * 0.6)}/>`;
   }
   if (lip.hand > 0 && id) {                                 // trait a la main : meme bruit que les autres jeux, a l'echelle de la bouche
     const k = Math.max(4, m.w || 40) / 100, xs = (m.cover || m.up).map((p) => p[0]), ys = (m.cover || m.up).map((p) => p[1]).concat(m.lo ? m.lo.map((p) => p[1]) : []);
-    const x0 = Math.min(...xs) - 40 * k, y0 = Math.min(...ys) - 40 * k, x1 = Math.max(...xs) + 40 * k, y1 = Math.max(...ys) + (m.drop || 0) * 2.5 + 40 * k;
+    const x0 = Math.min(...xs) - 40 * k, y0 = Math.min(...ys) - 40 * k, x1 = Math.max(...xs) + 40 * k, y1 = Math.max(...ys) + (m.drop || 0) * 8 + 40 * k;
     const seed = 3 + "XMAEOUFDL".indexOf(shape) * 7;
     return `<filter id="${id}" filterUnits="userSpaceOnUse" x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" height="${(y1 - y0).toFixed(1)}" color-interpolation-filters="sRGB">` +
       `<feTurbulence type="fractalNoise" baseFrequency="${(0.09 / Math.max(0.5, lip.wave ?? 4) / k).toFixed(4)}" numOctaves="2" seed="${seed}"/><feDisplacementMap in="SourceGraphic" scale="${(lip.hand * 2.2 * k).toFixed(2)}" xChannelSelector="R" yChannelSelector="G"/></filter>` +
