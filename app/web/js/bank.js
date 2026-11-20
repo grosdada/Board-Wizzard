@@ -591,9 +591,33 @@ export class Bank {
           await del("bank/" + id); m.close(); this.openId = null; this.reload(); } } }, tt("Retirer de la banque")));
       if (item.kind === "character") {   // planche de vues : sert de reference a l'orbite (dos, profil)
         const sh = item.sheet || {}, names = { dos: "dos", profil: "profil", "trois-quarts-dos": "3/4 dos" };
-        acts.append(h("div.sheet", h("div.sheet-head", h("span.muted", Object.keys(sh).length ? tt("Planche de vues (référence des orbites)") : tt("Pas encore de planche de vues : elle se fait avant la prochaine orbite.")),
-            h("button.mini", { title: tt("Recalcule les vues de dos et de profil ; relance ensuite l'orbite pour qu'elle s'en serve"), on: { click: async () => { await post(`bank/${id}/sheet`, { redo: true, target: target() }); toast(tt("Planche de vues relancée.")); app.pollSoon(); } } }, Object.keys(sh).length ? tt("↻ Refaire la planche") : tt("Faire la planche"))),
-          h("div.sheet-views", Object.entries(sh).map(([k, rel]) => h("figure", h("img", { src: `/bank/${id}/${rel}?t=${item.sheet_t || 0}`, loading: "lazy" }), h("figcaption", names[k] || k))))));
+        // voyant : la planche en file ou en calcul (tache « planche », ou orbite qui la fait d'abord), sur quelle machine, quelle vue
+        let sent = 0;
+        const sheetJob = () => app.jobs.find((j) => (j.status === "queued" || j.status === "running") && j.params.item === id &&
+          (j.kind === "item_sheet" || (j.status === "running" && /^planche de vues/.test(j.progress || ""))));
+        const state = h("span.sheet-state"), redo = h("button.mini", { title: tt("Recalcule les vues de dos et de profil ; relance ensuite l'orbite pour qu'elle s'en serve"), on: { click: async () => {
+          sent = Date.now(); show();
+          try { await post(`bank/${id}/sheet`, { redo: true, target: target() }); toast(tt("Planche de vues relancée.")); app.pollSoon(); }
+          catch (err) { sent = 0; show(); toast(tt("Planche refusée : ") + err.message, "error"); }
+        } } }, Object.keys(sh).length ? tt("↻ Refaire la planche") : tt("Faire la planche"));
+        const views = h("div.sheet-views", Object.entries(sh).map(([k, rel]) => h("figure", h("img", { src: `/bank/${id}/${rel}?t=${item.sheet_t || 0}`, loading: "lazy" }), h("figcaption", names[k] || k))));
+        const show = () => {
+          const j = sheetJob(), wait = !j && sent && Date.now() - sent < 8000;   // juste envoyee : la file ne l'a pas encore montree
+          if (j) sent = 0;
+          let txt = "";
+          if (wait) txt = tt("⏳ Demande envoyée…");
+          else if (j && j.status === "queued") txt = tt("⏳ En file d'attente : elle partira dès qu'une machine sera libre.");
+          else if (j) {
+            const v = ((j.progress || "").match(/planche de vues : (.+)$/) || [])[1], sec = j.started ? Math.max(0, Math.round(Date.now() / 1000 - j.started)) : 0;
+            txt = tt`⏳ Planche en calcul sur ${j.worker || "?"}` + (v ? tt` : vue ${names[v] || v}` : "") + (sec ? ` · ${sec} s` : "") + (j.kind === "item_orbit" ? tt(" (avant l'orbite)") : "");
+          }
+          state.textContent = txt; state.style.display = txt ? "" : "none";
+          redo.disabled = !!(j || wait); views.classList.toggle("busy", !!(j || wait));
+        };
+        show();
+        const tick = setInterval(() => { if (!document.body.contains(state)) return clearInterval(tick); show(); }, 1000);
+        acts.append(h("div.sheet", h("div.sheet-head", h("span.muted", Object.keys(sh).length ? tt("Planche de vues (référence des orbites)") : tt("Pas encore de planche de vues : elle se fait avant la prochaine orbite.")), redo),
+          state, views));
       }
       // poses a valider : generees et detourees, leur orbite attend « Garder » (reglage « attendre ma validation »)
       reviewBox.textContent = "";

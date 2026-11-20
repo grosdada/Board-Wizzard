@@ -1247,7 +1247,13 @@
   "Case ajoutée dans ": "Panel added into ",
   "Case copiée vers ": "Panel copied to ",
   "La case {0} contient déjà des éléments.": "Panel {0} already contains elements.",
-  "Ajouter : les personnages, objets, bulles et repères copiés s'ajoutent ; le fond et le cadrage de la case restent. Remplacer : la case devient une copie exacte, fond compris.": "Add: the copied characters, objects, balloons and marks are added; the panel's background and framing stay. Replace: the panel becomes an exact copy, background included."
+  "Ajouter : les personnages, objets, bulles et repères copiés s'ajoutent ; le fond et le cadrage de la case restent. Remplacer : la case devient une copie exacte, fond compris.": "Add: the copied characters, objects, balloons and marks are added; the panel's background and framing stay. Replace: the panel becomes an exact copy, background included.",
+  "Planche refusée : ": "View sheet refused: ",
+  "⏳ Demande envoyée…": "⏳ Request sent…",
+  "⏳ En file d'attente : elle partira dès qu'une machine sera libre.": "⏳ Queued: it will start as soon as a machine is free.",
+  "⏳ Planche en calcul sur {0}": "⏳ View sheet rendering on {0}",
+  " : vue {0}": ": view {0}",
+  " (avant l'orbite)": " (before the orbit)"
  },
  "server": {
   "Parle": "Speaks",
