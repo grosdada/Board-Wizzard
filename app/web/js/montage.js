@@ -999,6 +999,19 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
       picked.clear(); selKey = null; hist.snap(); paint(); lanes(); props();
       toast(tt("Animation effacée. Ctrl+Z pour la retrouver."));
     } } }, tt("🧹 Effacer l'animation")),
+    h("button.mini", { title: tt("La case de la planche prend la pose, la place, la taille et l'orientation de chaque élément à la première image du montage. L'animation ne change pas. La caméra n'est pas reportée."), on: { click: () => {
+      stop(); hist.snap();
+      let n = 0;
+      for (const l of pan.layers) {
+        if (!keysOf(l.id).length) continue;
+        const st = scene.stateOf(l, 0);
+        for (const k of ["x", "y", "s", "rz", "f", "v", "lw"]) if (st[k] != null) l[k] = st[k];
+        if (l.sh || st.shg !== 0.72 || st.shw !== 5 || st.sha !== 135) l.sh = Object.assign({}, l.sh, { g: st.shg, w: st.shw, a: st.sha });
+        n++;
+      }
+      hist.snap(); paint(); props();
+      toast(n ? tt`Première image reportée sur ${n} élément(s) : la case la montrera une fois le montage enregistré.` : tt("Aucun élément animé : la case montre déjà la première image."));
+    } } }, tt("⤓ 1re image → case")),
     depthBtn, h("label.row", tt("Durée (s)"), dur));
   paint(); lanes(); props();
   const m = modal(tt`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, keyBox, tl),
