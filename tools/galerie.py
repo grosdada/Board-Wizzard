@@ -20,19 +20,35 @@ SRC = settings.DATA / "tmp" / "tpdne"
 FOLDER = "Galerie portraits-robots"
 B = dict(bodydraw.CORPS_VARIANTES)
 # (source, nom, ce que les points ne disent pas, corps)
+# le type de nez, de sourcils, de bouche et d'yeux est choisi a l'oeil sur la photo (nom d'une variante de la banque, dont
+# on prend la forme ; les tailles restent celles mesurees) ; cheveux, pilosite, lunettes et corps font la variation
+FACES = {
+    "p18": dict(nez="Grand nez fort", sourcils=dict(poils=1, tout=0.3), yeux=dict(poche=1), oreilles="Moyenne"),
+    "p57": dict(nez="Court retroussé", sourcils="Fins, arqués", bouche=dict(plein=0.5), yeux=dict(cils=1), oreilles="Petite"),
+    "p22": dict(nez="Bout en boule", sourcils=dict(tout=0.4), bouche="Lèvres fines", yeux=dict(hood=0.5, cerne=1), oreilles="Décollée"),
+    "p37": dict(nez="Petit bouton", sourcils="Clairsemés", bouche=dict(plein=0.8), yeux=dict(cils=1), oreilles="Collée"),
+    "p19": dict(nez="Épaté, ailes évasées", sourcils="Arrondis en demi-lune", bouche=dict(plein=0.85), yeux=dict(cils=2), oreilles="Petite"),
+    "p42": dict(nez="Ailes charnues", sourcils="Broussailleux", bouche="Lèvres fines", yeux=dict(poche=2, hood=0.4), oreilles="Grande"),
+    "p59": dict(nez="Narines rondes ouvertes", sourcils=dict(poils=1, tin=1.0, tout=0.4), bouche=dict(plein=0.9), yeux={}, oreilles="Lobe attaché"),
+    "p24": dict(nez="Long étroit", sourcils="Fins, arqués", bouche={}, yeux=dict(cils=1, poche=1), oreilles="Collée"),
+    "p32": dict(nez="Bout pointu, narines pincées", sourcils="Clairsemés", bouche="Lèvres fines", yeux=dict(hood=0.3), oreilles="Très décollée, en feuille de chou"),
+    "p31": dict(nez="Moyen droit", sourcils=dict(tout=0.2), bouche=dict(plein=0.8), yeux=dict(cils=2), oreilles="Petite"),
+}
+ACCENT = 1.8                                     # de combien on accentue ce qui distingue chaque visage de la moyenne
+# (source, nom, ce que les points ne disent pas, corps)
 CAST = [
     ("p18", "Armand", dict(cheveux="courts", lunettes="Rectangulaires", barbe="Bouc", moustache="Chevron"), "Costume"),
     ("p18", "Basile", dict(cheveux="gomines", barbe="Courte, pleine"), "Sweat à capuche, baskets"),
-    ("p57", "Colette", dict(cheveux="mi-longs", oreilles="Petite"), "Jupe et blouse"),
+    ("p57", "Colette", dict(cheveux="mi-longs"), "Jupe et blouse"),
     ("p57", "Denise", dict(cheveux="carre", lunettes="Papillon"), "Robe"),
     ("p22", "Émile", dict(cheveux="courts"), "Moyen, t-shirt et pantalon"),
-    ("p22", "Firmin", dict(cheveux="brosse", barbe="Trois jours", oreilles="Décollée"), "Salopette, bottes"),
+    ("p22", "Firmin", dict(cheveux="brosse", barbe="Trois jours"), "Salopette, bottes"),
     ("p37", "Gisèle", dict(cheveux="ondules"), "Robe"),
     ("p37", "Hortense", dict(cheveux="chignon", lunettes="Rondes"), "Mince, chemise"),
     ("p19", "Inès", dict(cheveux="chignon"), "Robe"),
     ("p19", "Jeanne", dict(cheveux="longs-raides"), "Jupe et blouse"),
     ("p42", "Kléber", dict(cheveux="brosse"), "Costaud, t-shirt"),
-    ("p42", "Lucien", dict(cheveux="degarni", moustache="Large, droite", oreilles="Lobe long"), "Rond, pull"),
+    ("p42", "Lucien", dict(cheveux="degarni", moustache="Large, droite"), "Rond, pull"),
     ("p59", "Marius", dict(cheveux="afro"), "Sweat à capuche, baskets"),
     ("p59", "Nestor", dict(cheveux="dreadlocks", barbe="Bouc"), "Débardeur et short"),
     ("p24", "Odile", dict(cheveux="carre"), "Mince, chemise"),
@@ -46,8 +62,8 @@ CAST = [
 
 def make(src, extras, body, seed):
     d = json.loads((SRC / (src + ".json")).read_text(encoding="utf-8"))
-    kw, _ = transpose.fit(d["points"], d.get("shapes"), d.get("matrix"))
-    head = transpose.head(kw, extras, seed, trait=bodydraw.HEAD_STROKE)
+    kw, _ = transpose.fit(d["points"], d.get("shapes"), d.get("matrix"), k=ACCENT)
+    head = transpose.head(kw, dict(FACES.get(src, {}), **extras), seed, trait=bodydraw.HEAD_STROKE)
     return bodydraw.personnage(head, B[body], seed, nom=body), head
 
 

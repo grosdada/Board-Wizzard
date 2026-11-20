@@ -19,9 +19,10 @@ from .partsdraw import CX, Canvas, smooth
 W, H = 1000, 2000
 U = 285.0                                        # hauteur de tete (du sommet du crane au menton)
 CHIN = 450.0                                     # bas du menton
-HEAD_SCALE = 1.32 * U / 730.0                    # tete un peu grosse, facon dessin : le visage reste lisible ; la tete de reference fait 730 de haut                          # la tete de reference fait 730 de haut dans le cadre des visages (150 a 880)
+HEAD_SCALE = 1.56 * U / 730.0                    # tete un peu grosse, facon dessin : le visage reste lisible ; la tete de reference fait 730 de haut                          # la tete de reference fait 730 de haut dans le cadre des visages (150 a 880)
 
-HEAD_STROKE = 2.1                                # la tete, reduite pour le corps, est tracee plus gras : meme trait que le corps
+HEAD_DROP = 46                                   # la tete descend sur les epaules : le menton sous le haut du cou
+HEAD_STROKE = 1.4                                # la tete, reduite pour le corps, est tracee plus gras : meme trait que le corps
 
 CORPS = dict(
     ep=1.05,          # demi-largeur des epaules (en U)
@@ -242,8 +243,12 @@ def personnage(tete, cotes=None, seed=1, pad=40, nom=None):
         out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         out.alpha_composite(body, (round(place[0] - body.width / 2), round(place[1] - body.height / 2)))
     head = tete.resize((round(tete.width * s), round(tete.height * s)), Image.LANCZOS)
-    out.alpha_composite(head, (round(CX - 500 * s), round(CHIN - 880 * s)))
+    top = 220                                      # marge au-dessus : une grosse tete et sa coiffure depassent le cadre du corps
+    big = Image.new("RGBA", (W, H + top), (255, 255, 255, 255) if ink is not None else (0, 0, 0, 0))
+    big.alpha_composite(out, (0, top))
+    out = big
+    out.alpha_composite(head, (round(CX - 500 * s), round(top + CHIN + HEAD_DROP - 880 * s)))
     arr = np.asarray(out)
     a = (arr[..., 3] > 24) & (arr[..., :3].min(axis=2) < 235) if ink is not None else arr[..., 3] > 24
     ys, xs = np.where(a)
-    return out.crop((max(0, xs.min() - pad), max(0, ys.min() - pad), min(W, xs.max() + pad), min(H, ys.max() + pad)))
+    return out.crop((max(0, xs.min() - pad), max(0, ys.min() - pad), min(W, xs.max() + pad), min(out.height, ys.max() + pad)))

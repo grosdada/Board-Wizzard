@@ -119,8 +119,70 @@ def pose(matrix):
     return {"lacet": round(yaw, 1), "tangage": round(pitch, 1)}
 
 
-def fit(points, shapes=None, matrix=None):
-    """Les cotes de chaque element, mesurees sur le visage. Rend ({categorie: cotes}, etat)."""
+# cotes accentuees : (minimum, maximum) admis apres accentuation
+ACCENT = {"yeux": dict(w=(64, 140), h=(14, 70), tilt=(-16, 18), ecart=(190, 320), iris=(15, 30), pli=(0, 36), arc=(0.3, 0.95), low=(0.08, 0.7)),
+          "sourcils": dict(L=(70, 180), ep=(4, 30), arc=(0, 36), tilt=(-10, 36), y=(385, 450), ecart=(34, 130)),
+          "nez": dict(base=(585, 680), wr=(14, 80), wm=(18, 90), tw=(36, 120), wa=(76, 220), ah=(28, 84), drop=(-12, 24)),
+          "bouche": dict(w=(110, 280), up=(3, 40), lo=(4, 56), bow=(0, 18), y=(680, 760)),
+          "visage": dict(chin=(800, 970), top=(90, 190))}
+_MEANS = None
+
+
+def means():
+    """Moyennes des cotes sur un lot de visages de face (app/transpose_moyennes.json) : la reference de l'accentuation."""
+    global _MEANS
+    if _MEANS is None:
+        import json
+        from pathlib import Path
+        try:
+            _MEANS = json.loads((Path(__file__).parent / "transpose_moyennes.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _MEANS = {}
+    return _MEANS
+
+
+def accent(out, k):
+    """Accentue ce qui distingue ce visage de la moyenne (comme un caricaturiste) : chaque cote s'eloigne de la moyenne
+    d'un facteur k. Le reperage des points lisse les visages ; sans cela ils se ressemblent tous."""
+    m = means()
+    if not m or k == 1:
+        return out
+    for cat, keys in ACCENT.items():
+        for key, (lo, hi) in keys.items():
+            if key in out.get(cat, {}) and key in m.get(cat, {}):
+                v = m[cat][key] + k * (out[cat][key] - m[cat][key])
+                out[cat][key] = round(min(hi, max(lo, v)), 2)
+    prof, mp = out["visage"].get("profil"), m.get("visage", {}).get("profil")
+    if prof and mp:                                # le contour : chaque demi-largeur s'eloigne du contour moyen
+        ch0 = m["visage"]["chin"]
+        new = []
+        for y, hw in prof:
+            t = (y - 338) / max(1.0, prof[-1][0] - 338)              # hauteur relative, des tempes au menton
+            ref = float(np.interp(t, np.linspace(0, 1, len(mp)), mp))
+            y2 = 338 + (y - 338) * (out["visage"]["chin"] - 338) / max(1.0, prof[-1][0] + 2 - 338)
+            new.append([round(y2, 1), round(max(4.0, ref + k * (hw - ref)), 1)])
+        out["visage"]["profil"] = new
+        out["visage"]["wf"] = new[0][1] * 2
+    n = out["nez"]
+    n["th"] = round(max(26.0, (n["base"] - n["top"]) * 0.26), 1)
+    # la pointe : le maillage la donne toujours etroite ; on garde son ecart relatif a la moyenne, sur une pointe de reference
+    rel = n["tw"] / max(1.0, m["nez"]["tw"]) - 1
+    n["tw"] = round(n["wa"] * min(0.74, max(0.36, 0.5 * (1 + 2.6 * rel))), 1)
+    if n["wa"] > m["nez"]["wa"] * 1.15:
+        n["fl"] = 1.0
+    elif n["wa"] < m["nez"]["wa"] * 0.87:
+        n["fl"], n["nar"] = -1.0, "fente"
+    n["drop"] = round(n["drop"] - m["nez"]["drop"], 1)             # autour de zero : releve ou plongeant par rapport a la moyenne
+    return out
+
+
+def fit(points, shapes=None, matrix=None, k=1.0):
+    """Les cotes de chaque element, mesurees sur le visage. k > 1 : accentue ses particularites. Rend ({categorie: cotes}, etat)."""
+    out, state = _fit(points, shapes, matrix)
+    return accent(out, k), state
+
+
+def _fit(points, shapes=None, matrix=None):
     P, _ = frame(points)
     state = dict(neutral(shapes), **pose(matrix))
     smile, opened = state["sourire"], state["bouche_ouverte"]
@@ -249,6 +311,11 @@ HAIR_TOP = {"afro": 70, "boucles": 62, "banane": 78, "crete": 96, "herisses": 80
 HAIR_W = {"carre": 700, "longs-raides": 650, "mi-longs": 720, "ondules": 720, "tresses": 640, "dreadlocks": 640, "frange": 640, "queue-de-cheval": 640,
           "afro": 660, "boucles": 640}
 ORDER = ["oreilles", "visage", "barbe", "bouche", "moustache", "nez", "yeux", "sourcils", "lunettes"]
+# ce qu'on reprend d'une variante de la banque quand on en donne le nom : la forme, jamais les tailles mesurees
+STYLE_KEYS = {"nez": ("tip", "fl", "nar", "sillon", "bump", "col", "cote", "bend", "s", "trait"),
+              "sourcils": ("poils", "clair", "angle", "tin", "tout", "joint"),
+              "bouche": ("plein", "haut", "rides", "onde", "sous", "trait"),
+              "yeux": ("cils", "poche", "cerne", "hood", "sup", "inf")}
 
 
 def _variant(cat, name):
@@ -294,7 +361,13 @@ def _head(kw, extras=None, seed=1):
             put(m, [2 * cxf - (pl[0] + (cxf - CX)), pl[1], pl[2]])
             continue
         if cat in kw:
-            im, pl = draw(cat, kw[cat], seed)
+            c = dict(kw[cat])
+            style = ex.get(cat)                    # type choisi a l'oeil : nom d'une variante (on en prend la forme, pas les tailles) ou cotes
+            if isinstance(style, str):
+                style = {key: v for key, v in _variant(cat, style).items() if key in STYLE_KEYS.get(cat, ())}
+            if style:
+                c.update(style)
+            im, pl = draw(cat, c, seed)
             put(im, pl)
             continue
         name = ex.get(cat)
