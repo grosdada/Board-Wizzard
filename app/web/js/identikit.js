@@ -132,6 +132,7 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
     sel = f.n; userSel = true; paint(); props(); marks(); hist.snap();
   };
   // briques : une par element pose, pour choisir celui qu'un autre recouvre (des sourcils sous une coupe)
+  const pickLayer = (l) => { sel = l.n; multi.clear(); pinned = true; userSel = true; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } paint(); props(); };
   const bricks = () => {
     const sig = sorted().map((l) => l.n + ":" + l.file + ":" + nameOf(l)).join(",") + "|" + sel + "|" + [...multi].join(",");
     if (sig === brickSig) return;
@@ -140,7 +141,7 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
     bricksBox.append(...sorted().map((l) => {
       const label = nameOf(l);
       return h("div.idk-brick" + (l.n === sel || multi.has(l.n) ? ".on" : ""), { title: tt`${label} · ${l.name} : cliquer pour le choisir, même s'il est caché sous un autre`,
-        on: { click: () => { sel = l.n; multi.clear(); pinned = true; userSel = true; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } paint(); props(); } } },
+        on: { click: () => pickLayer(l) } },
         h("img", { src: url(l), alt: "", draggable: false }), h("span", label),
         h("i", { title: tt("Retirer du visage"), on: { click: (e) => { e.stopPropagation(); sel = l.n; removeSel(); } } }, "✕"));
     }));
@@ -408,15 +409,16 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
     if (drag) { drag = null; hist.snap(); }
   });
   svg.addEventListener("wheel", (e) => { const l = layers.find((x) => x.n === sel); if (!l || multi.size > 1) return; e.preventDefault(); l.w = Math.round(Math.min(950, Math.max(30, l.w * (e.deltaY < 0 ? 1.05 : 0.95)))); paint(); sync(); }, { passive: false });
-  // clic droit sur un element pose : petit menu
+  // clic droit dans le portrait : les gestes de l'element sous la souris (s'il y en a un), puis la liste de tous les
+  // elements poses, pour en choisir un sans le chercher dans les briques du bas (meme cache sous un autre)
   svg.addEventListener("contextmenu", (e) => {
     const n = +(e.target.dataset && e.target.dataset.n), l = layers.find((x) => x.n === n) || (e.target.dataset?.h && layers.find((x) => x.n === sel));
     e.preventDefault();
-    if (!l) return;
-    if (sel !== l.n || multi.size) { sel = l.n; multi.clear(); paint(); props(); }
-    const same = sorted().filter((x) => x.cat === l.cat), i = same.indexOf(l);
+    if (!l && !layers.length) return;
+    if (l && (sel !== l.n || multi.size)) { sel = l.n; multi.clear(); paint(); props(); }
+    const same = l ? sorted().filter((x) => x.cat === l.cat) : [], i = l ? same.indexOf(l) : -1;
     const swap = (o) => { [l.n, o.n] = [o.n, l.n]; sel = l.n; paint(); props(); };
-    const items = [[tt("⇋ Miroir"), () => { l.flip = !l.flip; paint(); }],
+    const items = !l ? [] : [[tt("⇋ Miroir"), () => { l.flip = !l.flip; paint(); }],
       [tt("↺ Place de départ"), () => { home(l); paint(); props(); }],
       [tt("✏ Éditer"), () => editPart(l.cat, itemOf(l))],
       SPLIT.has(l.cat) && !l.half ? [tt("✂ Séparer"), () => split(l)] : null,
@@ -425,7 +427,11 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
       i > 0 ? [tt("▼ Descendre d'un cran"), () => swap(same[i - 1])] : null,
       [tt("✕ Retirer du visage"), removeSel, true]].filter(Boolean);
     document.querySelector(".menu")?.remove();
-    const box = h("div.menu.mt-menu", items.map(([label, fn, danger]) => h("button" + (danger ? ".danger" : ""), { on: { click: () => { box.remove(); fn(); hist.snap(); } } }, label)));
+    const list = sorted().slice().reverse();          // du dessus vers le dessous, comme on les voit
+    const box = h("div.menu.mt-menu.idk-ctx", items.map(([label, fn, danger]) => h("button" + (danger ? ".danger" : ""), { on: { click: () => { box.remove(); fn(); hist.snap(); } } }, label)),
+      list.length ? h("div.mhead", tt`Éléments du visage (${list.length})`) : "",
+      list.length ? h("div.idk-ctx-list", list.map((x) => h("button.idk-ctx-row" + (x.n === sel || multi.has(x.n) ? ".on" : ""), { type: "button", title: tt`${nameOf(x)} · ${x.name} : le choisir, même s'il est caché sous un autre`,
+        on: { click: () => { box.remove(); pickLayer(x); } } }, h("img", { src: url(x), alt: "", draggable: false }), h("span", nameOf(x)), h("small.muted", x.name)))) : "");
     document.body.append(box);
     const r = box.getBoundingClientRect();
     box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px";

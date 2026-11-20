@@ -278,6 +278,15 @@ label.row.range.off { opacity: .4; }
 .mt-lane .key.lin { border-radius: 50%; transform: none; }
 .mt-lane .key.fixe { transform: none; border-radius: 1px; }
 .menu.mt-menu { z-index: 200; }
+/* portrait-robot : clic droit, liste des elements poses */
+.menu.idk-ctx { width: 270px; }
+.idk-ctx-list { max-height: 55vh; overflow-y: auto; }
+.menu button.idk-ctx-row { display: flex; align-items: center; gap: 8px; padding: 3px 6px; }
+.idk-ctx-row img { width: 34px; height: 34px; object-fit: contain; background: #fff; border-radius: 4px; flex: none; }
+.idk-ctx-row span { flex: none; }
+.idk-ctx-row small { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.menu button.idk-ctx-row.on { background: #10b5e0; color: #fff; }
+.menu button.idk-ctx-row.on small { color: #e6f8fd; }
 
 /* montage et deck en plein ecran */
 .modal.modal-full { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100vh; max-height: none; border-radius: 0; transform: none !important; }
