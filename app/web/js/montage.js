@@ -10,7 +10,7 @@
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put, del } from "./api.js";
-import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, hasPerso, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
+import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, hasPerso, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
@@ -150,7 +150,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         if (!tr) o += `<g${bl}>${lipMarkup(lipAt, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l), it)}</g>`;
         if (sp.orbit) {                                    // groupe en pixels de l'image d'orbite, pose comme elle : la bouche du dessin s'y dessine, et l'outil « Tracer la bouche » y lit le trait
           const mf = tr ? mouthFrame(sp, again) : null, mw = mf ? mf.w : sp.w, mh = mf ? mf.h : sp.h, msc = Math.min(box.w / mw, box.h / mh);
-          o += `<g${bl}><g data-mouth="${l.id}" transform="${flip}translate(${f1(box.x + (box.w - mw * msc) / 2)} ${f1(box.y + box.h - mh * msc)}) scale(${f3(msc)})" style="pointer-events:none">${mf ? traceMarkup(l.lip, mf.m, t, `${pre}lp-${l.id}`, bodyFill(l)) : ""}</g></g>`;
+          o += `<g${bl}><g data-mouth="${l.id}" transform="${flip}translate(${f1(box.x + (box.w - mw * msc) / 2)} ${f1(box.y + box.h - mh * msc)}) scale(${f3(msc)})" style="pointer-events:none">${mf ? (cardMarkup(l.lip, mf.lips, mf.all, sp.i, t) ?? traceMarkup(l.lip, mf.m, t, `${pre}lp-${l.id}`, bodyFill(l))) : ""}</g></g>`;
         }
       }
       if (sel === l.id) {

@@ -21,7 +21,8 @@ export function sprite(item, vid, f) {
     return { url: `/bank/${id}/${v.orbit.dir}/${pad3(i)}.webp?t=${v.orbit.t || 0}`, w: v.orbit.w, h: v.orbit.h, n, i, orbit: true,
              vec: v.orbit.vec ? `/bank/${id}/${v.orbit.dir}/vec.json?v=${v.orbit.vt || 0}` : null,
              head: v.orbit.head ? `/bank/${id}/${v.orbit.dir}/head.json?v=${v.orbit.vt || 0}` : null,   // tete suivie (corps de mannequin)
-             mouth: v.orbit.mouth ? `/bank/${id}/${v.orbit.dir}/mouth.json?v=${v.orbit.mt || 0}` : null };   // bouche du dessin, suivie (lip sync « trace »)
+             mouth: v.orbit.mouth ? `/bank/${id}/${v.orbit.dir}/mouth.json?v=${v.orbit.mt || 0}` : null,
+             lips: v.orbit.mouth && v.orbit.lips ? `/bank/${id}/${v.orbit.dir}/lips.json?v=${v.orbit.lips}` : null, dir: `/bank/${id}/${v.orbit.dir}` };   // bouches dessinees dans le style du personnage (tools/levres.py)   // bouche du dessin, suivie (lip sync « trace »)
   }
   if (v.cut) return { url: `/bank/${id}/${v.cut}?t=${v.t || 0}`, w: v.cw || item.w, h: v.ch || item.h, n: 1, i: 0 };
   return { url: `/bank/${id}/${v.ref}?t=${v.t || 0}`, w: item.w || 1, h: item.h || 1, n: 1, i: 0, raw: true };
@@ -60,7 +61,24 @@ export function mouthFrame(sp, onReady) {
     if (mouths.size > 40) mouths.delete(mouths.keys().next().value);
   }
   if (e.data === null) { if (onReady && e.wait.length < 4) e.wait.push(onReady); return null; }
-  return e.data ? { w: e.data.w, h: e.data.h, m: e.data.frames[sp.i] || null } : null;
+  return e.data ? { w: e.data.w, h: e.data.h, m: e.data.frames[sp.i] || null, all: e.data.frames, lips: lipsOf(sp, onReady) } : null;
+}
+// ---- bouches dessinees : lips.json d'une orbite = { w, h, keys: [{ f, x, y, s, cards: { A, O, E, D } }] } (tools/levres.py)
+const lipsFiles = new Map();
+function lipsOf(sp, onReady) {
+  if (!sp.lips) return null;
+  let e = lipsFiles.get(sp.lips);
+  if (!e) {
+    e = { data: null };
+    lipsFiles.set(sp.lips, e);
+    fetch(sp.lips).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      e.data = d ? Object.assign(d, { base: sp.dir, v: sp.lips.split("?v=")[1] || "0" }) : false;
+      if (d) for (const k of d.keys) for (const f of Object.values(k.cards)) new Image().src = `${sp.dir}/${f}?v=${e.data.v}`;   // deja en memoire quand la voix demarre
+      if (onReady) onReady();
+    }).catch(() => { e.data = false; });
+    if (lipsFiles.size > 40) lipsFiles.delete(lipsFiles.keys().next().value);
+  }
+  return e.data || null;
 }
 export function vecReady(sp) { return new Promise((ok) => { const f = vecFrame(sp, () => ok(vecFrame(sp))); if (f || !sp || !sp.vec || (vecs.get(sp.vec) || {}).data === false) ok(f); }); }
 /** Ombre graphique d'un dessin en traces, sans calcul : la silhouette moins elle-meme decalee vers la lumiere laisse

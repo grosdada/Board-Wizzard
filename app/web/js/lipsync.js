@@ -215,6 +215,33 @@ export function traceMarkup(lip, m, t, id = "", fill = "#ffffff") {
   return d;
 }
 
+// Bouches dessinees dans le style du personnage (tools/levres.py) : des cartes decoupees sur quelques images-cles de
+// l'orbite. La carte de l'image-cle la plus proche est recalee sur la bouche suivie de l'image montree (place, largeur,
+// inclinaison). Au-dela de LIPS_REACH images d'ecart, l'angle a trop change : on rend null et la bouche tracee prend le relais.
+const LIPS_REACH = 4, CARD_OF = { A: "A", L: "A", O: "O", U: "O", E: "E", D: "D" };
+/** lips : lips.json charge ; frames : toutes les images de mouth.json ; i : image montree. Rend le balisage, "" (silence
+ *  ou bouche fermee : le dessin intact) ou null (pas de carte pour cet angle). */
+export function cardMarkup(lip, lips, frames, i, t) {
+  if (!lip || !lip.on || !lips || !frames) return null;
+  const m = frames[i], n = frames.length;
+  if (!m || !m.up) return null;
+  let key = null, far = 1e9;
+  for (const k of lips.keys) { if (!frames[k.f] || !frames[k.f].up) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (d < far) { far = d; key = k; } }
+  if (!key || far > LIPS_REACH) return null;
+  if (!speakingAt(lip, t)) return "";
+  const shape = cueAt(lip, t);
+  if (shape === "X" || shape === "M" || shape === "F") return "";
+  const file = key.cards[CARD_OF[shape] || "A"] || key.cards.A || Object.values(key.cards)[0];
+  if (!file) return null;
+  const ends = (q) => [q.up[0], q.up[q.up.length - 1]], mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const [a0, b0] = ends(frames[key.f]), [a1, b1] = ends(m), c0 = mid(a0, b0), c1 = mid(a1, b1);
+  const w0 = Math.hypot(b0[0] - a0[0], b0[1] - a0[1]) || 1, w1 = Math.hypot(b1[0] - a1[0], b1[1] - a1[1]) || 1;
+  const sx = far ? Math.max(0.6, Math.min(1.4, w1 / w0)) : 1;
+  const rot = far ? Math.max(-20, Math.min(20, (Math.atan2(b1[1] - a1[1], b1[0] - a1[0]) - Math.atan2(b0[1] - a0[1], b0[0] - a0[0])) * 180 / Math.PI)) : 0;
+  const tf = far ? ` transform="translate(${c1[0].toFixed(2)} ${c1[1].toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(3)} 1) translate(${(-c0[0]).toFixed(2)} ${(-c0[1]).toFixed(2)})"` : "";
+  return `<image href="${lips.base}/${file}?v=${lips.v}" x="${key.x}" y="${key.y}" width="${key.s}" height="${key.s}" preserveAspectRatio="none"${tf}/>`;
+}
+
 /** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face) ;
  *  item : l'element du calque (ses propres bouches, jeu « perso »). */
 export function lipMarkup(lip, box, flip, t, angle = 0, id = "", mask = "#ffffff", item = null) {
