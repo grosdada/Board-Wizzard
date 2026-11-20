@@ -460,22 +460,47 @@ class App {
     const boxes = others.map((g) => [g, h("input", { type: "checkbox" })]);
     const all = h("button.mini", { on: { click: (e) => { e.preventDefault(); const on = boxes.some(([, c]) => !c.checked); boxes.forEach(([, c]) => { c.checked = on; }); } } }, tt("Toutes / aucune"));
     modal(tt`Copier la case ${from ? from.order : ""} vers…`, h("div.form",
-      h("p.muted", tt("Tout est copié : fond et cadrage, personnages et objets, bulles, profondeur de champ. Le contenu des cases cochées est remplacé.")),
+      h("p.muted", tt("Tout est copié : fond et cadrage, personnages et objets, bulles, profondeur de champ. Si une case cochée est déjà remplie, on te demandera d'ajouter ou de remplacer.")),
       h("div.checks", boxes.map(([g, c]) => h("label.row.check", c, tt`Case ${g.order}`, filled(g) ? h("span.muted", tt(" (déjà remplie)")) : ""))), h("div.row", all)),
       [{ label: tt("Annuler") }, { label: tt("Copier"), primary: true, click: () => {
         const to = boxes.filter(([, c]) => c.checked).map(([g]) => g);
         if (!to.length) { toast(tt("Coche au moins une case."), "error"); return false; }
-        for (const g of to) {
-          const copy = JSON.parse(JSON.stringify(src));
+        // une copie neuve de la case d'origine : nouveaux identifiants, pistes d'animation renommees avec leurs calques
+        const fresh = () => {
+          const copy = JSON.parse(JSON.stringify(src)), ren = {};
           for (const k of ["integrated", "integrations", "orbit"]) delete copy[k];   // images calculées pour la case d'origine
           copy.show = "layers";
-          for (const l of copy.layers || []) l.id = uid();
+          for (const l of copy.layers || []) { const n = uid(); ren[l.id] = n; l.id = n; }
           for (const b of copy.bubbles || []) b.id = uid();
           for (const m of copy.marks || []) m.id = uid();
-          pg.panels[g.id] = copy;
-        }
-        this.commit("copy"); this.editor.render(); this.refreshInspector();
-        toast(tt`Case copiée vers ${to.map((g) => g.order).join(", ")}.`);
+          const tr0 = copy.anim && copy.anim.tracks;
+          if (tr0) for (const k of Object.keys(tr0)) if (ren[k]) { tr0[ren[k]] = tr0[k]; delete tr0[k]; }
+          return copy;
+        };
+        // ajouter : personnages et objets, bulles et reperes s'ajoutent ; le fond, le cadrage et le dessin du fond de la
+        // case d'arrivee restent (une case sans fond prend celui de la copie), son animation aussi, avec les pistes des
+        // elements ajoutes
+        const add = (dst, copy) => {
+          for (const k of ["layers", "bubbles", "marks"]) if ((copy[k] || []).length) dst[k] = (dst[k] || []).concat(copy[k]);
+          if (!dst.bg && copy.bg) { dst.bg = copy.bg; if (copy.view) dst.view = copy.view; if (copy.draw && !dst.draw) dst.draw = copy.draw; }
+          const tr0 = copy.anim && copy.anim.tracks, ids = new Set((copy.layers || []).map((l) => l.id));
+          if (tr0) for (const k of Object.keys(tr0)) if (ids.has(k)) { dst.anim = dst.anim || { dur: copy.anim.dur || 4, tracks: {} }; (dst.anim.tracks = dst.anim.tracks || {})[k] = tr0[k]; }
+          delete dst.integrated; dst.show = "layers";
+        };
+        const apply = (mode) => {
+          for (const g of to) {
+            const copy = fresh();
+            if (mode === "add" && filled(g)) add(pg.panels[g.id], copy); else pg.panels[g.id] = copy;
+          }
+          this.commit("copy"); this.editor.render(); this.refreshInspector();   // une seule etape : Ctrl+Z annule tout
+          toast((mode === "add" ? tt("Case ajoutée dans ") : tt("Case copiée vers ")) + to.map((g) => g.order).join(", ") + ".");
+        };
+        const full = to.filter(filled);
+        if (!full.length) return apply("replace");
+        modal(tt("Case déjà occupée"), h("div.form",
+          h("p", full.length > 1 ? tt`Les cases ${full.map((g) => g.order).join(", ")} contiennent déjà des éléments.` : tt`La case ${full[0].order} contient déjà des éléments.`),
+          h("p.muted", tt("Ajouter : les personnages, objets, bulles et repères copiés s'ajoutent ; le fond et le cadrage de la case restent. Remplacer : la case devient une copie exacte, fond compris."))),
+          [{ label: tt("Annuler") }, { label: tt("Ajouter aux éléments"), primary: true, click: () => apply("add") }, { label: tt("Remplacer les éléments"), primary: true, click: () => apply("replace") }]);
       } }]);
   }
   // atelier de dessin du fond de la case : formes simples, traces, gris en trame

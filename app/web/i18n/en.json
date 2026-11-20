@@ -601,9 +601,7 @@
   "Retirer le fond": "Remove the background",
   "Vider la case": "Empty the panel",
   "Copier la case {0} vers…": "Copy panel {0} to…",
-  "Tout est copié : fond et cadrage, personnages et objets, bulles, profondeur de champ. Le contenu des cases cochées est remplacé.": "Everything is copied: background and framing, characters and objects, balloons, depth of field. The content of the ticked panels is replaced.",
   " (déjà remplie)": " (already filled)",
-  "Case copiée vers {0}.": "Panel copied to {0}.",
   "Dessiner le fond de la case {0}": "Draw the background of panel {0}",
   "Pose d'abord des éléments dans la case.": "Place some items in the panel first.",
   "Devant · 0": "Front · 0",
@@ -1244,7 +1242,12 @@
   "La case {0} contient déjà {1} élément(s).": "Panel {0} already contains {1} element(s).",
   "Ajouter : la copie s'ajoute, rien n'est retiré. Remplacer : la copie prend la place des éléments de la case ; le fond, les bulles et les repères restent.": "Add: the copy is added, nothing is removed. Replace: the copy takes the place of the panel's elements; the background, balloons and marks stay.",
   "Ajouter aux éléments": "Add to elements",
-  "Remplacer les éléments": "Replace elements"
+  "Remplacer les éléments": "Replace elements",
+  "Tout est copié : fond et cadrage, personnages et objets, bulles, profondeur de champ. Si une case cochée est déjà remplie, on te demandera d'ajouter ou de remplacer.": "Everything is copied: background and framing, characters and objects, balloons, depth of field. If a checked panel is already filled, you will be asked whether to add or replace.",
+  "Case ajoutée dans ": "Panel added into ",
+  "Case copiée vers ": "Panel copied to ",
+  "La case {0} contient déjà des éléments.": "Panel {0} already contains elements.",
+  "Ajouter : les personnages, objets, bulles et repères copiés s'ajoutent ; le fond et le cadrage de la case restent. Remplacer : la case devient une copie exacte, fond compris.": "Add: the copied characters, objects, balloons and marks are added; the panel's background and framing stay. Replace: the panel becomes an exact copy, background included."
  },
  "server": {
   "Parle": "Speaks",
