@@ -5,7 +5,7 @@
 //                  off (decalage en secondes), x, y (place de la bouche, fraction de la boite du personnage vu de face),
 //                  s (largeur, fraction de la hauteur), hw (rayon de l'axe de la tete, fraction de la hauteur), r (inclinaison),
 //                  ow, oh (largeur et hauteur de la bouche ouverte, jeu « trait et capsule »),
-//                  set (jeu de bouches : dessin | graphique | perso…), lw (epaisseur du trait), hand, wave (tremble du trait), bg (masque blanc), mw, mh, mx, my (son reglage) }
+//                  set (jeu de bouches : dessin | graphique | perso | trace…), lw (epaisseur du trait), hand, wave (tremble du trait), bg (masque blanc), mw, mh, mx, my (son reglage) }
 // La bouche est accrochee a un axe vertical qui tourne avec l'orbite : de trois quarts elle glisse sur le cote et se
 // resserre, de dos elle disparait.
 import { tt, tr } from "./i18n.js";
@@ -146,6 +146,54 @@ export function cueAt(lip, t) {
   if (!lip || !lip.cues) return "X";
   const i = cueIndex(lip, t);
   return (i >= 0 && (lip.mode === "detail" ? lip.cues : simplify(lip.cues, lip.flap ?? 4, lip.mode === "mix"))[i]) || "X";
+}
+
+// Jeu « trace » (Bouche du dessin) : la bouche du dessin lui-meme, tracee une fois par l'utilisateur puis suivie dans
+// l'orbite (app/mouthfind.py, mouth.json). Coordonnees en pixels de l'image d'orbite : l'appelant pose le groupe sur
+// l'image (miroir compris). Repos : rien par-dessus, le dessin tel quel.
+export const TRACE = "trace", TRACE_NAME = tt("Bouche du dessin");
+/** Le jeu « trace » s'applique-t-il ? Choisi d'office quand la variante affichee a une bouche suivie et qu'aucun autre
+ *  jeu n'a ete choisi. sp : sprite() de l'image affichee. */
+export const usesTrace = (lip, sp) => !!(lip && sp && sp.mouth && (!lip.set || lip.set === TRACE));
+const LEVEL = { A: 1, L: 1, O: 0.8, U: 0.8, E: 0.5, D: 0.5 };
+/** Ca parle a l'instant t (son brut, avant le battement) : sinon c'est un silence. */
+export function speakingAt(lip, t) { const i = cueIndex(lip, t); return i >= 0 && !!lip.cues && !!lip.cues[i] && lip.cues[i] !== "X"; }
+const p2 = (p) => `${p[0].toFixed(2)} ${p[1].toFixed(2)}`;
+// courbe lissee a travers les points (Catmull-Rom en Bezier) ; move : commence par M, sinon par une ligne
+function smooth(p, move = true) {
+  let d = (move ? "M" : "L") + p2(p[0]);
+  for (let i = 0; i < p.length - 1; i++) {
+    const a = p[Math.max(0, i - 1)], b = p[i], c = p[i + 1], e = p[Math.min(p.length - 1, i + 2)];
+    d += `C${p2([b[0] + (c[0] - a[0]) / 6, b[1] + (c[1] - a[1]) / 6])} ${p2([c[0] - (e[0] - b[0]) / 6, c[1] - (e[1] - b[1]) / 6])} ${p2(c)}`;
+  }
+  return d;
+}
+/** Bouche du dessin a l'instant t, en pixels de l'image d'orbite. m : frames[i] de mouth.json (null : rien). fill :
+ *  couleur du personnage, pour couvrir une bouche deja ouverte quand elle se ferme. */
+export function traceMarkup(lip, m, t, id = "", fill = "#ffffff") {
+  if (!lip || !lip.on || !m || !m.up || !speakingAt(lip, t)) return "";    // silence : le dessin intact
+  const shape = cueAt(lip, t), closed = shape === "X" || shape === "M" || shape === "F", lw = lip.lw ?? 1, sw = m.stroke || 2;
+  let d;
+  if (m.open) {                                             // bouche deja ouverte : temps ouverts = le dessin ; temps fermes = on la ferme
+    if (!closed || !m.cover || !m.lo) return "";
+    const mid = m.up.map((p, i) => [(p[0] + m.lo[i][0]) / 2, (p[1] + m.lo[i][1]) / 2]);
+    d = `<path d="M${m.cover.map(p2).join("L")}Z" fill="${fill}"/><path d="${smooth(mid)}" fill="none" stroke="#111" stroke-width="${(sw * 1.2 * lw).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  } else {                                                  // bouche en trait : repos = le dessin ; ca parle = la levre du bas descend
+    if (closed) return "";
+    const n = m.up.length, cx = (m.up[0][0] + m.up[n - 1][0]) / 2, ow = lip.ow ?? 1, drop = (m.drop || 0) * (lip.oh ?? 1) * (LEVEL[shape] ?? 1);
+    const up = m.up.map((p) => [cx + (p[0] - cx) * ow, p[1]]);
+    const lo = up.map((p, i) => [p[0], p[1] + drop * Math.pow(Math.sin(Math.PI * i / Math.max(1, n - 1)), 0.75)]).reverse();
+    d = `<path d="${smooth(up)}${smooth(lo, false)}Z" fill="#111" stroke="#111" stroke-width="${(sw * lw).toFixed(2)}" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  if (lip.hand > 0 && id) {                                 // trait a la main : meme bruit que les autres jeux, a l'echelle de la bouche
+    const k = Math.max(4, m.w || 40) / 100, xs = (m.cover || m.up).map((p) => p[0]), ys = (m.cover || m.up).map((p) => p[1]).concat(m.lo ? m.lo.map((p) => p[1]) : []);
+    const x0 = Math.min(...xs) - 40 * k, y0 = Math.min(...ys) - 40 * k, x1 = Math.max(...xs) + 40 * k, y1 = Math.max(...ys) + (m.drop || 0) * 2.5 + 40 * k;
+    const seed = 3 + "XMAEOUFDL".indexOf(shape) * 7;
+    return `<filter id="${id}" filterUnits="userSpaceOnUse" x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" height="${(y1 - y0).toFixed(1)}" color-interpolation-filters="sRGB">` +
+      `<feTurbulence type="fractalNoise" baseFrequency="${(0.09 / Math.max(0.5, lip.wave ?? 4) / k).toFixed(4)}" numOctaves="2" seed="${seed}"/><feDisplacementMap in="SourceGraphic" scale="${(lip.hand * 2.2 * k).toFixed(2)}" xChannelSelector="R" yChannelSelector="G"/></filter>` +
+      `<g filter="url(#${id})">${d}</g>`;
+  }
+  return d;
 }
 
 /** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face) ;

@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import accounts, jobs, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
+from . import accounts, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"
 VERSION = "0.1"
@@ -590,6 +590,8 @@ class Handler(BaseHTTPRequestHandler):
         if act == "lasso" and method == "POST":                     # retouche a la main : vider ou remplir la zone entouree
             return self.send_json(retouch.lasso(iid, d.get("variant", "base"), d.get("frame", 0), d.get("points") or [],
                                                 mode=d.get("mode", "vider"), lines=bool(d.get("lines"))))
+        if act == "mouth" and method in ("POST", "DELETE"):         # lip sync : la bouche tracee sur le dessin, suivie dans l'orbite
+            return self.send_json(self._mouth(iid, it, method, d if method == "POST" else {"variant": q.get("variant", "base")}))
         if act == "restore" and method == "POST":                   # remettre les images d'avant les retouches
             return self.send_json(retouch.restore(iid, d.get("variant", "base")))
         if act == "undo" and method == "POST":                      # Ctrl+Z / Ctrl+Y d'une retouche (15 pas par orbite)
@@ -636,6 +638,41 @@ class Handler(BaseHTTPRequestHandler):
                     x.pop("cover", None)
             return self.send_json(store.mutate_item(iid, drop))
         raise ApiError("route inconnue", 404)
+
+    def _mouth(self, iid, it, method, d):
+        """Bouche du dessin (jeu « trace » du lip sync) : POST {variant, f, line} accroche la bouche au trait trace sur
+        l'image f de l'orbite et la suit (mouthfind.track ecrit mouth.json dans le dossier de l'orbite) ; DELETE la retire.
+        Rend {frames (images suivies, 0 = rien trouve), item}."""
+        vid = d.get("variant") or "base"
+        o = (it["variants"].get(vid) or {}).get("orbit") or {}
+        if not o.get("dir") or not o.get("n"):
+            raise ApiError("cette variante n'a pas d'orbite")
+        folder = store.item_dir(iid) / o["dir"]
+
+        def mark(on):
+            def fn(x):
+                oo = (x["variants"].get(vid) or {}).get("orbit") or {}
+                if oo.get("dir") != o["dir"]:                       # une nouvelle orbite est arrivee entre-temps
+                    return
+                if on:
+                    oo["mouth"], oo["mt"] = True, int(time.time() * 1000)
+                else:
+                    oo.pop("mouth", None)
+                    oo.pop("mt", None)
+            return store.mutate_item(iid, fn)
+        if method == "DELETE":
+            (folder / "mouth.json").unlink(missing_ok=True)
+            return {"frames": 0, "item": store.resolve(mark(False))}
+        if not mouthfind.available():
+            raise ApiError("OpenCV manque sur ce serveur : pip install opencv-python-headless")
+        try:
+            line = [[float(p[0]), float(p[1])] for p in d.get("line") or []]
+        except (TypeError, ValueError, IndexError):
+            raise ApiError("trait illisible")
+        if len(line) < 2:
+            raise ApiError("trace un trait d'un coin de la bouche à l'autre")
+        got = mouthfind.track(folder, int(o["n"]), int(d.get("f") or 0) % int(o["n"]), line)
+        return {"frames": got, "item": store.resolve(mark(True) if got else store.load_item(iid))}
 
     def _transpose(self, d):
         """« Transposer » : les points d'un portrait (reperes dans le navigateur, la photo ne vient pas ici) -> visage, yeux,

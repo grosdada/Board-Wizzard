@@ -9,10 +9,10 @@
 //   tracks.fo : [{ t, fo (mise au point, 0 devant a 1 fond), e }]   ·   tracks.bl : [{ t, bl (force du flou), e }]
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { tt, tr } from "./i18n.js";
-import { h, modal, toast, history, upload, get, post, put } from "./api.js";
-import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, hasPerso, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
+import { h, modal, toast, history, upload, get, post, put, del } from "./api.js";
+import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, hasPerso, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth } from "./model.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
 
@@ -145,7 +145,14 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})">${lwf}<g${lwf ? ` filter="url(#${pre}wg-${l.id})"` : ""}>${fo ? opsSvg(fo.under, fattr) : ""}${tm}<g${tm ? ` mask="url(#${pre}m-${l.id})"` : ""}><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="${col}" data-layer="${l.id}"/>` +
           `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="${ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g>${fo ? opsSvg(fo.over, fattr) : ""}</g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
-      if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(lipAt, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l), it)}</g>`;   // lip sync : la bouche qui parle
+      if (l.lip && l.lip.on) {                             // lip sync : la bouche qui parle
+        const tr = usesTrace(l.lip, sp);
+        if (!tr) o += `<g${bl}>${lipMarkup(lipAt, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l), it)}</g>`;
+        if (sp.orbit) {                                    // groupe en pixels de l'image d'orbite, pose comme elle : la bouche du dessin s'y dessine, et l'outil « Tracer la bouche » y lit le trait
+          const mf = tr ? mouthFrame(sp, again) : null, mw = mf ? mf.w : sp.w, mh = mf ? mf.h : sp.h, msc = Math.min(box.w / mw, box.h / mh);
+          o += `<g${bl}><g data-mouth="${l.id}" transform="${flip}translate(${f1(box.x + (box.w - mw * msc) / 2)} ${f1(box.y + box.h - mh * msc)}) scale(${f3(msc)})" style="pointer-events:none">${mf ? traceMarkup(l.lip, mf.m, t, `${pre}lp-${l.id}`, bodyFill(l)) : ""}</g></g>`;
+        }
+      }
       if (sel === l.id) {
         o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
         { // croix au milieu : la glisser deplace l'element (comme dans les cases) ; partout ailleurs sur lui, glisser le fait tourner
@@ -603,6 +610,62 @@ export function openMontage(app, pid) {
     lip.y = f3((Y - box.y) / box.h);
     hist.snap(); paint(); props();
   }
+  // Bouche du dessin : l'utilisateur trace un trait d'un coin de la bouche a l'autre sur le personnage, au crayon ou en
+  // droite ; le serveur l'accroche a la bouche dessinee et la suit dans l'orbite (mouth.json de la variante affichee).
+  // Le trace vaut pour l'element et sa variante : tous les calques qui l'utilisent en profitent.
+  let tracing = null, traceMode = localStorage.getItem("bw.traceMode") || "crayon", tdraw = null;
+  const spriteNow = (l) => { const st = stateOf(l), it = itemOf(l); return it && sprite(it, st.v, st.f); };
+  const mouthGroup = (id) => svg.querySelector(`[data-mouth="${id}"]`);
+  function traceDown(e) {
+    const l = layerOf(tracing);
+    if (!l || !mouthGroup(l.id)) { tracing = null; svg.style.cursor = ""; props(); return toast(tt("Cet élément n'a pas d'orbite : rien à tracer."), "error"); }
+    const pt = (ev) => { const g = mouthGroup(l.id), m = g && g.getScreenCTM(); if (!m) return null; const q = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse()); return [q.x, q.y]; };
+    const p = pt(e);
+    if (!p) return;
+    try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+    tdraw = { l, pt, pts: [p], line: null };
+    traceShow();
+  }
+  function traceShow() {                                   // le trait en cours, dans le groupe de l'image (il suit l'image si elle est redessinee)
+    const g = mouthGroup(tdraw.l.id);
+    if (!g) return;
+    if (!tdraw.line || !tdraw.line.isConnected) { tdraw.line = document.createElementNS(NS, "polyline"); tdraw.line.setAttribute("class", "mt-trace"); g.appendChild(tdraw.line); }
+    tdraw.line.setAttribute("points", tdraw.pts.map((q) => q[0].toFixed(1) + "," + q[1].toFixed(1)).join(" "));
+  }
+  function traceMove(e) {
+    const p = tdraw.pt(e);
+    if (!p) return;
+    if (traceMode === "droite") tdraw.pts = [tdraw.pts[0], p];
+    else { const a = tdraw.pts[tdraw.pts.length - 1]; if (Math.hypot(p[0] - a[0], p[1] - a[1]) > 0.7) tdraw.pts.push(p); }
+    traceShow();
+  }
+  async function traceUp() {
+    const { l, pts } = tdraw; tdraw = null;
+    const span = pts.length > 1 ? Math.hypot(pts[pts.length - 1][0] - pts[0][0], pts[pts.length - 1][1] - pts[0][1]) : 0;
+    if (span < 3) { paint(); return toast(tt("Trait trop court : trace d'un coin de la bouche à l'autre."), "error"); }
+    const step = Math.max(1, Math.ceil(pts.length / 40)), line = pts.filter((q, i) => i % step === 0 || i === pts.length - 1).map((q) => [+q[0].toFixed(1), +q[1].toFixed(1)]);
+    const it = itemOf(l), sp = spriteNow(l), st = stateOf(l), vid = st.v && (it.variants || {})[st.v] ? st.v : "base";
+    toast(tt("Recherche de la bouche dans l'orbite…"));
+    try {
+      const r = await post(`bank/${encodeURIComponent(it.id)}/mouth`, { variant: vid, f: sp.i, line });
+      if (r.item) app.bank.set(it.id, r.item);
+      if (r.frames) {
+        l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { set: TRACE }); tracing = null; svg.style.cursor = ""; hist.snap();
+        toast(tt`Bouche suivie sur ${r.frames} images sur ${sp.n}.`);
+      } else toast(tt("Rien trouvé sous le trait : trace sur la bouche dessinée, d'un coin à l'autre."), "error");
+    } catch (err) { toast(tt("Tracé refusé : ") + err.message, "error"); }
+    paint(); props();
+  }
+  async function traceClear(l) {
+    const it = itemOf(l), st = stateOf(l), vid = st.v && (it.variants || {})[st.v] ? st.v : "base";
+    try {
+      const r = await del(`bank/${encodeURIComponent(it.id)}/mouth?variant=${encodeURIComponent(vid)}`);
+      if (r.item) app.bank.set(it.id, r.item);
+      if (l.lip && l.lip.set === TRACE) delete l.lip.set;
+      hist.snap(); paint(); props();
+      toast(tt("Tracé de la bouche effacé."));
+    } catch (err) { toast(tt("Tracé non effacé : ") + err.message, "error"); }
+  }
   async function micro(l, btn) {                           // enregistrement direct au micro
     if (rec) { rec.stop(); return; }
     try {
@@ -633,7 +696,27 @@ export function openMontage(app, pid) {
           vb - va < (lip.dur || 0) - 0.01 ? h("button.mini", { title: tt("Retrouve la voix entière"), on: { click: () => { delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, tt("Entière")) : ""));
     }
     rows.push(h("label.row.check", { title: tt("Affiche la bouche dessinée sur le personnage") }, h("input", { type: "checkbox", checked: !!lip.on, on: { change: async (e) => { put("on", e.target.checked); await persoFirst(l); paint(); props(); } } }), tt("Bouche dessinée")));
+    const sp0 = spriteNow(l), trace = usesTrace(lip, sp0);
+    if (lip.on && sp0 && sp0.orbit && !(itemOf(l) || {}).body) {   // bouche du dessin : la tracer sur le personnage
+      const on = tracing === l.id;
+      rows.push(h("div.row.wrap",
+        h("button.mini" + (on ? ".on" : ""), { title: tt("Trace un trait sur la bouche du personnage, d'un coin à l'autre, sur l'image affichée : elle est retrouvée puis suivie quand il tourne. Vaut pour cet élément et cette pose, dans tous les calques qui l'utilisent."), on: { click: () => { tracing = on ? null : l.id; placing = null; svg.style.cursor = tracing ? "crosshair" : ""; props(); } } }, on ? tt("Trace sur la bouche…") : tt("✎ Tracer la bouche")),
+        h("select", { title: tt("Crayon : tracé libre. Droite : cliquer-glisser d'un coin de la bouche à l'autre."), on: { change: (e) => { traceMode = e.target.value; localStorage.setItem("bw.traceMode", traceMode); } } },
+          [["crayon", tt("Crayon")], ["droite", tt("Droite")]].map(([k, n]) => h("option", { value: k, selected: traceMode === k }, n))),
+        sp0.mouth ? h("button.mini.danger", { title: tt("Retire la bouche suivie de cette pose (pour tous les calques qui l'utilisent)"), on: { click: () => traceClear(l) } }, tt("Effacer le tracé")) : ""));
+    }
+    if (lip.on && trace) {                                 // bouche du dessin : pas de place, d'axe ni de masque a regler
+      rows.push(
+        h("label.row", { title: tt("Simple : fermée sur les silences ; dès que ça parle, elle alterne ouverte et fermée. Varié : pareil, mais la bouche ouverte change selon le son. Détaillé : les neuf bouches, sans battement.") }, tt("Lip sync"),
+          h("select", { on: { change: (e) => { put("mode", e.target.value); lanes(); props(); } } }, Object.entries(MODES).map(([k, n]) => h("option", { value: k, selected: (lip.mode || "simple") === k }, n)))),
+        lip.mode !== "detail" ? h("div", { title: tt("Nombre de battements de bouche par seconde pendant que ça parle") }, plain(tt("Rythme ⓘ"), "flap", 1.5, 6, 0.5, 4, (x) => (+x).toFixed(1) + " /s")) : "",
+        h("div", { title: tt("Bouche en trait : de combien la lèvre du bas descend (↕) et la largeur de la bouche ouverte (↔). Une bouche déjà ouverte dans le dessin garde sa forme.") }, plain(tt("Ouverture ↔ ⓘ"), "ow", 0.3, 1.3, 0.01, 1, (x) => (+x).toFixed(2)), plain(tt("Ouverture ↕"), "oh", 0.2, 2.5, 0.01, 1, (x) => (+x).toFixed(2))));
+    }
     if (lip.on) {
+      rows.push(h("label.row", { title: tt("Le dessin des bouches") }, tt("Jeu de bouches"), h("select", { on: { change: async (e) => { const was = (l.lip || {}).set === PERSO; put("set", e.target.value); if (was !== (e.target.value === PERSO)) { await autoMouth(l, true); hist.snap(); paint(); } props(); } } }, [...(sp0 && sp0.mouth || lip.set === TRACE ? [[TRACE, TRACE_NAME]] : []), ...(hasPerso(itemOf(l)) ? [[PERSO, PERSO_NAME]] : []), ...Object.entries(SETS)].map(([k, n]) => h("option", { value: k, selected: (lip.set || (trace ? TRACE : "capsule")) === k }, n)))),
+        trace ? fold("lipt", tt("Trait de la bouche"), plain(tt("Épaisseur"), "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain(tt("Tremblé"), "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain(tt("Ondulation"), "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))) : "");
+    }
+    if (lip.on && !trace) {
       rows.push(h("div.row.wrap",
         h("button.mini", { title: tt("Cherche la tête sur l'image de face et vise la bouche"), on: { click: () => autoMouth(l) } }, tt("◎ Repérer la bouche")),
         h("button.mini" + (placing === l.id ? ".on" : ""), { title: tt("Puis clique dans l'image, à l'endroit de la bouche"), on: { click: () => { placing = placing === l.id ? null : l.id; svg.style.cursor = placing ? "crosshair" : ""; props(); } } }, placing === l.id ? tt("Clique sur la bouche…") : tt("✛ Placer à la main"))),
@@ -643,13 +726,14 @@ export function openMontage(app, pid) {
         h("label.row", { title: tt("Simple : fermée sur les silences ; dès que ça parle, elle alterne ouverte et fermée. Varié : pareil, mais la bouche ouverte change selon le son. Détaillé : les neuf bouches, sans battement.") }, tt("Lip sync"),
           h("select", { on: { change: (e) => { put("mode", e.target.value); lanes(); props(); } } }, Object.entries(MODES).map(([k, n]) => h("option", { value: k, selected: (lip.mode || "simple") === k }, n)))),
         lip.mode !== "detail" ? h("div", { title: tt("Nombre de battements de bouche par seconde pendant que ça parle") }, plain(tt("Rythme ⓘ"), "flap", 1.5, 6, 0.5, 4, (x) => (+x).toFixed(1) + " /s")) : "",
-        (lip.set || "capsule") === "capsule" ? h("div", { title: tt("Taille de la bouche ouverte, par rapport au trait de la bouche fermée") }, plain(tt("Ouverture ↔ ⓘ"), "ow", 0.15, 1.2, 0.01, 0.55, (x) => (+x).toFixed(2)), plain(tt("Ouverture ↕"), "oh", 0.2, 2.5, 0.01, 1, (x) => (+x).toFixed(2))) : "",
-        h("label.row", { title: tt("Le dessin des bouches") }, tt("Jeu de bouches"), h("select", { on: { change: async (e) => { const was = (l.lip || {}).set === PERSO; put("set", e.target.value); if (was !== (e.target.value === PERSO)) { await autoMouth(l, true); hist.snap(); paint(); } props(); } } }, [...(hasPerso(itemOf(l)) ? [[PERSO, PERSO_NAME]] : []), ...Object.entries(SETS)].map(([k, n]) => h("option", { value: k, selected: (lip.set || "capsule") === k }, n)))),
+        (lip.set || "capsule") === "capsule" || lip.set === TRACE ? h("div", { title: tt("Taille de la bouche ouverte, par rapport au trait de la bouche fermée") }, plain(tt("Ouverture ↔ ⓘ"), "ow", 0.15, 1.2, 0.01, 0.55, (x) => (+x).toFixed(2)), plain(tt("Ouverture ↕"), "oh", 0.2, 2.5, 0.01, 1, (x) => (+x).toFixed(2))) : "",
         fold("lipt", tt("Trait de la bouche"), plain(tt("Épaisseur"), "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain(tt("Tremblé"), "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain(tt("Ondulation"), "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))),
         h("label.row.check", { title: tt("Une forme derrière la bouche, pour couvrir celle du dessin. Elle prend la couleur choisie pour le personnage (blanc s'il n'en a pas).") }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => { put("bg", e.target.checked); props(); } } }), tt("Masque de peau")));
       if (lip.bg !== false) rows.push(fold("lipm", tt("Réglages du masque"), plain(tt("Largeur"), "mw", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)), plain(tt("Hauteur"), "mh", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)),
         plain(tt("Décalage ↔"), "mx", -120, 120, 1, 0, (x) => String(Math.round(x))), plain(tt("Décalage ↕"), "my", -120, 120, 1, 0, (x) => String(Math.round(x))),
         h("label.row.check", { title: tt("Montre le masque en rose le temps de l'aligner") }, h("input", { type: "checkbox", checked: !!showMask, on: { change: (e) => { showMask = e.target.checked; paint(); } } }), tt("Voir le masque"))));
+    }
+    if (lip.on) {
       if (lip.cues) {
         const simple = lip.mode !== "detail" && lip.mode !== "mix", force = (sh) => { const i = cueIndex(lip, t); if (i < 0) return toast(tt("La tête de lecture est hors de la voix.")); const c = lip.cues.split(""); for (let q = i; q < Math.min(c.length, i + 2); q++) c[q] = sh; put("cues", c.join("")); props(); };
         rows.push(plain(tt("Décalage (s)"), "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2)),
@@ -788,6 +872,7 @@ export function openMontage(app, pid) {
   svg.addEventListener("pointerdown", (e) => {
     stop();
     if (placing) { placeMouth(e); return; }
+    if (tracing && e.button === 0) { traceDown(e); return; }
     const id = e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
     const shId = id ? null : (e.target.closest("[data-shape]") || {}).dataset?.shape, shp = shId ? shapeOf("s:" + shId) : null;
     sel = id || (shp ? "s:" + shId : "cam"); selKey = null;
@@ -806,6 +891,7 @@ export function openMontage(app, pid) {
     if (vdrag) vdrag.p = ptOf(e);                          // le panneau de droite vient de changer : l'image a pu bouger a l'ecran
   });
   svg.addEventListener("pointermove", (e) => {
+    if (tdraw) { traceMove(e); return; }
     if (!vdrag) return;
     const p = ptOf(e), dx = p[0] - vdrag.p[0], dy = p[1] - vdrag.p[1];
     if (vdrag.shape) {                                      // haut / bas : sa profondeur ; gauche / droite : sa place en travers
@@ -825,7 +911,7 @@ export function openMontage(app, pid) {
     else if (vdrag.turn) { const n = nOf(layerOf(vdrag.id), vdrag.s.v); if (n) change(vdrag.id, { f: (((vdrag.s.f + Math.round((e.clientX - vdrag.sx) / 6)) % n) + n) % n }); }
     else change(vdrag.id, { x: f3(vdrag.s.x + dx / vdrag.z), y: f3(vdrag.s.y + dy / vdrag.z) });
   });
-  svg.addEventListener("pointerup", () => { vdrag = null; });
+  svg.addEventListener("pointerup", () => { vdrag = null; if (tdraw) traceUp(); });
   svg.addEventListener("contextmenu", (e) => {                           // clic droit : le menu de l'element, ou celui de la camera
     e.preventDefault();
     const l = layerOf(sel);

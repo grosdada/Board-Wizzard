@@ -20,7 +20,8 @@ export function sprite(item, vid, f) {
     const n = v.orbit.n, i = ((Math.round(f || 0) % n) + n) % n;
     return { url: `/bank/${id}/${v.orbit.dir}/${pad3(i)}.webp?t=${v.orbit.t || 0}`, w: v.orbit.w, h: v.orbit.h, n, i, orbit: true,
              vec: v.orbit.vec ? `/bank/${id}/${v.orbit.dir}/vec.json?v=${v.orbit.vt || 0}` : null,
-             head: v.orbit.head ? `/bank/${id}/${v.orbit.dir}/head.json?v=${v.orbit.vt || 0}` : null };   // tete suivie (corps de mannequin)
+             head: v.orbit.head ? `/bank/${id}/${v.orbit.dir}/head.json?v=${v.orbit.vt || 0}` : null,   // tete suivie (corps de mannequin)
+             mouth: v.orbit.mouth ? `/bank/${id}/${v.orbit.dir}/mouth.json?v=${v.orbit.mt || 0}` : null };   // bouche du dessin, suivie (lip sync « trace »)
   }
   if (v.cut) return { url: `/bank/${id}/${v.cut}?t=${v.t || 0}`, w: v.cw || item.w, h: v.ch || item.h, n: 1, i: 0 };
   return { url: `/bank/${id}/${v.ref}?t=${v.t || 0}`, w: item.w || 1, h: item.h || 1, n: 1, i: 0, raw: true };
@@ -43,6 +44,23 @@ export function vecFrame(sp, onReady) {
   if (!e.data) return null;
   const fr = e.data.frames[sp.i];
   return fr ? { w: e.data.w, h: e.data.h, sw: e.data.sw || 0, body: fr.body, ink: fr.ink, parts: fr.parts || [] } : null;
+}
+// ---- bouche du dessin : mouth.json d'une orbite = { w, h, src, frames: [null | { up, lo, w, stroke, drop, open, cover }] }
+const mouths = new Map();
+/** Bouche suivie sur l'image affichee : { w, h, m (null = pas suivie sur cette image) }, ou null tant que le fichier
+ *  n'est pas charge (onReady est rappele quand il arrive) ou s'il n'y en a pas. */
+export function mouthFrame(sp, onReady) {
+  if (!sp || !sp.mouth) return null;
+  let e = mouths.get(sp.mouth);
+  if (!e) {
+    e = { data: null, wait: [] };
+    mouths.set(sp.mouth, e);
+    fetch(sp.mouth).then((r) => (r.ok ? r.json() : null)).then((d) => { e.data = d || false; e.wait.splice(0).forEach((f) => f()); })
+      .catch(() => { e.data = false; });
+    if (mouths.size > 40) mouths.delete(mouths.keys().next().value);
+  }
+  if (e.data === null) { if (onReady && e.wait.length < 4) e.wait.push(onReady); return null; }
+  return e.data ? { w: e.data.w, h: e.data.h, m: e.data.frames[sp.i] || null } : null;
 }
 export function vecReady(sp) { return new Promise((ok) => { const f = vecFrame(sp, () => ok(vecFrame(sp))); if (f || !sp || !sp.vec || (vecs.get(sp.vec) || {}).data === false) ok(f); }); }
 /** Ombre graphique d'un dessin en traces, sans calcul : la silhouette moins elle-meme decalee vers la lumiere laisse

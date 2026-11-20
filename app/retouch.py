@@ -296,7 +296,7 @@ def dedupe(item_id, variant):
     for f in keep:
         (back / ("%03d.webp" % f)).unlink(missing_ok=True)          # la sauvegarde ne garde que les doublons retires
     newi = lambda f: max(0, min(len(keep) - 1, sum(1 for k in keep if k <= int(f) % n) - 1))
-    for name in ("vec.json", "head.json"):
+    for name in ("vec.json", "head.json", "mouth.json"):
         p = folder / name
         if p.exists():
             try:
