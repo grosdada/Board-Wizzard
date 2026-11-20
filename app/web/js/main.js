@@ -398,8 +398,8 @@ class App {
 
   layerMenu(e) {
     const l = this.layer(); if (!l) return;
-    const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [{ label: tt("🎬 Montage (animer la case)…"), star: true, click: () => openMontage(this, this.sel.panel) },
-      { label: tt("✎ Dessiner le fond…"), star: "blue", click: () => this.drawBackground(this.sel.panel) }];
+    const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [{ label: tt("🎬 Montage (animer la case)… (Tab)"), star: true, click: () => openMontage(this, this.sel.panel) },
+      { label: tt("✎ Dessiner le fond… (Q)"), star: "blue", click: () => this.drawBackground(this.sel.panel) }];
     items.push({ head: tt("Pose") });
     // ↻ : orbite calculee, la pose tourne · ⏳ : orbite en calcul · ▫ : image fixe, pas d'orbite
     for (const [k, vv] of Object.entries(item?.variants || {})) items.push({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + tr(vv.label), checked: k === l.v, click: () => this.setPose(l, k) });
@@ -421,8 +421,8 @@ class App {
   }
 
   panelMenu(e, pid, pt, g) {
-    const pan = this.curPanel(), items = [{ label: tt("🎬 Montage (animer la case)…"), star: true, click: () => openMontage(this, pid) },
-      { label: tt("✎ Dessiner le fond…"), star: "blue", click: () => this.drawBackground(pid) }, { head: tt("Bulle") }];
+    const pan = this.curPanel(), items = [{ label: tt("🎬 Montage (animer la case)… (Tab)"), star: true, click: () => openMontage(this, pid) },
+      { label: tt("✎ Dessiner le fond… (Q)"), star: "blue", click: () => this.drawBackground(pid) }, { head: tt("Bulle") }];
     const rel = { x: (pt.x - g.bbox.x0) / g.bbox.w, y: (pt.y - g.bbox.y0) / g.bbox.h };
     for (const [t, [label]] of Object.entries(BUB)) items.push({ label, click: () => this.addBubble(t, rel), half: true });
     items.push({ head: tt("Indication") });
@@ -1208,6 +1208,11 @@ class App {
         if (this.bubble()) return this.removeBubble();
         if (this.mark()) return this.removeMark();
         return;
+      }
+      if (!ctrl && !e.altKey && (k === "tab" || k === "q")) {   // Tab : montage de la case ; Q : dessiner son fond
+        e.preventDefault();
+        if (!this.sel.panel) return toast(tt("Sélectionne d'abord une case."));
+        return k === "tab" ? openMontage(this, this.sel.panel) : this.drawBackground(this.sel.panel);
       }
       if (!l) return;
       const step = e.shiftKey ? 0.05 : 0.01, v = variantOf(this.bank.get(l.item), l.v);
