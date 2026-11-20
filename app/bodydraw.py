@@ -227,7 +227,7 @@ def encre(nom):
     return im.filter(ImageFilter.MaxFilter(3))     # trait affine d'un pixel de chaque cote : l'agrandissement l'avait engraisse
 
 
-def personnage(tete, cotes=None, seed=1, pad=40, nom=None):
+def personnage(tete, cotes=None, seed=1, pad=40, nom=None, info=None):
     """Un personnage entier : la tete (image RGBA dans le cadre 1000 x 1300 des visages) posee sur un corps. Si le corps
     `nom` a ete encre (tools/corps.py), c'est lui qui sert, sa tete vide effacee ; sinon le corps trace. La tete est mise a
     l'echelle du corps, son menton (y = 880) sur le haut du cou. Rend l'image RGBA rognee (fond blanc sous un corps encre)."""
@@ -251,4 +251,7 @@ def personnage(tete, cotes=None, seed=1, pad=40, nom=None):
     arr = np.asarray(out)
     a = (arr[..., 3] > 24) & (arr[..., :3].min(axis=2) < 235) if ink is not None else arr[..., 3] > 24
     ys, xs = np.where(a)
-    return out.crop((max(0, xs.min() - pad), max(0, ys.min() - pad), min(W, xs.max() + pad), min(out.height, ys.max() + pad)))
+    box = (max(0, xs.min() - pad), max(0, ys.min() - pad), min(W, xs.max() + pad), min(out.height, ys.max() + pad))
+    if info is not None:                           # ou tombe le cadre de la tete dans l'image rendue : point (x, y) de la tete -> (ox + x * s, oy + y * s)
+        info.update(s=s, ox=CX - 500 * s - box[0], oy=top + CHIN + HEAD_DROP - 880 * s - box[1], w=box[2] - box[0], h=box[3] - box[1], pad=pad)
+    return out.crop(box)

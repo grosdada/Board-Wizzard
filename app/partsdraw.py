@@ -518,6 +518,60 @@ def bouche(seed=1, **kw):
     return c.result()
 
 
+def bouche_parle(forme="A", seed=1, sortie=None, **kw):
+    """La meme bouche en train de parler, pour le lip sync : "A" ouverte (machoire baissee, dents du haut), "O" ronde
+    (levres avancees, commissures rentrees). Memes cotes que bouche() : la levre superieure ne bouge pas, tout le reste
+    descend, donc les cartes se superposent a la bouche fermee sans sauter."""
+    p = dict(BOUCHE, **kw)
+    c = Canvas(seed)
+    y, up, lo, on, tr = p["y"], max(6.0, p["up"]), max(8.0, p["lo"]), p["onde"], p["trait"]
+    rond = forme == "O"
+    w = p["w"] * (0.5 if rond else 0.92)
+    drop = max(40.0, p["w"] * 0.3) if rond else max(34.0, p["w"] * 0.24)
+    if rond:
+        up, lo = up * 1.15 + 3, lo * 1.1 + 3
+    xl, xr = CX - w / 2, CX + w / 2
+    k = 0.35 if rond else 1.0                      # la bouche ronde ramene les coins vers l'horizontale
+    yl, yr = y + (p["coins"] - p["tilt"]) * k + (drop * 0.42 if rond else 3), y + (p["coins"] + p["tilt"]) * k + (drop * 0.42 if rond else 3)
+    X = lambda t: xl + w * t
+    a, b = 0.5 - p["pk"] / 2, 0.5 + p["pk"] / 2
+    bow = p["bow"] * (0.5 if rond else 1)
+    top = [(xl, yl), (X(0.16), y - up * 0.55 + (drop * 0.1 if rond else 0)), (X(a), y - up), (CX, y - up + bow), (X(b), y - up),
+           (X(0.84), y - up * 0.55 + (drop * 0.1 if rond else 0)), (xr, yr)]
+    if rond:
+        iu = [(xl + 7, yl), (X(0.24), y + drop * 0.1), (CX, y + 2), (X(0.76), y + drop * 0.1), (xr - 7, yr)]
+        il = [(xl + 7, yl), (X(0.22), y + drop * 0.82), (CX, y + drop), (X(0.78), y + drop * 0.82), (xr - 7, yr)]
+    else:
+        iu = [(xl, yl), (X(0.25), y + 1 + on * 0.3), (CX, y + 2 + on), (X(0.75), y + 1 + on * 0.3), (xr, yr)]
+        il = [(xl, yl), (X(0.2), y + drop * 0.66), (CX, y + drop), (X(0.8), y + drop * 0.66), (xr, yr)]
+    ol = [(xl, yl), (X(0.12), yl + (drop + lo) * 0.5), (X(0.32), y + drop + lo * 0.92), (CX, y + drop + lo),
+          (X(0.68), y + drop + lo * 0.92), (X(0.88), yr + (drop + lo) * 0.5), (xr, yr)]
+    c.white(top + ol[1:-1][::-1])
+    c.black(iu + il[1:-1][::-1])
+    if not rond:                                   # les dents du haut : une bande blanche sous la levre
+        lay = c.layer()
+        teeth = [(X(0.14), y - 4), (X(0.86), y - 4), (X(0.8), y + drop * 0.3), (CX, y + drop * 0.38), (X(0.2), y + drop * 0.3)]
+        ImageDraw.Draw(lay).polygon([(q[0] * SS, q[1] * SS) for q in smooth(teeth, True)], fill=255)
+        m = Image.new("L", lay.size, 0)
+        ImageDraw.Draw(m).polygon([(q[0] * SS, q[1] * SS) for q in smooth(iu + il[1:-1][::-1], True)], fill=255)
+        lay = ImageChops.multiply(lay, m)
+        c.ink = ImageChops.subtract(c.ink, lay)
+        if sortie is not None:                     # ou sont les dents (cadre entier) : elles restent blanches quand le personnage est colore
+            sortie["dents"] = lay.resize((c.W, c.H), Image.LANCZOS)
+        c.line([teeth[4], teeth[3], teeth[2]], tr * 0.45, ends=(0.2, 0.2), wob=0.3)
+    c.line(top, tr * 0.62, ends=(0.15, 0.15), wob=0.6, straight=False)
+    c.line(iu, tr * 0.95, ends=(0.5, 0.5), wob=0.4)
+    c.line(il, tr * 0.95, ends=(0.5, 0.5), wob=0.4)
+    sb = smooth(ol)
+    n = len(sb)
+    cut = int(n * (1 - max(p["plein"], 0.7)) / 2)
+    c.line([tuple(q) for q in sb[cut:n - cut]], tr * 0.7, ends=(0.1, 0.1), wob=0.6, straight=True)
+    if p["sous"]:
+        yy = y + drop + lo + 12
+        c.line([(CX - w * 0.17, yy - 2), (CX, yy + 3), (CX + w * 0.17, yy - 2)], tr * 0.6, ends=(0.1, 0.1))
+    return c.result()
+
+
 BOUCHE_VARIANTES = [
     ("Moyenne", {}),
     ("Lèvres fines", dict(up=8, lo=13, bow=3, w=186, plein=0.5, sous=0)),
