@@ -19,6 +19,8 @@ import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 F = 1000                                         # cadre de l'atelier
+STROKE = 1.0                                     # multiplicateur d'epaisseur des traits (une tete reduite pour etre posee sur un
+                                                 # corps est tracee plus gras, pour que tete et corps aient le meme trait)
 FH = 1300                                        # hauteur de dessin : une longue barbe descend sous le cadre
 SS = 2                                           # sur-echantillonnage
 CX = 500
@@ -64,6 +66,7 @@ class Canvas:
 
     def line(self, pts, w=4.0, ends=(0.3, 0.3), wob=0.9, closed=False, straight=False, on=None):
         """Trait au pinceau. ends : epaisseur relative au depart et a l'arrivee (1 = pleine, 0.2 = effilee)."""
+        w = w * (STROKE if w >= 2.5 else 1 + (STROKE - 1) * 0.35)      # les details fins (stries de l'iris) grossissent moins
         c = [np.array(q, float) for q in pts] if straight else smooth(pts, closed)
         c, length = resample(c)
         if not len(c):

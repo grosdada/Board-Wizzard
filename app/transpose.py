@@ -258,7 +258,17 @@ def _variant(cat, name):
     raise KeyError("%s : %s" % (cat, name))
 
 
-def head(kw, extras=None, seed=1):
+def head(kw, extras=None, seed=1, trait=1.0):
+    """Voir _head. trait : multiplicateur d'epaisseur des traits (bodydraw.HEAD_STROKE pour une tete posee sur un corps)."""
+    old = partsdraw.STROKE
+    partsdraw.STROKE = trait
+    try:
+        return _head(kw, extras, seed)
+    finally:
+        partsdraw.STROKE = old
+
+
+def _head(kw, extras=None, seed=1):
     """La tete entiere dans le cadre 1000 x 1300 (image RGBA, fond transparent). kw : cotes mesurees par fit(). extras : ce
     que les points ne disent pas, choisi a la main ou par un regard sur la photo : {"cheveux": id de la banque, "barbe",
     "moustache", "lunettes", "oreilles": noms de variantes de partsdraw}. Les elements ajoutes suivent le visage mesure

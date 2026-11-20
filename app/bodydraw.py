@@ -21,6 +21,8 @@ U = 285.0                                        # hauteur de tete (du sommet du
 CHIN = 450.0                                     # bas du menton
 HEAD_SCALE = 1.32 * U / 730.0                    # tete un peu grosse, facon dessin : le visage reste lisible ; la tete de reference fait 730 de haut                          # la tete de reference fait 730 de haut dans le cadre des visages (150 a 880)
 
+HEAD_STROKE = 2.1                                # la tete, reduite pour le corps, est tracee plus gras : meme trait que le corps
+
 CORPS = dict(
     ep=1.05,          # demi-largeur des epaules (en U)
     taille=0.62,      # demi-largeur a la taille
@@ -219,7 +221,9 @@ def encre(nom):
     f = settings.DATA / "bodies" / (store.slug(nom) + ".png")
     if not f.exists():
         return None
-    return Image.open(f).convert("RGB").resize((W, H), Image.LANCZOS)
+    from PIL import ImageFilter
+    im = Image.open(f).convert("RGB").resize((W, H), Image.LANCZOS)
+    return im.filter(ImageFilter.MaxFilter(3))     # trait affine d'un pixel de chaque cote : l'agrandissement l'avait engraisse
 
 
 def personnage(tete, cotes=None, seed=1, pad=40, nom=None):

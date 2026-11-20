@@ -47,7 +47,7 @@ CAST = [
 def make(src, extras, body, seed):
     d = json.loads((SRC / (src + ".json")).read_text(encoding="utf-8"))
     kw, _ = transpose.fit(d["points"], d.get("shapes"), d.get("matrix"))
-    head = transpose.head(kw, extras, seed)
+    head = transpose.head(kw, extras, seed, trait=bodydraw.HEAD_STROKE)
     return bodydraw.personnage(head, B[body], seed, nom=body), head
 
 
