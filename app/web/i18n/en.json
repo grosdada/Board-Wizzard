@@ -1259,6 +1259,7 @@
   "Cet élément n'a pas d'orbite : rien à tracer.": "This element has no orbit: nothing to trace.",
   "Trait trop court : trace d'un coin de la bouche à l'autre.": "Stroke too short: trace from one corner of the mouth to the other.",
   "Recherche de la bouche dans l'orbite…": "Looking for the mouth in the orbit…",
+  "{0} clés sélectionnées · arrivée": "{0} keys selected · arrival",
   "Bouche suivie sur {0} images sur {1}.": "Mouth tracked on {0} of {1} frames.",
   "Bouche suivie sur {0} images sur {1}, et reportée sur {2} autres poses.": "Mouth tracked on {0} of {1} frames, and carried over to {2} other poses.",
   "Rien trouvé sous le trait : trace sur la bouche dessinée, d'un coin à l'autre.": "Nothing found under the stroke: trace over the drawn mouth, from one corner to the other.",

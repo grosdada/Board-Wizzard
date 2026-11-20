@@ -409,7 +409,7 @@ export function openMontage(app, pid) {
       h("button.mini", { title: tt("Enregistre les réglages de cet instant"), on: { click: () => { setKey(sel, {}); paint(); lanes(); props(); } } }, tt("◆ Poser une clé")),
       h("button.mini.danger", { disabled: !k, title: tt("Retire la clé sous la tête de lecture"), on: { click: () => { anim.tracks[sel] = keysOf(sel).filter((x) => x !== k); selKey = null; paint(); lanes(); props(); } } }, tt("Retirer cette clé")),
       h("button.mini.danger", { disabled: !keysOf(sel).length, on: { click: () => { delete anim.tracks[sel]; selKey = null; paint(); lanes(); props(); } } }, tt("Vider la piste")),
-      k ? h("label.row", tt("Interpolation"), h("select", { title: tt("Façon d'arriver sur cette clé"), on: { change: (e) => { k.e = e.target.value; paint(); lanes(); } } }, Object.entries(EASES).map(([v, n]) => h("option", { value: v, selected: (k.e || "doux") === v }, n)))) : "");
+      k ? h("label.row", tt("Interpolation"), h("select", { title: tt("Façon d'arriver sur cette clé"), on: { change: (e) => { for (const q of picked.has(k) && picked.size > 1 ? [...picked] : [k]) q.e = e.target.value; paint(); lanes(); } } }, Object.entries(EASES).map(([v, n]) => h("option", { value: v, selected: (k.e || "doux") === v }, n)))) : "");
   }
   function jumpKey(dir) {                                   // de cle en cle : celles de la piste choisie, sinon toutes
     stop();
@@ -486,8 +486,9 @@ export function openMontage(app, pid) {
   function keyMenu(e, id, k) {                              // clic droit sur une cle : son interpolation
     e.preventDefault();
     document.querySelector(".mt-menu")?.remove();
-    const box = h("div.menu.mt-menu", h("div.mhead", tt`Clé à ${k.t.toFixed(2)} s · arrivée`),
-      Object.entries(EASES).map(([v, n]) => h("button" + ((k.e || "doux") === v ? ".on" : ""), { on: { click: () => { k.e = v; box.remove(); paint(); lanes(); props(); } } }, ((k.e || "doux") === v ? "✓ " : "") + n)),
+    const group = picked.has(k) && picked.size > 1 ? [...picked] : [k];   // plusieurs cles selectionnees : elles prennent toutes le choix
+    const box = h("div.menu.mt-menu", h("div.mhead", group.length > 1 ? tt`${group.length} clés sélectionnées · arrivée` : tt`Clé à ${k.t.toFixed(2)} s · arrivée`),
+      Object.entries(EASES).map(([v, n]) => h("button" + ((k.e || "doux") === v ? ".on" : ""), { on: { click: () => { for (const q of group) q.e = v; box.remove(); paint(); lanes(); props(); } } }, ((k.e || "doux") === v ? "✓ " : "") + n)),
       h("button.danger", { on: { click: () => { anim.tracks[id] = keysOf(id).filter((x) => x !== k); selKey = null; box.remove(); paint(); lanes(); props(); } } }, tt("Retirer cette clé")));
     document.body.append(box);
     const r = box.getBoundingClientRect();
