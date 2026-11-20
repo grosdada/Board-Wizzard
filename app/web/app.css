@@ -513,3 +513,8 @@ svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http:
 .row.gutters label input { width: 46px; min-width: 0; padding-left: 3px; padding-right: 1px; }
 .row.gutters { flex-wrap: nowrap; }
 .row.gutters .lock { padding: 2px 4px; min-width: 0; }
+
+/* poses a valider : assez grandes pour juger le visage, la reference en tete */
+.revgrid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; }
+.rev img { height: 200px; }
+.rev.ref { border-color: var(--accent); border-style: dashed; } .rev.ref img { cursor: default; }

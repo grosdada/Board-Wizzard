@@ -273,7 +273,7 @@ export class Bank {
                    h("option", { value: 2 }, tt("Poses complètes (16)")), h("option", { value: 3 }, tt("Toutes les poses (26)")));
     const tierRow = h("label.row", tt("Poses à générer"), tier);
     const review = h("select", { title: tt("Lancer les orbites : seul le contrôle automatique trie, les orbites partent directement. Vérifier avant : les poses attendent dans la fiche que tu gardes, refasses ou jettes chacune.") },
-      h("option", { value: "0" }, tt("Lancer les orbites")), h("option", { value: "1" }, tt("Vérifier avant les orbites")));
+      h("option", { value: "1" }, tt("Vérifier avant les orbites")), h("option", { value: "0" }, tt("Lancer les orbites sans vérifier")));
     const reviewRow = h("label.row", tt("Orbites des poses"), review);
     const sync = () => { tierRow.style.display = kind.value === "character" ? "" : "none"; reviewRow.style.display = kind.value === "character" && +tier.value > 0 ? "" : "none"; };
     tier.addEventListener("change", sync);
@@ -645,15 +645,17 @@ export class Bank {
               h("button.mini", { title: tt("Refaire cette pose (nouvelle génération, autre graine)"), on: { click: () => act(k, "redo") } }, tt("Refaire")),
               h("button.mini.danger", { title: tt("Supprimer cette pose"), on: { click: () => drop(k, vv) } }, tt("Jeter"))));
         };
+        // le personnage d'origine, en tete de la grille : chaque pose se compare a lui d'un coup d'oeil
+        const refCard = () => h("div.rev.ref", h("img", { src: this.thumb(item, "base"), draggable: false, title: tt("Le personnage d'origine : chaque pose doit avoir le même visage et le même trait") }), h("div.var-name", tt("Référence")));
         const ok = rev.filter(([, vv]) => vv.review.state !== "rejected"), bad = rev.filter(([, vv]) => vv.review.state === "rejected");
         const waiting = ok.filter(([k, vv]) => vv.review.state === "pending" && !busyOf(k));
         reviewBox.append(...[h("h4", tt("Poses à valider")),
           h("p.muted", tt("Les poses sont générées et détourées ; leur orbite ne part que quand tu cliques « Garder ».")),
           waiting.length > 1 ? h("button.mini.primary", { on: { click: () => act(null, "keep_all") } }, tt`✓ Tout garder (${waiting.length})`) : null,
-          ok.length ? h("div.revgrid", ok.map(card)) : null,
+          ok.length ? h("div.revgrid", refCard(), ok.map(card)) : null,
           bad.length ? h("h4", tt("Écartées par le contrôle automatique")) : null,
           bad.length ? h("p.muted", tt("Leur visage ressemblait moins au dessin d'origine (fidélité sous 0,85). Repêche celles qui te vont, ou refais-les.")) : null,
-          bad.length ? h("div.revgrid", bad.map(card)) : null].filter(Boolean));
+          bad.length ? h("div.revgrid", ok.length ? null : refCard(), bad.map(card)) : null].filter(Boolean));
       }
       // catalogue de poses
       const cat = app.info.poses[item.kind] || [];
@@ -677,8 +679,8 @@ export class Bank {
           h("div.poselist", boxes.map((b) => h("label.check" + (b.el.disabled ? ".done" : ""), b.el, tr(b.p.label)))),
           custom,
           h("div.row.wrap.pose-go",
-            h("button.primary", { title: tt("Seul le contrôle automatique trie les poses ; l'orbite de chaque pose retenue part tout de suite."), on: { click: () => launch(false) } }, tt("Lancer les orbites")),
-            h("button.primary", { title: tt("Les poses sont générées et détourées, puis attendent : tu gardes, refais ou jettes chacune ; seules celles que tu gardes partent en orbite."), on: { click: () => launch(true) } }, tt("Vérifier avant les orbites"))));
+            h("button.primary", { title: tt("Les poses sont générées et détourées, puis attendent : tu gardes, refais ou jettes chacune ; seules celles que tu gardes partent en orbite."), on: { click: () => launch(true) } }, tt("Générer les poses (à valider avant l'orbite)")),
+            h("button.mini", { title: tt("Seul le contrôle automatique trie les poses ; l'orbite de chaque pose retenue part tout de suite, sans que tu la voies. À éviter : une pose qui ne ressemble pas au personnage coûte une orbite pour rien."), on: { click: () => { if (confirm(tt("Lancer les orbites sans voir les poses ?\nUne pose qui ne ressemble pas au personnage donnera une orbite à jeter."))) launch(false); } } }, tt("Sans vérifier"))));
       }
       body.querySelector(".acts")?.remove();
       left.append(acts);
