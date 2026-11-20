@@ -301,3 +301,38 @@ def ink(src, dest):
     g = np.clip((g - 50) / (215 - 50), 0, 1) * 255
     Image.fromarray(g.astype(np.uint8)).convert("RGB").save(dest)
     return dest
+
+
+def fix_closeup_start(folder, n, limit=8, keep=None):
+    """Orbite partie d'un gros plan (un portrait seul) : la video s'ouvre sur l'image de base, la tete en grand, puis le
+    modele recule et montre le personnage en pied. Les premieres images ne ressemblent alors pas au reste du tour ; elles
+    sont remplacees par la premiere image en pied (encore de face), pour que la face de l'orbite soit le personnage entier.
+    keep : dossier ou garder les images d'origine. Rend le nombre d'images remplacees (0 : orbite normale)."""
+    folder = Path(folder)
+    mask = lambda i: np.asarray(Image.open(folder / ("%03d.webp" % i)).convert("RGBA"))[..., 3] > 60
+    iou = lambda a, b: float((a & b).sum()) / max(1, int((a | b).sum()))
+    bad, prev = 0, mask(0)
+    for i in range(1, limit + 1):                              # la coupure : deux images voisines qui ne se ressemblent plus
+        cur = mask(i)
+        if iou(prev, cur) < 0.7:                               # mesure : 0,95 et plus entre voisines d'une orbite normale
+            bad = i
+            break
+        prev = cur
+    if not bad:
+        return 0
+    if keep:
+        Path(keep).mkdir(parents=True, exist_ok=True)
+    for i in range(bad):                                       # la premiere image en pied (encore de face) prend leur place
+        if keep:
+            shutil.copyfile(folder / ("%03d.webp" % i), Path(keep) / ("%03d.webp" % i))
+        shutil.copyfile(folder / ("%03d.webp" % bad), folder / ("%03d.webp" % i))
+    return bad
+
+
+def thumb_frame(frame, dest, size=320):
+    """Vignette tiree d'une image d'orbite (transparente) : sur fond blanc."""
+    im = Image.open(frame).convert("RGBA")
+    bg = Image.new("RGB", im.size, "white")
+    bg.paste(im, (0, 0), im)
+    bg.thumbnail((size, size), Image.LANCZOS)
+    bg.save(dest, quality=82)

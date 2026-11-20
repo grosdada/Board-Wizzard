@@ -180,6 +180,8 @@ def run_item_orbit(job, prov):
             rel = "v/%s/o%d_%d" % (p["variant"], int(time.time()), attempt)
             info = sprites.build_orbit(rgb, mat, d / rel, fill=it.get("style") == "dessin")
             info.update({"dir": rel, "seed": _seed(job, attempt), "length": length})
+            if not decor:                                          # base en gros plan (portrait seul) : la face devient le personnage en pied
+                info["closeup"] = sprites.fix_closeup_start(d / rel, info["n"])
             if it.get("style") == "dessin":                        # dessin (decor compris) : l'orbite est aussi convertie en traces
                 try:
                     job["progress"] = "conversion en tracés"
@@ -215,6 +217,9 @@ def run_item_orbit(job, prov):
     def apply(x):
         old = (x["variants"][p["variant"]].get("orbit") or {}).get("dir")
         x["variants"][p["variant"]]["orbit"] = best
+        if best.get("closeup") and p["variant"] == "base":       # la vignette montre le personnage en pied, pas le portrait
+            sprites.thumb_frame(d / best["dir"] / "000.webp", d / "thumb.jpg")
+            x["updated"] = int(time.time())
         if old and old != best["dir"]:
             shutil.rmtree(d / old, ignore_errors=True)
     store.mutate_item(it["id"], apply)
