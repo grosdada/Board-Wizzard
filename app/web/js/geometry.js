@@ -100,7 +100,9 @@ function segmentInPoly(P, Q, poly) {
 
 // ------------------------------------------------------------------ calcul de la planche
 export function compute(page, layout) {
-  const m = page.margin, W = page.width, H = page.height, g = page.gutter;
+  const m = page.margin, W = page.width, H = page.height;
+  // gouttiere : page.gutter entre les rangees (traits horizontaux) ; page.gutterV entre les colonnes, si elle est deverrouillee
+  const gOf = (dir) => (dir === "v" ? page.gutterV ?? page.gutter : page.gutter);
   const panels = [], cuts = [];
   const root = [[m, m], [W - m, m], [W - m, H - m], [m, H - m]];
   (function walk(node, poly, path) {
@@ -112,6 +114,7 @@ export function compute(page, layout) {
     const bb = bbox(poly);
     const { P, Q, n } = cutLine(node, bb);
     const f = (X) => n[0] * (X[0] - P[0]) + n[1] * (X[1] - P[1]);
+    const g = gOf(node.dir);
     const A = clipHalf(poly, (X) => f(X) + g / 2);
     const B = clipHalf(poly, (X) => -f(X) + g / 2);
     const seg = segmentInPoly(P, Q, poly);
@@ -310,7 +313,20 @@ function cols(n, mk) {
   return S("v", 1 / n, 1 / n, mk(), cols(n - 1, mk));
 }
 
+// Storyboard : 2 rangees de 3 cases en 16/9, et tout le reste de la hauteur entre les deux rangees, pour le texte et
+// les indications. La gouttiere entre les rangees se calcule sur la page : voir storyGutters.
+export function storyGutters(page) {
+  const gv = page.gutterV ?? page.gutter, pw = (page.width - 2 * page.margin - 2 * gv) / 3;
+  return { gutterV: gv, gutter: Math.max(gv, Math.round(page.height - 2 * page.margin - 2 * pw * 9 / 16)) };
+}
+function story(L, page) {
+  const gv = page ? page.gutterV ?? page.gutter : 0, w = page ? page.width - 2 * page.margin : 1;
+  const a = 1 / 3 - gv / (6 * w), row = () => S("v", a, a, L(), S("v", 0.5, 0.5, L(), L()));   // trois cases de meme largeur, gouttiere comprise
+  return S("h", 0.5, 0.5, row(), row());
+}
+
 export const PRESETS = [
+  { id: "story169", label: tt("Storyboard : 2 × 3 cases 16/9, texte entre les rangées"), make: story, page: storyGutters },
   { id: "plein", label: tt("Pleine page"), make: (L) => L() },
   { id: "2b", label: tt("2 bandes"), make: (L) => rows(2, L) },
   { id: "3b", label: tt("3 bandes"), make: (L) => rows(3, L) },

@@ -505,3 +505,11 @@ button.keyhelp { border-radius: 50%; width: 22px; height: 22px; padding: 0; font
 
 /* trace de la bouche : un crayon, pointe en bas a gauche, par-dessus les curseurs des calques */
 svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M3 25l2-7L19 4l5 5L10 23z' fill='%23ffd34d' stroke='%23111' stroke-width='1.6' stroke-linejoin='round'/%3E%3Cpath d='M3 25l2-7 5 5z' fill='%23111'/%3E%3Cpath d='M16.500 6.500l5 5' stroke='%23111' stroke-width='1.6'/%3E%3C/svg%3E") 3 25, crosshair !important; }
+
+/* gouttieres de la page : deux champs et un verrou */
+.row.gutters { display: flex; align-items: center; gap: 4px; }
+.row.gutters > span { flex: 1; }
+.row.gutters label { display: flex; align-items: center; gap: 2px; }
+.row.gutters label input { width: 46px; min-width: 0; padding-left: 3px; padding-right: 1px; }
+.row.gutters { flex-wrap: nowrap; }
+.row.gutters .lock { padding: 2px 4px; min-width: 0; }

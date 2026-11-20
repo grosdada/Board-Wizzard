@@ -23,7 +23,7 @@ const FORMATS = [
 ];
 const PAGE0 = { format: "story", width: 2400, height: 1500, bg: "#ffffff", fill: "#ffffff", stroke: "#111111", strokeWidth: 5, gutter: 26, margin: 60 };
 const LAYOUTS = [
-  ...PRESETS.filter((p) => ["plein", "2x2", "3x3", "g3", "col2", "action"].includes(p.id)),
+  ...PRESETS.filter((p) => ["story169", "plein", "2x2", "3x3", "g3", "col2", "action"].includes(p.id)),
   { id: "2x3", label: tt("6 cases (2 rangées)"), make: (L) => transpose(PRESETS.find((p) => p.id === "3x2").make(L)) },
   { id: "1x3", label: tt("3 colonnes"), make: (L) => transpose(PRESETS.find((p) => p.id === "3b").make(L)) },
   { id: "1x2", label: tt("2 colonnes"), make: (L) => transpose(PRESETS.find((p) => p.id === "2b").make(L)) },
@@ -220,9 +220,25 @@ class App {
     const num = (label, key, min, max, step = 1) => h("label.row", label, h("input", { type: "number", min, max, step, value: page[key],
       on: { input: (e) => { page[key] = clamp(+e.target.value || 0, min, max); this.editor.render(); this.commitSoon("page-" + key); } } }));
     const col = (label, key) => h("div.row.colrow", h("span", label), swatch(page[key], (c) => { page[key] = c; this.editor.render(); this.commitSoon("page-" + key); }));
+    // gouttieres : entre les rangees (↕) et entre les colonnes (↔) ; verrou ferme = les deux bougent ensemble
+    const gutters = () => {
+      const locked = page.gutterV === undefined, GMAX = 1200;
+      const set = (key, e) => {
+        const v = clamp(+e.target.value || 0, 0, GMAX);
+        if (locked) { page.gutter = v; row.querySelectorAll("input").forEach((x) => { if (x !== e.target) x.value = v; }); } else page[key] = v;
+        this.editor.render(); this.commitSoon("page-gutter");
+      };
+      const field = (key, title, sign) => h("label", { title }, sign, h("input", { type: "number", min: 0, max: GMAX, step: 1, value: page[key] ?? page.gutter, on: { input: (e) => set(key, e) } }));
+      const row = h("div.row.gutters", h("span", tt("Gouttière")),
+        field("gutter", tt("Espace entre les rangées (au-dessus et au-dessous des cases)"), "↕"),
+        h("button.mini.lock" + (locked ? ".on" : ""), { title: locked ? tt("Verrouillé : les deux gouttières bougent ensemble. Cliquer pour les régler séparément.") : tt("Déverrouillé : chaque gouttière a sa valeur. Cliquer pour les lier (la valeur ↕ sert pour les deux)."),
+          on: { click: () => { if (locked) page.gutterV = page.gutter; else delete page.gutterV; this.editor.render(); this.commit("page-gutter"); this.renderLeft(); } } }, locked ? "🔒" : "🔓"),
+        field("gutterV", tt("Espace entre les colonnes (à gauche et à droite des cases)"), "↔"));
+      return row;
+    };
     left.textContent = "";
     left.append(h("h3", tt("Découpage")),
-      h("div.presets", LAYOUTS.map((p) => h("button.preset", { title: p.label, on: { click: () => this.applyLayout(p.make) } }, presetThumb(p, page)))),
+      h("div.presets", LAYOUTS.map((p) => h("button.preset", { title: p.label, on: { click: () => this.applyLayout(p.make, p.page) } }, presetThumb(p, page)))),
       h("div.row", h("button.mini", { title: tt("Découpage au hasard"), on: { click: () => this.randomLayout() } }, tt("🎲 Hasard")),
         h("button.mini", { title: tt("Les bandes deviennent des colonnes"), on: { click: () => { pg.layout = transpose(pg.layout); this.commit("layout"); this.refresh(); } } }, tt("⟲ Pivoter"))),
       h("div.row", h("button.mini", { on: { click: () => this.split("h") } }, tt("Couper ━")), h("button.mini", { on: { click: () => this.split("v") } }, tt("Couper ┃")),
@@ -232,7 +248,7 @@ class App {
       h("label.row", tt("Format"), h("select", { on: { change: (e) => { const f = FORMATS.find((x) => x.id === e.target.value);
         Object.assign(page, { format: f.id, width: f.w, height: f.h }); this.commit("format"); this.refresh(); } } },
         FORMATS.map((f) => h("option", { value: f.id, selected: f.id === page.format }, f.label)))),
-      num(tt("Gouttière"), "gutter", 0, 200), num(tt("Marge"), "margin", 0, 400), num(tt("Trait"), "strokeWidth", 0, 40),
+      gutters(), num(tt("Marge"), "margin", 0, 400), num(tt("Trait"), "strokeWidth", 0, 40),
       h("details.fold", { open: !!(page.hand > 0) }, h("summary", tt("Tremblé du contour")), ...[[tt("Tremblé"), "hand", 0, 10, 0], [tt("Ondulation"), "wave", 0.5, 12, 4]].map(([label, key, min, max, def]) => {
         const val = page[key] ?? def, out = h("output", fmt(val));
         return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.1, value: val,
@@ -245,11 +261,14 @@ class App {
         h("button.mini", { on: { click: () => this.showAll("integrated") } }, tt("Voir les intégrées"))));
   }
 
-  applyLayout(make) {
+  applyLayout(make, pageFix) {
     const pg = this.page();
     const old = compute(pg.page, pg.layout).panels.sort((a, b) => a.order - b.order).map((g) => g.id);
     let i = 0; const used = [];
-    pg.layout = make(() => { const id = i < old.length ? old[i] : this.newId(); i++; used.push(id); return { t: "leaf", id }; });
+    const P = pg.page;
+    if (P.gutter0 !== undefined) { P.gutter = P.gutter0; delete P.gutterV; delete P.gutter0; }   // on quitte le storyboard : la gouttiere d'avant revient
+    pg.layout = make(() => { const id = i < old.length ? old[i] : this.newId(); i++; used.push(id); return { t: "leaf", id }; }, pg.page);
+    if (pageFix) { const g0 = P.gutter; Object.assign(P, pageFix(P)); P.gutter0 = g0; }   // decoupage qui regle aussi la page (gouttieres du storyboard)
     for (const id of Object.keys(pg.panels)) if (!used.includes(id)) delete pg.panels[id];
     this.sel = {}; this.commit("layout"); this.refresh();
   }
@@ -1252,9 +1271,9 @@ function defaultIntegrate(style) {
 
 function presetThumb(p, page) {
   let n = 0;
-  const layout = p.make(() => ({ t: "leaf", id: "t" + (n++) }));
-  const W = 60, H = Math.round(60 * page.height / page.width);
-  const g = compute({ width: W, height: H, gutter: 3, margin: 3 }, layout);
+  const W = 60, H = Math.round(60 * page.height / page.width), mini = { width: W, height: H, gutter: 3, margin: 3 };
+  const layout = p.make(() => ({ t: "leaf", id: "t" + (n++) }), mini);
+  const g = compute(p.page ? Object.assign(mini, p.page(mini)) : mini, layout);
   const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   for (const pn of g.panels) {
