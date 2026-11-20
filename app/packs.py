@@ -158,6 +158,8 @@ def import_pack(path, replace=False, only=None):
                         v["orbit"]["t"] = now
                         if v["orbit"].get("vec"):
                             v["orbit"]["vt"] = now
+                        if v["orbit"].get("mouth"):
+                            v["orbit"]["mt"] = now * 1000
             if it.get("sheet"):
                 it["sheet_t"] = now
             store._write(d / "item.json", it)                       # la fiche en dernier : sans elle, l'element n'existe pas

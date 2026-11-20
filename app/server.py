@@ -591,7 +591,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(retouch.lasso(iid, d.get("variant", "base"), d.get("frame", 0), d.get("points") or [],
                                                 mode=d.get("mode", "vider"), lines=bool(d.get("lines"))))
         if act == "mouth" and method in ("POST", "DELETE"):         # lip sync : la bouche tracee sur le dessin, suivie dans l'orbite
-            return self.send_json(self._mouth(iid, it, method, d if method == "POST" else {"variant": q.get("variant", "base")}))
+            return self.send_json(self._mouth(iid, it, method, d if method == "POST" else {"variant": q.get("variant") or q.get("v") or "base"}))
         if act == "restore" and method == "POST":                   # remettre les images d'avant les retouches
             return self.send_json(retouch.restore(iid, d.get("variant", "base")))
         if act == "undo" and method == "POST":                      # Ctrl+Z / Ctrl+Y d'une retouche (15 pas par orbite)
@@ -643,7 +643,7 @@ class Handler(BaseHTTPRequestHandler):
         """Bouche du dessin (jeu « trace » du lip sync) : POST {variant, f, line} accroche la bouche au trait trace sur
         l'image f de l'orbite et la suit (mouthfind.track ecrit mouth.json dans le dossier de l'orbite) ; DELETE la retire.
         Rend {frames (images suivies, 0 = rien trouve), item}."""
-        vid = d.get("variant") or "base"
+        vid = d.get("variant") or d.get("v") or "base"
         o = (it["variants"].get(vid) or {}).get("orbit") or {}
         if not o.get("dir") or not o.get("n"):
             raise ApiError("cette variante n'a pas d'orbite")

@@ -316,6 +316,8 @@ def dedupe(item_id, variant):
         oo["n"] = len(keep)
         oo["snaps"] = {k: newi(v) for k, v in (oo.get("snaps") or {}).items()}
         oo["t"] = oo["vt"] = now
+        if oo.get("mouth"):                                         # bouche du dessin renumerotee : nouvelle adresse
+            oo["mt"] = now * 1000
     store.mutate_item(item_id, apply)
     for pr in store.list_projects():                                # les cases gardent leur angle
         def fix(P):
