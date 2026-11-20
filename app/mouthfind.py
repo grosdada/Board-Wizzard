@@ -145,10 +145,171 @@ def shape(r, n=9):
     return dict(up=curve((top + bot) / 2), lo=None, w=int(x1 - x0), stroke=r["stroke"])
 
 
-def lens(sh, open_=1.0, drop=0.3):
+def lens(sh, open_=1.0, drop=0.22):
     """Le contour de la bouche ouverte : la ligne du dessin en haut, la levre du bas qui descend. open_ : 0 a 1."""
     up = np.array(sh["up"], float)
     t = np.linspace(0, 1, len(up))
     d = sh["w"] * drop * open_ * np.sin(np.pi * t) ** 0.75
     lo = up + np.stack([np.zeros_like(d), d], axis=1)
     return up.tolist(), lo.tolist()
+
+# ------------------------------------------------------------------ accrochage a un clic, puis suivi dans l'orbite
+UPS = 3                                           # agrandissement de la fenetre de travail : la morphologie y est plus fine
+
+
+def _window(im, cx, cy):
+    """La fenetre autour d'un point, agrandie. Rend (encre, silhouette, x0, y0, taille du personnage en pixels agrandis)."""
+    a = np.asarray(im.convert("RGBA"))
+    ys = np.where((a[..., 3] > 60).any(axis=1))[0]
+    tall = (ys[-1] - ys[0] + 1) if len(ys) else im.height
+    rx, ry = int(tall * 0.13), int(tall * 0.075)
+    x0, y0 = max(0, int(cx) - rx), max(0, int(cy) - ry)
+    x1, y1 = min(im.width, int(cx) + rx), min(im.height, int(cy) + ry)
+    w = cv2.resize(a[y0:y1, x0:x1], None, fx=UPS, fy=UPS, interpolation=cv2.INTER_CUBIC)
+    alpha = (w[..., 3] > 60).astype(np.uint8) * 255
+    ink = ((alpha > 0) & (w[..., :3].astype(int).sum(axis=2) / 3 < 120)).astype(np.uint8) * 255
+    return ink, alpha, x0, y0, tall * UPS
+
+
+def _flat(ink, sw):
+    """Les traits a peu pres horizontaux : ce qui reste de l'encre apres ouverture par des segments couches."""
+    L = int(max(9, sw * 5))
+    out = np.zeros_like(ink)
+    for ang in (-32, -20, -10, 0, 10, 20, 32):
+        k = np.zeros((L, L), np.uint8)
+        c, t = (L - 1) / 2, np.tan(np.radians(ang))
+        cv2.line(k, (0, int(round(c + t * c))), (L - 1, int(round(c - t * c))), 1, 1)
+        out |= cv2.morphologyEx(ink, cv2.MORPH_OPEN, k)
+    return out
+
+
+def _hole(ink, alpha, px, py, sw, limit):
+    """Bouche ouverte : la zone blanche fermee sous le point, avec ses voisines (les dents). Rend le masque ou None."""
+    free = ((alpha > 0) & (ink == 0)).astype(np.uint8)
+    n, lab, st, _ = cv2.connectedComponentsWithStats(free, connectivity=4)
+    h, w = ink.shape
+    ok = lambda i: i > 0 and st[i][4] < limit and st[i][0] > 0 and st[i][1] > 0 and st[i][0] + st[i][2] < w and st[i][1] + st[i][3] < h
+    r = int(sw * 1.5)
+    seeds = set(int(v) for v in np.unique(lab[max(0, py - r):py + r + 1, max(0, px - r):px + r + 1]))
+    seeds = {i for i in seeds if ok(i)}
+    if not seeds:
+        return None
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(sw * 2.6) | 1, int(sw * 2.6) | 1))
+    for _ in range(4):                             # les zones voisines, separees par un seul trait
+        zone = np.isin(lab, list(seeds)).astype(np.uint8)
+        more = {int(v) for v in np.unique(lab[cv2.dilate(zone, k) > 0])} - seeds
+        more = {i for i in more if ok(i)}
+        if not more:
+            break
+        seeds |= more
+    zone = np.isin(lab, list(seeds)).astype(np.uint8) * 255
+    if zone.sum() / 255 > limit:
+        return None
+    return cv2.dilate(zone, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(sw * 2.2) | 1, int(sw * 2.2) | 1)))
+
+
+def at(im, x, y, prev=None, line=None, strict=False):
+    """La bouche sous un point de l'image (un clic, ou la place de la bouche dans l'image voisine de l'orbite).
+    prev : la bouche de l'image voisine, pour ne suivre que quelque chose qui lui ressemble.
+    line : le trait que l'utilisateur a trace sur la bouche, [[x, y], ...] d'un coin a l'autre : on ne garde que l'encre
+    sous ce trait, et s'il n'y en a pas (personnage sans bouche dessinee) c'est le trait lui-meme qui sert de bouche.
+    Rend None ou { up, lo (None si c'est un simple trait), w, stroke, drop, open, cx, cy, cover (bouche ouverte : le contour a
+    effacer) }, en pixels de l'image."""
+    if cv2 is None:
+        return None
+    ink, alpha, ox, oy, tall = _window(im, x, y)
+    if not ink.any():
+        return None
+    sw = max(2.0, _stroke(ink))
+    px, py = int((x - ox) * UPS), int((y - oy) * UPS)
+    want_open = None if prev is None else bool(prev["open"])
+    res = None
+    if want_open is not False:
+        z = _hole(ink, alpha, px, py, sw, (tall * 0.11) ** 2)
+        if z is not None:
+            ys_, xs_ = np.where(z > 0)
+            res = dict(mask=z[ys_.min():ys_.max() + 1, xs_.min():xs_.max() + 1] > 0, box=[xs_.min(), ys_.min(), xs_.max() + 1, ys_.max() + 1], open=True, stroke=sw)
+    if line is not None:
+        pts = np.array([[(p[0] - ox) * UPS, (p[1] - oy) * UPS] for p in line], np.int32)
+        span = float(np.abs(pts[-1] - pts[0]).max())
+        if res is not None and (res["box"][2] - res["box"][0]) < span * 0.45:
+            res = None                              # un petit trou sous le trait (une dent, une narine) n'est pas la bouche
+        if res is None:
+            band = np.zeros_like(ink)
+            cv2.polylines(band, [pts], False, 255, int(sw * (9 if strict else 5)) | 1)
+            got = cv2.bitwise_and(_flat(ink, sw), band)
+            gx0, gx1 = pts[:, 0].min(), pts[:, 0].max()
+            got[:, :max(0, gx0 - int(sw * (3 if strict else 1)))] = 0
+            got[:, gx1 + int(sw * (3 if strict else 1)):] = 0
+            if strict and got.any(axis=0).sum() < span * 0.45:
+                return None                         # suivi : plus assez d'encre la ou etait la bouche, elle est perdue
+            if (got.any(axis=0).sum()) < span * 0.4:    # pas de bouche dessinee la : le trait trace fait la bouche
+                got = np.zeros_like(ink)
+                cv2.polylines(got, [pts], False, 255, max(1, int(round(sw))))
+            ys_, xs_ = np.where(got > 0)
+            res = dict(mask=got[ys_.min():ys_.max() + 1, xs_.min():xs_.max() + 1] > 0, box=[xs_.min(), ys_.min(), xs_.max() + 1, ys_.max() + 1], open=False, stroke=sw)
+    if res is None and want_open is not True:
+        flat = _flat(ink, sw)
+        n, lab, st, cen = cv2.connectedComponentsWithStats(flat, connectivity=8)
+        best = None
+        for i in range(1, n):
+            bx, by, bw, bh, s = st[i]
+            if bw < sw * 4:
+                continue
+            d = np.hypot(min(max(px, bx), bx + bw) - px, min(max(py, by), by + bh) - py)
+            if prev is not None:
+                r = bw / max(1.0, prev["w"] * UPS)
+                if r < 0.4 or r > 1.6:
+                    continue
+                d += abs(cen[i][0] - px) * 0.5
+            if d < sw * (7 if prev is None else 5) and (best is None or d < best[0]):
+                best = (d, i)
+        if best is not None:
+            bx, by, bw, bh, _ = st[best[1]]
+            m = lab[by:by + bh, bx:bx + bw] == best[1]
+            res = dict(mask=m, box=[bx, by, bx + bw, by + bh], open=False, stroke=sw)
+    if res is None:
+        return None
+    sh = shape(res)
+    back = lambda pts: [[round(p[0] / UPS + ox, 2), round(p[1] / UPS + oy, 2)] for p in pts] if pts else None
+    out = dict(up=back(sh["up"]), lo=back(sh["lo"]), w=round(sh["w"] / UPS, 2), stroke=round(sw / UPS, 2), open=res["open"])
+    b = res["box"]
+    out["drop"] = round(min(out["w"] * 0.22, out["stroke"] * 14), 2)   # descente conseillee de la levre du bas, bouche grande ouverte
+    out["cx"], out["cy"] = round((b[0] + b[2]) / 2 / UPS + ox, 2), round((b[1] + b[3]) / 2 / UPS + oy, 2)
+    if res["open"]:
+        full = np.zeros(ink.shape, np.uint8)
+        full[b[1]:b[3], b[0]:b[2]][res["mask"]] = 255
+        c = max(cv2.findContours(full, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0], key=cv2.contourArea)
+        out["cover"] = back(cv2.approxPolyDP(c, 1.5, True)[:, 0, :].tolist())
+    return out
+
+
+def track(folder, n, f0, line, reach=20):
+    """Accroche la bouche au trait trace par l'utilisateur (line : [[x, y], ...] en pixels de l'image f0 de l'orbite) puis la suit d'image en image des deux
+    cotes, tant qu'elle se reconnait. Ecrit <dossier>/mouth.json : { w, h, src: {f, line}, frames: [bouche ou null] }.
+    Rend le nombre d'images ou la bouche est suivie (0 : rien sous le clic, rien n'est ecrit)."""
+    import json
+    from pathlib import Path
+    from PIL import Image
+    folder = Path(folder)
+    load = lambda i: Image.open(folder / ("%03d.webp" % (i % n))).convert("RGBA")
+    im = load(f0)
+    x, y = (line[0][0] + line[-1][0]) / 2, (line[0][1] + line[-1][1]) / 2
+    first = at(im, x, y, line=line)
+    if first is None:
+        return 0
+    frames = [None] * n
+    frames[f0 % n] = first
+    for step in (1, -1):
+        prev = first
+        for k in range(1, reach + 1):
+            i = (f0 + step * k) % n
+            if frames[i] is not None:
+                break
+            cur = at(load(i), prev["cx"], prev["cy"], prev, line=None if prev["open"] else prev["up"], strict=True)
+            if cur is None or abs(cur["cy"] - prev["cy"]) > max(4.0, prev["w"] * 0.35):
+                break
+            frames[i] = cur
+            prev = cur
+    (folder / "mouth.json").write_text(json.dumps(dict(w=im.width, h=im.height, src=dict(f=int(f0), line=[[round(float(p[0]), 1), round(float(p[1]), 1)] for p in line]), frames=frames)), encoding="utf-8")
+    return sum(1 for f in frames if f)
