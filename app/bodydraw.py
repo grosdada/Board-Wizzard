@@ -17,8 +17,8 @@ from PIL import Image
 from .partsdraw import CX, Canvas, smooth
 
 W, H = 1000, 2000
-U = 320.0                                        # hauteur de tete (du sommet du crane au menton)
-CHIN = 390.0                                     # bas du menton
+U = 285.0                                        # hauteur de tete (du sommet du crane au menton)
+CHIN = 450.0                                     # bas du menton
 HEAD_SCALE = 1.32 * U / 730.0                    # tete un peu grosse, facon dessin : le visage reste lisible ; la tete de reference fait 730 de haut                          # la tete de reference fait 730 de haut dans le cadre des visages (150 a 880)
 
 CORPS = dict(
@@ -98,23 +98,6 @@ def corps(seed=1, **kw):
         if p["pieds"] == "bottes":
             c.line([(fx - lj * u * 0.66, fy - 0.55 * u), (fx + lj * u * 0.66, fy - 0.55 * u)], tr, ends=(1, 1), straight=True, wob=0.5)
 
-    # ---- bras (derriere le torse)
-    lb = p["bras"]
-    for sg in (-1, 1):
-        sh = (X(sg * (ep - lb * 0.7)), Y(y_ep + 0.14))
-        el = (X(sg * (ep + 0.1 + p["ventre"] * 0.4)), Y(y_ta + 0.1))
-        wr = (X(sg * (ep + 0.2 + p["ventre"] * 0.5)), Y(y_ce + 0.62))
-        _tube(c, [sh, el, wr], [lb * u * 1.12, lb * u * 0.9, lb * u * 0.62], tr, cap=p["manches"] == "longues")
-        hand = [(wr[0] - lb * u * 0.62, wr[1] - 2), (wr[0] + lb * u * 0.62, wr[1] - 2), (wr[0] + lb * u * 0.74 + sg * 6, wr[1] + 0.2 * u),
-                (wr[0] + sg * 5, wr[1] + 0.44 * u), (wr[0] - lb * u * 0.72 + sg * 6, wr[1] + 0.22 * u)]
-        c.white(hand)
-        c.line(hand + hand[:1], tr * 0.85, ends=(1, 1), wob=0.8)
-        c.line([(wr[0] - sg * lb * u * 0.2, wr[1] + 0.18 * u), (wr[0] - sg * lb * u * 0.12, wr[1] + 0.34 * u)], tr * 0.5, ends=(0.3, 0.3))   # pouce
-        if p["manches"] == "courtes":              # bas de manche
-            t = 0.42
-            mx, my = sh[0] + (el[0] - sh[0]) * t, sh[1] + (el[1] - sh[1]) * t
-            c.line([(mx - lb * u * 1.15, my - sg * 6), (mx + lb * u * 1.15, my + sg * 6)], tr, ends=(1, 1), straight=True, wob=0.4)
-
     # ---- cou
     co = p["cou"]
     neck = [(X(-co), Y(-0.5)), (X(-co * 1.05), Y(y_ep - 0.16)), (X(co * 1.05), Y(y_ep - 0.16)), (X(co), Y(-0.5))]
@@ -142,7 +125,7 @@ def corps(seed=1, **kw):
 
     # ---- torse
     vent = p["ventre"]
-    side = [(X(co * 1.3), Y(y_ep - 0.2)), (X(ep * 0.72), Y(y_ep - 0.06)), (X(ep), Y(y_ep + 0.12)), (X(ep * 0.86), Y(y_ais)),
+    side = [(X(co * 1.3), Y(y_ep - 0.2)), (X(ep * 0.7), Y(y_ep - 0.07)), (X(ep * 0.95), Y(y_ep + 0.08)), (X(ep * 1.0), Y(y_ep + 0.34)), (X(ep * 0.9), Y(y_ais)),
             (X(ta * (0.96 + vent * 0.5)), Y(y_ta - 0.25)), (X(ta), Y(y_ta)), (X(ta * 1.04 if not robe else ta), Y(y_ce + (0.08 if not robe else -0.05)))]
     left = [(2 * CX - x, y) for x, y in side]
     def soft(pts):                                 # coins arrondis, sans depassement
@@ -157,6 +140,23 @@ def corps(seed=1, **kw):
     c.line(left_s[2:], tr, ends=(1, 1), straight=True, wob=1.0)
     c.line([side[0], side[1]], tr, ends=(1, 1), straight=True, wob=0.5)
     c.line([left[0], left[1]], tr, ends=(1, 1), straight=True, wob=0.5)
+    # ---- bras (par-dessus le bord du torse : l'epaule reste ronde)
+    lb = p["bras"]
+    for sg in (-1, 1):
+        sh = (X(sg * (ep - lb * 0.95)), Y(y_ep + 0.3))
+        el = (X(sg * (ep + 0.02 + p["ventre"] * 0.4)), Y(y_ta + 0.1))
+        wr = (X(sg * (ep + 0.1 + p["ventre"] * 0.5)), Y(y_ce + 0.62))
+        _tube(c, [sh, el, wr], [lb * u * 1.12, lb * u * 0.9, lb * u * 0.62], tr, cap=p["manches"] == "longues")
+        hand = [(wr[0] - lb * u * 0.62, wr[1] - 2), (wr[0] + lb * u * 0.62, wr[1] - 2), (wr[0] + lb * u * 0.74 + sg * 6, wr[1] + 0.2 * u),
+                (wr[0] + sg * 5, wr[1] + 0.44 * u), (wr[0] - lb * u * 0.72 + sg * 6, wr[1] + 0.22 * u)]
+        c.white(hand)
+        c.line(hand + hand[:1], tr * 0.85, ends=(1, 1), wob=0.8)
+        c.line([(wr[0] - sg * lb * u * 0.2, wr[1] + 0.18 * u), (wr[0] - sg * lb * u * 0.12, wr[1] + 0.34 * u)], tr * 0.5, ends=(0.3, 0.3))   # pouce
+        if p["manches"] == "courtes":              # bas de manche
+            t = 0.42
+            mx, my = sh[0] + (el[0] - sh[0]) * t, sh[1] + (el[1] - sh[1]) * t
+            c.line([(mx - lb * u * 1.15, my - sg * 6), (mx + lb * u * 1.15, my + sg * 6)], tr, ends=(1, 1), straight=True, wob=0.4)
+
     haut = p["haut"]
     if not robe and haut not in ("veste",):
         c.line([left[-1], (X(0), Y(y_ce + 0.12)), side[-1]], tr, ends=(1, 1), wob=0.8)                                        # bas du vetement
@@ -213,15 +213,33 @@ CORPS_VARIANTES = [
 ]
 
 
-def personnage(tete, cotes=None, seed=1, pad=40):
-    """Un personnage entier : la tete (image RGBA dans le cadre 1000 x 1300 des visages) posee sur un corps. La tete est
-    mise a l'echelle du corps, son menton (y = 880) sur le haut du cou. Rend l'image RGBA rognee."""
-    body, place = corps(seed=seed, **(cotes or {}))
-    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    out.alpha_composite(body, (round(place[0] - body.width / 2), round(place[1] - body.height / 2)))
+def encre(nom):
+    """Le corps encre de la banque (data/bodies/<id>.png), ramene au cadre W x H, ou None s'il n'est pas fait."""
+    from . import settings, store
+    f = settings.DATA / "bodies" / (store.slug(nom) + ".png")
+    if not f.exists():
+        return None
+    return Image.open(f).convert("RGB").resize((W, H), Image.LANCZOS)
+
+
+def personnage(tete, cotes=None, seed=1, pad=40, nom=None):
+    """Un personnage entier : la tete (image RGBA dans le cadre 1000 x 1300 des visages) posee sur un corps. Si le corps
+    `nom` a ete encre (tools/corps.py), c'est lui qui sert, sa tete vide effacee ; sinon le corps trace. La tete est mise a
+    l'echelle du corps, son menton (y = 880) sur le haut du cou. Rend l'image RGBA rognee (fond blanc sous un corps encre)."""
     s = HEAD_SCALE
+    ink = encre(nom) if nom else None
+    if ink is not None:
+        from PIL import ImageDraw
+        d = ImageDraw.Draw(ink)                    # efface l'ovale vide : la vraie tete vient par-dessus
+        d.ellipse([CX - 250 * s - 26, CHIN - 730 * s - 40, CX + 250 * s + 26, CHIN - 6], fill="white")
+        out = ink.convert("RGBA")
+    else:
+        body, place = corps(seed=seed, **(cotes or {}))
+        out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        out.alpha_composite(body, (round(place[0] - body.width / 2), round(place[1] - body.height / 2)))
     head = tete.resize((round(tete.width * s), round(tete.height * s)), Image.LANCZOS)
     out.alpha_composite(head, (round(CX - 500 * s), round(CHIN - 880 * s)))
-    a = np.asarray(out)[..., 3]
-    ys, xs = np.where(a > 24)
+    arr = np.asarray(out)
+    a = (arr[..., 3] > 24) & (arr[..., :3].min(axis=2) < 235) if ink is not None else arr[..., 3] > 24
+    ys, xs = np.where(a)
     return out.crop((max(0, xs.min() - pad), max(0, ys.min() - pad), min(W, xs.max() + pad), min(H, ys.max() + pad)))

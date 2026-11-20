@@ -29,7 +29,7 @@ CAST = [
     ("p22", "Firmin", dict(cheveux="brosse", barbe="Trois jours", oreilles="Décollée"), "Salopette, bottes"),
     ("p37", "Gisèle", dict(cheveux="ondules"), "Robe"),
     ("p37", "Hortense", dict(cheveux="chignon", lunettes="Rondes"), "Mince, chemise"),
-    ("p19", "Inès", dict(cheveux="chignon"), "Débardeur et short"),
+    ("p19", "Inès", dict(cheveux="chignon"), "Robe"),
     ("p19", "Jeanne", dict(cheveux="longs-raides"), "Jupe et blouse"),
     ("p42", "Kléber", dict(cheveux="brosse"), "Costaud, t-shirt"),
     ("p42", "Lucien", dict(cheveux="degarni", moustache="Large, droite", oreilles="Lobe long"), "Rond, pull"),
@@ -48,7 +48,7 @@ def make(src, extras, body, seed):
     d = json.loads((SRC / (src + ".json")).read_text(encoding="utf-8"))
     kw, _ = transpose.fit(d["points"], d.get("shapes"), d.get("matrix"))
     head = transpose.head(kw, extras, seed)
-    return bodydraw.personnage(head, B[body], seed), head
+    return bodydraw.personnage(head, B[body], seed, nom=body), head
 
 
 def flat(im, bg=(255, 255, 255)):
