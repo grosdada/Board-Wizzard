@@ -10,7 +10,7 @@
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put } from "./api.js";
-import { MOUTHS, SETS, MODES, SIMPLE, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
+import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, hasPerso, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
@@ -141,11 +141,11 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         const lwf = wiggleFilter(`${pre}wg-${l.id}`, boil ? (boil.a ?? 2) : l.hand, l.wave, vf.w, vf.h, boil ? 5 + (Math.floor(t * (boil.v ?? 8)) % 4) * 13 : 5);
         // portrait-robot : la tete en traces, tournee comme le corps ; si le personnage parle, c'est la bouche du lip sync qui s'y pose
         const fo = faceFor(it, sp, vf, angleOf(l, s.v, s.f), { peau: col, trait: ink, lw: lineWidth(vf.sw, s.lw), bouche: !(l.lip && l.lip.on) }, again), fattr = ` data-layer="${l.id}"`;
-        if (fo) lipAt = Object.assign({}, l.lip, { x: (tx + fo.mouth.x * sc - box.x) / box.w, y: (ty + fo.mouth.y * sc - box.y) / box.h, hw: 0, s: l.lip && l.lip.s != null ? l.lip.s : fo.mouth.s * sc / box.h });
+        if (fo && !(l.lip && l.lip.set === PERSO && hasPerso(it))) lipAt = Object.assign({}, l.lip, { x: (tx + fo.mouth.x * sc - box.x) / box.w, y: (ty + fo.mouth.y * sc - box.y) / box.h, hw: 0, s: l.lip && l.lip.s != null ? l.lip.s : fo.mouth.s * sc / box.h });
         o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})">${lwf}<g${lwf ? ` filter="url(#${pre}wg-${l.id})"` : ""}>${fo ? opsSvg(fo.under, fattr) : ""}${tm}<g${tm ? ` mask="url(#${pre}m-${l.id})"` : ""}><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="${col}" data-layer="${l.id}"/>` +
           `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="${ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g>${fo ? opsSvg(fo.over, fattr) : ""}</g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
-      if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(lipAt, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l))}</g>`;   // lip sync : la bouche qui parle
+      if (l.lip && l.lip.on) o += `<g${bl}>${lipMarkup(lipAt, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l), it)}</g>`;   // lip sync : la bouche qui parle
       if (sel === l.id) {
         o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
         { // croix au milieu : la glisser deplace l'element (comme dans les cases) ; partout ailleurs sur lui, glisser le fait tourner
@@ -206,7 +206,7 @@ export function openMontage(app, pid) {
   // ------------------------------------------------------------------------------------------ visionneuse
   function paint() {
     svg.innerHTML = depthView ? topView() : scene.markup(t, playing ? null : sel, paint);
-    if (showMask && !playing) svg.querySelectorAll('ellipse[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
+    if (showMask && !playing) svg.querySelectorAll('[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
   }
 
   // ------------------------------------------------------------------------------------------ vue de dessus (profondeur)
@@ -460,7 +460,7 @@ export function openMontage(app, pid) {
     if (sprite(it, st.v, st.f)?.vec) items.push({ label: tt("Ombre"), checked: !!(l.sh && l.sh.on), click: () => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: !(l.sh && l.sh.on) }); paint(); props(); } },
       { label: tt("Animer le tremblé"), checked: !!(l.boil && l.boil.on), click: () => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: !(l.boil && l.boil.on) }); paint(); props(); } });
     items.push({ label: tt("Ombre portée"), checked: !!(l.gs && l.gs.on), click: () => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { on: !(l.gs && l.gs.on) }); paint(); props(); } },
-      { label: tt("Bouche dessinée"), checked: !!(l.lip && l.lip.on), click: () => { l.lip = Object.assign({ off: 0, bg: true }, l.lip, { on: !(l.lip && l.lip.on) }); paint(); props(); } },
+      { label: tt("Bouche dessinée"), checked: !!(l.lip && l.lip.on), click: async () => { l.lip = Object.assign({ off: 0, bg: true }, l.lip, { on: !(l.lip && l.lip.on) }); await persoFirst(l); paint(); props(); } },
       l.lip && l.lip.on ? { label: tt("✛ Placer la bouche à la main"), click: () => { placing = l.id; svg.style.cursor = "crosshair"; props(); } } : null,
       { head: tt("Clés") },
       keysOf(l.id).length ? { label: tt("Vider sa piste"), danger: true, click: () => { delete anim.tracks[l.id]; selKey = null; paint(); lanes(); props(); } } : { note: tt("Aucune clé sur cet élément") });
@@ -521,7 +521,7 @@ export function openMontage(app, pid) {
       const first = !l.lip || l.lip.x == null;
       l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { src: r.file, name, dur: res.dur, fps: res.fps, cues: res.cues });
       delete l.lip.in; delete l.lip.out;
-      if (first) await autoMouth(l, true);
+      if (first || (hasPerso(itemOf(l)) && !l.lip.set)) await autoMouth(l, true);
       if ((l.lip.off || 0) + res.dur > anim.dur) { anim.dur = Math.min(60, Math.ceil(((l.lip.off || 0) + res.dur) * 2) / 2); dur.value = anim.dur; }
       hist.snap(); paint(); lanes(); props();
       toast(tt`Voix posée : ${res.dur.toFixed(1)} s, ${new Set(res.cues).size} bouches différentes.`);
@@ -576,10 +576,19 @@ export function openMontage(app, pid) {
   }
   async function autoMouth(l, quiet) {                     // reperage automatique sur l'image de face
     const it = itemOf(l), st = stateOf(l), vv = it && variantOf(it, st.v);
-    const sp = it && sprite(it, st.v, vv && vv.orbit ? angleToFrame(vv.orbit, 0) : 0), found = sp && await locateMouth(sp.url);
+    const sp = it && sprite(it, st.v, vv && vv.orbit ? angleToFrame(vv.orbit, 0) : 0);
+    let found = sp && await locateMouth(sp.url);
+    const lip0 = l.lip || {};
+    if (hasPerso(it) && (!lip0.set || lip0.set === PERSO)) {   // ses propres bouches : place et taille mesurees sur la variante base
+      const m = it.mouths, base = !st.v || st.v === "base" || !(it.variants || {})[st.v];
+      found = base ? { x: m.x, y: m.y, s: m.s, hw: (found && found.hw) || 0.03 } : Object.assign({ x: 0.5, y: 0.13, hw: 0.03 }, found, { s: m.s });
+      found.set = PERSO;
+    }
     l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, found || { x: 0.5, y: 0.13, s: 0.035, hw: 0.03 });
     if (!quiet) { paint(); props(); toast(found ? tt("Bouche repérée sur l'image de face. Ajuste au besoin, ou place-la à la main.") : tt("Repérage impossible sur cette image : place la bouche à la main.")); }
   }
+  // a la premiere activation de la bouche d'un element qui a ses propres bouches : on les prend, a leur place
+  async function persoFirst(l) { if (l.lip && l.lip.on && !l.lip.set && hasPerso(itemOf(l))) { await autoMouth(l, true); hist.snap(); } }
   function placeMouth(e) {                                 // placement a la main : un clic dans l'image, la ou est la bouche
     const l = layerOf(placing); placing = null; svg.style.cursor = "";
     if (!l) return;
@@ -623,7 +632,7 @@ export function openMontage(app, pid) {
           h("button.mini", { title: tt("Coupe la voix à la tête de lecture : ce qui vient après n'est plus joué"), on: { click: () => { const v = voiceTime(lip, t); if (v < 0) return toast(tt("Place la tête de lecture dans la voix.")); put("out", f3(v)); lanes(); props(); } } }, tt("✂ Couper ici")),
           vb - va < (lip.dur || 0) - 0.01 ? h("button.mini", { title: tt("Retrouve la voix entière"), on: { click: () => { delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, tt("Entière")) : ""));
     }
-    rows.push(h("label.row.check", { title: tt("Affiche la bouche dessinée sur le personnage") }, h("input", { type: "checkbox", checked: !!lip.on, on: { change: (e) => { put("on", e.target.checked); props(); } } }), tt("Bouche dessinée")));
+    rows.push(h("label.row.check", { title: tt("Affiche la bouche dessinée sur le personnage") }, h("input", { type: "checkbox", checked: !!lip.on, on: { change: async (e) => { put("on", e.target.checked); await persoFirst(l); paint(); props(); } } }), tt("Bouche dessinée")));
     if (lip.on) {
       rows.push(h("div.row.wrap",
         h("button.mini", { title: tt("Cherche la tête sur l'image de face et vise la bouche"), on: { click: () => autoMouth(l) } }, tt("◎ Repérer la bouche")),
@@ -635,7 +644,7 @@ export function openMontage(app, pid) {
           h("select", { on: { change: (e) => { put("mode", e.target.value); lanes(); props(); } } }, Object.entries(MODES).map(([k, n]) => h("option", { value: k, selected: (lip.mode || "simple") === k }, n)))),
         lip.mode !== "detail" ? h("div", { title: tt("Nombre de battements de bouche par seconde pendant que ça parle") }, plain(tt("Rythme ⓘ"), "flap", 1.5, 6, 0.5, 4, (x) => (+x).toFixed(1) + " /s")) : "",
         (lip.set || "capsule") === "capsule" ? h("div", { title: tt("Taille de la bouche ouverte, par rapport au trait de la bouche fermée") }, plain(tt("Ouverture ↔ ⓘ"), "ow", 0.15, 1.2, 0.01, 0.55, (x) => (+x).toFixed(2)), plain(tt("Ouverture ↕"), "oh", 0.2, 2.5, 0.01, 1, (x) => (+x).toFixed(2))) : "",
-        h("label.row", { title: tt("Le dessin des bouches") }, tt("Jeu de bouches"), h("select", { on: { change: (e) => { put("set", e.target.value); props(); } } }, Object.entries(SETS).map(([k, n]) => h("option", { value: k, selected: (lip.set || "capsule") === k }, n)))),
+        h("label.row", { title: tt("Le dessin des bouches") }, tt("Jeu de bouches"), h("select", { on: { change: async (e) => { const was = (l.lip || {}).set === PERSO; put("set", e.target.value); if (was !== (e.target.value === PERSO)) { await autoMouth(l, true); hist.snap(); paint(); } props(); } } }, [...(hasPerso(itemOf(l)) ? [[PERSO, PERSO_NAME]] : []), ...Object.entries(SETS)].map(([k, n]) => h("option", { value: k, selected: (lip.set || "capsule") === k }, n)))),
         fold("lipt", tt("Trait de la bouche"), plain(tt("Épaisseur"), "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain(tt("Tremblé"), "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain(tt("Ondulation"), "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))),
         h("label.row.check", { title: tt("Une forme derrière la bouche, pour couvrir celle du dessin. Elle prend la couleur choisie pour le personnage (blanc s'il n'en a pas).") }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => { put("bg", e.target.checked); props(); } } }), tt("Masque de peau")));
       if (lip.bg !== false) rows.push(fold("lipm", tt("Réglages du masque"), plain(tt("Largeur"), "mw", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)), plain(tt("Hauteur"), "mh", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)),
@@ -645,7 +654,7 @@ export function openMontage(app, pid) {
         const simple = lip.mode !== "detail" && lip.mode !== "mix", force = (sh) => { const i = cueIndex(lip, t); if (i < 0) return toast(tt("La tête de lecture est hors de la voix.")); const c = lip.cues.split(""); for (let q = i; q < Math.min(c.length, i + 2); q++) c[q] = sh; put("cues", c.join("")); props(); };
         rows.push(plain(tt("Décalage (s)"), "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2)),
           h("div.muted", { title: tt("Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée.") }, tt`Bouche à cet instant ⓘ : ${MOUTHS[cueAt(lip, t)]}`),
-          h("div.row.wrap.mouths", (simple ? SIMPLE : Object.keys(MOUTHS)).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); b.innerHTML = mouthIcon(k, lip.set); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));
+          h("div.row.wrap.mouths", (simple ? SIMPLE : Object.keys(MOUTHS)).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); b.innerHTML = mouthIcon(k, lip.set, itemOf(l)); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));
       }
     }
     return h("div", h("h4", { title: tt("Une voix importée ou enregistrée fait parler le personnage : le navigateur écoute le son et appelle la bonne bouche, sans calcul sur les machines.") }, tt("🗣 Voix et bouche ⓘ")), fold("lip", tt("Réglages de la voix"), ...rows));

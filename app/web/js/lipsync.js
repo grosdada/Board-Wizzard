@@ -5,7 +5,7 @@
 //                  off (decalage en secondes), x, y (place de la bouche, fraction de la boite du personnage vu de face),
 //                  s (largeur, fraction de la hauteur), hw (rayon de l'axe de la tete, fraction de la hauteur), r (inclinaison),
 //                  ow, oh (largeur et hauteur de la bouche ouverte, jeu « trait et capsule »),
-//                  set (jeu de bouches : dessin | graphique), lw (epaisseur du trait), hand, wave (tremble du trait), bg (masque blanc), mw, mh, mx, my (son reglage) }
+//                  set (jeu de bouches : dessin | graphique | perso…), lw (epaisseur du trait), hand, wave (tremble du trait), bg (masque blanc), mw, mh, mx, my (son reglage) }
 // La bouche est accrochee a un axe vertical qui tourne avec l'orbite : de trois quarts elle glisse sur le cote et se
 // resserre, de dos elle disparait.
 import { tt, tr } from "./i18n.js";
@@ -77,13 +77,25 @@ const CARD = (path, n) => `<image href="/web/mouths/${path}${String(n).padStart(
 export const SETS = { capsule: tt("Trait et capsule"), dessin: tt("Dessiné (trait fin)"), graphique: tt("Graphique (plein)") };
 const SETMAP = { capsule: PLAIN, dessin: DRAWN, graphique: SHAPES };
 for (const [k, [name, path, map]] of Object.entries(IMG_SETS)) { SETS[k] = name; SETMAP[k] = Object.fromEntries(Object.entries(map).map(([c, n]) => [c, CARD(path, n)])); }
+// Jeu « perso » : les trois cartes du personnage lui-meme (tools/bouches.py), rangees dans son element :
+// item.mouths = { cards: { X, A, O } (chemins dans data/bank/<id>/), cover (trace a remplir de sa couleur derriere la
+// carte), x, y, s (place et taille sur l'image de face de la variante base), t }. Propose seulement pour ces elements.
+export const PERSO = "perso", PERSO_NAME = tt("Bouches du personnage");
+const PERSO_CARD = { X: "X", M: "X", F: "X", A: "A", E: "A", D: "A", L: "A", O: "O", U: "O" };
+/** Le jeu « perso » est-il possible pour cet element ? */
+export const hasPerso = (item) => !!(item && item.mouths && item.mouths.cards);
+const persoCard = (item, shape) => {
+  const m = item.mouths, f = m.cards[PERSO_CARD[shape] || "X"] || m.cards.X;
+  return f ? `<image href="/bank/${encodeURIComponent(item.id)}/${f}?t=${m.t || 0}" x="-60" y="-40" width="120" height="80"/>` : "";
+};
 /** Dessin d'une bouche en traces, centree sur l'origine, large d'environ 100.
- *  o : { cache (masque blanc derriere), lw (epaisseur du trait, 1 = normale), hand (tremble, 0 = net), wave (longueur
+ *  o : { item (element du calque, pour le jeu « perso »), cache (masque blanc derriere), lw (epaisseur du trait, 1 = normale), hand (tremble, 0 = net), wave (longueur
  *        des ondulations), mw, mh (largeur et hauteur du masque), mx, my (decalage du masque), id (pour le filtre) } */
 export function mouthSvg(shape, o = {}) {
   const lw = o.lw ?? 1;
+  const perso = o.set === PERSO && hasPerso(o.item);
   const set = SETMAP[o.set] || PLAIN;
-  let d = set[shape] || set.X;
+  let d = perso ? persoCard(o.item, shape) : (set[shape] || set.X);
   if (d === CAPSULE) {                                      // ouverture reglable : plus etroite que le trait par defaut
     const w = 60 * (o.ow ?? 0.55), hh = 30 * (o.oh ?? 1);
     d = `<rect x="${(-w / 2).toFixed(1)}" y="${(-hh / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${hh.toFixed(1)}" rx="${(Math.min(w, hh) / 2).toFixed(1)}" fill="#111" stroke="#111" stroke-width="3" stroke-linejoin="round"/>`;
@@ -91,7 +103,10 @@ export function mouthSvg(shape, o = {}) {
   if (lw !== 1) d = d.replace(/stroke-width="([\d.]+)"/g, (m, v) => `stroke-width="${(v * lw).toFixed(2)}"`);
   let out = "";
   // le masque ne change pas d'une bouche a l'autre : une fois aligne sur le personnage, il le reste
-  if (o.cache !== false) out += `<ellipse cx="${(o.mx || 0).toFixed(1)}" cy="${(6 + (o.my || 0)).toFixed(1)}" rx="${(54 * (o.mw ?? 1)).toFixed(1)}" ry="${(38 * (o.mh ?? 1)).toFixed(1)}" fill="${o.mask || "#ffffff"}" data-mask="1"/>`;
+  if (o.cache !== false && perso && o.item.mouths.cover) {   // la forme du personnage, de sa couleur ; le reglage du masque la decale et l'etire
+    const t = (o.mx || o.my ? `translate(${(o.mx || 0).toFixed(1)} ${(o.my || 0).toFixed(1)}) ` : "") + ((o.mw ?? 1) !== 1 || (o.mh ?? 1) !== 1 ? `scale(${(o.mw ?? 1).toFixed(3)} ${(o.mh ?? 1).toFixed(3)})` : "");
+    out += `<path d="${o.item.mouths.cover}"${t ? ` transform="${t.trim()}"` : ""} fill="${o.mask || "#ffffff"}" data-mask="1"/>`;
+  } else if (o.cache !== false) out += `<ellipse cx="${(o.mx || 0).toFixed(1)}" cy="${(6 + (o.my || 0)).toFixed(1)}" rx="${(54 * (o.mw ?? 1)).toFixed(1)}" ry="${(38 * (o.mh ?? 1)).toFixed(1)}" fill="${o.mask || "#ffffff"}" data-mask="1"/>`;
   if (o.hand > 0 && o.id) {                                 // trait a la main : un bruit doux deplace le trace, different pour chaque bouche
     const seed = 3 + "XMAEOUFDL".indexOf(shape) * 7;
     out += `<filter id="${o.id}" filterUnits="userSpaceOnUse" x="-90" y="-80" width="180" height="170" color-interpolation-filters="sRGB">` +
@@ -100,7 +115,7 @@ export function mouthSvg(shape, o = {}) {
   } else out += d;
   return out;
 }
-export const mouthIcon = (shape, set) => `<svg viewBox="-56 -44 112 100" width="30" height="27">${mouthSvg(shape, { cache: false, set })}</svg>`;
+export const mouthIcon = (shape, set, item) => `<svg viewBox="-56 -44 112 100" width="30" height="27">${mouthSvg(shape, { cache: false, set, item })}</svg>`;
 
 // Lip sync simple (par defaut) : deux bouches seulement. Fermee sur les silences ; des que ca parle, elle alterne
 // ouverte et fermee (lip.flap battements par seconde, 4 par defaut) pour imiter le mouvement.
@@ -133,8 +148,9 @@ export function cueAt(lip, t) {
   return (i >= 0 && (lip.mode === "detail" ? lip.cues : simplify(lip.cues, lip.flap ?? 4, lip.mode === "mix"))[i]) || "X";
 }
 
-/** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face). */
-export function lipMarkup(lip, box, flip, t, angle = 0, id = "", mask = "#ffffff") {
+/** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face) ;
+ *  item : l'element du calque (ses propres bouches, jeu « perso »). */
+export function lipMarkup(lip, box, flip, t, angle = 0, id = "", mask = "#ffffff", item = null) {
   if (!lip || !lip.on) return "";
   const c = Math.cos(angle);
   if (c < -0.12) return "";                                 // de dos : la bouche est derriere la tete
@@ -142,7 +158,7 @@ export function lipMarkup(lip, box, flip, t, angle = 0, id = "", mask = "#ffffff
   let cx = box.x + (lip.x ?? 0.5) * box.w - Math.sin(angle) * (lip.hw ?? 0.03) * box.h;   // l'axe tourne : la bouche part sur le cote
   const cy = box.y + (lip.y ?? 0.13) * box.h;
   if (flip) cx = 2 * box.cx - cx;
-  const o = { cache: lip.bg !== false, lw: lip.lw, hand: lip.hand, wave: lip.wave, mw: lip.mw, mh: lip.mh, mx: lip.mx, my: lip.my, id, mask, set: lip.set, ow: lip.ow, oh: lip.oh };
+  const o = { cache: lip.bg !== false, lw: lip.lw, hand: lip.hand, wave: lip.wave, mw: lip.mw, mh: lip.mh, mx: lip.mx, my: lip.my, id, mask, set: lip.set, ow: lip.ow, oh: lip.oh, item };
   return `<g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)}) rotate(${((flip ? -1 : 1) * (lip.r || 0)).toFixed(1)}) scale(${(size / 100 * kx).toFixed(4)} ${(size / 100).toFixed(4)})" style="pointer-events:none">${mouthSvg(cueAt(lip, t), o)}</g>`;
 }
 
