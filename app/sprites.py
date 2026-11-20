@@ -295,6 +295,33 @@ def face_score(original, candidate, head=0.4):
     return round(best, 3)
 
 
+def stroke_width(path):
+    """Epaisseur du trait d'un dessin (mediane, en pixels de l'image) et hauteur du dessin : (epaisseur, hauteur).
+    Mesuree sur l'image agrandie trois fois, pour ne pas tomber sur des paliers d'un pixel."""
+    import cv2
+    im = Image.open(path).convert("RGBA")
+    bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+    bg.alpha_composite(im)
+    g = np.asarray(bg.convert("L"))
+    ys = np.where((g < 235).any(axis=1))[0]
+    if not len(ys):
+        return 0.0, 1
+    big = cv2.resize(g, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+    inked = (big < 120).astype(np.uint8)
+    dt = cv2.distanceTransform(inked, cv2.DIST_L2, 5)
+    ridge = dt[(dt >= cv2.dilate(dt, np.ones((3, 3), np.uint8))) & (inked > 0)]
+    return (float(np.median(ridge)) * 2 / 3 if ridge.size else 0.0), int(ys[-1] - ys[0] + 1)
+
+
+def line_ratio(original, candidate):
+    """Le trait de la pose par rapport a celui du dessin d'origine, a taille de personnage egale : 1 = meme epaisseur,
+    0,5 = deux fois plus fin, 2 = deux fois plus gras. Sert a ecarter les poses redessinees d'un autre trait."""
+    (a, ha), (b, hb) = stroke_width(original), stroke_width(candidate)
+    if a <= 0 or b <= 0:
+        return 1.0
+    return round((b / hb) / (a / ha), 3)
+
+
 def ink(src, dest):
     """Ramene un dessin a du trait noir sur blanc : plus de couleur, les gris clairs partent, les traits gris foncent."""
     g = np.asarray(Image.open(src).convert("L"), dtype=np.float32)

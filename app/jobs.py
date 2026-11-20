@@ -235,14 +235,23 @@ def _orbit_log(it, vid, attempt, info, rel_motion, bad):
         pass
 
 
-DRAW_TRIES, DRAW_MIN = 4, 0.85
+DRAW_TRIES, DRAW_MIN = 6, 0.85
+# trait de la pose par rapport a celui du dessin d'origine, a taille de personnage egale. Mesure sur 195 poses en banque :
+# 90 % entre 0,72 et 1,32 ; les poses redessinees d'un trait fin tombent a 0,45-0,70, celles au trait gras a 1,5 et plus.
+# Les poses ramassees (assis, accroupi, a terre) sont moins hautes : leur trait parait plus gras, la borne haute est relevee.
+LINE_MIN, LINE_MAX, LINE_MAX_LOW = 0.72, 1.45, 1.95
+LOW_POSES = ("assis", "accroupi", "a-terre", "assis-tete")
 
 
-def _log_pose(item, pose, score):
+def _line_ok(ratio, pose):
+    return LINE_MIN <= ratio <= (LINE_MAX_LOW if pose in LOW_POSES else LINE_MAX)
+
+
+def _log_pose(item, pose, score, line=1.0, ok=None):
     try:
         with open(settings.DATA / "poses.log", "a", encoding="utf-8") as f:
-            f.write("%s %s/%s fidelite %.3f %s\n" % (time.strftime("%d/%m %H:%M"), item, pose, score,
-                                                    "ok" if score >= DRAW_MIN else "ECARTEE"))
+            f.write("%s %s/%s fidelite %.3f trait %.2f %s" % (time.strftime("%d/%m %H:%M"), item, pose, score, line,
+                                                             "ok" if (score >= DRAW_MIN if ok is None else ok) else "ECARTEE") + chr(10))
     except OSError:
         pass
 
@@ -254,7 +263,7 @@ def run_item_pose(job, prov):
     label, prompt = poses.pose_prompt(it["kind"], p.get("pose", ""), it.get("style", "photo"), p.get("custom", ""))
     # « Vérifier avant les orbites » (choisi en preparant) : la pose est generee et detouree, puis attend « Garder »
     validate = bool(p.get("orbit", True)) and bool(p.get("review"))
-    score, rejected = None, False
+    score, rejected, line = None, False, None
     tmp = _tmp()
     try:
         base = d / it["variants"]["base"]["ref"]
@@ -269,22 +278,32 @@ def run_item_pose(job, prov):
             # dessin : le visage fait partie du design. Plusieurs tirages, on garde le plus fidele a la tete d'origine,
             # et on refuse la pose si aucun ne la respecte (mieux vaut une pose en moins qu'un visage refait).
             label, prompt = poses.pose_prompt_drawing(p.get("pose", ""), p.get("custom", ""))
-            best = None
+            # deux controles par tirage : le visage (fidelite) et le trait (meme epaisseur que le dessin d'origine). On
+            # garde le plus fidele des tirages qui passent les deux ; si aucun ne passe, le plus fidele, marque ecarte.
+            best, line = None, 1.0
             for k in range(DRAW_TRIES):
                 job["progress"] = "pose, tirage %d" % (k + 1)
                 cand = prov.edit([base], prompt, _seed(job) + 7919 * k, tmp)
                 keep = tmp / ("cand_%d.png" % k)
                 sprites.ink(cand, keep)
                 score = sprites.face_score(base, keep)
-                if best is None or score > best[0]:
-                    best = (score, keep)
-                if score >= 0.9:
+                try:
+                    ratio = sprites.line_ratio(base, keep)
+                except Exception:                                  # noqa: BLE001 : sans OpenCV, seul le visage est controle
+                    ratio = 1.0
+                good = score >= DRAW_MIN and _line_ok(ratio, p.get("pose", ""))
+                if best is None or (good, score) > (best[2], best[0]):
+                    best = (score, keep, good, ratio)
+                if good and score >= 0.9:
                     break
-            _log_pose(it["id"], p.get("pose") or label, best[0])
+            line = round(float(best[3]), 2)
+            _log_pose(it["id"], p.get("pose") or label, best[0], line, best[2])
             score = round(float(best[0]), 3)
-            if best[0] < DRAW_MIN:
+            if not best[2]:
                 if not validate:
-                    raise RuntimeError("pose écartée : le visage du dessin n'était pas respecté (fidélité %.2f)" % best[0])
+                    if best[0] < DRAW_MIN:
+                        raise RuntimeError("pose écartée : le visage du dessin n'était pas respecté (fidélité %.2f)" % best[0])
+                    raise RuntimeError("pose écartée : le trait n'était pas celui du dessin (%.2f fois son épaisseur)" % line)
                 rejected = True                                  # gardee quand meme, montree comme ecartee : a repecher ou refaire
             png = best[1]
         else:
@@ -302,7 +321,7 @@ def run_item_pose(job, prov):
             if p.get("variant"):                                 # pose refaite : l'ancien detourage et l'ancienne orbite ne valent plus
                 v["cut"], v["orbit"] = None, None
             if validate:
-                v["review"] = {"state": "rejected" if rejected else "pending", "score": score, "at": int(time.time())}
+                v["review"] = {"state": "rejected" if rejected else "pending", "score": score, "line": line, "at": int(time.time())}
             else:
                 v.pop("review", None)
         store.mutate_item(it["id"], apply)

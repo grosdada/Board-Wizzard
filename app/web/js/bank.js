@@ -639,6 +639,7 @@ export class Bank {
             h("img", { src: this.thumb(item, k), loading: "lazy", draggable: false, title: tt("Voir cette pose en grand"), on: { click: () => { vid = k; frame = 0; build(true); } } }),
             h("div.var-name", tr(vv.label)),
             sc != null ? h("div.rev-score", { title: tt("Ressemblance du visage avec le dessin d'origine (1 = identique ; sous 0,85 la pose est écartée)") }, tt`fidélité ${sc.toFixed(2)}`) : null,
+            vv.review.line != null ? h("div.rev-score" + (vv.review.line < 0.72 || vv.review.line > 1.45 ? ".warn" : ""), { title: tt("Épaisseur du trait de la pose par rapport au dessin d'origine, à taille égale (1 = le même trait ; sous 0,72 ou au-dessus de 1,45 la pose est écartée)") }, tt`trait × ${vv.review.line.toFixed(2)}`) : null,
             busy ? h("div.muted", tt("⏳ en calcul")) : h("div.rev-acts",
               st === "redo" ? h("div.rev-note", tt("La nouvelle génération n'a pas abouti.")) : null,
               h("button.mini.primary", { title: tt("Garder cette pose : son orbite part en file"), on: { click: () => act(k, "keep") } }, st === "rejected" ? tt("Repêcher") : tt("Garder")),
@@ -654,7 +655,7 @@ export class Bank {
           waiting.length > 1 ? h("button.mini.primary", { on: { click: () => act(null, "keep_all") } }, tt`✓ Tout garder (${waiting.length})`) : null,
           ok.length ? h("div.revgrid", refCard(), ok.map(card)) : null,
           bad.length ? h("h4", tt("Écartées par le contrôle automatique")) : null,
-          bad.length ? h("p.muted", tt("Leur visage ressemblait moins au dessin d'origine (fidélité sous 0,85). Repêche celles qui te vont, ou refais-les.")) : null,
+          bad.length ? h("p.muted", tt("Leur visage ressemblait moins au dessin d'origine (fidélité sous 0,85), ou leur trait n'avait pas la même épaisseur. Repêche celles qui te vont, ou refais-les.")) : null,
           bad.length ? h("div.revgrid", ok.length ? null : refCard(), bad.map(card)) : null].filter(Boolean));
       }
       // catalogue de poses
