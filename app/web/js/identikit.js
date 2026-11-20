@@ -77,7 +77,25 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
     bodyPick = comp0.body || null;
     name.value = edit.item.name || "";
   }
-  const sorted = () => layers.slice().sort((a, b) => ORDER.indexOf(a.cat) - ORDER.indexOf(b.cat) || a.n - b.n);
+  // ordre d'empilement : par categorie (ORDER) tant qu'on n'y a pas touche ; des qu'on deplace un element, chaque calque
+  // garde un rang z (petit = derriere). Un element pose ensuite prend place apres son voisin de categorie.
+  const defCmp = (a, b) => ORDER.indexOf(a.cat) - ORDER.indexOf(b.cat) || a.n - b.n;
+  const sorted = () => {
+    if (layers.some((l) => l.z != null) && layers.some((l) => l.z == null)) {
+      const d = layers.slice().sort(defCmp), k = d.findIndex((l) => l.z != null), z0 = d[k].z;
+      let last = null;
+      d.forEach((l, i) => { if (l.z != null) { last = l.z; return; } l.z = last == null ? z0 - (k - i) : (last += 0.01); });
+    }
+    return layers.slice().sort((a, b) => (a.z != null && b.z != null ? a.z - b.z : 0) || defCmp(a, b));
+  };
+  // place l a la position i de l'ordre (0 = tout derriere), et renumerote
+  const restack = (l, i) => {
+    const s = sorted().filter((x) => x !== l);
+    s.splice(Math.max(0, Math.min(s.length, i)), 0, l);
+    s.forEach((x, j) => { x.z = j; });
+    paint(); hist.snap();
+  };
+  const unstack = () => { layers.forEach((l) => { delete l.z; }); paint(); hist.snap(); };
   const tf = (l) => `translate(${l.x} ${l.y}) rotate(${l.rot}) scale(${l.flip ? -1 : 1} 1)`;
   const paint = () => {
     // chaque coupe (ou couvre-chef) masque, au-dessus de son profil, tout ce qui est pose dessous : le crane ne depasse pas
@@ -138,13 +156,48 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
     if (sig === brickSig) return;
     brickSig = sig; bricksBox.textContent = "";
     if (!layers.length) return;
-    bricksBox.append(...sorted().map((l) => {
+    const front = sorted().reverse();               // comme la liste du clic droit : la premiere brique est devant
+    bricksBox.append(h("span.idk-bricks-cap.muted", { title: tt("Glisser une brique pour changer l'ordre : à gauche, devant ; à droite, derrière.") }, tt("devant ▸")),
+      ...front.map((l) => {
       const label = nameOf(l);
-      return h("div.idk-brick" + (l.n === sel || multi.has(l.n) ? ".on" : ""), { title: tt`${label} · ${l.name} : cliquer pour le choisir, même s'il est caché sous un autre`,
-        on: { click: () => pickLayer(l) } },
+      return h("div.idk-brick" + (l.n === sel || multi.has(l.n) ? ".on" : ""), { title: tt`${label} · ${l.name} : cliquer pour le choisir, même s'il est caché sous un autre ; glisser pour le passer devant ou derrière`,
+        "data-n": l.n,
+        on: { click: (e) => { if (brickDrag && brickDrag.moved) return; pickLayer(l); }, pointerdown: (e) => brickDown(e, l) } },
         h("img", { src: url(l), alt: "", draggable: false }), h("span", label),
-        h("i", { title: tt("Retirer du visage"), on: { click: (e) => { e.stopPropagation(); sel = l.n; removeSel(); } } }, "✕"));
-    }));
+        h("i", { title: tt("Retirer du visage"), on: { pointerdown: (e) => e.stopPropagation(), click: (e) => { e.stopPropagation(); sel = l.n; removeSel(); } } }, "✕"));
+    }), h("span.idk-bricks-cap.muted", tt("◂ derrière")));
+  };
+  // glisser une brique : au-dela de 5 px on la deplace ; un trait bleu montre ou elle ira
+  let brickDrag = null;
+  const brickDown = (e, l) => {
+    if (e.button !== 0) return;
+    brickDrag = { l, x: e.clientX, y: e.clientY, moved: false, to: null };
+    const move = (ev) => {
+      const d = brickDrag;
+      if (!d) return;
+      if (!d.moved && Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 5) return;
+      d.moved = true;
+      const all = [...bricksBox.querySelectorAll(".idk-brick")];
+      all.forEach((b) => b.classList.remove("drop-before", "drop-after", "dragging"));
+      bricksBox.querySelector(`.idk-brick[data-n="${l.n}"]`)?.classList.add("dragging");
+      let best = null, bd = Infinity;                // la brique la plus proche, et de quel cote de son milieu
+      for (const b of all) { const r = b.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        const dist = Math.hypot((ev.clientX - cx) / 2, ev.clientY - cy); if (dist < bd) { bd = dist; best = { b, after: ev.clientX > cx }; } }
+      d.to = best;
+      if (best) best.b.classList.add(best.after ? "drop-after" : "drop-before");
+    };
+    const up = () => {
+      document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up);
+      const d = brickDrag;
+      setTimeout(() => { brickDrag = null; }, 0);   // le clic qui suit un glisser ne choisit pas l'element
+      if (!d || !d.moved || !d.to) { bricksBox.querySelectorAll(".idk-brick").forEach((b) => b.classList.remove("drop-before", "drop-after", "dragging")); return; }
+      const front = sorted().reverse(), tl = layers.find((x) => x.n === +d.to.b.dataset.n);
+      const rest = front.filter((x) => x !== l);
+      let at = rest.indexOf(tl); if (at < 0) at = rest.length; else if (d.to.after) at++;
+      brickSig = "";
+      restack(l, rest.length - at);                  // position dans la liste « devant d'abord » -> rang depuis le fond
+    };
+    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
   };
   // poignees autour de l'element choisi : coins = taille, cotes = etirer, rond du haut = tourner ; taille constante a l'ecran
   const unit = () => { const r = svg.getBoundingClientRect(); return r.width ? S / r.width : 2; };
@@ -417,7 +470,7 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
     if (!l && !layers.length) return;
     if (l && (sel !== l.n || multi.size)) { sel = l.n; multi.clear(); paint(); props(); }
     const same = l ? sorted().filter((x) => x.cat === l.cat) : [], i = l ? same.indexOf(l) : -1;
-    const swap = (o) => { [l.n, o.n] = [o.n, l.n]; sel = l.n; paint(); props(); };
+    const swap = (o) => { [l.n, o.n] = [o.n, l.n]; [l.z, o.z] = [o.z, l.z]; if (l.z == null) delete l.z; if (o.z == null) delete o.z; sel = l.n; paint(); props(); };
     const items = !l ? [] : [[tt("⇋ Miroir"), () => { l.flip = !l.flip; paint(); }],
       [tt("↺ Place de départ"), () => { home(l); paint(); props(); }],
       [tt("✏ Éditer"), () => editPart(l.cat, itemOf(l))],
@@ -427,11 +480,22 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
       i > 0 ? [tt("▼ Descendre d'un cran"), () => swap(same[i - 1])] : null,
       [tt("✕ Retirer du visage"), removeSel, true]].filter(Boolean);
     document.querySelector(".menu")?.remove();
-    const list = sorted().slice().reverse();          // du dessus vers le dessous, comme on les voit
+    // la liste, du devant vers le derriere ; ▲ / ▼ changent l'ordre sans fermer le menu
+    const listBox = h("div.idk-ctx-list");
+    const fill = () => {
+      listBox.textContent = "";
+      const list = sorted().reverse(), N = list.length;
+      const step = (e, x, d) => { e.stopPropagation(); const i = list.indexOf(x); restack(x, N - 1 - (i + d)); fill(); };
+      listBox.append(...list.map((x, i) => h("div.idk-ctx-row" + (x.n === sel || multi.has(x.n) ? ".on" : ""), { title: tt`${nameOf(x)} · ${x.name} : le choisir, même s'il est caché sous un autre`,
+        on: { click: () => { box.remove(); pickLayer(x); } } }, h("img", { src: url(x), alt: "", draggable: false }), h("span", nameOf(x)), h("small.muted", x.name),
+        h("button.idk-ord", { type: "button", title: tt("Passer devant l'élément du dessus"), disabled: i === 0, on: { click: (e) => step(e, x, -1) } }, "▲"),
+        h("button.idk-ord", { type: "button", title: tt("Passer derrière l'élément du dessous"), disabled: i === N - 1, on: { click: (e) => step(e, x, 1) } }, "▼"))));
+    };
+    fill();
+    const N0 = layers.length;
     const box = h("div.menu.mt-menu.idk-ctx", items.map(([label, fn, danger]) => h("button" + (danger ? ".danger" : ""), { on: { click: () => { box.remove(); fn(); hist.snap(); } } }, label)),
-      list.length ? h("div.mhead", tt`Éléments du visage (${list.length})`) : "",
-      list.length ? h("div.idk-ctx-list", list.map((x) => h("button.idk-ctx-row" + (x.n === sel || multi.has(x.n) ? ".on" : ""), { type: "button", title: tt`${nameOf(x)} · ${x.name} : le choisir, même s'il est caché sous un autre`,
-        on: { click: () => { box.remove(); pickLayer(x); } } }, h("img", { src: url(x), alt: "", draggable: false }), h("span", nameOf(x)), h("small.muted", x.name)))) : "");
+      N0 ? h("div.mhead", tt`Éléments du visage (${N0}) · en haut = devant`) : "", N0 ? listBox : "",
+      N0 && layers.some((x) => x.z != null) ? h("button", { title: tt("Remet l'empilement d'origine : visage derrière, puis bouche, nez, yeux, sourcils, cheveux…"), on: { click: () => { unstack(); fill(); } } }, tt("↺ Ordre par défaut")) : "");
     document.body.append(box);
     const r = box.getBoundingClientRect();
     box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px";
@@ -441,7 +505,7 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
   });
   // annuler (Ctrl+Z, 15 pas) : ajout, retrait, deplacement, taille, rotation, miroir des elements ; pas la selection
   const hist = history(() => ({ layers, off, pm: photo ? [photo.M[0][2], photo.M[1][2]] : null }), (st) => {
-    layers = st.layers; off = st.off || { x: 0, y: 0 };
+    layers = st.layers; off = st.off || { x: 0, y: 0 }; document.querySelector(".idk-ctx")?.remove();   // une liste ouverte ne montrerait plus le bon ordre
     if (photo && st.pm) { photo.M[0][2] = st.pm[0]; photo.M[1][2] = st.pm[1]; }
     multi = new Set([...multi].filter((n) => layers.some((l) => l.n === n)));
     if (!layers.some((l) => l.n === sel)) { sel = null; pinned = false; }

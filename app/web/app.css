@@ -281,12 +281,22 @@ label.row.range.off { opacity: .4; }
 /* portrait-robot : clic droit, liste des elements poses */
 .menu.idk-ctx { width: 270px; }
 .idk-ctx-list { max-height: 55vh; overflow-y: auto; }
-.menu button.idk-ctx-row { display: flex; align-items: center; gap: 8px; padding: 3px 6px; }
+.idk-ctx-row { display: flex; align-items: center; gap: 8px; padding: 3px 4px 3px 6px; border-radius: 5px; cursor: pointer; font-size: 12.5px; }
+.idk-ctx-row:hover { background: var(--panel2); }
+.menu .idk-ctx-row button.idk-ord { width: 22px; flex: none; padding: 2px 0; text-align: center; font-size: 10px; color: var(--muted); }
+.menu .idk-ctx-row button.idk-ord:hover:not(:disabled) { background: #10b5e0; color: #fff; }
+.menu .idk-ctx-row button.idk-ord:disabled { opacity: .25; }
 .idk-ctx-row img { width: 34px; height: 34px; object-fit: contain; background: #fff; border-radius: 4px; flex: none; }
 .idk-ctx-row span { flex: none; }
 .idk-ctx-row small { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
-.menu button.idk-ctx-row.on { background: #10b5e0; color: #fff; }
-.menu button.idk-ctx-row.on small { color: #e6f8fd; }
+.idk-ctx-row.on { background: #10b5e0; color: #fff; }
+.idk-ctx-row.on small, .menu .idk-ctx-row.on button.idk-ord { color: #e6f8fd; }
+.idk-bricks { align-items: center; }
+.idk-bricks-cap { font-size: 10.5px; }
+.idk-brick { touch-action: none; user-select: none; }
+.idk-brick.dragging { opacity: .4; }
+.idk-brick.drop-before { box-shadow: -4px 0 0 #10b5e0; }
+.idk-brick.drop-after { box-shadow: 4px 0 0 #10b5e0; }
 
 /* montage et deck en plein ecran */
 .modal.modal-full { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100vh; max-height: none; border-radius: 0; transform: none !important; }

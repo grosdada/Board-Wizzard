@@ -1106,7 +1106,6 @@
   "transparent": "transparent",
   "fal seulement": "fal only",
   "https://…/bibliotheque": "https://…/library",
-  "{0} · {1} : cliquer pour le choisir, même s'il est caché sous un autre": "{0} · {1}: click to select it, even if it is hidden under another one",
   "Retouche rétablie (encore {0} à rétablir).": "Retouch redone ({0} more to redo).",
   "Retouche annulée (encore {0} à annuler).": "Retouch undone ({0} more to undo).",
   "Annule la dernière retouche de cette orbite (Ctrl+Z), jusqu'à 15 pas": "Undoes the last retouch of this orbit (Ctrl+Z), up to 15 steps",
@@ -1301,8 +1300,16 @@
   "fal · Nano Banana Pro : fidèle au trait et aux couleurs (payant)": "fal · Nano Banana Pro: true to the line and colours (paid)",
   "Le modèle qui dessine les poses et la planche de vues (dos, profil). Le détourage et l'orbite restent sur tes machines.": "The model that draws the poses and the view sheet (back, profile). Cut-out and orbit stay on your machines.",
   "Moteur des poses": "Pose engine",
-  "Éléments du visage ({0})": "Face elements ({0})",
-  "{0} · {1} : le choisir, même s'il est caché sous un autre": "{0} · {1}: select it, even if it is hidden under another"
+  "{0} · {1} : le choisir, même s'il est caché sous un autre": "{0} · {1}: select it, even if it is hidden under another",
+  "Glisser une brique pour changer l'ordre : à gauche, devant ; à droite, derrière.": "Drag a brick to change the order: left is in front, right is behind.",
+  "devant ▸": "front ▸",
+  "◂ derrière": "◂ behind",
+  "{0} · {1} : cliquer pour le choisir, même s'il est caché sous un autre ; glisser pour le passer devant ou derrière": "{0} · {1}: click to select it, even if hidden under another; drag to move it in front or behind",
+  "Passer devant l'élément du dessus": "Move in front of the element above",
+  "Passer derrière l'élément du dessous": "Move behind the element below",
+  "Éléments du visage ({0}) · en haut = devant": "Face elements ({0}) · top = front",
+  "Remet l'empilement d'origine : visage derrière, puis bouche, nez, yeux, sourcils, cheveux…": "Restores the original stacking: face at the back, then mouth, nose, eyes, eyebrows, hair…",
+  "↺ Ordre par défaut": "↺ Default order"
  },
  "server": {
   "Parle": "Speaks",
