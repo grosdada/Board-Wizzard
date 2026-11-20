@@ -611,7 +611,7 @@ class Handler(BaseHTTPRequestHandler):
         if act == "orbit":
             vid = d.get("variant", "base")
             params = {"item": iid, "variant": vid}
-            for k in ("seed", "length", "megapixels", "studio"):
+            for k in ("seed", "length", "megapixels", "studio", "no_sheet"):
                 if d.get(k):
                     params[k] = d[k]
             return self.send_json({"job": S.add("item_orbit", params, "Orbite · %s · %s" % (
