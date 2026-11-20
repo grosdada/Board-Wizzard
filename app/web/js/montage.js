@@ -200,6 +200,7 @@ export function openMontage(app, pid) {
   const picked = new Set();                                // cles prises au lasso (ou Ctrl + clic) : elles bougent et s'effacent ensemble
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
+  const pen = (on) => svg.classList.toggle("tracing", !!on);   // curseur crayon pendant le trace de la bouche
   svg.setAttribute("viewBox", `0 0 ${W} ${f1(H)}`); svg.setAttribute("class", "mt-stage");
   const scene = makeScene(app, pg, pan, g.bbox.h / g.bbox.w);
   const layerOf = (id) => pan.layers.find((l) => l.id === id);
@@ -618,7 +619,7 @@ export function openMontage(app, pid) {
   const mouthGroup = (id) => svg.querySelector(`[data-mouth="${id}"]`);
   function traceDown(e) {
     const l = layerOf(tracing);
-    if (!l || !mouthGroup(l.id)) { tracing = null; svg.style.cursor = ""; props(); return toast(tt("Cet élément n'a pas d'orbite : rien à tracer."), "error"); }
+    if (!l || !mouthGroup(l.id)) { tracing = null; pen(false); props(); return toast(tt("Cet élément n'a pas d'orbite : rien à tracer."), "error"); }
     const pt = (ev) => { const g = mouthGroup(l.id), m = g && g.getScreenCTM(); if (!m) return null; const q = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse()); return [q.x, q.y]; };
     const p = pt(e);
     if (!p) return;
@@ -650,7 +651,7 @@ export function openMontage(app, pid) {
       const r = await post(`bank/${encodeURIComponent(it.id)}/mouth`, { variant: vid, f: sp.i, line });
       if (r.item) app.bank.set(it.id, r.item);
       if (r.frames) {
-        l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { set: TRACE }); tracing = null; svg.style.cursor = ""; hist.snap();
+        l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { set: TRACE }); tracing = null; pen(false); hist.snap();
         toast(tt`Bouche suivie sur ${r.frames} images sur ${sp.n}.`);
       } else toast(tt("Rien trouvé sous le trait : trace sur la bouche dessinée, d'un coin à l'autre."), "error");
     } catch (err) { toast(tt("Tracé refusé : ") + err.message, "error"); }
@@ -700,7 +701,7 @@ export function openMontage(app, pid) {
     if (lip.on && sp0 && sp0.orbit && !(itemOf(l) || {}).body) {   // bouche du dessin : la tracer sur le personnage
       const on = tracing === l.id;
       rows.push(h("div.row.wrap",
-        h("button.mini" + (on ? ".on" : ""), { title: tt("Trace un trait sur la bouche du personnage, d'un coin à l'autre, sur l'image affichée : elle est retrouvée puis suivie quand il tourne. Vaut pour cet élément et cette pose, dans tous les calques qui l'utilisent."), on: { click: () => { tracing = on ? null : l.id; placing = null; svg.style.cursor = tracing ? "crosshair" : ""; props(); } } }, on ? tt("Trace sur la bouche…") : tt("✎ Tracer la bouche")),
+        h("button.mini" + (on ? ".on" : ""), { title: tt("Trace un trait sur la bouche du personnage, d'un coin à l'autre, sur l'image affichée : elle est retrouvée puis suivie quand il tourne. Vaut pour cet élément et cette pose, dans tous les calques qui l'utilisent."), on: { click: () => { tracing = on ? null : l.id; placing = null; svg.style.cursor = ""; pen(tracing); props(); } } }, on ? tt("Trace sur la bouche…") : tt("✎ Tracer la bouche")),
         h("select", { title: tt("Crayon : tracé libre. Droite : cliquer-glisser d'un coin de la bouche à l'autre."), on: { change: (e) => { traceMode = e.target.value; localStorage.setItem("bw.traceMode", traceMode); } } },
           [["crayon", tt("Crayon")], ["droite", tt("Droite")]].map(([k, n]) => h("option", { value: k, selected: traceMode === k }, n))),
         sp0.mouth ? h("button.mini.danger", { title: tt("Retire la bouche suivie de cette pose (pour tous les calques qui l'utilisent)"), on: { click: () => traceClear(l) } }, tt("Effacer le tracé")) : ""));
