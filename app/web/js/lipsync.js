@@ -219,6 +219,7 @@ export function traceMarkup(lip, m, t, id = "", fill = "#ffffff") {
  *  item : l'element du calque (ses propres bouches, jeu « perso »). */
 export function lipMarkup(lip, box, flip, t, angle = 0, id = "", mask = "#ffffff", item = null) {
   if (!lip || !lip.on) return "";
+  if (lip.set === TRACE) return "";                         // bouche du dessin, mais cette pose n'en a pas de suivie : le dessin reste intact plutot qu'une bouche generique
   const c = Math.cos(angle);
   if (c < -0.12) return "";                                 // de dos : la bouche est derriere la tete
   const size = (lip.s ?? 0.035) * box.h, kx = Math.max(0.32, Math.abs(c));

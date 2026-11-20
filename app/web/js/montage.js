@@ -652,7 +652,7 @@ export function openMontage(app, pid) {
       if (r.item) app.bank.set(it.id, r.item);
       if (r.frames) {
         l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { set: TRACE }); tracing = null; pen(false); hist.snap();
-        toast(tt`Bouche suivie sur ${r.frames} images sur ${sp.n}.`);
+        toast(r.poses ? tt`Bouche suivie sur ${r.frames} images sur ${sp.n}, et reportée sur ${r.poses} autres poses.` : tt`Bouche suivie sur ${r.frames} images sur ${sp.n}.`);
       } else toast(tt("Rien trouvé sous le trait : trace sur la bouche dessinée, d'un coin à l'autre."), "error");
     } catch (err) { toast(tt("Tracé refusé : ") + err.message, "error"); }
     paint(); props();

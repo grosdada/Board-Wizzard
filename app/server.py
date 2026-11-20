@@ -671,8 +671,33 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError("trait illisible")
         if len(line) < 2:
             raise ApiError("trace un trait d'un coin de la bouche à l'autre")
-        got = mouthfind.track(folder, int(o["n"]), int(d.get("f") or 0) % int(o["n"]), line)
-        return {"frames": got, "item": store.resolve(mark(True) if got else store.load_item(iid))}
+        f0 = int(d.get("f") or 0) % int(o["n"])
+        got = mouthfind.track(folder, int(o["n"]), f0, line)
+        if not got:
+            return {"frames": 0, "item": store.resolve(store.load_item(iid))}
+        mark(True)
+        # les autres poses du personnage qui n'ont pas encore de bouche partent de celle-ci : le visage y est retrouve et
+        # le trait reporte. Une pose deja tracee a la main n'est pas touchee.
+        carried = {}
+        for k, v in it["variants"].items():
+            oo = v.get("orbit") or {}
+            if k == vid or not oo.get("dir") or oo.get("mouth") or int(oo.get("n") or 0) != int(o["n"]):
+                continue
+            dst = store.item_dir(iid) / oo["dir"]
+            try:
+                r = mouthfind.carry(folder, f0, line, dst, int(o["n"]))
+                if r and mouthfind.track(dst, int(o["n"]), f0, r[0], need_ink=True):
+                    carried[k] = oo["dir"]
+            except Exception as e:                                  # une pose qui rate ne doit pas faire echouer le trace
+                print("bouche reportee sur %s/%s : %s" % (iid, k, e), flush=True)
+
+        def fn(x):
+            for k, dr in carried.items():
+                oo = (x["variants"].get(k) or {}).get("orbit") or {}
+                if oo.get("dir") == dr:
+                    oo["mouth"], oo["mt"] = True, int(time.time() * 1000)
+        item = store.mutate_item(iid, fn) if carried else store.load_item(iid)
+        return {"frames": got, "poses": len(carried), "item": store.resolve(item)}
 
     def _transpose(self, d):
         """« Transposer » : les points d'un portrait (reperes dans le navigateur, la photo ne vient pas ici) -> visage, yeux,

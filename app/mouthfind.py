@@ -284,7 +284,7 @@ def at(im, x, y, prev=None, line=None, strict=False):
     return out
 
 
-def track(folder, n, f0, line, reach=20):
+def track(folder, n, f0, line, reach=20, need_ink=False):
     """Accroche la bouche au trait trace par l'utilisateur (line : [[x, y], ...] en pixels de l'image f0 de l'orbite) puis la suit d'image en image des deux
     cotes, tant qu'elle se reconnait. Ecrit <dossier>/mouth.json : { w, h, src: {f, line}, frames: [bouche ou null] }.
     Rend le nombre d'images ou la bouche est suivie (0 : rien sous le clic, rien n'est ecrit)."""
@@ -295,7 +295,7 @@ def track(folder, n, f0, line, reach=20):
     load = lambda i: Image.open(folder / ("%03d.webp" % (i % n))).convert("RGBA")
     im = load(f0)
     x, y = (line[0][0] + line[-1][0]) / 2, (line[0][1] + line[-1][1]) / 2
-    first = at(im, x, y, line=line)
+    first = at(im, x, y, line=line, strict=need_ink)     # need_ink : trait reporte d'une autre pose, il faut de l'encre dessous
     if first is None:
         return 0
     frames = [None] * n
@@ -311,5 +311,40 @@ def track(folder, n, f0, line, reach=20):
                 break
             frames[i] = cur
             prev = cur
-    (folder / "mouth.json").write_text(json.dumps(dict(w=im.width, h=im.height, src=dict(f=int(f0), line=[[round(float(p[0]), 1), round(float(p[1]), 1)] for p in line]), frames=frames)), encoding="utf-8")
+    (folder / "mouth.json").write_text(json.dumps(dict(w=im.width, h=im.height, src=dict(f=int(f0), auto=bool(need_ink), line=[[round(float(p[0]), 1), round(float(p[1]), 1)] for p in line]), frames=frames)), encoding="utf-8")
     return sum(1 for f in frames if f)
+
+def carry(src, f0, line, dst, n, f1=None):
+    """Reporte un trait de bouche d'une orbite sur une autre pose du meme personnage : le visage autour du trait (image f0
+    de src) est recherche dans l'image f1 de dst (f0 par defaut), a quelques echelles. Rend (trait reporte, note de 0 a 1)
+    ou None si le visage ne se retrouve pas."""
+    if cv2 is None:
+        return None
+    from pathlib import Path
+    from PIL import Image
+
+    def gray(folder, i):
+        im = np.asarray(Image.open(Path(folder) / ("%03d.webp" % (i % n))).convert("RGBA")).astype(np.float32)
+        a = im[..., 3:4] / 255.0
+        return (im[..., :3] * a + 255 * (1 - a)).mean(axis=2).astype(np.uint8)
+    a, b = gray(src, f0), gray(dst, f0 if f1 is None else f1)
+    xs, ys = [p[0] for p in line], [p[1] for p in line]
+    cx, cy, w = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(12.0, max(xs) - min(xs))
+    x0, x1 = int(max(0, cx - 1.5 * w)), int(min(a.shape[1], cx + 1.5 * w))      # le visage : des yeux au menton
+    y0, y1 = int(max(0, cy - 2.4 * w)), int(min(a.shape[0], cy + 1.0 * w))
+    tpl = a[y0:y1, x0:x1]
+    if tpl.shape[0] < 12 or tpl.shape[1] < 12 or tpl.std() < 8:
+        return None
+    best = None
+    for k in (0.8, 0.87, 0.94, 1.0, 1.07, 1.15, 1.25):
+        t = cv2.resize(tpl, None, fx=k, fy=k, interpolation=cv2.INTER_AREA if k < 1 else cv2.INTER_LINEAR)
+        if t.shape[0] >= b.shape[0] or t.shape[1] >= b.shape[1]:
+            continue
+        r = cv2.matchTemplate(b, t, cv2.TM_CCOEFF_NORMED)
+        _, v, _, loc = cv2.minMaxLoc(r)
+        if best is None or v > best[0]:
+            best = (v, k, loc)
+    if best is None or best[0] < 0.42:
+        return None
+    v, k, (bx, by) = best
+    return [[round(bx + (p[0] - x0) * k, 1), round(by + (p[1] - y0) * k, 1)] for p in line], round(float(v), 3)
