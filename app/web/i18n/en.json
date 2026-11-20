@@ -1273,7 +1273,8 @@
   "Droite": "Line",
   "Retire la bouche suivie de cette pose (pour tous les calques qui l'utilisent)": "Removes the tracked mouth of this pose (for every layer that uses it)",
   "Effacer le tracé": "Erase the trace",
-  "Bouche en trait : de combien la lèvre du bas descend (↕) et la largeur de la bouche ouverte (↔). Une bouche déjà ouverte dans le dessin garde sa forme.": "Line mouth: how far the lower lip drops (↕) and how wide the open mouth is (↔). A mouth already open in the drawing keeps its shape."
+  "Bouche en trait : de combien la lèvre du bas descend (↕) et la largeur de la bouche ouverte (↔). Une bouche déjà ouverte dans le dessin garde sa forme.": "Line mouth: how far the lower lip drops (↕) and how wide the open mouth is (↔). A mouth already open in the drawing keeps its shape.",
+  "Main levée : Ctrl enfoncé trace une droite depuis le dernier point ; Ctrl relâché, on repart à main levée. ": "Freehand: hold Ctrl to draw a straight line from the last point; release Ctrl to go back to freehand. "
  },
  "server": {
   "Parle": "Speaks",

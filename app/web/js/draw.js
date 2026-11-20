@@ -17,8 +17,8 @@ const f1 = (n) => (+n).toFixed(1);
 export const PRIMS = { rect: [tt("Rectangle"), "▭"], rrect: [tt("Rectangle arrondi"), "▢"], ellipse: [tt("Ellipse"), "◯"], tri: [tt("Triangle"), "△"],
                        diamond: [tt("Losange"), "◇"], hexa: [tt("Hexagone"), "⬡"], star: [tt("Étoile"), "☆"], arrow: [tt("Flèche pleine"), "➤"],
                        half: [tt("Demi-cercle"), "◓"], cloud: [tt("Nuage"), "☁"] };
-// traces : ligne, main levee, ou point par point
-export const PATHS = { line: [tt("Ligne"), "╱"], free: [tt("Tracé libre"), "✎"], blob: [tt("Forme libre"), "⬟"], poly: [tt("Forme point par point"), "⬠"],
+// traces : forme libre (l'outil par defaut, en tete), ligne, main levee, ou point par point
+export const PATHS = { blob: [tt("Forme libre"), "⬟"], line: [tt("Ligne"), "╱"], free: [tt("Tracé libre"), "✎"], poly: [tt("Forme point par point"), "⬠"],
                        polyline: [tt("Ligne brisée point par point"), "⌇"] };
 const OPEN = new Set(["line", "free", "polyline"]);       // sans remplissage
 const MANY = new Set(["free", "blob", "poly", "polyline"]);
@@ -183,7 +183,7 @@ export function drawImage(draw, wpx, hpx) {
 export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = tt("Enregistrer le fond"), axis = false, under = null }) {
   const H = W * ratio;
   const shapes = JSON.parse(JSON.stringify((draw && draw.shapes) || []));
-  let tool = "rect", prim = "rect", path = "free", sel = null, drag = null, building = null, hover = null;
+  let tool = "blob", prim = "rect", path = "blob", sel = null, drag = null, building = null, hover = null;
   const cur = Object.assign({}, DEF);
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -356,7 +356,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
         h("button.mini.danger", { on: { click: () => { shapes.splice(shapes.indexOf(t), 1); sel = null; paint(); props(); } } }, tt("Supprimer"))));
     }
     const tip = tool === "poly" || tool === "polyline" ? tt("Clique pour poser chaque point. Double-clic, Entrée ou clic sur le premier point : la forme se termine") + (tool === "poly" ? tt(" et se ferme toute seule.") : ".") + tt(" Échap annule.")
-      : tt("Choisis un outil puis glisse dans le cadre. « Sélection » : clic sur une forme pour la régler, glisser pour la déplacer, carré ⤡ du coin pour l'agrandir, points ronds pour l'étirer, poignée ↻ pour la tourner (Maj : par crans de 15°). Suppr efface.");
+      : (MANY.has(tool) && tool !== "poly" && tool !== "polyline" ? tt("Main levée : Ctrl enfoncé trace une droite depuis le dernier point ; Ctrl relâché, on repart à main levée. ") : "") + tt("Choisis un outil puis glisse dans le cadre. « Sélection » : clic sur une forme pour la régler, glisser pour la déplacer, carré ⤡ du coin pour l'agrandir, points ronds pour l'étirer, poignée ↻ pour la tourner (Maj : par crans de 15°). Suppr efface.");
     side.append(h("p.muted", tip));
   }
   function tools() {
@@ -410,7 +410,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       return;
     }
     const sh = Object.assign({ id: uid(), t: tool, p: [p, p] }, JSON.parse(JSON.stringify(cur)));
-    shapes.push(sh); sel = sh.id; drag = { kind: "new", sh };
+    shapes.push(sh); sel = sh.id; drag = { kind: "new", sh, keep: [], a: null };   // keep : coins des droites (Ctrl), gardes a l'allegement
     paint();
   });
   svg.addEventListener("pointermove", (e) => {
@@ -421,7 +421,17 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const t = target();
     if (!t) return;
     if (drag.kind === "new") {
-      if (MANY.has(t.t)) { const l = t.p[t.p.length - 1]; if (Math.hypot((p[0] - l[0]) * W, (p[1] - l[1]) * H) > 5) t.p.push(p); }
+      if (MANY.has(t.t)) {
+        // main levee ; Ctrl enfonce : droite elastique depuis le dernier point. Chaque bout est double : le lissage
+        // passe alors exactement par lui, la droite reste droite et ses coins nets.
+        if (e.ctrlKey) {
+          if (drag.a == null) { const l = t.p[t.p.length - 1]; t.p.push(l.slice()); drag.a = t.p.length; drag.keep.push(drag.a - 2, drag.a - 1); }
+          t.p.length = drag.a; t.p.push(p, p.slice());
+        } else {
+          if (drag.a != null) { drag.keep.push(drag.a, drag.a + 1); drag.a = null; }
+          const l = t.p[t.p.length - 1]; if (Math.hypot((p[0] - l[0]) * W, (p[1] - l[1]) * H) > 5) t.p.push(p);
+        }
+      }
       else t.p[1] = p;
     } else if (drag.kind === "rot") {
       let a = Math.atan2((p[1] - drag.c[1]) * H, (p[0] - drag.c[0]) * W) * 180 / Math.PI + 90;
@@ -443,7 +453,11 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (!d || d.kind !== "new") return;
     const t = d.sh, a = t.p[0], b = t.p[t.p.length - 1];
     if (t.p.length <= 2 && Math.hypot((b[0] - a[0]) * W, (b[1] - a[1]) * H) < 6) { shapes.splice(shapes.indexOf(t), 1); sel = null; }   // simple clic : rien
-    else if (t.p.length > 40) t.p = Array.from({ length: 40 }, (_, i) => t.p[Math.round(i * (t.p.length - 1) / 39)]);
+    else if (t.p.length > 40) {                           // allege la main levee, sans toucher aux coins des droites
+      if (d.a != null) d.keep.push(d.a, d.a + 1);
+      const ix = new Set([...d.keep.filter((i) => i < t.p.length), ...Array.from({ length: 40 }, (_, i) => Math.round(i * (t.p.length - 1) / 39))]);
+      t.p = [...ix].sort((x, y) => x - y).map((i) => t.p[i]);
+    }
     props(); paint();
   });
   svg.addEventListener("dblclick", (e) => { if (building) { e.preventDefault(); finish(true); } });
