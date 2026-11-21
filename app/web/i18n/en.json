@@ -1,5 +1,10 @@
 {
  "ui": {
+  "Créer une marge": "Create a margin",
+  "En pourcentage de la case, ajouté à gauche, à droite, en haut et en bas": "As a percentage of the panel, added left, right, top and bottom",
+  "Taille de la marge (%)": "Margin size (%)",
+  "Ajoute une marge tout autour de l'image : la zone de dessin grandit du même pourcentage de chaque côté": "Adds a margin all around the image: the drawing area grows by the same percentage on every side",
+  "⬚ Marge": "⬚ Margin",
   "Proportions comparées au dessin d'origine sur le même fond : hauteur de la tête dans le personnage, puis largeur de la tête (100 % = identique ; au-delà de ± 8 %, une pose debout est écartée). La masse du corps (épaules, bras) se juge à l'œil.": "Proportions compared with the original drawing on the same background: height of the head within the character, then width of the head (100 % = identical; beyond ± 8 %, a standing pose is discarded). Body mass (shoulders, arms) is judged by eye.",
   "Pose ramassée : la mesure ne vaut rien, regarde à l'œil.": "Crouched pose: the measure is meaningless, check by eye.",
   "tête {0} · {1}": "head {0} · {1}",

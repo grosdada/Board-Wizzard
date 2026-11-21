@@ -294,9 +294,23 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const extOut = h("span.muted", "");
   const extInfo = () => { extOut.textContent = ext.l + ext.r + ext.t + ext.b > 0 ? tt`${(1 + ext.l + ext.r).toFixed(1)} × ${(1 + ext.t + ext.b).toFixed(1)} cases` : tt("taille de la case"); };
   extInfo();
+  // marge : la zone de dessin grandit du meme pourcentage de la case de tous les cotes (10 % par defaut)
+  let marginPct = 10;
+  const addMargin = () => {
+    const inp = h("input", { type: "number", min: 1, max: 300, step: 1, value: marginPct, style: { width: "80px" } });
+    const m = modal(tt("Créer une marge"), h("div.form", h("label.row", { title: tt("En pourcentage de la case, ajouté à gauche, à droite, en haut et en bas") }, tt("Taille de la marge (%)"), inp)),
+      [{ label: tt("Annuler") }, { label: tt("Créer une marge"), primary: true, click: () => {
+        const v = Math.max(1, Math.min(300, +inp.value || 10)); marginPct = v;
+        for (const k of ["l", "r", "t", "b"]) ext[k] = Math.max(0, Math.min(6, +(ext[k] + v / 100).toFixed(3)));
+        zone(); paint(); extInfo();
+      } }]);
+    setTimeout(() => { inp.focus(); inp.select(); }, 30);
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); m.box.querySelector("footer button.primary").click(); } });
+  };
   const gb = (label, side, title) => h("button.mini", { type: "button", title, on: { click: (e) => grow(side, e.shiftKey ? -0.5 : 0.5) } }, label);
   const extBar = h("div.row.draw-ext", { title: tt("Agrandit la zone de dessin au-delà de la case, pour un long travelling : ce qui est hors du cadre orange n'apparaît que quand la caméra du montage s'y déplace. Maj + clic réduit.") },
     h("span", tt("Zone de dessin ⓘ")), gb("◀＋", "l", tt("Ajouter à gauche (Maj : retirer)")), gb("＋▶", "r", tt("Ajouter à droite (Maj : retirer)")), gb("▲＋", "t", tt("Ajouter en haut (Maj : retirer)")), gb("＋▼", "b", tt("Ajouter en bas (Maj : retirer)")),
+    h("button.mini", { type: "button", title: tt("Ajoute une marge tout autour de l'image : la zone de dessin grandit du même pourcentage de chaque côté"), on: { click: addMargin } }, tt("⬚ Marge")),
     h("button.mini", { type: "button", title: tt("Réduit la zone à la case et aux formes déjà dessinées"), on: { click: fit } }, tt("Recadrer")), extOut);
   const side = h("div.draw-side"), bar = h("div.draw-tools");
   const target = () => (sel ? shapes.find((s) => s.id === sel) : null);
