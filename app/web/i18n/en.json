@@ -1,5 +1,8 @@
 {
  "ui": {
+  "Toutes les poses écartées passent comme si tu cliquais « Repêcher » sur chacune : leurs vues ou leur orbite partent en file.": "All discarded poses go through as if you clicked « Rescue » on each one: their views or turnaround are queued.",
+  "Repêcher les {0} poses écartées ?\nLeurs vues ou leur orbite partent en file, comme avec « Repêcher » sur chacune.": "Rescue the {0} discarded poses?\nTheir views or turnaround are queued, as with « Rescue » on each one.",
+  "↺ Repêcher toutes les écartées ({0})": "↺ Rescue all discarded ({0})",
   "Ressemblance du visage avec le dessin d'origine (1 = identique). Sous 0,85, un dessin au trait est écarté ; pour les autres styles (lavis, couleur), c'est un signalement : regarde le visage.": "Face likeness with the original drawing (1 = identical). Below 0.85, a line drawing is discarded; for other styles (wash, colour), it is only a flag: look at the face.",
   "visage à vérifier ({0})": "face to check ({0})",
   "ex. : long red cape from the shoulders to the calves, gloves, high-heeled boots": "e.g.: long red cape from the shoulders to the calves, gloves, high-heeled boots",

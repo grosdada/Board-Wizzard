@@ -895,7 +895,11 @@ class Handler(BaseHTTPRequestHandler):
         import random
         S = jobs.SCHEDULER
         act, made = d.get("action"), []
-        vids = [k for k, v in it["variants"].items() if (v.get("review") or {}).get("state") == "pending"] if act == "keep_all" else [d.get("variant")]
+        # keep_all : toutes celles qui attendent ; keep_rejected : toutes les ecartees, repechees d'un coup (comme « Repêcher »)
+        want = {"keep_all": "pending", "keep_rejected": "rejected"}.get(act)
+        vids = [k for k, v in it["variants"].items() if (v.get("review") or {}).get("state") == want] if want else [d.get("variant")]
+        if act == "keep_rejected":
+            act = "keep_all"
         for vid in vids:
             v = it["variants"].get(vid)
             if not v or (vid == "base" and act not in ("views_ok", "views_redo", "view_drop")):

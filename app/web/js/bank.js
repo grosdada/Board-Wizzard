@@ -859,6 +859,8 @@ export class Bank {
           waiting.length > 1 ? h("button.mini.primary", { on: { click: () => act(null, "keep_all") } }, tt`✓ Tout garder (${waiting.length})`) : null,
           ok.length ? h("div.revgrid", refCard(), ok.map(card)) : null,
           bad.length ? h("h4", tt("Écartées par le contrôle automatique")) : null,
+          bad.length > 1 ? h("button.mini", { title: tt("Toutes les poses écartées passent comme si tu cliquais « Repêcher » sur chacune : leurs vues ou leur orbite partent en file."),
+            on: { click: () => { if (confirm(tt`Repêcher les ${bad.length} poses écartées ?\nLeurs vues ou leur orbite partent en file, comme avec « Repêcher » sur chacune.`)) act(null, "keep_rejected"); } } }, tt`↺ Repêcher toutes les écartées (${bad.length})`) : null,
           bad.length ? h("p.muted", tt("Leur visage ressemblait moins au dessin d'origine (fidélité sous 0,85), ou leur trait n'avait pas la même épaisseur. Repêche celles qui te vont, ou refais-les.")) : null,
           bad.length ? h("div.revgrid", ok.length ? null : refCard(), bad.map(card)) : null].filter(Boolean));
       }
