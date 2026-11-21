@@ -135,6 +135,11 @@ def pose_prompt_faithful(key, custom=""):
 # sur tout le tour, les vides (bras sur les hanches) restent ouverts, plus de rebouchage ni de halo.
 KEY_WORDS = {"vert": "pure chroma green (#00FF00)", "magenta": "pure magenta (#FF00FF)"}
 _FAITHFUL_NOBG = FAITHFUL.replace("Same plain background. ", "")
+# caricatures : le modele « corrige » volontiers vers un corps normal (tete plus petite, corps plus elance). David, 21/11/2026 :
+# « c'est des caricatures, faut vraiment garder les proportions ».
+PROPORTIONS = ("This is a caricature: its odd proportions are the design. Keep exactly the same head-to-body ratio as in the "
+               "original drawing: the head is just as big compared with the body, the neck just as short or long, the limbs just "
+               "as thin or thick, the torso just as wide. Do not normalise the anatomy, do not make the figure slimmer or taller.")
 NO_CLOTHES = ("The character wears exactly what it wears in the reference and nothing more: add no garment, no underwear, no "
               "shorts, no accessory.")
 
@@ -150,7 +155,7 @@ def apose_prompt(key="vert"):
     return ("Redraw this exact character standing in a neutral A-pose, seen as in the reference: body upright and straight, both "
             "arms straight and held away from the body at about 40 degrees, hands open with fingers apart, legs straight and "
             "slightly apart, feet flat, same expression. No limb touches or overlaps the body or another limb: clear empty gaps "
-            "between each arm and the torso and between the legs. %s %s %s" % (_FAITHFUL_NOBG, NO_CLOTHES, _key_bg(key)))
+            "between each arm and the torso and between the legs. %s %s %s" % (_FAITHFUL_NOBG + " " + PROPORTIONS, NO_CLOTHES, _key_bg(key)))
 
 
 def base_key_prompt(key="vert"):
@@ -169,13 +174,13 @@ def pose_prompt_key(pose, custom="", key="vert"):
     return label, ("The first image is the original drawing of the character: it is the reference for the face, the expression, "
                    "the proportions, the line and the filling. The second image shows the same character in a neutral pose on a "
                    "flat coloured background. Redraw this exact character in a new pose: %s. %s %s %s"
-                   % (desc, _FAITHFUL_NOBG, NO_CLOTHES, _key_bg(key, keep=True)))
+                   % (desc, _FAITHFUL_NOBG + " " + PROPORTIONS, NO_CLOTHES, _key_bg(key, keep=True)))
 
 
 def sheet_prompt_key(view, key="vert"):
     return ("%s Exactly the same pose: the arms, the hands, the legs and whatever the character holds stay exactly where they "
             "are in the reference, nothing else moves. The head and the body keep real volume and thickness seen from this "
-            "angle. %s %s %s" % (dict(SHEET_VIEWS)[view], NO_CLOTHES, _FAITHFUL_NOBG, _key_bg(key, keep=True)))
+            "angle. %s %s %s" % (dict(SHEET_VIEWS)[view], NO_CLOTHES, _FAITHFUL_NOBG + " " + PROPORTIONS, _key_bg(key, keep=True)))
 
 
 def pose_prompt(kind, key, style="photo", custom=""):

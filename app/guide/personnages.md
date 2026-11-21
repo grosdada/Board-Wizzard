@@ -14,6 +14,11 @@ C'est pour des animatiques : il faut que ce soit agréable à regarder, pas exac
 
 1. **Ressemblance** : même tête, même visage, mêmes proportions que le dessin d'origine. Les « défauts » du dessin (tête
    carrée, jambes trop fines, nez énorme, moue) sont voulus : ne jamais les corriger, embellir ni normaliser.
+   **Les proportions font partie de la ressemblance** : ce sont des caricatures. Le modèle « normalise » volontiers (tête
+   plus petite, corps plus élancé, membres moins maigres ou moins épais). Comparer à chaque image la part de la tête dans
+   la hauteur du personnage et sa largeur avec celles du dessin d'origine (`tools/proportions.py`, écart toléré : 8 %) ;
+   pour une pose assise ou ramassée, comparer à l'œil la taille de la tête à celle du torse. Une image « plus filiforme »
+   que le dessin est refusée, même si le visage est ressemblant.
 2. **Même trait** : même outil, même épaisseur, même tremblé. Pas d'encre propre sur un crayon.
 3. **Même remplissage** : un dessin au trait reste au trait (aucun gris, aucun lavis, aucune couleur) ; un dessin au lavis
    garde son lavis, sa texture et ses couleurs (écart de couleur ≤ 3 mesuré contre la base).
