@@ -78,6 +78,13 @@ export class Bank {
         isAudio ? "" : h("button.mini", { title: tt("Paquets de personnages : exporter ce dossier dans un fichier, importer un paquet reçu, ou piocher dans la bibliothèque en ligne"), on: { click: () => this.packDialog() } }, tt("📦 Paquets")), pick),
       grid);
     this.grid = grid;
+    if (!this.hostClick) {                           // multi-selection : un clic ailleurs que sur une vignette ou un bouton decoche tout
+      this.hostClick = (e) => {
+        if (!this.multi || !this.picked || !this.picked.size || e.target.closest(".card, button, input, select, label, a, .pick-acts")) return;
+        this.picked.clear(); this.lastPick = null; this.updatePick();
+      };
+      this.host.addEventListener("click", this.hostClick);
+    }
     this.pickBar = h("div.pick-bar");
     if (!isAudio) this.host.append(this.pickBar);
     this.updatePick();
