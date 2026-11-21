@@ -33,7 +33,7 @@ FRAMES = {"visage": (1000, 1000), "corps": (1000, 2000)}
 BODY = {"silhouette": ("Corps entier", True), "tete": ("Tête", True), "torse": ("Torse et haut", True),
         "bras": ("Bras", True), "mains": ("Mains", True), "jambes": ("Jambes et bas", True),
         "chaussures": ("Chaussures", True), "accessoires": ("Accessoires", False)}
-FULL_FACE = {True, "vert", "visage", "petits"}                      # categories du visage ou le blanc enferme reste opaque
+FULL_FACE = {True, "vert", "visage", "petits", "fond"}                      # categories du visage ou le blanc enferme reste opaque
 _ID = re.compile(r"[a-z0-9-]{1,60}")
 
 
@@ -158,6 +158,8 @@ def _rows(bid, cat):
                 row["place"] = meta["place"]
             if meta.get("pair"):
                 row["pair"] = True
+            if cat in parts.CAPPED:                                 # cheveux, couvre-chef : cachent ce qui depasse au-dessus
+                row["cap"] = parts._cap(cat, f)
             out.append(row)
     return out
 
@@ -320,9 +322,6 @@ def add_head(png_bytes, name=""):
     px, py, pw = meta["place"]
     meta["place"] = [round(ox + px * s, 1), round(oy + py * s, 1), round(pw * s)]
     (d / (pid + ".json")).write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
-    for old in sorted(d.glob("*.png"), key=lambda p: p.stat().st_mtime)[:-60]:     # les 60 dernieres tetes
-        for f in (old, old.with_suffix(".json")):
-            f.unlink(missing_ok=True)
     return next(r for r in _rows(CLAUDE, "tete") if r["id"] == pid)
 
 

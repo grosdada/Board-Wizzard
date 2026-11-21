@@ -815,16 +815,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def _keep_identikit(self, iid, comp):
         """Composition d'un portrait-robot gardee dans son element : les elements transposes (data/parts/_t-*, menage a 30)
-        sont recopies dans data/parts/_keep-<id>/ pour survivre au menage."""
+        sont recopies dans data/parts/_keep-<id>/ pour survivre au menage ; de meme les elements des banques de David
+        (_banks/…) et les tetes du generateur de corps (_tetes/…), qui survivent ainsi a une banque supprimee."""
         if not isinstance(comp, dict) or not isinstance(comp.get("layers"), list):
             raise ApiError("composition du portrait-robot illisible")
         root = store._dir("parts")
         for l in comp["layers"]:
             f = str(l.get("file") or "")
-            if not f.startswith("_t-"):
+            if not f.startswith(("_t-", "_banks/", "_tetes/")):
                 continue
             src = store.safe(root, f)
-            dest = root / ("_keep-" + iid) / ("%s-%s" % (f.split("/")[0][3:], Path(f).name))
+            tag = f.split("/")[0][3:] if f.startswith("_t-") else "-".join(f.split("/")[:-1])
+            dest = root / ("_keep-" + iid) / ("%s-%s" % (tag, Path(f).name))
             if src.is_file():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(src, dest)

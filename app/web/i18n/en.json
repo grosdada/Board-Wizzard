@@ -1453,7 +1453,6 @@
   "Nom de la nouvelle banque :": "Name of the new bank:",
   "Banque « {0} » créée : dessine ses éléments avec ✏ Dessiner… dans chaque catégorie.": "Bank “{0}” created: draw its elements with ✏ Draw… in each category.",
   "Nouveau nom de la banque :": "New name of the bank:",
-  "Supprimer la banque « {0} » ? Elle est mise de côté (data/parts/_retires), pas détruite ; les portraits qui l'utilisent gardent leurs éléments tant qu'elle n'est pas effacée du disque.": "Delete the bank “{0}”? It is set aside (data/parts/_retires), not destroyed; portraits that use it keep their elements as long as it is not erased from the disk.",
   "Éditer ce dessin (ses calques se rouvrent)": "Edit this drawing (its layers reopen)",
   "Dessiner soi-même un élément de cette catégorie, avec calques, pinceaux et images importées : il s'ajoute à la banque ouverte": "Draw an element of this category yourself, with layers, brushes and imported images: it is added to the open bank",
   "Banque encore vide dans cette catégorie : ✏ Dessiner… pour créer le premier élément.": "This bank is still empty in this category: ✏ Draw… to create the first element.",
@@ -1465,7 +1464,8 @@
   "Générateur de corps": "Body generator",
   "Tire un corps au hasard dans la banque ouverte": "Draws a random body from the open bank",
   "Ouvre le générateur de corps avec cette tête : torse, bras, jambes, chaussures… à assembler ou à dessiner": "Opens the body generator with this head: torso, arms, legs, shoes… to assemble or draw",
-  "🧍 Composer un corps…": "🧍 Build a body…"
+  "🧍 Composer un corps…": "🧍 Build a body…",
+  "Supprimer la banque « {0} » ? Elle est mise de côté (data/parts/_retires), pas détruite ; les portraits et corps déjà enregistrés gardent leurs éléments.": "Delete the bank “{0}”? It is set aside (data/parts/_retires), not destroyed; portraits and bodies already saved keep their elements."
  },
  "server": {
   "silhouette introuvable": "silhouette not found",

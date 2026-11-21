@@ -31,6 +31,7 @@ export const BRUSHES = { brush: [tt("Pinceau en pointe"), "🖌"], paint: [tt("P
 const OPEN = new Set(["line", "free", "polyline", "brush", "paint", "erase", "stamp"]);       // sans remplissage
 const MANY = new Set(["free", "blob", "poly", "polyline", "brush", "paint", "erase", "stamp"]);
 const SPECIAL = new Set(["brush", "paint", "erase", "stamp", "img"]);
+const BRUSH_KEYS = ["bsw", "tp", "sv", "pc", "bw", "op", "soft", "ss", "gap", "ink", "iop", "pw"];
 // Remplissage d'une forme : fon (remplie ou non), col (couleur, blanc par defaut), tr (trame posee par-dessus la couleur).
 const TRAMES = { none: tt("Sans trame"), tone: tt("Trame"), grad: tt("Trame en dégradé") };
 /** Remplissage d'une forme, anciennes formes comprises (fill : none | white | black | color | tone | grad). */
@@ -468,7 +469,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       const c = JSON.parse(JSON.stringify(sh));
       c.id = uid(); c.p = c.p.map(([x, y]) => [1 - x, y]);
       if (c.r) c.r = -c.r;
-      if (PRIMS[c.t]) c.mx = !c.mx;                          // une primitive se dessine dans sa boite : on la retourne
+      if (PRIMS[c.t] || c.t === "img") c.mx = !c.mx;                          // une primitive se dessine dans sa boite : on la retourne
       if (c.ga != null) c.ga = (540 - c.ga) % 360;
       if (c.ha != null) c.ha = (180 - c.ha + 180) % 180;
       return c;
@@ -651,6 +652,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (layers && layers[cl].hidden) { layers[cl].hidden = false; layUi(); }
     const sh = Object.assign({ id: uid(), t: tool, p: [p, p] }, JSON.parse(JSON.stringify(cur)));
     if (sh.t !== "stamp") { delete sh.href; delete sh.ar; }
+    if (!SPECIAL.has(sh.t)) for (const k of BRUSH_KEYS) delete sh[k];   // une forme ordinaire (fond de case) ne garde pas les reglages des pinceaux
     if (sh.t === "brush" || sh.t === "stamp") sh.pw = [force(e, 0, cur.sv), force(e, 0, cur.sv)];
     shapes.push(sh); sel = sh.id; drag = { kind: "new", sh, keep: [], a: null, lt: e.timeStamp, lp: p, f: sh.pw ? sh.pw[0] : 1 };   // keep : coins des droites (Ctrl), gardes a l'allegement
     paint();
@@ -712,10 +714,12 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       t.p = keep.map((i) => t.p[i]);
     }
     props(); paint();
+    if (layers) hist.snap();                               // atelier d'elements : chaque trait est une etape d'annulation
   });
   svg.addEventListener("dblclick", (e) => { if (building) { e.preventDefault(); finish(true); } });
   // Ctrl+Z / Ctrl+Y : les 5 dernieres actions
-  const hist = history(() => (layers ? { layers: layers.map((l) => Object.assign({}, l, { shapes: l.shapes.filter((x) => x !== building) })), cl } : shapes.filter((x) => x !== building)),
+  const live = (x) => x !== building && !(drag && drag.kind === "new" && drag.sh === x);   // pas de forme a moitie tracee dans l'historique
+  const hist = history(() => (layers ? { layers: layers.map((l) => Object.assign({}, l, { shapes: l.shapes.filter(live) })), cl } : shapes.filter(live)),
     (st) => { building = null; hover = null; drag = null;
       if (layers) { layers = st.layers; cl = Math.max(0, Math.min(layers.length - 1, st.cl)); shapes = layers[cl].shapes; }
       else shapes.splice(0, shapes.length, ...st);

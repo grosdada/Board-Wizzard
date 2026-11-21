@@ -356,7 +356,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   };
   const removeBank = async () => {
     const b = banks.find((x) => x.id === bank);
-    if (!b || !confirm(tt`Supprimer la banque « ${b.name} » ? Elle est mise de côté (data/parts/_retires), pas détruite ; les portraits qui l'utilisent gardent leurs éléments tant qu'elle n'est pas effacée du disque.`)) return;
+    if (!b || !confirm(tt`Supprimer la banque « ${b.name} » ? Elle est mise de côté (data/parts/_retires), pas détruite ; les portraits et corps déjà enregistrés gardent leurs éléments.`)) return;
     try { await del("parts/banks/" + bank); banks = banks.filter((x) => x.id !== b.id); await switchBank("claude"); } catch (e) { toast(e.message, "error"); }
   };
   const showCat = () => {
