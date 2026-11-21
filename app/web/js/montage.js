@@ -15,6 +15,7 @@ import { swatch } from "./colors.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
+import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
 const CAM0 = { cx: 0.5, cy: 0.5, z: 1, rot: 0, dz: 0 };
@@ -90,8 +91,9 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   const shapesOf = () => (pan.draw && pan.draw.shapes) || [];
   const shapeCache = new Map();
   const shapeSvg = (sh, i) => { const key = i + JSON.stringify(sh, (k, v) => (k === "d" ? undefined : v)); let x = shapeCache.get(key); if (!x) { if (shapeCache.size > 300) shapeCache.clear(); x = drawSvg({ shapes: [sh] }, H, `${pre}d${i}`); shapeCache.set(key, x); } return x; };
-  /** Balisage SVG de la case a l'instant t. sel : calque a encadrer. again : rappele quand des traces finissent de charger. */
-  function markup(t, sel, again) {
+  /** Balisage SVG de la case a l'instant t. sel : calque a encadrer. again : rappele quand des traces finissent de charger.
+   *  px : pixels d'ecran par unite de l'image (taille des poignees). */
+  function markup(t, sel, again, px) {
     const c = camAt(t), dofOn = !!(pan.dof && pan.dof.on), blurs = {};
     // profondeur de champ : plus un plan est loin de la mise au point, plus il est flou
     const dofBlur = (depth) => (dofOn ? c.bl / 1000 * H * Math.abs(depth - c.fo) : 0);
@@ -153,18 +155,12 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
           o += `<g${bl}><g data-mouth="${l.id}" transform="${flip}translate(${f1(box.x + (box.w - mw * msc) / 2)} ${f1(box.y + box.h - mh * msc)}) scale(${f3(msc)})" style="pointer-events:none">${mf ? (cardMarkup(l.lip, mf.lips, mf.all, sp.i, t) ?? traceMarkup(l.lip, mf.m, t, `${pre}lp-${l.id}`, bodyFill(l))) : ""}</g></g>`;
         }
       }
-      if (sel === l.id) {
-        o += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" class="mt-sel"/>`;
-        { // croix au milieu : la glisser deplace l'element (comme dans les cases) ; partout ailleurs sur lui, glisser le fait tourner
-          const k = 2.4 / c.z;
-          o += `<g class="mt-move" data-layer="${l.id}" data-move="1" transform="translate(${f1(box.cx)} ${f1(box.y + box.h / 2)}) scale(${f3(k)})"><circle r="15" data-layer="${l.id}"/><path d="M-9 0H9M0 -9V9M-9 0l3.5 -3.5M-9 0l3.5 3.5M9 0l-3.5 -3.5M9 0l-3.5 3.5M0 -9l-3.5 3.5M0 -9l3.5 3.5M0 9l-3.5 -3.5M0 9l3.5 -3.5"/></g>`;
-        }
-        {                                                  // pastille ↻ au-dessus : la glisser fait pencher l'element (rotation dans le plan, comme une forme dessinee)
-          const k = 2.4 / c.z, r = 15 * k, ry = box.y - r - 4;
-          o += `<line x1="${f1(box.cx)}" y1="${f1(box.y)}" x2="${f1(box.cx)}" y2="${f1(ry + r)}" class="mt-sel"/><g class="mt-rot" data-layer="${l.id}" data-rot="1" transform="translate(${f1(box.cx)} ${f1(ry)}) scale(${f3(k)})"><circle r="15" data-layer="${l.id}" data-rot="1"/><path d="M-7 -3A8 8 0 1 1 -5 6M-7 -3L-11 -8M-7 -3L-1 -4" data-layer="${l.id}"/></g>`;
-        }
-      }
       if (rz) o = o.slice(0, o1) + `<g transform="rotate(${f1(rz)} ${f1(box.cx)} ${f1(box.y + box.h / 2)})">` + o.slice(o1) + "</g>";
+      if (sel === l.id) {                                  // poignees : les memes que dans les cases (handles.js)
+        const u = 1 / ((px || 1 / 2.4) * c.z), hx = W / 2 / c.z, hy = H / 2 / c.z;
+        const vis = c.rot ? null : { x0: c.cx * W - hx, x1: c.cx * W + hx, y0: c.cy * H - hy, y1: c.cy * H + hy };   // le cadre de la camera
+        o += handlesSvg({ box, rz, u, view: vis, bounds: vis, orbit: !!sp.orbit, attrs: ` data-layer="${l.id}"` });
+      }
     };
     // formes du decor et elements, du plus loin au plus pres ; a profondeur egale, les formes passent derriere
     const order = [];
@@ -213,7 +209,7 @@ export function openMontage(app, pid) {
 
   // ------------------------------------------------------------------------------------------ visionneuse
   function paint() {
-    svg.innerHTML = depthView ? topView() : scene.markup(t, playing ? null : sel, paint);
+    svg.innerHTML = depthView ? topView() : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
     if (showMask && !playing) svg.querySelectorAll('[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
   }
 
@@ -393,7 +389,7 @@ export function openMontage(app, pid) {
       }
     }
     keyBar();
-    side.append(h("label.row.check", { title: tt("Dans l'image, sur un élément : glisser = le faire tourner (orbite) ; glisser la croix ✥ au milieu = le déplacer (ou Maj + glisser) ; glisser la pastille ↻ au-dessus = le pencher (Maj : crans de 15°) ; molette = taille ; clic droit = son menu (pose, axe, ordre, ombres…). Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché.") }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), tt("Clé automatique à chaque réglage ⓘ")));
+    side.append(h("label.row.check", { title: tt("Dans l'image, sur un élément : glisser = le déplacer ; glisser l'anneau au centre = le faire tourner (orbite, ou Alt + glisser) ; glisser la flèche du haut = le pencher (Maj : crans de 15°) ; glisser une boule de coin = sa taille ; molette = taille ; clic droit = son menu (pose, axe, ordre, ombres…). Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché.") }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), tt("Clé automatique à chaque réglage ⓘ")));
     syncProps = () => rows.forEach((f) => f());
   }
   // boutons de cle : juste au-dessus de la timeline
@@ -881,16 +877,23 @@ export function openMontage(app, pid) {
     const p = ptOf(e), c = camAt();
     if (e.button === 2) { vdrag = null; paint(); lanes(); props(); return; }       // clic droit : on choisit, le menu s'ouvre (contextmenu)
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
-    if (id && e.target.closest("[data-rot]")) {            // pastille ↻ : rotation dans le plan, autour du centre de l'element
-      const s = stateOf(layerOf(id)), box = svg.querySelector(".mt-move") || svg.querySelector(".mt-sel"), r = box.getBoundingClientRect();
-      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      vdrag = { id, p, s, rot: true, cx, cy, a0: Math.atan2(e.clientY - cy, e.clientX - cx), rz0: s.rz || 0 };
-    } else
-    if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: !depthView && e.button === 0 && !e.shiftKey && !e.target.closest("[data-move]") && nOf(layerOf(id), s.v) > 0, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
+    const hEl = e.target.closest("[data-h]"), hk = hEl ? hEl.dataset.h : "";   // poignees (handles.js) : rot, turn, corner, move
+    if (id && hk === "rot") { const s = stateOf(layerOf(id)); vdrag = { id, p, s, rot: true, rz0: s.rz || 0 }; }      // centre et angle de depart : apres le rendu
+    else if (id && hk === "corner") vdrag = { id, p, s: stateOf(layerOf(id)), corner: +hEl.dataset.c };
+    else if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: !depthView && e.button === 0 && (hk === "turn" || (e.altKey && !hk)) && nOf(layerOf(id), s.v) > 0, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
     else if (shp && depthView) vdrag = { id: sel, shape: shp, p, d: shp.d ?? 1, p0: shp.p.map((q) => q.slice()) };   // carte d'une forme : en profondeur, et de gauche a droite
     else vdrag = { id: "cam", p, c };                      // dans le vide (ou sur une forme du decor, dans l'image) : on deplace le cadre de la camera
     paint(); lanes(); props();
     if (vdrag) vdrag.p = ptOf(e);                          // le panneau de droite vient de changer : l'image a pu bouger a l'ecran
+    const hb = vdrag && (vdrag.rot || vdrag.corner != null) ? svg.querySelector(".lh-box") : null;
+    if (hb && vdrag.rot) {                                  // fleche du haut : rotation dans le plan, autour du centre de l'element
+      const r = hb.getBoundingClientRect(); vdrag.cx = r.left + r.width / 2; vdrag.cy = r.top + r.height / 2;
+      vdrag.a0 = Math.atan2(e.clientY - vdrag.cy, e.clientX - vdrag.cx);
+    } else if (hb) {                                        // boule de coin : le coin oppose reste en place (repere de l'image)
+      const Mi = hb.parentNode.getScreenCTM().inverse(), toS = (ev) => { const q = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(Mi); return [q.x, q.y]; };
+      const bx = { x: +hb.getAttribute("x"), y: +hb.getAttribute("y"), w: +hb.getAttribute("width"), h: +hb.getAttribute("height") }; bx.cx = bx.x + bx.w / 2;
+      Object.assign(vdrag, cornerStart(bx, vdrag.s.rz || 0, vdrag.corner), { toS, start: toS(e), kp: bx.h / (vdrag.s.s * H) || 1, F0: [bx.cx, bx.y + bx.h] });
+    } else if (vdrag && (vdrag.rot || vdrag.corner != null)) vdrag = null;
   });
   svg.addEventListener("pointermove", (e) => {
     if (tdraw) { traceMove(e); return; }
@@ -900,6 +903,11 @@ export function openMontage(app, pid) {
       vdrag.shape.d = f3(clamp(vdrag.d - dy / (DY0 - DY1), 0, 1));
       vdrag.shape.p = vdrag.p0.map(([x, y]) => [+(x + dx).toFixed(4), y]);
       paint(); syncProps(); return;
+    }
+    if (vdrag.corner != null) {                             // taille par un coin ; les pieds suivent pour que le coin oppose ne bouge pas
+      const s1 = clamp(vdrag.s.s * cornerFactor(vdrag, vdrag.toS(e)), 0.03, 40), F = cornerFeet(vdrag, s1 / vdrag.s.s);
+      change(vdrag.id, { s: f3(s1), x: f3(vdrag.s.x + (F[0] - vdrag.F0[0]) / (vdrag.kp * W)), y: f3(vdrag.s.y + (F[1] - vdrag.F0[1]) / (vdrag.kp * H)) });
+      return;
     }
     if (vdrag.rot) {                                        // Maj : par crans de 15 degres
       let rz = vdrag.rz0 + (Math.atan2(e.clientY - vdrag.cy, e.clientX - vdrag.cx) - vdrag.a0) * 180 / Math.PI;

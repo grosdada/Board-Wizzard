@@ -11,6 +11,7 @@ import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
 import { frameToAngle, thinMask, lineWidth } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
+import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const s = (tag, attrs = {}) => {
@@ -20,27 +21,6 @@ const s = (tag, attrs = {}) => {
 };
 const pts = (poly) => poly.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
 const PX_PER_FRAME = 5;                       // glisser de 5 px = une image d'orbite
-
-// ---------------------------------------------------------------- icones des poignees (pixels, centre 0 0)
-// Un arc epais termine par une pointe pleine : la pointe est posee sur la tangente au dernier point de l'arc, sa base
-// centree sur le trait ; l'ensemble (arc, pointe, epaisseur) est recentre dans la pastille.
-const ICO_W = 3, HEAD_L = 6.8, HEAD_W = 4.9;               // epaisseur du trait, longueur et demi-largeur de la pointe
-const f2 = (v) => v.toFixed(2);
-const arcIcon = (pt, t0, t1, n = 40) => {                  // pt(t) : point de la courbe ; de t0 a t1, pointe au bout
-  const P = Array.from({ length: n + 1 }, (_, i) => pt(t0 + (t1 - t0) * i / n));
-  const e = P[n], q = pt(t1 - (t1 - t0) * 1e-3), tl = Math.hypot(e[0] - q[0], e[1] - q[1]) || 1;
-  const ux = (e[0] - q[0]) / tl, uy = (e[1] - q[1]) / tl;  // tangente au bout, dans le sens du trace
-  const H = [[e[0] + ux * HEAD_L, e[1] + uy * HEAD_L], [e[0] - uy * HEAD_W, e[1] + ux * HEAD_W], [e[0] + uy * HEAD_W, e[1] - ux * HEAD_W]];
-  const all = P.concat(H), xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
-  const dx = -(Math.min(...xs) + Math.max(...xs)) / 2, dy = -(Math.min(...ys) + Math.max(...ys)) / 2;   // recentrage
-  const mv = (p) => f2(p[0] + dx) + " " + f2(p[1] + dy);
-  return { arc: P.map((p, i) => (i ? "L" : "M") + mv(p)).join(""), head: "M" + H.map(mv).join("L") + "Z" };
-};
-const DEG = Math.PI / 180;
-// inclinaison : trois quarts de cercle, dans le sens des aiguilles d'une montre
-const ICON_R = arcIcon((t) => [7 * Math.cos(t), 7 * Math.sin(t)], -215 * DEG, 45 * DEG);
-// orbite : un anneau aplati vu en perspective ; il passe derriere par le haut et revient devant, pointe vers la gauche
-const ICON_O = arcIcon((t) => [11.5 * Math.cos(t), 5.6 * Math.sin(t)], 118 * DEG, 412 * DEG);
 
 export class Editor {
   constructor(host, app) {
@@ -111,52 +91,10 @@ export class Editor {
     const hs = this.hs, l = this.app.layer();
     if (!hs || !l) return;
     const { box, sp, g } = hs, bb = g.bbox, u = 1 / (this.scale() || 1);      // u : unites de page par pixel d'ecran
-    const rz = l.rz || 0, ra = rz * Math.PI / 180, ca = Math.cos(ra), sa = Math.sin(ra);
-    const bcx = box.cx, bcy = box.y + box.h / 2;
-    this.rotCenter = { x: bcx, y: bcy };
-    const P = (x, y) => [bcx + x * ca - y * sa, bcy + x * sa + y * ca];       // repere du calque (centre, non penche) -> page
-    const pw = this.pg.page.width, ph = this.pg.page.height, m = 18 * u;
-    const inPage = (p) => p[0] >= m && p[0] <= pw - m && p[1] >= m && p[1] <= ph - m;
-    const keep = (p) => [clamp(p[0], m, pw - m), clamp(p[1], m, ph - m)];   // une poignee hors de la feuille serait coupee
-    // cadre des poignees : la boite, ou sa partie visible dans la case (gros plan non penche), jamais moins de 64 px de cote
-    let x0 = box.x, x1 = box.x + box.w, y0 = box.y, y1 = box.y + box.h;
-    if (!rz) {
-      const vx0 = Math.max(x0, bb.x0), vx1 = Math.min(x1, bb.x1), vy0 = Math.max(y0, bb.y0), vy1 = Math.min(y1, bb.y1);
-      if (vx1 > vx0 && vy1 > vy0) { x0 = vx0; x1 = vx1; y0 = vy0; y1 = vy1; }
-    }
-    const cx = (x0 + x1) / 2 - bcx, cy = (y0 + y1) / 2 - bcy, hw = Math.max((x1 - x0) / 2, 32 * u), hh = Math.max((y1 - y0) / 2, 32 * u);
-    const small = Math.min(x1 - x0, y1 - y0) < 70 * u;  // petit personnage : l'orbite passe sous les pieds, le cadre deplace
-    const gh = s("g", { class: "lh" });
-    if (small) gh.append(s("rect", { x: bcx + cx - hw, y: bcy + cy - hh, width: 2 * hw, height: 2 * hh, class: "lh-move", "data-h": "move", transform: rz ? `rotate(${rz} ${bcx} ${bcy})` : null }));
-    const thin = `stroke-width:${(2 * u).toFixed(3)}px;vector-effect:none`;                // traits fins a tout zoom
-    gh.append(s("rect", { x: box.x, y: box.y, width: box.w, height: box.h, class: "lh-box", transform: rz ? `rotate(${rz} ${bcx} ${bcy})` : null,
-      style: `${thin};stroke-dasharray:${(9 * u).toFixed(2)} ${(6 * u).toFixed(2)}` }));
-    const at = (p, cls, h, extra = {}) => { p = keep(p); return s("g", Object.assign({ class: cls, "data-h": h, transform: `translate(${p[0]} ${p[1]}) scale(${u})` }, extra)); };
-    const foot = P(0, box.h / 2);
-    gh.append(s("circle", { cx: foot[0], cy: foot[1], r: 4 * u, class: "lh-foot", style: `stroke-width:${u.toFixed(3)}px;vector-effect:none` }));
-    // inclinaison : en haut au milieu, au bout d'une tige
-    const top = P(cx, cy - hh), knob = keep(P(cx, cy - hh - 30 * u));
-    gh.append(s("line", { x1: top[0], y1: top[1], x2: knob[0], y2: knob[1], class: "lh-stem", style: thin }));
-    const ro = at(knob, "lh-grip lh-rot", "rot");
-    ro.append(s("circle", { r: 15, "data-h": "rot", class: "lh-disk" }), s("path", { d: ICON_R.arc, class: "lh-ico", "data-h": "rot" }), s("path", { d: ICON_R.head, class: "lh-ico-head", "data-h": "rot" }));
-    gh.append(ro);
-    // taille : une boule par coin (zone de prise plus large que la boule)
-    [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], i) => {
-      const c = at(P(cx + sx * hw, cy + sy * hh), "lh-grip lh-corner" + (sx * sy > 0 ? " nw" : " ne"), "corner", { "data-c": i });
-      c.append(s("circle", { r: 13, class: "lh-hit", "data-h": "corner", "data-c": i }), s("circle", { r: 6.5, class: "lh-ball", "data-h": "corner", "data-c": i }));
-      gh.append(c);
-    });
-    // orbite : au centre (sous les pieds pour un petit personnage, qu'on voie et attrape le dessin), s'il a une orbite
-    if (sp && sp.orbit) {
-      // petit : sous les pieds, sinon a droite, sinon a gauche (la ou ca tient dans la feuille)
-      const spots = [[P(cx, cy + hh), P(cx, cy + hh + 30 * u)], [P(cx + hw, cy), P(cx + hw + 30 * u, cy)], [P(cx - hw, cy), P(cx - hw - 30 * u, cy)]];
-      const pick = small ? spots.find((q) => inPage(q[1])) || spots[0] : null, op = small ? keep(pick[1]) : P(cx, cy);
-      if (small) gh.append(s("line", { x1: pick[0][0], y1: pick[0][1], x2: op[0], y2: op[1], class: "lh-stem", style: thin }));
-      const ob = at(op, "lh-grip lh-orbit", "turn");
-      ob.append(s("circle", { r: 17, "data-h": "turn", class: "lh-disk" }), s("path", { d: ICON_O.arc, class: "lh-ico", "data-h": "turn" }), s("path", { d: ICON_O.head, class: "lh-ico-head", "data-h": "turn" }));
-      gh.append(ob);
-    }
-    svg.append(gh);
+    this.rotCenter = { x: box.cx, y: box.y + box.h / 2 };
+    const gh = s("g");
+    gh.innerHTML = handlesSvg({ box, rz: l.rz || 0, u, view: bb, bounds: { x0: 0, y0: 0, x1: this.pg.page.width, y1: this.pg.page.height }, orbit: !!(sp && sp.orbit) });
+    svg.append(gh.firstChild);
   }
   panelAt(pt) {
     if (!this.geom) return null;
@@ -454,10 +392,7 @@ export class Editor {
       else if (g && l && t.dataset.h === "turn" && sp) { preload(item, l.v); this.drag = { kind: "lturn", l, sx: e.clientX, f: l.f || 0, n: sp.n }; }
       else if (g && l && t.dataset.h === "corner" && sp) {
         // taille par un coin : le coin oppose de la boite reste en place, proportions gardees
-        const box = layerBox(g.bbox, l, sp), i = +t.dataset.c, sx = i === 1 || i === 2 ? 1 : -1, sy = i >= 2 ? 1 : -1;
-        const ra = (l.rz || 0) * Math.PI / 180, C = [box.cx, box.y + box.h / 2], ox = -sx * box.w / 2, oy = -sy * box.h / 2;
-        const A = [C[0] + ox * Math.cos(ra) - oy * Math.sin(ra), C[1] + ox * Math.sin(ra) + oy * Math.cos(ra)];
-        this.drag = { kind: "lscale", corner: true, l, bb: g.bbox, start: pt, A, C, h: box.h, s: l.s };
+        this.drag = Object.assign(cornerStart(layerBox(g.bbox, l, sp), l.rz, +t.dataset.c), { kind: "lscale", corner: true, l, bb: g.bbox, start: [pt.x, pt.y], s: l.s });
       }
       else if (g && l) this.drag = { kind: "lmove", l, bb: g.bbox, start: pt, x: l.x, y: l.y, s: l.s };
       e.preventDefault();
@@ -535,11 +470,9 @@ export class Editor {
       return this.render(true);
     }
     if (d.kind === "lscale" && d.corner) {                // coin : facteur = avancee le long de la diagonale depuis le coin oppose
-      const vx = d.start.x - d.A[0], vy = d.start.y - d.A[1], n2 = vx * vx + vy * vy || 1;
-      const f = ((pt.x - d.A[0]) * vx + (pt.y - d.A[1]) * vy) / n2;
-      d.l.s = clamp(d.s * f, 0.03, 40);
-      const q = d.l.s / d.s, C = [d.A[0] + (d.C[0] - d.A[0]) * q, d.A[1] + (d.C[1] - d.A[1]) * q];
-      d.l.x = (C[0] - d.bb.x0) / d.bb.w; d.l.y = (C[1] + d.h * q / 2 - d.bb.y0) / d.bb.h;      // pieds : sous le centre, avant inclinaison
+      d.l.s = clamp(d.s * cornerFactor(d, [pt.x, pt.y]), 0.03, 40);
+      const F = cornerFeet(d, d.l.s / d.s);
+      d.l.x = (F[0] - d.bb.x0) / d.bb.w; d.l.y = (F[1] - d.bb.y0) / d.bb.h;
       if (this.app.syncLayer) this.app.syncLayer();
       return this.render(true);
     }
