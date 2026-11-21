@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import comfy, settings
+from . import comfy, cost, settings
 
 QUEUE = "https://queue.fal.run/"
 ORBIT_LORA = {"path": "pablodawson/MiniMax-H3-360-Orbit-LoRA", "weight_name": "minimax_h3_flf2v_lora_v1.safetensors",
@@ -79,6 +79,11 @@ class FalProvider:
 
     def run(self, endpoint, payload):
         from .jobs import Cancelled
+        # cout : estime d'apres la table des reglages, verifie contre le plafond du personnage AVANT l'appel, compte apres
+        item = ((self.job or {}).get("params") or {}).get("item")
+        usd = cost.fal_price(endpoint, payload)
+        what = "fal · " + endpoint.strip("/").split("/", 1)[-1]
+        cost.check(item, usd, what)
         sub = _req(QUEUE + endpoint.strip("/"), self.key, payload)
         while True:
             if self.job.get("_cancel"):
@@ -95,6 +100,7 @@ class FalProvider:
             self.job["progress"] = "fal : " + {"IN_QUEUE": "en file", "IN_PROGRESS": "en calcul"}.get(st.get("status"), "…")
             time.sleep(3)
         out = _req(sub["response_url"], self.key)
+        cost.add(item, usd, what)                                  # le calcul a eu lieu : il est facture, image utile ou non
         if isinstance(out, dict) and out.get("detail") and not any(k in out for k in ("images", "image", "video")):
             raise FalError("fal : %s" % json.dumps(out["detail"])[:500])
         return out
@@ -115,6 +121,10 @@ class FalProvider:
             p["image_size"] = {"width": int(w), "height": int(h)}
         if not any(m in endpoint for m in NO_SEED):
             p["seed"] = int(seed) % 2147483647
+        if "gpt-image-2.5" in endpoint:                          # qualite moyenne (≈ 0,02 $ en 1K) au lieu de « high »
+            p["quality"] = self.cfg.get("gpt_quality") or "medium"
+        if "nano-banana" in endpoint:
+            p["resolution"] = "1K"                                 # en 2K le trait sort deux fois plus fin que l'original
         return p
 
     # ---- les quatre gestes

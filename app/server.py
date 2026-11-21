@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import accounts, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
+from . import accounts, brain, cost, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"
 VERSION = "0.1"
@@ -302,6 +302,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "introuvable"}, 404)
         except ApiError as e:
             self.send_json({"error": str(e)}, e.code)
+        except cost.BudgetExceeded as e:                            # plafond du personnage : la fiche demande confirmation
+            self.send_json({"error": str(e), "budget": e.info}, 402)
         except (FileNotFoundError, KeyError) as e:
             self.send_json({"error": "introuvable : %s" % e}, 404)
         except ValueError as e:
@@ -406,6 +408,15 @@ class Handler(BaseHTTPRequestHandler):
                 settings.save(data or {})
                 S.caps.clear()
             return self.send_json(settings.public(self.me["vip"]))
+        if head == "brain" and method == "POST":                   # Reglages › Intelligence › « Tester » (quelques jetons)
+            self._admin()
+            d = dict(data or {})
+            if not d.get("key") or str(d.get("key")).startswith("••"):
+                d.pop("key", None)                                  # cle masquee : celle du poste
+            try:
+                return self.send_json(brain.test({k: v for k, v in d.items() if k in ("provider", "key", "model")}))
+            except brain.BrainError as e:
+                raise ApiError(str(e), 400)
         if head == "workers":
             if self.own_key():                                      # invite non VIP : les machines du poste ne lui sont pas ouvertes
                 return self.send_json([])
@@ -598,7 +609,22 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(retouch.undo(iid, d.get("variant", "base"), redo=bool(d.get("redo"))))
         if act == "undo":                                           # combien de pas a annuler / retablir
             return self.send_json(retouch.undo_state(iid, q.get("variant", "base")))
+        if act == "budget":                                         # cout du personnage ; POST : l'humain releve son plafond
+            if method == "POST":
+                if (self.me or {}).get("role") != "admin" and not self.own_key():   # invite : seulement s'il paie avec sa cle
+                    raise ApiError("réservé à l'administrateur", 403)
+                cost.allow(iid, float(d.get("allow") or 0))
+            return self.send_json(cost.summary(store.load_item(iid)))
+        if act == "estimate":                                       # cout estime d'un lancement, avant de lancer
+            n = int(d.get("count") or 1)
+            one = cost.estimate_job(d.get("kind") or "item_pose", {"item": iid}, opts["target"])
+            return self.send_json({"estimate": round(one * n, 4), "each": round(one, 4), "spent": cost.spent(it),
+                                   "queued": round(S.queued_cost(iid), 4), "cap": cost.cap_for(it)})
         if act == "prepare":
+            n_poses = len(d.get("poses") or []) + len([c for c in d.get("custom") or [] if (c or "").strip()])
+            if n_poses:                                             # le lot entier passe sous le plafond, ou rien ne part
+                S.budget_check("item_pose", {"item": iid}, opts["target"], "%d pose(s)" % n_poses,
+                               extra=cost.estimate_job("item_pose", {"item": iid}, opts["target"]) * (n_poses - 1))
             made = jobs.prepare(iid, orbit=d.get("orbit", True), pose_keys=d.get("poses") or [], target=opts["target"],
                                 fal_key=opts["_fal_key"], prio=2 if d.get("low") else 1, own_key=opts["own_key"],
                                 review=bool(d.get("review")))

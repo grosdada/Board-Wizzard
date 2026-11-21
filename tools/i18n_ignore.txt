@@ -34,3 +34,7 @@ alive-bubbles.js: "Trebuchet MS", "Segoe UI", Arial, Helvetica, sans-serif
 alive-bubbles.js: Impact, "Haettenschweiler", "Arial Black", "Arial Narrow Bold", sans-serif
 alive-bubbles.js:  ed on
 identikit.js: IMAGE
+.card, button, input, select, label, a, .pick-acts
+fal:openai/gpt-image-2.5/flare/edit
+Anthropic (Claude)
+OpenAI (GPT)

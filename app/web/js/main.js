@@ -1071,7 +1071,10 @@ class App {
     const workers = h("textarea", { rows: 4, placeholder: "HITCHCOCK | http://192.168.1.60:8188" }, (s.workers || []).map((w) => `${w.name} | ${w.url}`).join("\n"));
     const qb = f(s.qbuilder_settings, tt("…\\Workflows-Q-Builder\\local_settings.json"));
     const len = h("select", [[73, tt("3 s (73 images)")], [90, "3,75 s"], [107, "4,5 s"], [124, tt("5,2 s (124 images)")]].map(([v, t]) => h("option", { value: v, selected: v === s.render.orbit_length }, t)));
-    const POSE_ENGINES = [["", tt("Comme le reste (Qwen-Image-Edit)")], ["fal:fal-ai/nano-banana-pro/edit", tt("fal · Nano Banana Pro : fidèle au trait et aux couleurs (payant)")]];
+    const POSE_ENGINES = [["", tt("Comme le reste (Qwen-Image-Edit)")],
+      ["fal:openai/gpt-image-2.5/flare/edit", tt("fal · GPT Image 2.5 Flare, qualité moyenne 1K : le moins cher (≈ 0,02 $ l'image)")],
+      ["fal:fal-ai/nano-banana-2/edit", tt("fal · Nano Banana 2, 1K (≈ 0,08 $ l'image)")],
+      ["fal:fal-ai/nano-banana-pro/edit", tt("fal · Nano Banana Pro : fidèle au trait et aux couleurs (≈ 0,15 $ l'image)")]];
     const peNow = s.render.pose_engine || "", pose = h("select", { title: tt("Le modèle qui dessine les poses et la planche de vues (dos, profil). Le détourage et l'orbite restent sur tes machines.") },
       (POSE_ENGINES.some(([k]) => k === peNow) ? POSE_ENGINES : [...POSE_ENGINES, [peNow, peNow.replace(/^fal:/, "fal · ")]]).map(([v, t]) => h("option", { value: v, selected: v === peNow }, t)));
     const tgt = h("select", [["auto", tt("Auto : machines d'abord, fal sinon")], ["local", tt("Machines seulement")], ["fal", tt("fal seulement")]].map(([v, t]) => h("option", { value: v, selected: v === s.render.target }, t)));
@@ -1088,6 +1091,24 @@ class App {
     const help = (which) => h("button.mini.keyhelp", { type: "button", title: tt("Comment obtenir ma clé ?"), on: { click: (e) => { e.preventDefault(); this.keyGuide(which); } } }, "?");
     const fres = h("select", [["480P", tt("480P · le moins cher (≈ 0,31 $ l'orbite de 5 s)")], ["768P", "768P (≈ 0,375 $)"], ["2K", "2K"], ["4K", "4K"]].map(([v, t]) => h("option", { value: v, selected: v === (s.fal.orbit_resolution || "768P") }, t)));
     const fcon = h("input", { type: "number", min: 1, max: 20, step: 1, value: s.fal.concurrency || 3 });
+    // intelligence : la cle reste sur le serveur (le navigateur ne recoit que « •••• » quand il y en a une)
+    const br = s.brain || {}, MODELS = { anthropic: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2"], openai: ["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-terra", "gpt-6-luna"] };
+    const bprov = h("select", [["anthropic", "Anthropic (Claude)"], ["openai", "OpenAI (GPT)"]].map(([v, t]) => h("option", { value: v, selected: v === (br.provider || "anthropic") }, t)));
+    const bkey = secret(br.key, tt("clé d'API (reste sur ce poste)")), bmodel = f(br.model || "claude-opus-5-5"), blist = h("datalist", { id: "bw-brain-models" });
+    bmodel.setAttribute("list", "bw-brain-models");
+    const fillModels = () => { blist.replaceChildren(...MODELS[bprov.value].map((m) => h("option", { value: m }))); };
+    bprov.addEventListener("change", () => { if (!MODELS[bprov.value].includes(bmodel.value)) bmodel.value = MODELS[bprov.value][0]; fillModels(); beffRow.style.display = bprov.value === "anthropic" ? "" : "none"; });
+    fillModels();
+    const beff = h("select", [["low", tt("bas")], ["medium", tt("moyen")], ["high", tt("haut")]].map(([v, t]) => h("option", { value: v, selected: v === (br.effort || "medium") }, t)));
+    const beffRow = h("label.row", { style: { display: (br.provider || "anthropic") === "anthropic" ? "" : "none" } }, tt("Effort de réflexion"), beff);
+    const baudit = h("input", { type: "checkbox", checked: br.audit !== false }), bretry = h("input", { type: "checkbox", checked: br.auto_retry !== false });
+    const bmax = h("input", { type: "number", min: 0, max: 2, step: 1, value: br.max_retries ?? 2 });
+    const bcap = h("input", { type: "number", min: 1, max: 1000, step: 1, value: (s.budget || {}).cap ?? 10 });
+    const btest = h("button.mini", { type: "button", on: { click: async (e) => {
+      e.preventDefault(); btest.disabled = true;
+      try { const r = await post("brain", { provider: bprov.value, model: bmodel.value.trim(), key: bkey.value.trim() }); toast(tt`L'intelligence répond (${bmodel.value.trim()}, ≈ ${r.cout.toFixed(4)} $ l'essai).`); }
+      catch (err) { toast(tt("L'intelligence ne répond pas : ") + err.message, "error", 8000); }
+      finally { btest.disabled = false; } } } }, tt("Tester"));
     const me = (this.info && this.info.me) || { role: "admin", vip: true, password: !!s.server.password }, guest = me.role === "guest";
     const locked = !!s.server.lock_settings || guest;                // un invite ne change que ce qui reste dans son navigateur
     const lib = s.library || {}, lurl = f(lib.url || "", tt("https://…/bibliotheque")), luser = f(lib.user || "", tt("identifiant")), lpw = secret(lib.password, tt("mot de passe de la bibliothèque"));
@@ -1100,6 +1121,12 @@ class App {
       h("label.row", tt("Résolution de l'orbite"), fres), h("label.row", tt("Calculs fal en même temps"), fcon),
       h("label.row", tt("Modèle orbite"), orbit), h("label.row", tt("Modèle édition / Integrate"), edit), h("label.row", tt("Modèle image"), t2i),
       h("p.muted", tt("Sur fal, l'orbite H3 + LoRA dure 5 s au minimum ; « minimax/h3-max/camera-controls » accepte 3 s. Sur fal : image, détourage et orbite essayés ; édition pas encore.")),
+      guest ? null : h("h4", { title: tt("Un modèle de langage regarde chaque image produite (pose, vues, tournette, bouches) à côté du dessin d'origine et donne son verdict : garder, refaire ou écarter. Il suit la méthode de app/guide/personnages.md. Sans clé, tout marche comme avant.") }, tt("Intelligence ⓘ")),
+      ...(guest ? [] : [h("label.row", tt("Fournisseur"), bprov), h("div.row.keyrow", h("span", tt("Clé d'API")), bkey, paste(bkey), btest),
+        h("label.row", tt("Modèle"), bmodel), blist, beffRow,
+        h("label.check", baudit, tt("Juger chaque image après son tirage")),
+        h("label.check", bretry, tt("Sur « refaire », retirer tout seul avec la consigne corrigée")), h("label.row", tt("Reprises par image (au plus)"), bmax),
+        h("label.row", { title: tt("Au-delà, chaque lancement demande confirmation. Le cumul de chaque personnage (fal et intelligence) est dans sa fiche.") }, tt("Plafond par personnage ($)"), bcap)]),
       h("h4", { title: tt("Pour le bouton « Générer une voix » du montage. La clé reste sur ce poste.") }, tt("ElevenLabs (voix) ⓘ")), h("div.row.keyrow", h("span", tt("Clé ElevenLabs")), ekey, paste(ekey)),
       h("div.row.keyrow", h("span", tt("Ma clé (ce navigateur)")), myEkey, paste(myEkey), help("eleven")),
       h("label.row", tt("Modèle de voix"), emodel),
@@ -1123,7 +1150,10 @@ class App {
         await put("settings", { workers: list, qbuilder_settings: qb.value.trim(), render: { orbit_length: +len.value, target: tgt.value, pose_engine: pose.value },
                                 fal: { key: key.value.trim(), orbit_resolution: fres.value, concurrency: Math.max(1, Math.min(20, +fcon.value || 3)), orbit: orbit.value.trim(), edit: edit.value.trim(), t2i: t2i.value.trim() },
                                 elevenlabs: { key: ekey.value.trim(), model: emodel.value.trim() || "eleven_multilingual_v2" },
-                                library: { url: lurl.value.trim(), user: luser.value.trim(), password: lpw.value } });
+                                library: { url: lurl.value.trim(), user: luser.value.trim(), password: lpw.value },
+                                brain: { provider: bprov.value, key: bkey.value.trim(), model: bmodel.value.trim() || "claude-opus-5-5", effort: beff.value,
+                                         audit: baudit.checked, auto_retry: bretry.checked, max_retries: Math.max(0, Math.min(2, +bmax.value || 0)) },
+                                budget: { cap: Math.max(1, +bcap.value || 10) } });
         this.info = await get("info"); toast(tt("Réglages enregistrés.")); this.pollWorkers();
       } }]);
   }

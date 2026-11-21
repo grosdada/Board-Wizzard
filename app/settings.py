@@ -35,6 +35,30 @@ DEFAULTS = {
         "matte_video": "fal-ai/birefnet/v2/video",
     },
     "elevenlabs": {"key": "", "model": "eleven_multilingual_v2"},      # voix de synthese du montage (lip sync)
+    # intelligence (app/brain.py) : regarde chaque image produite a cote du dessin d'origine et rend un verdict.
+    # provider : anthropic | openai ; key : cle d'API du poste (jamais envoyee au navigateur) ; effort : Anthropic seulement.
+    # audit : juger les images apres chaque tirage ; auto_retry : sur « refaire », retirer avec la consigne corrigee
+    # (au plus max_retries fois par image), sinon l'avis est seulement affiche.
+    "brain": {"provider": "anthropic", "key": "", "model": "claude-opus-5-5", "effort": "medium",
+              "audit": True, "auto_retry": True, "max_retries": 2},
+    # budget par personnage (app/cost.py) : plafond en dollars et prix estimes (releves a la main, a revoir).
+    "budget": {
+        "cap": 10,
+        "fal_prices": {                                  # dollars par image ; la cle la plus longue contenue dans le modele
+            "gpt-image-2.5": 0.02, "gpt-image-2": 0.04, "nano-banana-2": 0.08, "nano-banana-pro": 0.15,
+            "nano-banana": 0.04, "qwen-image-edit": 0.03, "flux": 0.03, "seedream": 0.03, "z-image": 0.005,
+            "birefnet": 0.002,
+        },
+        "fal_unknown": 0.15,                             # modele absent de la table : au prix le plus prudent
+        "h3_per_second": {"480P": 0.062, "768P": 0.075, "2K": 0.15, "4K": 0.3},
+        "matte_video": 0.05,
+        "llm_prices": {                                  # dollars par million de jetons : entree, sortie, cache lu, cache ecrit
+            "claude-opus-5-5": [4, 20, 0.2, 5], "claude-sonnet-5-5": [2, 10, 0.1, 2.5],
+            "claude-haiku-5-5": [0.1, 0.5, 0.01, 0.125], "claude-fable-5-2": [8, 40, 0.2, 10],
+            "gpt-6.2-astra": [8, 40, 0.8, 8], "gpt-6.2-sol": [2, 10, 0.2, 2], "gpt-6.1-terra": [1, 5, 0.1, 1],
+            "gpt-6-luna": [0.1, 0.5, 0.01, 0.1],
+        },
+    },
     # bibliotheque en ligne de personnages (dossier de paquets .bwpack servi en HTTPS, voir app/packs.py)
     "library": {"url": "", "user": "", "password": ""},
     # comptes invites : [{id, name, vip, salt, hash, created}] ; geres par l'admin (Reglages > Mon compte), jamais envoyes
@@ -86,6 +110,8 @@ def save(patch, trusted=False):
             patch["fal"].pop("key")
         if (patch.get("elevenlabs") or {}).get("key", "").startswith("••"):
             patch["elevenlabs"].pop("key")
+        if (patch.get("brain") or {}).get("key", "").startswith("••"):
+            patch["brain"].pop("key")
         if (patch.get("server") or {}).get("password", "").startswith("••"):
             patch["server"].pop("password")
         if (patch.get("library") or {}).get("password", "").startswith("••"):
@@ -147,6 +173,8 @@ def public(library=True):
         s["workers"], s["qbuilder_settings"] = [], ""      # ni les machines du poste, ni leurs adresses
     key = s["fal"].get("key") or ""
     s["fal"]["key"] = ("••••" + key[-4:]) if key else ""
+    b = s.setdefault("brain", {})                    # cle de l'intelligence : jamais envoyee, seulement « il y en a une »
+    b["key"] = "••••" if (b.get("key") and library) else ""
     ekey = (s.get("elevenlabs") or {}).get("key") or ""
     s.setdefault("elevenlabs", {})["key"] = ("••••" + ekey[-4:]) if ekey else ""
     if s["server"].get("password"):

@@ -554,3 +554,6 @@ svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http:
 .rev img { height: 200px; }
 .rev.ref { border-color: var(--accent); border-style: dashed; } .rev.ref img { cursor: default; }
 .rev-score.warn { color: #e07a6b; }
+/* depense d'un personnage et estimation avant de lancer */
+.cost.warn, .pose-est.warn { color: #e2603a; font-weight: 600; }
+.pose-est { margin: 4px 0; font-size: 12px; }

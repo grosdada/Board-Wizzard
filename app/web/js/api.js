@@ -12,6 +12,20 @@ export async function api(method, path, body, raw) {
   const r = await fetch("/api/" + path, opt);
   if (r.status === 401) { location.href = "/login"; throw new Error(tt("connexion requise")); }
   const data = await r.json().catch(() => ({}));
+  if (r.status === 402 && data.budget && !api.noBudgetRetry) {   // plafond du personnage : demander avant de relever
+    const b = data.budget, to = Math.ceil((b.spent + b.estimate) * 100) / 100;
+    if (confirm(tt`Plafond du personnage atteint.
+
+Déjà dépensé : ${b.spent.toFixed(2)} $
+Ce lancement (avec ce qui est déjà en file) : ≈ ${b.estimate.toFixed(2)} $
+Plafond : ${b.cap.toFixed(2)} $
+
+Relever le plafond de ce personnage à ${to.toFixed(2)} $ et lancer quand même ?`)) {
+      api.noBudgetRetry = true;
+      try { await api("POST", `bank/${encodeURIComponent(b.item)}/budget`, { allow: to }); return await api(method, path, body, raw); }
+      finally { api.noBudgetRetry = false; }
+    }
+  }
   if (!r.ok) { const err = new Error(tr(data.error) || (tt("erreur ") + r.status)); err.status = r.status; err.data = data; throw err; }
   return data;
 }

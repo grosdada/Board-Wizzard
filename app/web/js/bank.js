@@ -643,6 +643,13 @@ export class Bank {
         await put("bank/" + id, { folder: f }); this.reload();
       });
       head.append(h("label.row", tt("Nom"), nameIn), h("label.row", tt("Dossier"), fold), h("label.row", tt("Rendu"), styleIn));
+      // depense du personnage (fal et intelligence, estimee d'apres les prix des reglages) et son plafond
+      if (item.kind === "character") {
+        const c = item.cost || {}, spentNow = +c.total || 0, cap = Math.max(+((app.info.settings || {}).budget || {}).cap || 10, +c.allow || 0);
+        const lines = (c.lines || []).slice(-12).reverse().map((l) => `${new Date(l.t * 1000).toLocaleString()} · ${l.what} · ${(+l.usd).toFixed(3)} $`).join("\n");
+        head.append(h("label.row", { title: lines ? tt("Dernières dépenses :") + "\n" + lines : tt("Aucune dépense comptée pour ce personnage.") }, tt("Dépense"),
+          h("span.cost" + (spentNow >= cap * 0.8 ? ".warn" : ""), tt`${spentNow.toFixed(2)} $ sur ${cap.toFixed(2)} $ (plafond)`)));
+      }
       }
       // reperes d'axes
       snapBar.textContent = "";
@@ -829,6 +836,18 @@ export class Bank {
         const have = new Set(Object.values(item.variants).map((x) => x.pose));
         const boxes = cat.map((p) => ({ p, el: h("input", { type: "checkbox", "data-pose": p.key, disabled: have.has(p.key), checked: have.has(p.key) }) }));
         const custom = h("input", { type: "text", placeholder: item.kind === "decor" ? tt("Autre ambiance (en anglais de préférence)…") : tt("Autre pose : « leaning on a wall, smoking »…") });
+        // estimation avant de lancer : nombre de poses cochees x prix d'une pose (tous ses tirages, au pire)
+        const est = h("div.muted.pose-est");
+        let estT = 0;
+        const estimate = () => { clearTimeout(estT); estT = setTimeout(async () => {
+          const n = boxes.filter((b) => b.el.checked && !b.el.disabled).length + (custom.value.trim() ? 1 : 0);
+          if (!n) { est.textContent = ""; return; }
+          try { const r = await post(`bank/${id}/estimate`, { kind: "item_pose", count: n, target: target() });
+            est.textContent = r.estimate > 0 ? tt`Coût estimé : ≈ ${r.estimate.toFixed(2)} $ au pire pour ${n} pose(s) · déjà dépensé ${r.spent.toFixed(2)} $${r.queued > 0 ? tt` (+ ${r.queued.toFixed(2)} $ en file)` : ""} · plafond ${r.cap.toFixed(2)} $`
+              : tt`${n} pose(s) : sur tes machines, sans frais fal.`;
+            est.classList.toggle("warn", r.spent + r.queued + r.estimate > r.cap); }
+          catch (err) { est.textContent = ""; } }, 250); };
+        boxes.forEach((b) => b.el.addEventListener("change", estimate)); custom.addEventListener("input", estimate);
         const launch = async (review) => {
           const keys = boxes.filter((b) => b.el.checked && !b.el.disabled).map((b) => b.p.key);
           if (!keys.length && !custom.value.trim()) return toast(tt("Coche au moins une pose."), "error");
@@ -836,10 +855,10 @@ export class Bank {
           toast(tt`${r.jobs.length} tâche(s) lancée(s).`); custom.value = ""; app.pollSoon();
         };
         poseBox.append(h("h4", item.kind === "decor" ? tt("Ambiances à générer") : tt("Poses à générer")),
-          h("div.tiers", [1, 2, 3].map((t) => h("button.mini", { on: { click: () => boxes.forEach((b) => { if (!b.el.disabled) b.el.checked = b.p.tier <= t; }) } },
-            tr(app.info.poses.tiers[t]))), h("button.mini", { on: { click: () => boxes.forEach((b) => { if (!b.el.disabled) b.el.checked = false; }) } }, tt("Rien"))),
+          h("div.tiers", [1, 2, 3].map((t) => h("button.mini", { on: { click: () => { boxes.forEach((b) => { if (!b.el.disabled) b.el.checked = b.p.tier <= t; }); estimate(); } } },
+            tr(app.info.poses.tiers[t]))), h("button.mini", { on: { click: () => { boxes.forEach((b) => { if (!b.el.disabled) b.el.checked = false; }); estimate(); } } }, tt("Rien"))),
           h("div.poselist", boxes.map((b) => h("label.check" + (b.el.disabled ? ".done" : ""), b.el, tr(b.p.label)))),
-          custom,
+          custom, est,
           h("div.row.wrap.pose-go",
             h("button.primary", { title: tt("Les poses sont générées et détourées, puis attendent : tu gardes, refais ou jettes chacune ; seules celles que tu gardes partent en orbite."), on: { click: () => launch(true) } }, tt("Générer les poses (à valider avant l'orbite)")),
             h("button.mini", { title: tt("Seul le contrôle automatique trie les poses ; l'orbite de chaque pose retenue part tout de suite, sans que tu la voies. À éviter : une pose qui ne ressemble pas au personnage coûte une orbite pour rien."), on: { click: () => { if (confirm(tt("Lancer les orbites sans voir les poses ?\nUne pose qui ne ressemble pas au personnage donnera une orbite à jeter."))) launch(false); } } }, tt("Sans vérifier"))));

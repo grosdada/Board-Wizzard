@@ -729,7 +729,8 @@ class Scheduler:
             target = "auto"
         if target == "auto":
             target = settings.load()["render"].get("target", "auto")
-        job = {"id": uuid.uuid4().hex[:10], "kind": kind, "params": params, "title": title, "target": target,
+        est = self.budget_check(kind, params, target, title)
+        job = {"id": uuid.uuid4().hex[:10], "kind": kind, "params": params, "title": title, "target": target, "_est": est,
                "status": "queued", "worker": "", "created": time.time(), "started": 0, "finished": 0, "error": "",
                "progress": "", "attempts": 0, "_fal_key": _fal_key, "own_key": bool(own_key),
                "prio": PRIO.get(kind, 1) if prio is None else int(prio)}
@@ -742,6 +743,24 @@ class Scheduler:
             self._persist()
             self.wake.notify_all()
         return job["id"]
+
+    def queued_cost(self, item_id):
+        """Cout estime des taches de cet element deja en file ou en cours (pas encore toutes comptees)."""
+        with self.lock:
+            return sum(j.get("_est") or 0 for j in self.jobs
+                       if j["status"] in ("queued", "running") and j["params"].get("item") == item_id)
+
+    def budget_check(self, kind, params, target="auto", title="", extra=0.0):
+        """Plafond du personnage : son cumul + ce qui est deja en file + cette tache (+ extra) ne doit pas le depasser.
+        Leve cost.BudgetExceeded ; renvoie le cout estime de la tache."""
+        from . import cost
+        item = (params or {}).get("item")
+        if not item or kind not in CAPS:
+            return 0.0
+        est = cost.estimate_job(kind, params, target)
+        if est > 0 or extra > 0:
+            cost.check(item, est + extra + self.queued_cost(item), title or kind)
+        return est
 
     def pending(self, kind, **match):
         """Une tache identique attend-elle deja ou tourne-t-elle ? (evite les doublons)"""
