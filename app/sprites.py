@@ -317,7 +317,7 @@ def thumb(src, dest, size=320):
     im.save(dest, quality=82)
 
 
-def _ink(path, height=220):
+def _ink(path, height=220, blur=1.2):
     """Image en gris, rognee sur le dessin, ramenee a une hauteur fixe (trait = valeurs hautes)."""
     im = Image.open(path).convert("RGBA")
     bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
@@ -325,15 +325,19 @@ def _ink(path, height=220):
     g = 255 - np.asarray(bg.convert("L"), dtype=np.float32)
     box = _bbox(g > 60)
     g = Image.fromarray(g[box[1]:box[3], box[0]:box[2]].astype(np.uint8))
-    g = g.resize((max(8, round(g.width * height / g.height)), height), Image.BILINEAR).filter(ImageFilter.GaussianBlur(1.2))
+    g = g.resize((max(8, round(g.width * height / g.height)), height), Image.BILINEAR).filter(ImageFilter.GaussianBlur(blur))
     return np.asarray(g, dtype=np.float32)
 
 
 def face_score(original, candidate, head=0.4):
     """Fidelite de la tete d'un dessin apres une pose : meilleure correlation (0 a 1) entre la tete d'origine (le haut
     du dessin) et l'image candidate, en cherchant un peu autour (position, taille). Sert a ecarter les poses qui
-    redessinent le visage."""
-    a = _ink(original)
+    redessinent le visage.
+    Flou de 2,5 px et tete penchee de ±6° toleres (22/11/2026) : avec un flou de 1,2 et sans rotation, un trait a peine
+    retrace ou une tete un peu inclinee faisait tomber la mesure (dessins au lavis : 36 poses sur 54 sous 0,85, toutes
+    fideles a l'oeil ; 16 apres). Controle : le visage d'un AUTRE personnage reste sous 0,85 (108 comparaisons, max 0,82)."""
+    blur = 2.5
+    a = _ink(original, blur=blur)
     top = a[: int(a.shape[0] * head)]
     # le gabarit est la fenetre la plus chargee en trait du haut du dessin : le visage, et non ce qui l'entoure
     # (un bras leve, une pipe et sa fumee), que la pose a le droit de deplacer
@@ -342,10 +346,12 @@ def face_score(original, candidate, head=0.4):
     dens = ii[side:, side:] - ii[:-side, side:] - ii[side:, :-side] + ii[:-side, :-side]
     y, x = np.unravel_index(int(dens.argmax()), dens.shape)
     t0 = top[y:y + side, x:x + side]
+    temps = [t0] + [np.asarray(Image.fromarray(t0.astype(np.uint8)).rotate(r, Image.BILINEAR), dtype=np.float32)[4:-4, 4:-4]
+                    for r in (-6, -3, 3, 6)]
     best = 0.0
-    for scale in (0.8, 0.9, 1.0, 1.1, 1.25):
-        b = _ink(candidate, int(220 * scale))
-        t = t0
+    inks = {sc: _ink(candidate, int(220 * sc), blur=blur) for sc in (0.8, 0.9, 1.0, 1.1, 1.25)}
+    for scale, t in [(sc, tp) for sc in inks for tp in temps]:
+        b = inks[scale]
         if t.shape[0] >= b.shape[0]:
             continue
         if t.shape[1] > b.shape[1]:                                   # le candidat est plus etroit : on borde de blanc

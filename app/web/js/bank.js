@@ -643,6 +643,14 @@ export class Bank {
         await put("bank/" + id, { folder: f }); this.reload();
       });
       head.append(h("label.row", tt("Nom"), nameIn), h("label.row", tt("Dossier"), fold), h("label.row", tt("Rendu"), styleIn));
+      // particularites a garder sur toutes les poses : ajoutees telles quelles a la fin des consignes (poses et vues
+      // sur fond de couleur). En anglais de preference : le modele les lit sans traduction.
+      if (item.kind === "character") {
+        const keepIn = h("input", { type: "text", value: item.keep || "", placeholder: tt("ex. : long red cape from the shoulders to the calves, gloves, high-heeled boots"),
+          on: { change: async (e) => { await put("bank/" + id, { keep: e.target.value }); this.reload(); toast(tt("Gardé pour les prochaines poses et vues.")); } } });
+        head.append(h("label.row", { title: tt("Ce que le personnage garde sur toutes les poses (une cape, des gants, un accessoire…). Le texte est ajouté tel quel à la fin des consignes des poses et des vues sur fond de couleur : écris-le de préférence en anglais, par exemple « long red cape from the shoulders to the calves, gloves, high-heeled boots ». Vaut pour les poses lancées ensuite.") },
+          tt("À garder sur toutes les poses ⓘ"), keepIn));
+      }
       // depense du personnage (fal et intelligence, estimee d'apres les prix des reglages) et son plafond
       if (item.kind === "character") {
         const c = item.cost || {}, spentNow = +c.total || 0, cap = Math.max(+((app.info.settings || {}).budget || {}).cap || 10, +c.allow || 0);
@@ -832,7 +840,7 @@ export class Bank {
           return h("div.rev" + (st === "rejected" ? ".bad" : "") + (k === vid ? ".on" : ""),
             h("img", { src: this.thumb(item, k), loading: "lazy", draggable: false, title: tt("Voir cette pose en grand"), on: { click: () => { vid = k; frame = 0; build(true); } } }),
             h("div.var-name", tr(vv.label)),
-            sc != null ? h("div.rev-score", { title: tt("Ressemblance du visage avec le dessin d'origine (1 = identique ; sous 0,85 la pose est écartée)") }, tt`fidélité ${sc.toFixed(2)}`) : null,
+            sc != null ? h("div.rev-score" + (sc < 0.85 ? ".warn" : ""), { title: tt("Ressemblance du visage avec le dessin d'origine (1 = identique). Sous 0,85, un dessin au trait est écarté ; pour les autres styles (lavis, couleur), c'est un signalement : regarde le visage.") }, sc < 0.85 && item.style !== "dessin" ? tt`visage à vérifier (${sc.toFixed(2)})` : tt`fidélité ${sc.toFixed(2)}`) : null,
             vv.review.line != null ? h("div.rev-score" + (vv.review.line < 0.72 || vv.review.line > 1.45 ? ".warn" : ""), { title: tt("Épaisseur du trait de la pose par rapport au dessin d'origine, à taille égale (1 = le même trait ; sous 0,72 ou au-dessus de 1,45 la pose est écartée)") }, tt`trait × ${vv.review.line.toFixed(2)}`) : null,
             propTag(vv.review.prop),
             auditTag(vv.review.audit),

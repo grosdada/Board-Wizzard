@@ -29,7 +29,7 @@ CHARACTER = [
     ("victoire", "Bras levés", 3, "both arms raised high in victory, joyful face"),
     ("accroupi", "Accroupi", 3, "crouching low, knees bent, one hand touching the ground"),
     ("regarde-haut", "Regarde en l'air", 3, "looking up at the sky, head tilted back, one hand shading the eyes"),
-    ("porte", "Porte quelque chose", 3, "carrying a large invisible box with both arms in front of the body"),
+    ("porte", "Porte quelque chose", 3, "carrying a large plain cardboard box with both arms in front of the body; the box is light brown, clearly drawn with the same line as the character, and never the colour of the background"),
     ("epaules", "Hausse les épaules", 3, "shrugging, shoulders up, both palms up at the sides"),
     ("assis-tete", "Assis, tête dans la main", 3, "sitting on a plain simple stool, elbow on the knee, cheek resting in the hand, bored"),
     ("a-terre", "À terre", 3, "sitting on the ground after a fall, leaning back on both hands, legs stretched"),
@@ -92,7 +92,8 @@ BODY_ONLY = {
     "victoire": "both arms are raised high above the head",
     "accroupi": "the character crouches low, knees bent, one hand touching the ground",
     "regarde-haut": "one hand is raised flat above the eyebrows like a visor",
-    "porte": "both arms carry a large plain box in front of the body",
+    "porte": "both arms carry a large plain cardboard box in front of the body; the box is light brown, clearly drawn with "
+             "the same line as the character, and never the colour of the background",
     "epaules": "the shoulders are shrugged, both palms up at the sides",
     "assis-tete": "the character sits on a plain simple stool, one elbow on the knee",
     "a-terre": "the character sits on the ground, leaning back on both hands, legs stretched out",
@@ -166,7 +167,13 @@ def base_key_prompt(key="vert"):
             "paper) keeps exactly its current colour and stays white where it is white. %s" % _key_bg(key))
 
 
-def pose_prompt_key(pose, custom="", key="vert"):
+def keep_words(keep):
+    """Particularites du personnage a garder sur toutes les poses (champ libre de la fiche, item["keep"])."""
+    k = (keep or "").strip().rstrip(".")
+    return (" The character always keeps: %s." % k) if k else ""
+
+
+def pose_prompt_key(pose, custom="", key="vert", keep=""):
     """Pose d'un personnage sur fond de couleur. Deux references : le dessin d'origine (visage, trait, remplissage) et ce
     meme dessin repose sur le fond de couleur (apose/base.png). Pas la pose en A : mesure le 21/11/2026 sur deux
     caricatures, elle les amaigrit (epaules deux fois moins larges, bras 40 % plus fins) et les poses en heritaient."""
@@ -176,13 +183,14 @@ def pose_prompt_key(pose, custom="", key="vert"):
                    "the proportions, the line and the filling. The second image shows the same character exactly as drawn, on a "
                    "flat coloured background. Redraw this exact character in a new pose: %s. %s %s %s The background of the "
                    "result is the flat coloured background of the SECOND image, never the white paper of the first image."
-                   % (desc, _FAITHFUL_NOBG + " " + PROPORTIONS, NO_CLOTHES, _key_bg(key, keep=True)))
+                   % (desc, _FAITHFUL_NOBG + " " + PROPORTIONS, NO_CLOTHES, _key_bg(key, keep=True))) + keep_words(keep)
 
 
-def sheet_prompt_key(view, key="vert"):
+def sheet_prompt_key(view, key="vert", keep=""):
     return ("%s Exactly the same pose: the arms, the hands, the legs and whatever the character holds stay exactly where they "
             "are in the reference, nothing else moves. The head and the body keep real volume and thickness seen from this "
-            "angle. %s %s %s" % (dict(SHEET_VIEWS)[view], NO_CLOTHES, _FAITHFUL_NOBG + " " + PROPORTIONS, _key_bg(key, keep=True)))
+            "angle. %s %s %s" % (dict(SHEET_VIEWS)[view], NO_CLOTHES, _FAITHFUL_NOBG + " " + PROPORTIONS, _key_bg(key, keep=True))
+            + keep_words(keep))
 
 
 def pose_prompt(kind, key, style="photo", custom=""):

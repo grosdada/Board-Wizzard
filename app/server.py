@@ -574,7 +574,9 @@ class Handler(BaseHTTPRequestHandler):
         iid = seg[0]
         if len(seg) == 1:
             if method == "PUT":
-                keep = {k: v for k, v in (data or {}).items() if k in ("name", "style", "facing", "tags", "folder", "face", "body", "cover", "identikit")}
+                keep = {k: v for k, v in (data or {}).items() if k in ("name", "style", "facing", "tags", "folder", "face", "body", "cover", "identikit", "keep")}
+                if "keep" in keep:                                  # particularites a garder sur toutes les poses (texte libre)
+                    keep["keep"] = str(keep["keep"] or "").strip()[:400]
                 if "identikit" in keep:                             # composition du portrait-robot, pour le rouvrir dans l'atelier
                     keep["identikit"] = self._keep_identikit(iid, keep["identikit"])
                 if keep.get("body"):

@@ -1,5 +1,11 @@
 {
  "ui": {
+  "Ressemblance du visage avec le dessin d'origine (1 = identique). Sous 0,85, un dessin au trait est écarté ; pour les autres styles (lavis, couleur), c'est un signalement : regarde le visage.": "Face likeness with the original drawing (1 = identical). Below 0.85, a line drawing is discarded; for other styles (wash, colour), it is only a flag: look at the face.",
+  "visage à vérifier ({0})": "face to check ({0})",
+  "ex. : long red cape from the shoulders to the calves, gloves, high-heeled boots": "e.g.: long red cape from the shoulders to the calves, gloves, high-heeled boots",
+  "Gardé pour les prochaines poses et vues.": "Kept for the next poses and views.",
+  "Ce que le personnage garde sur toutes les poses (une cape, des gants, un accessoire…). Le texte est ajouté tel quel à la fin des consignes des poses et des vues sur fond de couleur : écris-le de préférence en anglais, par exemple « long red cape from the shoulders to the calves, gloves, high-heeled boots ». Vaut pour les poses lancées ensuite.": "What the character keeps on every pose (a cape, gloves, an accessory…). The text is added as is at the end of the pose and view instructions on the coloured background: write it in English if you can, e.g. « long red cape from the shoulders to the calves, gloves, high-heeled boots ». Applies to poses launched afterwards.",
+  "À garder sur toutes les poses ⓘ": "Keep on every pose ⓘ",
   "Proportions comparées au dessin d'origine sur le même fond : hauteur de la tête dans le personnage, puis largeur de la tête (100 % = identique, ± 8 % toléré). Un simple signalement, mesuré seulement sur les poses debout bras le long du corps ou écartés : il n'écarte jamais une pose. La masse du corps (épaules, bras) se juge à l'œil.": "Proportions compared with the original drawing on the same background: height of the head within the character, then width of the head (100 % = identical, ± 8 % tolerated). Only a flag, measured only on standing poses with arms down or apart: it never discards a pose. Body mass (shoulders, arms) is judged by eye.",
   "proportions à vérifier (tête {0} · {1})": "proportions to check (head {0} · {1})",
   "sur fond magenta": "on magenta background",
@@ -1220,7 +1226,6 @@
   "{0} orbite(s) en file.": "{0} orbit(s) queued.",
   "Jeter la pose « {0} » ?": "Discard the pose « {0} »?",
   "Voir cette pose en grand": "Show this pose large",
-  "Ressemblance du visage avec le dessin d'origine (1 = identique ; sous 0,85 la pose est écartée)": "How close the face is to the original drawing (1 = identical; below 0.85 the pose is discarded)",
   "fidélité {0}": "fidelity {0}",
   "⏳ en calcul": "⏳ computing",
   "La nouvelle génération n'a pas abouti.": "The new generation did not succeed.",

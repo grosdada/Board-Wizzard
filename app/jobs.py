@@ -335,7 +335,7 @@ def run_item_views(job, prov):
         tmp = _tmp()
         try:
             rel = "v/%s/sheet/%s.png" % (vid, view)
-            prompt = poses.sheet_prompt_key(view, key)
+            prompt = poses.sheet_prompt_key(view, key, it.get("keep", ""))
             sprites.normalize(_key_edit(job, eprov, [d / v["keyimg"]], prompt, _seed(job) + 31 + k, tmp, key, "vue %s" % view), d / rel)
 
             def redraw(consigne, n, view=view, k=k, prompt=prompt, tmp=tmp):
@@ -497,7 +497,7 @@ def _pose_key(job, it, d, eprov, model, validate):
     le dessin d'origine, sur la pose reposee sur papier blanc."""
     p = job["params"]
     key = it["key"]
-    label, prompt = poses.pose_prompt_key(p.get("pose", ""), p.get("custom", ""), key)
+    label, prompt = poses.pose_prompt_key(p.get("pose", ""), p.get("custom", ""), key, it.get("keep", ""))
     base = d / it["variants"]["base"]["ref"]
     ap = it["apose"]                                             # 2e reference : le dessin repose sur le fond de couleur (la
     refs = [base, d / (ap.get("base") or ap["img"])]             # pose en A amaigrit les caricatures, elle n'est qu'un controle
@@ -527,7 +527,9 @@ def _pose_key(job, it, d, eprov, model, validate):
         except Exception:                                          # noqa: BLE001 : sans OpenCV, seul le visage est controle
             ratio = 1.0
         prop_of(c)
-        return (sc, c, (sc is None or sc >= DRAW_MIN) and _line_ok(ratio, p.get("pose", "")), ratio)
+        # le visage n'ecarte qu'un dessin au trait (style « dessin », ou la mesure a ete reglee) ; pour les autres styles
+        # (lavis, couleur), elle reste peu fiable meme corrigee : un simple signalement, la pose attend David
+        return (sc, c, (sc is None or sc >= DRAW_MIN or not drawing) and _line_ok(ratio, p.get("pose", "")), ratio)
     tmp = _tmp()
     try:
         for k in range(DRAW_TRIES if drawing else 1):
