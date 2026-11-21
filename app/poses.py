@@ -33,6 +33,9 @@ CHARACTER = [
     ("epaules", "Hausse les épaules", 3, "shrugging, shoulders up, both palms up at the sides"),
     ("assis-tete", "Assis, tête dans la main", 3, "sitting on a plain simple stool, elbow on the knee, cheek resting in the hand, bored"),
     ("a-terre", "À terre", 3, "sitting on the ground after a fall, leaning back on both hands, legs stretched"),
+    ("braque", "Braque avec un revolver", 3, "aiming a revolver straight ahead at arm's length: one arm fully extended forward, "
+     "the hand holding a simple revolver pointed straight in front, the other arm down at the side, legs slightly apart, body "
+     "tense, eyes on the target"),
 ]
 
 DECOR = [
@@ -93,6 +96,7 @@ BODY_ONLY = {
     "epaules": "the shoulders are shrugged, both palms up at the sides",
     "assis-tete": "the character sits on a plain simple stool, one elbow on the knee",
     "a-terre": "the character sits on the ground, leaning back on both hands, legs stretched out",
+    "braque": "one arm is stretched straight forward and its hand holds a simple revolver aimed straight ahead, the other arm hangs at the side",
 }
 
 
