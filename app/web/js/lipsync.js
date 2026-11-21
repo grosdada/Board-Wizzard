@@ -226,7 +226,7 @@ export function cardMarkup(lip, lips, frames, i, t) {
   const m = frames[i], n = frames.length;
   if (!m || !m.up) return null;
   let key = null, far = 1e9;
-  for (const k of lips.keys) { if (!frames[k.f] || !frames[k.f].up) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (d < far) { far = d; key = k; } }
+  for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (d < far) { far = d; key = k; } }
   if (!key || far > LIPS_REACH) return null;
   if (!speakingAt(lip, t)) return "";
   const shape = cueAt(lip, t);
@@ -234,11 +234,14 @@ export function cardMarkup(lip, lips, frames, i, t) {
   const file = key.cards[CARD_OF[shape] || "A"] || key.cards.A || Object.values(key.cards)[0];
   if (!file) return null;
   const ends = (q) => [q.up[0], q.up[q.up.length - 1]], mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  const [a0, b0] = ends(frames[key.f]), [a1, b1] = ends(m), c0 = mid(a0, b0), c1 = mid(a1, b1);
+  // carte reportee d'une autre orbite (tools/levres_report.py) : sa bouche d'origine est dans la cle (up0), et elle est
+  // toujours recalee, a la meme echelle dans les deux sens (la tete n'a pas forcement la meme taille dans l'autre orbite)
+  const moved = !!key.up0;
+  const [a0, b0] = moved ? key.up0 : ends(frames[key.f]), [a1, b1] = ends(m), c0 = mid(a0, b0), c1 = mid(a1, b1);
   const w0 = Math.hypot(b0[0] - a0[0], b0[1] - a0[1]) || 1, w1 = Math.hypot(b1[0] - a1[0], b1[1] - a1[1]) || 1;
-  const sx = far ? Math.max(0.6, Math.min(1.4, w1 / w0)) : 1;
-  const rot = far ? Math.max(-20, Math.min(20, (Math.atan2(b1[1] - a1[1], b1[0] - a1[0]) - Math.atan2(b0[1] - a0[1], b0[0] - a0[0])) * 180 / Math.PI)) : 0;
-  const tf = far ? ` transform="translate(${c1[0].toFixed(2)} ${c1[1].toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(3)} 1) translate(${(-c0[0]).toFixed(2)} ${(-c0[1]).toFixed(2)})"` : "";
+  const sx = moved ? Math.max(0.5, Math.min(2, w1 / w0)) : far ? Math.max(0.6, Math.min(1.4, w1 / w0)) : 1;
+  const rot = far || moved ? Math.max(-20, Math.min(20, (Math.atan2(b1[1] - a1[1], b1[0] - a1[0]) - Math.atan2(b0[1] - a0[1], b0[0] - a0[0])) * 180 / Math.PI)) : 0;
+  const tf = far || moved ? ` transform="translate(${c1[0].toFixed(2)} ${c1[1].toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(3)} ${moved ? sx.toFixed(3) : 1}) translate(${(-c0[0]).toFixed(2)} ${(-c0[1]).toFixed(2)})"` : "";
   return `<image href="${lips.base}/${file}?v=${lips.v}" x="${key.x}" y="${key.y}" width="${key.s}" height="${key.s}" preserveAspectRatio="none"${tf}/>`;
 }
 
