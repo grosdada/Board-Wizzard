@@ -521,7 +521,7 @@
   "Imprimer ou enregistrer la page en PDF": "Print or save the page as PDF",
   "Imprimer": "Print",
   "Réglages": "Settings",
-  "Glisser un personnage : le faire tourner · ✥ ou Alt+glisser : déplacer · coin : taille · clic droit : pose, axe, ordre": "Drag a character: turn it · ✥ or Alt+drag: move · corner: size · right-click: pose, angle, order",
+  "Glisser un personnage : le déplacer · anneau au centre (ou Alt+glisser) : orbite · flèche du haut : pencher · boules des coins : taille · clic droit : pose, axe, ordre": "Drag a character: move it \u00b7 ring in the middle (or Alt+drag): orbit \u00b7 top arrow: tilt \u00b7 corner balls: size \u00b7 right-click: pose, angle, order",
   "Page": "Page",
   "Ajouter une page (même découpage)": "Add a page (same layout)",
   "Supprimer cette page": "Delete this page",

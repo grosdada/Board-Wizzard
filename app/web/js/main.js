@@ -87,7 +87,7 @@ class App {
       h("button.icon", { title: tt("Réglages"), on: { click: () => this.settingsDialog() } }, "⚙"));
     document.getElementById("app").append(top, h("div.work", el.left, el.center, h("aside.right", el.bank, el.insp)), el.drawer);
     this.editor = new Editor(el.center, this);
-    el.center.append(h("div.hint", tt("Glisser un personnage : le faire tourner · ✥ ou Alt+glisser : déplacer · coin : taille · clic droit : pose, axe, ordre")));
+    el.center.append(h("div.hint", tt("Glisser un personnage : le déplacer · anneau au centre (ou Alt+glisser) : orbite · flèche du haut : pencher · boules des coins : taille · clic droit : pose, axe, ordre")));
   }
 
   // ---------------------------------------------------------------- storyboard

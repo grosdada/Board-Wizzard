@@ -1,5 +1,6 @@
 // Editeur de page : SVG (fonds, calques de la banque, traits) + calque HTML (numeros, bulles).
-// Gestes : glisser un personnage = le faire tourner (orbite) ; poignee ✥ ou Alt+glisser = le deplacer ; coin = taille ;
+// Gestes : glisser un personnage = le deplacer ; poignee d'orbite au centre (ou Alt+glisser) = le faire tourner ;
+// poignee du haut = le pencher ; boules des coins = taille ;
 // clic droit = pose, axe, ordre. Glisser un fond en orbite = tourner le decor (Maj : recadrer). Base : Alive-Comics.
 import { tt, tr } from "./i18n.js";
 import { compute, nodeAt, area } from "./geometry.js";
@@ -19,6 +20,26 @@ const s = (tag, attrs = {}) => {
 };
 const pts = (poly) => poly.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
 const PX_PER_FRAME = 5;                       // glisser de 5 px = une image d'orbite
+
+// ---------------------------------------------------------------- icones des poignees (pixels, centre 0 0)
+const f2 = (v) => v.toFixed(2);
+const tri = (x, y, dx, dy, L = 6.2, W = 4.4) => {          // pointe pleine au bout (x, y), dans la direction (dx, dy)
+  const n = Math.hypot(dx, dy) || 1, ux = dx / n, uy = dy / n;
+  return `M${f2(x + ux * L * 0.55)} ${f2(y + uy * L * 0.55)}L${f2(x - ux * L * 0.45 - uy * W)} ${f2(y - uy * L * 0.45 + ux * W)}L${f2(x - ux * L * 0.45 + uy * W)} ${f2(y - uy * L * 0.45 - ux * W)}Z`;
+};
+// orbite : un anneau en perspective (ellipse un peu penchee) autour d'un axe, deux fleches qui se suivent
+const ORX = 11.5, ORY = 4.6, OTILT = -10 * Math.PI / 180;
+const oPt = (t) => { const x = ORX * Math.cos(t), y = ORY * Math.sin(t); return [x * Math.cos(OTILT) - y * Math.sin(OTILT), x * Math.sin(OTILT) + y * Math.cos(OTILT)]; };
+const oTan = (t) => { const x = -ORX * Math.sin(t), y = ORY * Math.cos(t); return [x * Math.cos(OTILT) - y * Math.sin(OTILT), x * Math.sin(OTILT) + y * Math.cos(OTILT)]; };
+const oArc = (t0, t1) => { let d = ""; for (let i = 0; i <= 16; i++) { const p = oPt(t0 + (t1 - t0) * i / 16); d += (i ? "L" : "M") + f2(p[0]) + " " + f2(p[1]); } return d; };
+const DEG = Math.PI / 180;
+const ICON_ORBIT = oArc(18 * DEG, 150 * DEG);              // devant (bas de l'anneau), vers la gauche
+const ICON_ORBIT_BACK = oArc(198 * DEG, 330 * DEG);        // derriere (haut de l'anneau), vers la droite
+const ICON_ORBIT_HEADS = tri(...oPt(150 * DEG), ...oTan(150 * DEG), 5.4, 3.7) + tri(...oPt(330 * DEG), ...oTan(330 * DEG), 5.4, 3.7);
+const ICON_ORBIT_AXIS = "M0 -11.5V-3.2M0 3.6V11.5";
+// inclinaison : un arc de cercle aux trois quarts, pointe pleine
+const ICON_ROT = (() => { let d = ""; for (let i = 0; i <= 18; i++) { const t = (-200 + 250 * i / 18) * DEG; d += (i ? "L" : "M") + f2(7.2 * Math.cos(t)) + " " + f2(7.2 * Math.sin(t)); } return d; })();
+const ICON_ROT_HEAD = (() => { const t = 50 * DEG; return tri(7.2 * Math.cos(t), 7.2 * Math.sin(t), -Math.sin(t), Math.cos(t), 6.6, 4.6); })();
 
 export class Editor {
   constructor(host, app) {
@@ -74,11 +95,68 @@ export class Editor {
     w.style.transform = ""; w.style.transformOrigin = "0 0";
     this.back.style.display = g ? "" : "none";
     this.host.classList.toggle("focused", !!g);
-    if (!g) { this.focusId = null; return; }
+    if (!g) { this.focusId = null; this.drawHandles(); return; }
     const wr = w.getBoundingClientRect(), cr = this.host.getBoundingClientRect(), s0 = wr.width / this.pg.page.width;
     const k = Math.min((cr.width - 28) / (g.bbox.w * s0), (cr.height - 44) / (g.bbox.h * s0));
     const tx = cr.left + cr.width / 2 - (wr.left + (g.bbox.x0 + g.bbox.w / 2) * s0 * k), ty = cr.top + (cr.height - 16) / 2 - (wr.top + (g.bbox.y0 + g.bbox.h / 2) * s0 * k);
     w.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${k.toFixed(4)})`;
+    this.drawHandles();
+  }
+  /** Poignees du calque choisi, a taille fixe a l'ecran quel que soit le cadrage : orbite au centre, inclinaison en haut,
+   *  une boule par coin pour la taille. Elles suivent l'inclinaison ; sur un petit personnage, elles s'ecartent de la boite. */
+  drawHandles() {
+    const svg = this.svg;
+    svg.querySelectorAll(":scope > g.lh").forEach((x) => { if (!x.classList.contains("mh")) x.remove(); });
+    const hs = this.hs, l = this.app.layer();
+    if (!hs || !l) return;
+    const { box, sp, g } = hs, bb = g.bbox, u = 1 / (this.scale() || 1);      // u : unites de page par pixel d'ecran
+    const rz = l.rz || 0, ra = rz * Math.PI / 180, ca = Math.cos(ra), sa = Math.sin(ra);
+    const bcx = box.cx, bcy = box.y + box.h / 2;
+    this.rotCenter = { x: bcx, y: bcy };
+    const P = (x, y) => [bcx + x * ca - y * sa, bcy + x * sa + y * ca];       // repere du calque (centre, non penche) -> page
+    const pw = this.pg.page.width, ph = this.pg.page.height, m = 18 * u;
+    const inPage = (p) => p[0] >= m && p[0] <= pw - m && p[1] >= m && p[1] <= ph - m;
+    const keep = (p) => [clamp(p[0], m, pw - m), clamp(p[1], m, ph - m)];   // une poignee hors de la feuille serait coupee
+    // cadre des poignees : la boite, ou sa partie visible dans la case (gros plan non penche), jamais moins de 64 px de cote
+    let x0 = box.x, x1 = box.x + box.w, y0 = box.y, y1 = box.y + box.h;
+    if (!rz) {
+      const vx0 = Math.max(x0, bb.x0), vx1 = Math.min(x1, bb.x1), vy0 = Math.max(y0, bb.y0), vy1 = Math.min(y1, bb.y1);
+      if (vx1 > vx0 && vy1 > vy0) { x0 = vx0; x1 = vx1; y0 = vy0; y1 = vy1; }
+    }
+    const cx = (x0 + x1) / 2 - bcx, cy = (y0 + y1) / 2 - bcy, hw = Math.max((x1 - x0) / 2, 32 * u), hh = Math.max((y1 - y0) / 2, 32 * u);
+    const small = Math.min(x1 - x0, y1 - y0) < 70 * u;  // petit personnage : l'orbite passe sous les pieds, le cadre deplace
+    const gh = s("g", { class: "lh" });
+    if (small) gh.append(s("rect", { x: bcx + cx - hw, y: bcy + cy - hh, width: 2 * hw, height: 2 * hh, class: "lh-move", "data-h": "move", transform: rz ? `rotate(${rz} ${bcx} ${bcy})` : null }));
+    const thin = `stroke-width:${(2 * u).toFixed(3)}px;vector-effect:none`;                // traits fins a tout zoom
+    gh.append(s("rect", { x: box.x, y: box.y, width: box.w, height: box.h, class: "lh-box", transform: rz ? `rotate(${rz} ${bcx} ${bcy})` : null,
+      style: `${thin};stroke-dasharray:${(9 * u).toFixed(2)} ${(6 * u).toFixed(2)}` }));
+    const at = (p, cls, h, extra = {}) => { p = keep(p); return s("g", Object.assign({ class: cls, "data-h": h, transform: `translate(${p[0]} ${p[1]}) scale(${u})` }, extra)); };
+    const foot = P(0, box.h / 2);
+    gh.append(s("circle", { cx: foot[0], cy: foot[1], r: 4 * u, class: "lh-foot", style: `stroke-width:${u.toFixed(3)}px;vector-effect:none` }));
+    // inclinaison : en haut au milieu, au bout d'une tige
+    const top = P(cx, cy - hh), knob = keep(P(cx, cy - hh - 30 * u));
+    gh.append(s("line", { x1: top[0], y1: top[1], x2: knob[0], y2: knob[1], class: "lh-stem", style: thin }));
+    const ro = at(knob, "lh-grip lh-rot", "rot");
+    ro.append(s("circle", { r: 15, "data-h": "rot", class: "lh-disk" }), s("path", { d: ICON_ROT, class: "lh-ico", "data-h": "rot" }), s("path", { d: ICON_ROT_HEAD, class: "lh-ico-head", "data-h": "rot" }));
+    gh.append(ro);
+    // taille : une boule par coin (zone de prise plus large que la boule)
+    [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], i) => {
+      const c = at(P(cx + sx * hw, cy + sy * hh), "lh-grip lh-corner" + (sx * sy > 0 ? " nw" : " ne"), "corner", { "data-c": i });
+      c.append(s("circle", { r: 13, class: "lh-hit", "data-h": "corner", "data-c": i }), s("circle", { r: 6.5, class: "lh-ball", "data-h": "corner", "data-c": i }));
+      gh.append(c);
+    });
+    // orbite : au centre (sous les pieds pour un petit personnage, qu'on voie et attrape le dessin), s'il a une orbite
+    if (sp && sp.orbit) {
+      // petit : sous les pieds, sinon a droite, sinon a gauche (la ou ca tient dans la feuille)
+      const spots = [[P(cx, cy + hh), P(cx, cy + hh + 30 * u)], [P(cx + hw, cy), P(cx + hw + 30 * u, cy)], [P(cx - hw, cy), P(cx - hw - 30 * u, cy)]];
+      const pick = small ? spots.find((q) => inPage(q[1])) || spots[0] : null, op = small ? keep(pick[1]) : P(cx, cy);
+      if (small) gh.append(s("line", { x1: pick[0][0], y1: pick[0][1], x2: op[0], y2: op[1], class: "lh-stem", style: thin }));
+      const ob = at(op, "lh-grip lh-orbit", "turn");
+      ob.append(s("circle", { r: 18, "data-h": "turn", class: "lh-disk" }), s("path", { d: ICON_ORBIT_BACK, class: "lh-ico lh-ico-back", "data-h": "turn" }),
+        s("path", { d: ICON_ORBIT_AXIS, class: "lh-ico lh-ico-axis", "data-h": "turn" }), s("path", { d: ICON_ORBIT, class: "lh-ico", "data-h": "turn" }), s("path", { d: ICON_ORBIT_HEADS, class: "lh-ico-head", "data-h": "turn" }));
+      gh.append(ob);
+    }
+    svg.append(gh);
   }
   panelAt(pt) {
     if (!this.geom) return null;
@@ -246,31 +324,7 @@ export class Editor {
       gl.append(s("circle", { cx: E1[0], cy: E1[1], r: 8 * k, class: "cut-end", "data-cut": i, "data-mode": "end1" }));
       svg.append(gl);
     });
-    if (handles) {                                         // cadre du calque choisi : ✥ deplace, coin = taille
-      const { box } = handles, r = 13 * k, bb = handles.g.bbox;
-      // poignees toujours atteignables : placees sur la partie du calque visible dans la case (gros plans compris)
-      const vx0 = Math.max(box.x, bb.x0), vx1 = Math.min(box.x + box.w, bb.x1), vy0 = Math.max(box.y, bb.y0), vy1 = Math.min(box.y + box.h, bb.y1);
-      const seen = vx1 > vx0 && vy1 > vy0;
-      const mcx = seen ? (vx0 + vx1) / 2 : clamp(box.cx, bb.x0 + r, bb.x1 - r), mcy = seen ? (vy0 + vy1) / 2 : clamp(box.y + box.h / 2, bb.y0 + r, bb.y1 - r);
-      const scx = seen ? Math.max(vx1 - r, mcx + r * 2.4) : mcx + r * 2.4, scy = seen ? Math.min(vy0 + r, mcy - r * 2.4) : mcy - r * 2.4;
-      const gh = s("g", { class: "lh" });
-      const lsel = app.layer(), rz = (lsel && lsel.rz) || 0, bcx = box.cx, bcy = box.y + box.h / 2;
-      this.rotCenter = { x: bcx, y: bcy };
-      gh.append(s("rect", { x: box.x, y: box.y, width: box.w, height: box.h, class: "lh-box", transform: rz ? `rotate(${rz} ${bcx} ${bcy})` : null }));
-      gh.append(s("circle", { cx: box.cx, cy: box.y1, r: r * 0.5, class: "lh-foot" }));
-      const mv = s("g", { class: "lh-grip", "data-h": "move", transform: `translate(${mcx} ${mcy})` });
-      mv.append(s("circle", { r, "data-h": "move" }));
-      mv.append(s("path", { d: `M ${-r * .6} 0 H ${r * .6} M 0 ${-r * .6} V ${r * .6}`, "data-h": "move" }));
-      const sc = s("g", { class: "lh-grip", "data-h": "scale", transform: `translate(${scx} ${scy})` });
-      sc.append(s("rect", { x: -r * .8, y: -r * .8, width: r * 1.6, height: r * 1.6, rx: r * .3, "data-h": "scale" }));
-      // ↻ : inclinaison (rotation dans le plan, autour du centre) ; a gauche de la croix, comme la taille est a droite
-      const rcx = seen ? Math.min(vx0 + r, mcx - r * 2.4) : mcx - r * 2.4;
-      const ro = s("g", { class: "lh-grip", "data-h": "rot", transform: `translate(${rcx} ${scy})` });
-      ro.append(s("circle", { r, "data-h": "rot" }));
-      ro.append(s("path", { d: "M-7 -3A8 8 0 1 1 -5 6M-7 -3L-11 -8M-7 -3L-1 -4", transform: `scale(${r / 15})`, "data-h": "rot" }));
-      gh.append(mv, sc, ro);
-      svg.append(gh);
-    }
+    this.hs = handles;                                    // poignees du calque choisi : dessinees par drawHandles, apres le cadrage
     if (mhandles) {                                        // poignees de l'indication choisie
       const gh = s("g", { class: "lh mh" });
       for (const [x, y, i] of mhandles.sh.handles) gh.append(s("circle", { cx: x, cy: y, r: 9 * k, class: "mh-pt", "data-mh": i }));
@@ -395,8 +449,17 @@ export class Editor {
     }
     if (t.dataset && t.dataset.h) {                        // poignee du calque choisi
       const g = this.geom.panels.find((x) => x.id === app.sel.panel), l = app.layer();
+      const item = l && app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
       if (g && l && t.dataset.h === "rot") { const c = this.rotCenter || { x: pt.x, y: pt.y + 1 }; this.drag = { kind: "lrot", l, c, a0: Math.atan2(pt.y - c.y, pt.x - c.x), rz: l.rz || 0 }; }
-      else if (g && l) this.drag = { kind: t.dataset.h === "scale" ? "lscale" : "lmove", l, bb: g.bbox, start: pt, x: l.x, y: l.y, s: l.s };
+      else if (g && l && t.dataset.h === "turn" && sp) { preload(item, l.v); this.drag = { kind: "lturn", l, sx: e.clientX, f: l.f || 0, n: sp.n }; }
+      else if (g && l && t.dataset.h === "corner" && sp) {
+        // taille par un coin : le coin oppose de la boite reste en place, proportions gardees
+        const box = layerBox(g.bbox, l, sp), i = +t.dataset.c, sx = i === 1 || i === 2 ? 1 : -1, sy = i >= 2 ? 1 : -1;
+        const ra = (l.rz || 0) * Math.PI / 180, C = [box.cx, box.y + box.h / 2], ox = -sx * box.w / 2, oy = -sy * box.h / 2;
+        const A = [C[0] + ox * Math.cos(ra) - oy * Math.sin(ra), C[1] + ox * Math.sin(ra) + oy * Math.cos(ra)];
+        this.drag = { kind: "lscale", corner: true, l, bb: g.bbox, start: pt, A, C, h: box.h, s: l.s };
+      }
+      else if (g && l) this.drag = { kind: "lmove", l, bb: g.bbox, start: pt, x: l.x, y: l.y, s: l.s };
       e.preventDefault();
       return;
     }
@@ -407,7 +470,7 @@ export class Editor {
       app.select({ panel: pid, layer: l.id });
       const item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
       if (item) preload(item, l.v);
-      const turn = sp && sp.orbit && !e.altKey && !e.shiftKey;
+      const turn = sp && sp.orbit && e.altKey;             // glisser = deplacer ; Alt + glisser = orbite (comme la poignee du centre)
       this.drag = { kind: turn ? "lturn" : "lmove", l, bb: g.bbox, start: pt, sx: e.clientX, x: l.x, y: l.y, s: l.s, f: l.f || 0,
                     n: sp ? sp.n : 1 };
       e.preventDefault();
@@ -468,6 +531,15 @@ export class Editor {
     if (d.kind === "lmove") {
       d.l.x = clamp(d.x + (pt.x - d.start.x) / d.bb.w, -40, 40);     // sans limite pratique : gros plans, hors-champ
       d.l.y = clamp(d.y + (pt.y - d.start.y) / d.bb.h, -40, 40);
+      if (this.app.syncLayer) this.app.syncLayer();
+      return this.render(true);
+    }
+    if (d.kind === "lscale" && d.corner) {                // coin : facteur = avancee le long de la diagonale depuis le coin oppose
+      const vx = d.start.x - d.A[0], vy = d.start.y - d.A[1], n2 = vx * vx + vy * vy || 1;
+      const f = ((pt.x - d.A[0]) * vx + (pt.y - d.A[1]) * vy) / n2;
+      d.l.s = clamp(d.s * f, 0.03, 40);
+      const q = d.l.s / d.s, C = [d.A[0] + (d.C[0] - d.A[0]) * q, d.A[1] + (d.C[1] - d.A[1]) * q];
+      d.l.x = (C[0] - d.bb.x0) / d.bb.w; d.l.y = (C[1] + d.h * q / 2 - d.bb.y0) / d.bb.h;      // pieds : sous le centre, avant inclinaison
       if (this.app.syncLayer) this.app.syncLayer();
       return this.render(true);
     }
