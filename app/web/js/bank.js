@@ -392,8 +392,9 @@ export class Bank {
     } } }, "▶");
     let drag = null;
     // lasso : on entoure une zone a la souris, elle est videe (ou remplie) sur l'image affichee
-    // Maj tenue : droite elastique depuis le dernier point (lassoA = indice du bout provisoire) ; bouton relache avec Maj
-    // tenue, le lasso reste ouvert (lassoOpen) : chaque clic pose un coin, un clic sans Maj ferme et applique
+    // lasso par points : Maj tenue, chaque clic pose un point (lassoOpen : le lasso attend le suivant, lassoA = indice du
+    // bout provisoire qui suit la souris) ; Maj relachee, ou clic sur le premier point, ferme et applique. Pendant un trace a
+    // main levee, Maj tire une droite ; relacher le bouton en gardant Maj continue par points
     let lassoMode = "", lassoPts = null, lassoA = null, lassoOpen = false;
     const lassoSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     lassoSvg.setAttribute("class", "lasso"); lassoSvg.style.display = "none"; zwrap.append(lassoSvg);
@@ -433,6 +434,12 @@ export class Bank {
       if (e.shiftKey) { if (lassoA == null) { lassoA = lassoPts.length; lassoPts.push(lassoPt(e)); } lassoOpen = true; lassoDraw(); return; }
       lassoSend();
     });
+    const lassoKey = (e) => {                       // Maj relachee, lasso ouvert : on ferme et on applique
+      if (!document.body.contains(stage)) return document.removeEventListener("keyup", lassoKey);
+      if (e.key !== "Shift" || !lassoOpen || !lassoPts) return;
+      lassoPts.length = lassoA; lassoSend();
+    };
+    document.addEventListener("keyup", lassoKey);
     const stepKey = (e) => {                   // fleches : image precedente / suivante, pour retoucher a la chaine
       if (!document.body.contains(stage)) return document.removeEventListener("keydown", stepKey);
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target !== slider) return;
@@ -523,7 +530,12 @@ export class Bank {
     };
     stage.addEventListener("pointerdown", () => { if (timer && !punching) stop(); }, true);
     stage.addEventListener("pointerdown", (e) => { if (lassoMode && !punching) { e.preventDefault(); stage.setPointerCapture(e.pointerId);
-        if (lassoOpen && lassoPts) { lassoPts.length = lassoA; lassoPts.push(lassoPt(e)); lassoA = null; lassoOpen = false; }   // lasso ouvert : le clic pose un coin
+        if (lassoOpen && lassoPts) {                 // lasso ouvert : le clic pose un point, ou ferme sur le premier
+          lassoPts.length = lassoA; lassoA = null; lassoOpen = false;
+          const r = img.getBoundingClientRect(), f = lassoPts[0];
+          if (lassoPts.length >= 3 && Math.hypot(e.clientX - (r.left + f[0] * r.width), e.clientY - (r.top + f[1] * r.height)) < 9) { lassoSend(); return; }
+          lassoPts.push(lassoPt(e));
+        }
         else { lassoPts = [lassoPt(e)]; lassoA = null; }
         lassoDraw(); return; }
       if (punching) { e.preventDefault(); return punchAt(e); } drag = { x: e.clientX, f: frame }; stage.setPointerCapture(e.pointerId); e.preventDefault(); });
@@ -594,7 +606,7 @@ export class Bank {
           h("button.mini" + (lassoMode === "remplir" ? ".on" : ""), { "data-lasso": "remplir", title: tt("Entoure à la souris un trou dans le personnage : il est rebouché en blanc sur l'image affichée."), on: { click: () => lassoSet("remplir") } }, tt("🩹 Lasso : remplir")),
           h("label.check", { title: tt("Coché : le lasso « vider » ne touche pas aux traits du dessin, seulement au blanc. Décoché : tout ce qui est entouré disparaît, traits compris.") }, h("input", { type: "checkbox", checked: true, "data-lines": "1" }), tt("garder les traits"))),
         h("p.muted", tt("Lasso : choisis un fond de couleur, clique « Lasso : vider », puis entoure la zone à la souris sur l'image. Molette : agrandir. Barre d'espace tenue + glisser : se déplacer. Flèches ← → : changer d'image.")),
-        h("p.muted", tt("Lasso et droites : Maj tenue, le tracé part en ligne droite depuis le dernier point ; Maj relâchée, il repart à main levée. Bouton relâché avec Maj tenue, le lasso reste ouvert : chaque clic pose un coin, un clic sans Maj le ferme.")),
+        h("p.muted", tt("Lasso par points : Maj tenue, chaque clic pose un point, relié au précédent par une droite. Relâcher Maj (ou cliquer le premier point) ferme le contour et l'applique. On peut commencer à main levée et continuer par points : relâcher le bouton en gardant Maj.")),
         h("div.row.wrap",
           v.orbit ? h("button.mini", { title: tt("Analyse l'orbite et montre en couleur les zones blanches qui sont peut-être des vides remplis à tort (entre un bras et le corps, entre les jambes). Rouge : probablement. Orange : peut-être. Rien n'est vidé sans ton clic sur la zone."), on: { click: () => { if (zones && zonesFor === vid) { zones = null; drawZones(); } else loadZones(); } } }, tt("🔎 Vides suspects")) : null,
           v.orbit ? h("button.mini", { title: tt("Pour un vide rempli à tort (entre un bras et le corps, entre les jambes) : clique ce bouton, puis clique dans la zone sur l'image. Elle est vidée sur cette image et sur les voisines où elle existe. Mets un fond de couleur pour bien voir."), on: { click: () => { punching = true; stage.style.cursor = "crosshair"; toast(tt("Clique maintenant dans la zone à vider, sur l'image.")); } } }, tt("🕳 Vider une zone")) : null,
