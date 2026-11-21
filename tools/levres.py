@@ -1,6 +1,7 @@
 """Bouches de lip sync dessinees dans le style du personnage (fal, Nano Banana Pro), posees sur son orbite.
 
     python tools/levres.py <element> <variante> [--images 0,7,14] [--refaire]     # payant : 4 images fal par image-cle
+    python tools/levres.py <element> <variante> --images 0 --formes A              # ne redessiner qu'une forme (1 image fal)
 
 Il faut d'abord que la bouche soit suivie dans l'orbite (montage : « Tracer la bouche », mouth.json). Pour chaque image-cle
 de l'orbite, la tete est decoupee autour de la bouche, et le modele redessine la meme tete avec la bouche qui dit A, O, E,
@@ -34,8 +35,10 @@ KEEP = (" Change ONLY the mouth. Everything else stays exactly as in the referen
         "is drawn by the same artist with the same tools: the same kind of line with the same thickness and roughness, the same "
         "way of filling, the same colours as the rest of the drawing. No clean ink, no new colours, no added detail, no added shading.")
 SHAPES = {
-    "A": "The character is speaking: the mouth is wide open as when saying 'AH', the lower lip dropped, the inside of the mouth "
-         "filled with the darkest colour already used in the drawing.",
+    "A": "The character is speaking: the mouth is wide open as when saying 'AH', the lower lip dropped. The inside of the mouth is "
+         "NOT a flat black or flat dark shape: it is painted with the same loose, uneven wash as the rest of the drawing, in a "
+         "mid-dark tone of a colour already used, with the brush texture and the paper showing through, a lighter rounded tongue "
+         "resting at the bottom and a few rough pencil hatching strokes in the upper part.",
     "O": "The character is speaking: the lips are pushed forward into a small round 'OH' shape, a small round opening filled with "
          "the darkest colour already used in the drawing.",
     "E": "The character is speaking: the mouth is half open and stretched wide as when saying 'EE', showing a plain row of upper "
@@ -65,6 +68,9 @@ def main():
             keys = [int(x) for x in a.split("=")[1].split(",")]
     if "--images" in sys.argv:
         keys = [int(x) for x in sys.argv[sys.argv.index("--images") + 1].split(",")]
+    todo = list(SHAPES)                                              # --formes A : ne redessiner que ces formes, garder les autres
+    if "--formes" in sys.argv:
+        todo = [s for s in sys.argv[sys.argv.index("--formes") + 1].upper().split(",") if s in SHAPES]
     keys = [k for k in keys if 0 <= k < len(fr) and fr[k]]
     if not keys:
         sys.exit("la bouche n'est suivie sur aucune des images demandees")
@@ -109,7 +115,7 @@ def main():
         with sem:
             work(*a)
 
-    ts = [threading.Thread(target=guarded, args=(k, sh)) for k in keys for sh in SHAPES]
+    ts = [threading.Thread(target=guarded, args=(k, sh)) for k in keys for sh in todo]
     [t.start() for t in ts]
     [t.join() for t in ts]
 
@@ -121,6 +127,11 @@ def main():
         gens = {sh: Image.open(got[(k, sh)]).convert("RGB").resize((s, s), Image.LANCZOS) for sh in SHAPES if (k, sh) in got}
         if not gens:
             continue
+        for sh in SHAPES:                                            # les formes gardees : leur carte reposee sur la tete d'origine
+            p = folder / ("lips/k%03d_%s.webp" % (k, sh))
+            if sh not in gens and sh not in todo and p.exists():
+                gens[sh] = Image.alpha_composite(flat.convert("RGBA"), Image.open(p).convert("RGBA")).convert("RGB")
+        gens = {sh: gens[sh] for sh in SHAPES if sh in gens}
         # ce qui a change, toutes bouches confondues, autour de la bouche seulement
         yy, xx = np.mgrid[0:s, 0:s]
         mx, my, mw = m["cx"] - x, m["cy"] - y, m["w"]
