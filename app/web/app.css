@@ -558,3 +558,9 @@ svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http:
 .cost.warn, .pose-est.warn { color: #e2603a; font-weight: 600; }
 .pose-est { margin: 4px 0; font-size: 12px; }
 .rev-score.ai { color: #6fd3c4; } .rev-score.ai.warn { color: #e2603a; font-weight: 600; } .snapbar .rev-score.ai, .snaps .rev-score.ai { align-self: center; }
+/* montage : Rec Action */
+.mt-rec { color: #ff5a5a; border-color: #8a3030; }
+.mt-rec.on { background: #c62828; color: #fff; border-color: #ff5a5a; }
+.mt-rec.live { animation: mtRec .8s steps(2, start) infinite; }
+.mt-rec:disabled { opacity: .45; }
+@keyframes mtRec { to { background: #5a1010; } }

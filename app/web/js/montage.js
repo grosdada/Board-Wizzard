@@ -193,6 +193,7 @@ export function openMontage(app, pid) {
   const dof = pan.dof = Object.assign({ on: false, focus: 0.3, amount: 12 }, pan.dof);
   anim.tracks = anim.tracks || {};
   let t = 0, sel = "cam", selKey = null, playing = false, loop = true, auto = true, raf = 0, last = 0, drag = null;
+  let recArmed = false, recAct = null, recRaf = 0, recBtn = null;      // Rec Action (voir recStart)
   const picked = new Set();                                // cles prises au lasso (ou Ctrl + clic) : elles bougent et s'effacent ensemble
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -209,6 +210,7 @@ export function openMontage(app, pid) {
 
   // ------------------------------------------------------------------------------------------ visionneuse
   function paint() {
+    recSync();
     svg.innerHTML = depthView ? topView() : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
     if (showMask && !playing) svg.querySelectorAll('[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
   }
@@ -280,6 +282,13 @@ export function openMontage(app, pid) {
     selKey = k;
   }
   function change(id, patch) {                             // un reglage bouge : cle automatique, ou valeur de base
+    if (recArmed && !recAct && vdrag && vdrag.id === id && layerOf(id)) recStart(id);   // Rec Action : le premier mouvement lance l'horloge
+    if (recAct && recAct.id === id) {                       // en enregistrement : toujours une cle, a l'instant qui avance
+      t = recNow();
+      recAct.patch = Object.assign(recAct.patch || {}, patch);
+      setKey(id, patch); recAct.keys.add(selKey);
+      paint(); lanes(); syncProps(); return;
+    }
     if (auto || keysOf(id).length) setKey(id, patch);
     else if (id === "fo") dof.focus = patch.fo;
     else if (id === "bl") dof.amount = patch.bl;
@@ -921,7 +930,8 @@ export function openMontage(app, pid) {
     else if (vdrag.turn) { const n = nOf(layerOf(vdrag.id), vdrag.s.v); if (n) change(vdrag.id, { f: (((vdrag.s.f + Math.round((e.clientX - vdrag.sx) / 6)) % n) + n) % n }); }
     else change(vdrag.id, { x: f3(vdrag.s.x + dx / vdrag.z), y: f3(vdrag.s.y + dy / vdrag.z) });
   });
-  svg.addEventListener("pointerup", () => { vdrag = null; if (tdraw) traceUp(); });
+  svg.addEventListener("pointerup", () => { vdrag = null; if (recAct) recStop(); if (tdraw) traceUp(); });
+  svg.addEventListener("lostpointercapture", () => { if (recAct) { vdrag = null; recStop(); } });
   svg.addEventListener("contextmenu", (e) => {                           // clic droit : le menu de l'element, ou celui de la camera
     e.preventDefault();
     const l = layerOf(sel);
@@ -947,6 +957,44 @@ export function openMontage(app, pid) {
   }
   function play() { if (t >= anim.dur - 0.01) t = 0; playing = true; playBtn.textContent = tt("⏸ Pause"); last = performance.now(); raf = requestAnimationFrame(tick); }
   function stop() { if (!playing) return; playing = false; voices(false); cancelAnimationFrame(raf); playBtn.textContent = tt("▶ Lecture"); paint(); lanes(); props(); }
+  // Rec Action : bouton arme, puis un geste sur le personnage choisi (deplacer, tourner, pencher, taille) est enregistre en
+  // temps reel : la tete de lecture avance depuis l'instant affiche, une cle tous les 1/12 s (meme souris immobile, pour
+  // tenir la pose), jusqu'a ce que le bouton de la souris soit relache. Les anciennes cles de sa piste sur ce passage partent.
+  const REC_STEP = 1 / 12;
+  recBtn = h("button.mini.mt-rec", { title: tt("Enregistrer une action : choisis un personnage, arme ce bouton, puis fais le geste dans l'image (déplacer, tourner, pencher, taille). Le temps avance pendant le geste et chaque instant devient une clé, jusqu'à ce que tu relâches la souris. La voix et la lecture suivent."),
+    on: { click: () => { recArmed = !recArmed && !!layerOf(sel); recSync(); } } }, tt("● Rec Action"));
+  function recSync() {
+    if (!recBtn) return;
+    if (recArmed && !layerOf(sel)) recArmed = false;
+    recBtn.disabled = !layerOf(sel) && !recArmed;
+    recBtn.classList.toggle("on", recArmed);
+    recBtn.classList.toggle("live", !!recAct);
+  }
+  function recStart(id) {
+    stop();
+    recAct = { id, t0: t, start: performance.now(), keys: new Set(), patch: null, lastT: -1 };
+    recSync(); voices(true);
+    recRaf = setInterval(recTick, 40);                      // horloge reelle (25 fois par seconde), meme fenetre en arriere-plan
+  }
+  const recNow = () => Math.min(anim.dur, recAct.t0 + (performance.now() - recAct.start) / 1000);
+  function recTick() {
+    if (!recAct) return;
+    if (!m.box.isConnected) { clearInterval(recRaf); recAct = null; return done(); }
+    t = recNow();
+    if (recAct.patch && t - recAct.lastT >= REC_STEP - 1e-6) { setKey(recAct.id, recAct.patch); recAct.keys.add(selKey); recAct.lastT = t; }
+    paint(); head(); voices(true);
+    if (t >= anim.dur) return recStop();                    // fin du plan : l'enregistrement s'arrete
+  }
+  function recStop() {
+    const r = recAct;
+    if (!r) return;
+    t = recNow(); recAct = null; clearInterval(recRaf); voices(false);
+    if (r.patch) { setKey(r.id, r.patch); r.keys.add(selKey); }   // la derniere pose, a l'instant du lacher
+    const t1 = t, ks = keysOf(r.id);
+    if (anim.tracks[r.id]) anim.tracks[r.id] = ks.filter((k) => r.keys.has(k) || k.t < r.t0 - 1e-6 || k.t > t1 + 1e-6);
+    recSync(); hist.snap(); paint(); lanes(); props();
+    toast(tt`Action enregistrée : ${(t1 - r.t0).toFixed(2)} s, ${r.keys.size} clés.`);
+  }
   // Ctrl+Z / Ctrl+Y : les 5 dernieres actions (elements, cles, camera, profondeur de champ)
   const hist = history(() => ({ layers: pan.layers, anim, dof, draw: pan.draw || null }), (st) => {
     if (st.draw) pan.draw = st.draw;
@@ -993,7 +1041,7 @@ export function openMontage(app, pid) {
     real.anim = anim;
     app.commit("montage"); app.editor.render(); app.refreshInspector();
   };
-  const bar = h("div.mt-bar", h("button.mini", { title: tt("Revenir au début"), on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn,
+  const bar = h("div.mt-bar", h("button.mini", { title: tt("Revenir au début"), on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn, recBtn,
     h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), tt("En boucle")), clock,
     h("span.muted", { title: tt("Dans une piste : glisser trace un lasso qui prend les clés, Ctrl + clic en ajoute une. Les clés prises se déplacent ensemble et s'effacent avec Suppr. La règle des secondes déplace la tête de lecture.") }, tt("Maj : aimant sur les clés · glisser : lasso ⓘ")),
     h("span.spacer"),
