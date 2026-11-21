@@ -357,7 +357,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(store.safe(store.item_dir(parts[1]), "/".join(parts[2:])), "max-age=86400")
         if parts[0] == "bodies" and len(parts) == 2:                # corps encres du portrait-robot
             return self.send_file(store.safe(settings.DATA / "bodies", parts[1]), "max-age=3600")
-        if parts[0] == "parts" and len(parts) == 3:                 # elements de visage du portrait-robot
+        if parts[0] == "parts" and 3 <= len(parts) <= 5:            # elements du portrait-robot (banques : _banks/<banque>/<cat>/<id>.png)
             return self.send_file(store.safe(store._dir("parts"), "/".join(parts[1:])), "max-age=86400")
         if parts[0] == "audio" and len(parts) == 2:                 # fichiers de la banque audio
             return self.send_file(store.safe(store._dir("audio"), parts[1]), "max-age=86400")
@@ -462,6 +462,8 @@ class Handler(BaseHTTPRequestHandler):
             elif method == "DELETE":
                 return self.send_json({"moved": store.remove_folder(q.get("name", ""), q.get("kind", "")), "folders": store.list_folders()})
             return self.send_json(store.list_folders())
+        if head == "parts" and (q.get("bank") or q.get("kit") or seg[1:2] in (["banks"], ["heads"], ["assets"])):
+            return self._partbanks(method, seg, q, data, body)      # banques d'elements, generateur de corps (app/partbanks.py)
         if head == "parts":                                         # banque d'elements de visage du portrait-robot
             if len(seg) == 2 and method == "POST":                  # un element dessine a la main : corps brut = le PNG
                 if not body:
@@ -751,6 +753,38 @@ class Handler(BaseHTTPRequestHandler):
                     oo["mouth"], oo["mt"] = True, int(time.time() * 1000)
         item = store.mutate_item(iid, fn) if carried else store.load_item(iid)
         return {"frames": got, "poses": len(carried), "item": store.resolve(item)}
+
+    def _partbanks(self, method, seg, q, data, body):
+        """Banques d'elements (Banque Claude = la banque d'origine) et elements dessines en calques, PNG transparent."""
+        from . import partbanks as pb
+        bank = q.get("bank") or pb.CLAUDE
+        try:
+            if seg[1:2] == ["banks"]:
+                if method == "POST":
+                    return self.send_json(pb.add_bank((data or {}).get("name", "")))
+                if method == "PUT" and len(seg) == 3:
+                    return self.send_json(pb.rename_bank(seg[2], (data or {}).get("name", "")))
+                if method == "DELETE" and len(seg) == 3:
+                    return self.send_json(pb.remove_bank(seg[2]))
+                return self.send_json(pb.banks())
+            if seg[1:2] == ["heads"] and method == "POST":
+                return self.send_json(pb.add_head(body or b"", q.get("name", "")))
+            if seg[1:2] == ["assets"] and method == "POST":
+                return self.send_json(pb.add_asset(body or b""))
+            if len(seg) == 2 and method == "POST":                  # corps brut = PNG transparent couvrant le cadre
+                if not body:
+                    raise ApiError("dessin manquant")
+                return self.send_json(pb.save_raw(bank, seg[1], q.get("name", ""), body, replace=q.get("replace") or None, fill=q.get("fill") == "1"))
+            if len(seg) == 3 and method == "GET":
+                return self.send_json(pb.drawn(bank, seg[1], seg[2]))
+            if len(seg) == 3 and method == "PUT":
+                return self.send_json(pb.save_meta(bank, seg[1], seg[2], data or {}))
+            if len(seg) == 3 and method == "DELETE":
+                pb.remove(bank, seg[1], seg[2])
+                return self.send_json({"ok": True})
+            return self.send_json(pb.catalogue(bank, q.get("kit") or "visage"))
+        except ValueError as e:
+            raise ApiError(str(e), 400)
 
     def _transpose(self, d):
         """« Transposer » : les points d'un portrait (reperes dans le navigateur, la photo ne vient pas ici) -> visage, yeux,

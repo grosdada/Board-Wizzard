@@ -219,6 +219,8 @@ def server_texts():
     for c in parts.catalogue():
         out.append((c["label"], "parts"))
         out += [(it["name"], "parts (element)") for it in c["items"] if not it.get("mine")]
+    from app import partbanks                                  # noqa: E402
+    out += [(v[0], "partbanks.BODY") for v in partbanks.BODY.values()]
     for f in sorted((ROOT / "app").glob("*.py")):
         tree = ast.parse(f.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
