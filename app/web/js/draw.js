@@ -8,7 +8,7 @@
 // grossissent donc tout seuls la ou le ton fonce, sans dessiner chaque point.
 import { tt, tr } from "./i18n.js";
 import { swatch } from "./colors.js";
-import { h, modal, toast, history } from "./api.js";
+import { h, modal, toast, history, upload } from "./api.js";
 
 export const W = 1000;                                   // largeur de travail ; la hauteur suit le format de la case
 const uid = () => Math.random().toString(36).slice(2, 8);
@@ -20,8 +20,17 @@ export const PRIMS = { rect: [tt("Rectangle"), "▭"], rrect: [tt("Rectangle arr
 // traces : forme libre (l'outil par defaut, en tete), ligne, main levee, ou point par point
 export const PATHS = { blob: [tt("Forme libre"), "⬟"], line: [tt("Ligne"), "╱"], free: [tt("Tracé libre"), "✎"], poly: [tt("Forme point par point"), "⬠"],
                        polyline: [tt("Ligne brisée point par point"), "⌇"] };
-const OPEN = new Set(["line", "free", "polyline"]);       // sans remplissage
-const MANY = new Set(["free", "blob", "poly", "polyline"]);
+// pinceaux de l'atelier d'elements (option kit de l'editeur) : se tracent a main levee
+//   brush : pinceau qui finit en pointe, epaisseur bsw, pointes tp, pw = force de chaque point (pression ou vitesse)
+//   paint : pinceau de fond, couleur pc, largeur bw, opacite op, lavis soft (bords flous et irreguliers)
+//   erase : gomme (efface ce qui est dessous dans le meme calque), largeur bw
+//   stamp : pinceau-tampon, l'image href (importee) posee le long du trace, taille ss, ecart gap
+// et l'image importee : { t: "img", href, p: [coin, coin], ink: none | clair (blanc transparent) | encre, iop }
+export const BRUSHES = { brush: [tt("Pinceau en pointe"), "🖌"], paint: [tt("Pinceau de fond (aplat, lavis)"), "🎨"], erase: [tt("Gomme"), "⌫"],
+                         stamp: [tt("Pinceau-tampon (image importée)"), "✺"] };
+const OPEN = new Set(["line", "free", "polyline", "brush", "paint", "erase", "stamp"]);       // sans remplissage
+const MANY = new Set(["free", "blob", "poly", "polyline", "brush", "paint", "erase", "stamp"]);
+const SPECIAL = new Set(["brush", "paint", "erase", "stamp", "img"]);
 // Remplissage d'une forme : fon (remplie ou non), col (couleur, blanc par defaut), tr (trame posee par-dessus la couleur).
 const TRAMES = { none: tt("Sans trame"), tone: tt("Trame"), grad: tt("Trame en dégradé") };
 /** Remplissage d'une forme, anciennes formes comprises (fill : none | white | black | color | tone | grad). */
@@ -37,7 +46,35 @@ export function fillOf(sh) {
 }
 const FORMS = { points: tt("Points"), lignes: tt("Lignes"), croix: tt("Croisillons"), triple: tt("Hachures en trois sens"), carres: tt("Carrés"),
                 cercles: tt("Cercles concentriques"), vagues: tt("Lignes ondulées"), grain: tt("Grain") };
-const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, col: "#ffffff" };   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
+const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, col: "#ffffff",   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
+              bsw: 2.5, tp: 0.3, sv: 0.6, pc: "#7d8c99", bw: 12, op: 0.55, soft: 0.3, ss: 25, gap: 0.3, ink: "clair", iop: 1 };   // pinceaux (voir BRUSHES)
+// force d'un point du pinceau en pointe : pression d'un stylet, sinon vitesse de la souris (v en unites par ms, vite = fin)
+const force = (e, v, sv) => (e.pointerType === "pen" && e.pressure > 0 ? 0.15 + 1.05 * e.pressure : Math.max(0.3, Math.min(1.2, 1.2 - (sv ?? 0.6) * v / 1.6)));
+const hex6 = (c, def) => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : def);
+// contour plein d'un trait de pinceau en pointe : la largeur suit la force de chaque point et s'affine aux deux bouts
+function brushPath(sh, H) {
+  const P = sh.p.map(([x, y]) => [x * W, y * H]), n = P.length, base = Math.max(0.3, sh.bsw) * 4, pw = sh.pw || [];
+  if (n < 2) return "";
+  const s = [0];
+  for (let i = 1; i < n; i++) s.push(s[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+  const L = s[n - 1] || 1, tl = Math.max(0, Math.min(0.5, sh.tp)) * L;
+  const wid = (i) => { let k = pw[i] ?? 1; if (tl > 0.5) k *= Math.pow(Math.max(0.04, Math.min(1, s[i] / tl, (L - s[i]) / tl)), 0.65); return Math.max(0.15, base * k) / 2; };
+  const left = [], right = [];
+  for (let i = 0; i < n; i++) {
+    const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], m = Math.hypot(dx, dy) || 1, w = wid(i);
+    left.push([P[i][0] - dy / m * w, P[i][1] + dx / m * w]); right.push([P[i][0] + dy / m * w, P[i][1] - dx / m * w]);
+  }
+  const side = (Q) => { let d = ""; for (let i = 1; i < Q.length - 1; i++) d += `Q${f1(Q[i][0])} ${f1(Q[i][1])} ${f1((Q[i][0] + Q[i + 1][0]) / 2)} ${f1((Q[i][1] + Q[i + 1][1]) / 2)}`; return d + `L${f1(Q[Q.length - 1][0])} ${f1(Q[Q.length - 1][1])}`; };
+  const R = right.reverse();
+  return `M${f1(left[0][0])} ${f1(left[0][1])}` + side(left) + `L${f1(R[0][0])} ${f1(R[0][1])}` + side(R) + "Z";
+}
+// filtre d'une image importee : clair = le blanc du papier devient transparent ; encre = idem, le trait prend la couleur c
+function inkFilter(id, ink, c) {
+  if (ink !== "clair" && ink !== "encre") return "";
+  const A = "-0.48 -0.94 -0.18 0 1.6", ch = [1, 3, 5].map((k) => (parseInt(hex6(c, "#111111").slice(k, k + 2), 16) / 255).toFixed(3));
+  const rgb = ink === "encre" ? `0 0 0 0 ${ch[0]} 0 0 0 0 ${ch[1]} 0 0 0 0 ${ch[2]}` : "1 0 0 0 0 0 1 0 0 0 0 0 1 0 0";
+  return `<filter id="${id}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${rgb} ${A}" result="a"/><feComposite in="a" in2="SourceAlpha" operator="in"/></filter>`;
+}
 
 function geom(sh, H) {
   const P = sh.p.map(([x, y]) => [x * W, y * H]);
@@ -124,17 +161,82 @@ export function fxSvg(fx0, H, pre, force, tick = 0) {
 }
 
 /** Balisage SVG du fond dessine, dans un repere W x H. pre : prefixe des identifiants (unique par case). */
-export function drawSvg(draw, H, pre) {
+//  draw.layers (atelier d'elements) : [{ id, name, hidden, op, shapes }], du dessous vers le dessus ; sinon draw.shapes.
+//  opt.live : indice du calque en cours (les autres ne prennent pas la souris) ; opt.hrefs : adresse -> data: des images.
+export function drawSvg(draw, H, pre, opt = {}) {
+  const lays = draw && Array.isArray(draw.layers) ? draw.layers : null;
+  if (lays) {
+    let out = "";
+    lays.forEach((l, i) => {
+      if (l.hidden || !(l.shapes || []).length) return;
+      const op = l.op == null ? 1 : Math.max(0, Math.min(1, +l.op));
+      out += `<g data-layer="${i}"${op < 1 ? ` opacity="${op}"` : ""}${opt.live != null && opt.live !== i ? ` style="pointer-events:none"` : ""}>${shapesSvg(l.shapes, H, pre + "l" + i, opt.hrefs)}</g>`;
+    });
+    return out + fxSvg(draw.fx, H, pre);
+  }
   const shapes = (draw && draw.shapes) || [];
   if (!shapes.length) return fxSvg(draw && draw.fx, H, pre);
+  return shapesSvg(shapes, H, pre, opt.hrefs) + fxSvg(draw.fx, H, pre);          // les lignes d'effet par-dessus les formes
+}
+function shapesSvg(shapes, H, pre, hrefs) {
   let defs = `<filter id="${pre}th" color-interpolation-filters="sRGB" x="-5%" y="-5%" width="110%" height="110%"><feComponentTransfer>` +
     ["R", "G", "B"].map((c) => `<feFunc${c} type="linear" slope="26" intercept="-12.5"/>`).join("") + `</feComponentTransfer></filter>`;
   let body = "";
   shapes.forEach((raw, i) => {
-    const sh = Object.assign({}, DEF, raw), d = geom(sh, H), id = pre + "s" + i, tag = `data-shape="${sh.id}"`;
+    const sh = Object.assign({}, DEF, raw), d = sh.t === "img" ? "M0 0" : geom(sh, H), id = pre + "s" + i, tag = `data-shape="${sh.id}"`;
     if (!d) return;
     const open = OPEN.has(sh.t), bx = boxOf(sh, H), fl = fillOf(raw);
     let one = "";
+    const rot = (s) => (sh.r ? `<g transform="rotate(${f1(sh.r)} ${f1(bx.cx)} ${f1(bx.cy)})">${s}</g>` : s);
+    if (sh.t === "erase") {                                // gomme : masque tout ce qui est deja dessine dans ce calque
+      const B = 8 * Math.max(W, H), w = f1(Math.max(1, sh.bw) * 4);
+      defs += `<mask id="${id}m" maskUnits="userSpaceOnUse" x="${-B}" y="${-B}" width="${2 * B}" height="${2 * B}"><rect x="${-B}" y="${-B}" width="${2 * B}" height="${2 * B}" fill="#fff"/>` +
+        rot(`<path d="${d}" fill="none" stroke="#000" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`) + `</mask>`;
+      body = `<g mask="url(#${id}m)">${body}</g>` + rot(`<path ${tag} d="${d}" fill="none" stroke="#000" stroke-opacity="0.001" stroke-width="${w}" stroke-linecap="round"/>`);
+      return;
+    }
+    if (SPECIAL.has(sh.t)) {
+      if (sh.t === "brush") one = `<path ${tag} d="${brushPath(sh, H)}" fill="${hex6(sh.stroke, "#111111")}"/>`;
+      else if (sh.t === "paint") {
+        const w = Math.max(1, sh.bw) * 4, soft = Math.max(0, Math.min(1, sh.soft)), pad = w * 2;
+        let flt = "";
+        if (soft > 0) {                                    // lavis : bord irregulier puis flou
+          defs += `<filter id="${id}w" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">` +
+            `<feTurbulence type="fractalNoise" baseFrequency="${(1.2 / w).toFixed(4)}" numOctaves="2" seed="${[...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7)}"/>` +
+            `<feDisplacementMap in="SourceGraphic" scale="${f1(soft * w * 0.6)}" xChannelSelector="R" yChannelSelector="G"/><feGaussianBlur stdDeviation="${f1(soft * w * 0.18)}"/></filter>`;
+          flt = ` filter="url(#${id}w)"`;
+        }
+        one = `<path ${tag} d="${d}" fill="none" stroke="${hex6(sh.pc, "#7d8c99")}" stroke-opacity="${Math.max(0.02, Math.min(1, sh.op))}" stroke-width="${f1(w)}" stroke-linecap="round" stroke-linejoin="round"${flt}/>`;
+      } else if (sh.t === "img") {
+        const src = (hrefs && hrefs[sh.href]) || sh.href || "", ft = inkFilter(id + "i", sh.ink, sh.stroke);
+        defs += ft;
+        const ftA = ft ? ` filter="url(#${id}i)"` : "", mxA = sh.mx ? ` transform="translate(${f1(2 * bx.cx)} 0) scale(-1 1)"` : "";
+        one = `<image ${tag} href="${src}" x="${f1(bx.x)}" y="${f1(bx.y)}" width="${f1(bx.w)}" height="${f1(bx.h)}" preserveAspectRatio="none" opacity="${Math.max(0.05, Math.min(1, sh.iop))}"${ftA}${mxA}/>`;
+      } else if (sh.t === "stamp") {                       // l'image posee le long du trace, tournee dans son sens
+        const src = (hrefs && hrefs[sh.href]) || sh.href || "", ft = inkFilter(id + "i", sh.ink, sh.stroke), sz = Math.max(1, sh.ss) * 4, ar = sh.ar || 1;
+        const P = sh.p.map(([x, y]) => [x * W, y * H]), step = Math.max(1.5, sz * Math.max(0.05, sh.gap)), pw = sh.pw || [];
+        defs += ft + `<image id="${id}i0" href="${src}" width="${f1(sz)}" height="${f1(sz * ar)}" preserveAspectRatio="none"${ft ? ` filter="url(#${id}i)"` : ""}/>`;
+        let acc = 0, uses = "";
+        for (let k = 1; k < P.length; k++) {
+          const a = P[k - 1], b = P[k], seg = Math.hypot(b[0] - a[0], b[1] - a[1]), ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
+          let t = k === 1 ? 0 : step - acc;
+          for (; t <= seg; t += step) {
+            const x = a[0] + (b[0] - a[0]) * t / (seg || 1), y = a[1] + (b[1] - a[1]) * t / (seg || 1), sc = Math.max(0.15, pw[k] ?? 1);
+            uses += `<use href="#${id}i0" transform="translate(${f1(x)} ${f1(y)}) rotate(${f1(ang)}) scale(${sc.toFixed(2)}) translate(${f1(-sz / 2)} ${f1(-sz * ar / 2)})"/>`;
+          }
+          acc = (acc + seg) % step;
+        }
+        one = `<g ${tag}>${uses}</g><path ${tag} d="${d}" fill="none" stroke="#000" stroke-opacity="0.001" stroke-width="${f1(sz)}"/>`;
+      }
+      if (sh.hand > 0 && sh.t !== "img") {
+        const amp = sh.hand * 3, pad = amp + 40, seed = [...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
+        defs += `<filter id="${id}h" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">` +
+          `<feTurbulence type="fractalNoise" baseFrequency="${(0.06 / Math.max(0.5, sh.hw)).toFixed(4)}" numOctaves="2" seed="${seed}"/><feDisplacementMap in="SourceGraphic" scale="${f1(amp)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
+        one = `<g filter="url(#${id}h)">${one}</g>`;
+      }
+      body += rot(one);
+      return;
+    }
     if (!open && fl.on) one += `<path ${tag} d="${d}" fill="${fl.col}"/>`;          // la couleur, puis la trame par-dessus
     if (!open && fl.on && fl.tr !== "none") {
       const s = Math.max(4, sh.dot), rot = `rotate(${f1(sh.ha)})`;
@@ -199,23 +301,39 @@ export function drawSvg(draw, H, pre) {
     }
     body += sh.r ? `<g transform="rotate(${f1(sh.r)} ${f1(bx.cx)} ${f1(bx.cy)})">${one}</g>` : one;
   });
-  return `<defs>${defs}</defs>${body}` + fxSvg(draw.fx, H, pre);          // les lignes d'effet par-dessus les formes
+  return `<defs>${defs}</defs>${body}`;
 }
 
+// une image chargee par un SVG lui-meme charge comme image ne va pas chercher ses images : on les met dedans (data:)
+const inlined = new Map();
+const inline = (href) => {
+  if (!href || href.startsWith("data:")) return Promise.resolve(href);
+  if (!inlined.has(href)) inlined.set(href, fetch(href).then((r) => r.blob()).then((b) => new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => ok(href); fr.readAsDataURL(b); })).catch(() => href));
+  return inlined.get(href);
+};
 /** Image (pour l'aplatissement) du fond dessine d'une case de wpx x hpx pixels. */
-export function drawImage(draw, wpx, hpx) {
-  const H = W * hpx / wpx, inner = drawSvg(draw, H, "f");
-  if (!inner) return Promise.resolve(null);
+export async function drawImage(draw, wpx, hpx) {
+  const all = ((draw && draw.layers) || []).flatMap((l) => l.shapes || []).concat((draw && draw.shapes) || []), hrefs = {};
+  for (const s of all) if ((s.t === "img" || s.t === "stamp") && s.href && !hrefs[s.href]) hrefs[s.href] = await inline(s.href);
+  const H = W * hpx / wpx, inner = drawSvg(draw, H, "f", { hrefs });
+  if (!inner) return null;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(wpx)}" height="${Math.round(hpx)}" viewBox="0 0 ${W} ${f1(H)}">${inner}</svg>`;
   return new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg); });
 }
 
 // ------------------------------------------------------------------------------------------------ l'atelier
 /** Ouvre l'atelier de dessin pour une case. ratio = hauteur / largeur ; backdrop : url du decor a montrer dessous. */
-export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = tt("Enregistrer le fond"), axis = false, under = null }) {
+//  Atelier d'elements (portrait-robot, corps) : layers = calques ; kit = pinceaux, gomme, import d'image, pinceau-tampon ;
+//  extra = noeud ajoute sous la barre d'outils (reglages propres a l'appelant).
+export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = tt("Enregistrer le fond"), axis = false, under = null, layers: useLayers = false, kit = false, extra = null }) {
   const H = W * ratio;
-  const shapes = JSON.parse(JSON.stringify((draw && draw.shapes) || []));
-  let tool = "blob", prim = "rect", path = "blob", sel = null, drag = null, building = null, hover = null;
+  // calques : du dessous vers le dessus ; « shapes » est toujours le tableau du calque en cours
+  let layers = useLayers ? JSON.parse(JSON.stringify(draw && Array.isArray(draw.layers) && draw.layers.length ? draw.layers
+    : [{ id: uid(), name: tt("Calque 1"), shapes: (draw && draw.shapes) || [] }])) : null;
+  let cl = layers ? layers.length - 1 : 0;
+  let shapes = layers ? layers[cl].shapes : JSON.parse(JSON.stringify((draw && draw.shapes) || []));
+  const allShapes = () => (layers ? layers.flatMap((l) => l.shapes) : shapes);
+  let tool = "blob", prim = "rect", path = "blob", brushT = "brush", sel = null, drag = null, building = null, hover = null;
   const cur = Object.assign({}, DEF);
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -287,7 +405,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const grow = (side, d) => { ext[side] = Math.max(0, Math.min(6, +(ext[side] + d).toFixed(2))); zone(); paint(); extInfo(); };
   const fit = () => {                                     // recadrer : juste ce qu'il faut pour contenir les formes
     let x0 = 0, x1 = 1, y0 = 0, y1 = 1;
-    for (const sh of shapes) for (const [x, y] of sh.p) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    for (const sh of allShapes()) for (const [x, y] of sh.p) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
     const up = (v) => Math.ceil(Math.max(0, v) * 4 - 1e-6) / 4;
     Object.assign(ext, { l: up(-x0), r: up(x1 - 1), t: up(-y0), b: up(y1 - 1) }); zone(); paint(); extInfo();
   };
@@ -319,7 +437,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const rotPt = (p, c, deg) => { const a = deg * Math.PI / 180, x = p[0] - c[0], y = p[1] - c[1]; return [c[0] + x * Math.cos(a) - y * Math.sin(a), c[1] + x * Math.sin(a) + y * Math.cos(a)]; };
 
   function paint() {
-    art.innerHTML = drawSvg({ shapes }, H, "e");
+    art.innerHTML = drawSvg(layers ? { layers } : { shapes }, H, "e", { live: layers ? cl : null });
     let o = "";
     const t = target();
     if (t && t !== building) {
@@ -372,12 +490,13 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const range = (label, k, min, max, step) => { const out = h("output", String(val(k) ?? 0));
       return h("label.row.range", label, h("input", { type: "range", min, max, step, value: val(k) ?? 0, on: { input: (e) => { set(k, +e.target.value); out.textContent = e.target.value; } } }), out); };
     const pick = (label, k, opts) => h("label.row", label, h("select", { on: { change: (e) => { set(k, e.target.value); props(); } } }, Object.entries(opts).map(([v, n]) => h("option", { value: v, selected: val(k) === v }, n))));
-    side.append(h("h4", t ? tt("Forme choisie") : tt("Prochaine forme")),
-      pick(tt("Trait"), "stroke", { "#111111": tt("Noir"), "#ffffff": tt("Blanc"), none: tt("Aucun") }));
-    if (val("stroke") !== "none") side.append(range(tt("Épaisseur"), "sw", 0.2, 12, 0.1));
-    side.append(h("h4", tt("Trait à la main")), range(tt("Tremblé"), "hand", 0, 10, 0.1), range(tt("Ondulation"), "hw", 0.5, 12, 0.1),
+    side.append(h("h4", t ? tt("Forme choisie") : tt("Prochaine forme")));
+    if (SPECIAL.has(kind)) specialProps(kind, range, pick);
+    else side.append(pick(tt("Trait"), "stroke", { "#111111": tt("Noir"), "#ffffff": tt("Blanc"), none: tt("Aucun") }));
+    if (!SPECIAL.has(kind) && val("stroke") !== "none") side.append(range(tt("Épaisseur"), "sw", 0.2, 12, 0.1));
+    if (kind !== "img" && kind !== "erase") side.append(h("h4", tt("Trait à la main")), range(tt("Tremblé"), "hand", 0, 10, 0.1), range(tt("Ondulation"), "hw", 0.5, 12, 0.1),
       h("p.muted", tt("Tremblé à 0 : trait net. Ondulation courte = trait nerveux, longue = lignes qui flottent.")));
-    if (!open) {
+    if (!open && kind !== "img") {
       const fl = fillOf(t || cur);
       const write = (o) => { for (const tg of [t, cur]) if (tg) { tg.fon = o.on; tg.col = o.col; tg.tr = o.tr; delete tg.fill; } };
       const setFill = (patch) => { write(Object.assign(fl, patch)); paint(); props(); };
@@ -406,11 +525,79 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     }
     const tip = tool === "poly" || tool === "polyline" ? tt("Clique pour poser chaque point. Double-clic, Entrée ou clic sur le premier point : la forme se termine") + (tool === "poly" ? tt(" et se ferme toute seule.") : ".") + tt(" Échap annule.")
       : (MANY.has(tool) && tool !== "poly" && tool !== "polyline" ? tt("Main levée : Ctrl enfoncé trace une droite depuis le dernier point ; Ctrl relâché, on repart à main levée. ") : "") + tt("Choisis un outil puis glisse dans le cadre. « Sélection » : clic sur une forme pour la régler, glisser pour la déplacer, carré ⤡ du coin pour l'agrandir, points ronds pour l'étirer, poignée ↻ pour la tourner (Maj : par crans de 15°). Suppr efface.");
-    side.append(h("p.muted", tip));
+    side.append(h("p.muted", BRUSHES[tool] ? brushTip(tool) + " " + tip : tip));
+    if (layers) { side.append(layBox); layUi(); }
   }
+  // reglages des pinceaux et de l'image importee
+  function specialProps(kind, range, pick) {
+    const col = (label, k, def, title) => h("span.row.colrow", { title: title || "" }, label, swatch(val(k) || def, (c) => set(k, c), () => hist.snap()));
+    const inkPick = () => pick(tt("Blanc du papier"), "ink", { none: tt("Gardé (image telle quelle)"), clair: tt("Transparent (le trait reste)"), encre: tt("Transparent, trait recoloré") });
+    if (kind === "brush") side.append(col(tt("Couleur"), "stroke", "#111111"), range(tt("Épaisseur"), "bsw", 0.3, 30, 0.1),
+      range(tt("Pointes"), "tp", 0, 0.5, 0.01), range(tt("Sensibilité à la vitesse"), "sv", 0, 1, 0.01));
+    if (kind === "paint") side.append(col(tt("Couleur"), "pc", "#7d8c99"), range(tt("Largeur"), "bw", 1, 80, 0.5), range(tt("Opacité"), "op", 0.03, 1, 0.01),
+      range(tt("Lavis"), "soft", 0, 1, 0.01));
+    if (kind === "erase") side.append(range(tt("Largeur"), "bw", 1, 80, 0.5));
+    if (kind === "img" || kind === "stamp") {
+      side.append(inkPick());
+      if (val("ink") === "encre") side.append(col(tt("Couleur du trait"), "stroke", "#111111"));
+    }
+    if (kind === "img") {
+      const t = target();
+      side.append(range(tt("Opacité"), "iop", 0.05, 1, 0.01));
+      if (t) side.append(h("button.mini", { type: "button", title: tt("Cette image devient la pointe du pinceau-tampon"), on: { click: () => { cur.href = t.href; cur.ar = t.ar || 1; brushT = "stamp"; tool = "stamp"; sel = null; toast(tt("Image prise comme pointe du pinceau-tampon.")); tools(); props(); paint(); } } }, tt("✺ Pointe du tampon")));
+    }
+    if (kind === "stamp") {
+      const src = val("href");
+      side.append(range(tt("Taille"), "ss", 1, 60, 0.5), range(tt("Écart"), "gap", 0.05, 2, 0.01),
+        h("div.row.wrap", src ? h("img.draw-tip", { src, alt: "" }) : h("span.muted", tt("aucune pointe")),
+          h("button.mini", { type: "button", on: { click: () => importImg(true) } }, tt("🖼 Choisir la pointe…"))));
+    }
+  }
+  function brushTip(k) {
+    return { brush: tt("Pinceau en pointe : le trait s'affine au début et à la fin ; avec un stylet, il suit la pression, à la souris la vitesse (vite = fin)."),
+      paint: tt("Pinceau de fond : pour poser des aplats ou un lavis, sur un calque du dessous, puis repasser le trait sur un calque au-dessus."),
+      erase: tt("Gomme : efface ce qui est déjà dessiné dans le calque en cours, pas dans les autres."),
+      stamp: tt("Pinceau-tampon : l'image de la pointe est posée tout le long du tracé (un trait de crayon scanné, une texture).") }[k] || "";
+  }
+  // ---- calques : du dessus (en haut de la liste) vers le dessous ; on dessine dans le calque en cours
+  const layBox = h("div.draw-layers");
+  const setLayer = (i) => { finish(true); cl = Math.max(0, Math.min(layers.length - 1, i)); shapes = layers[cl].shapes; sel = null; props(); paint(); };
+  function layUi() {
+    layBox.textContent = "";
+    const rows = layers.map((l, i) => [l, i]).reverse();
+    layBox.append(h("h4", tt("Calques")), ...rows.map(([l, i]) => h("div.draw-layer" + (i === cl ? ".on" : "") + (l.hidden ? ".off" : ""), { title: tt("Cliquer : dessiner dans ce calque. Double-clic sur le nom : le renommer."), on: { click: () => setLayer(i) } },
+      h("button.mini.eye", { type: "button", title: l.hidden ? tt("Montrer ce calque") : tt("Masquer ce calque (il ne part pas dans l'élément)"), on: { click: (e) => { e.stopPropagation(); l.hidden = !l.hidden; if (l.hidden && i === cl) sel = null; paint(); layUi(); hist.snap(); } } }, l.hidden ? "◌" : "👁"),
+      h("span.lname", { on: { dblclick: (e) => { e.stopPropagation(); const n = (prompt(tt("Nom du calque :"), l.name) || "").trim(); if (n) { l.name = n; layUi(); hist.snap(); } } } }, l.name),
+      h("small.muted", String(l.shapes.length)),
+      h("input", { type: "range", min: 0.05, max: 1, step: 0.05, value: l.op == null ? 1 : l.op, title: tt("Opacité du calque"), on: { click: (e) => e.stopPropagation(), input: (e) => { l.op = +e.target.value; paint(); } } }),
+      h("button.mini", { type: "button", title: tt("Monter (passer devant)"), disabled: i === layers.length - 1, on: { click: (e) => { e.stopPropagation(); moveLayer(i, 1); } } }, "▲"),
+      h("button.mini", { type: "button", title: tt("Descendre (passer derrière)"), disabled: i === 0, on: { click: (e) => { e.stopPropagation(); moveLayer(i, -1); } } }, "▼"),
+      h("button.mini.danger", { type: "button", title: tt("Supprimer ce calque"), disabled: layers.length < 2, on: { click: (e) => { e.stopPropagation(); if (l.shapes.length && !confirm(tt`Supprimer le calque « ${l.name} » et ce qu'il contient ?`)) return; layers.splice(i, 1); hist.snap(); setLayer(Math.min(cl, layers.length - 1)); } } }, "✕"))),
+      h("div.row.wrap", h("button.mini", { type: "button", title: tt("Nouveau calque au-dessus du calque en cours"), on: { click: () => { layers.splice(cl + 1, 0, { id: uid(), name: tt`Calque ${layers.length + 1}`, shapes: [] }); hist.snap(); setLayer(cl + 1); } } }, tt("＋ Calque")),
+        h("button.mini", { type: "button", title: tt("Copie du calque en cours, juste au-dessus"), on: { click: () => { const c = JSON.parse(JSON.stringify(layers[cl])); c.id = uid(); c.name += tt(" (copie)"); c.shapes.forEach((x) => { x.id = uid(); }); layers.splice(cl + 1, 0, c); hist.snap(); setLayer(cl + 1); } } }, tt("Dupliquer")),
+        cl > 0 ? h("button.mini", { type: "button", title: tt("Verse le calque en cours dans celui du dessous"), on: { click: () => { const up = layers[cl], dn = layers[cl - 1]; dn.shapes.push(...up.shapes); layers.splice(cl, 1); hist.snap(); setLayer(cl - 1); } } }, tt("Fusionner vers le bas")) : ""));
+  }
+  const moveLayer = (i, d) => { const j = i + d; if (j < 0 || j >= layers.length) return; const [l] = layers.splice(i, 1); layers.splice(j, 0, l); if (cl === i) cl = j; else if (cl === j) cl = i; shapes = layers[cl].shapes; paint(); layUi(); hist.snap(); };
+  // ---- image importee (crayon scanne, forme a reprendre) : envoyee au serveur, posee au milieu ; ou pointe du tampon
+  const fileIn = h("input", { type: "file", accept: "image/*", style: { display: "none" } });
+  let asTip = false;
+  const importImg = (tip) => { asTip = !!tip; fileIn.click(); };
+  fileIn.addEventListener("change", async () => {
+    const f = fileIn.files[0]; fileIn.value = "";
+    if (!f) return;
+    let r;
+    try { r = await upload("parts/assets", f); } catch (e) { return toast(tt("Image refusée : ") + e.message, "error"); }
+    const ar = r.h / Math.max(1, r.w);
+    if (asTip) { cur.href = r.url; cur.ar = ar; brushT = "stamp"; tool = "stamp"; sel = null; tools(); props(); return; }
+    finish(true); hist.snap();
+    const bw = Math.min(0.6 * W, 0.6 * H / ar), bh = bw * ar, cx = W / 2, cy = H / 2;
+    const sh = { id: uid(), t: "img", href: r.url, ar, ink: "clair", iop: 1, stroke: "#111111", p: [[(cx - bw / 2) / W, (cy - bh / 2) / H], [(cx + bw / 2) / W, (cy + bh / 2) / H]] };
+    if (layers && layers[cl].hidden) layers[cl].hidden = false;
+    shapes.push(sh); tool = "select"; sel = sh.id; tools(); props(); paint(); hist.snap();
+  });
   function tools() {
     bar.textContent = "";
-    const pickTool = (k) => { finish(false); tool = k; if (PRIMS[k]) prim = k; if (PATHS[k]) path = k; if (k !== "select") sel = null; tools(); props(); paint(); };
+    const pickTool = (k) => { finish(false); tool = k; if (PRIMS[k]) prim = k; if (PATHS[k]) path = k; if (BRUSHES[k]) brushT = k; if (k !== "select") sel = null; tools(); props(); paint(); };
     const drop = (label, list, current) => {              // bouton en deux moities : l'outil en cours, et la liste
       const [name, ico] = list[current];
       const wrap = h("div.draw-drop" + (tool === current ? ".on" : ""));
@@ -420,9 +607,11 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       return wrap;
     };
     bar.append(h("button.mini" + (tool === "select" ? ".on" : ""), { type: "button", title: tt("Choisir, déplacer, étirer, tourner"), on: { click: () => pickTool("select") } }, tt("↖ Sélection")),
-      drop(tt("Primitives"), PRIMS, prim), drop(tt("Tracés"), PATHS, path),
+      drop(tt("Primitives"), PRIMS, prim), drop(tt("Tracés"), PATHS, path), kit ? drop(tt("Pinceaux"), BRUSHES, brushT) : "",
+      kit ? h("button.mini", { type: "button", title: tt("Importer une image (crayon scanné, forme, texture) : elle se pose au milieu, à déplacer et étirer avec la Sélection ; le blanc du papier devient transparent"), on: { click: () => importImg(false) } }, tt("🖼 Importer une image…")) : "", kit ? fileIn : "",
       h("button.mini", { type: "button", title: tt("Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite"), on: { click: mirror } }, tt("⇋ Miroir")),
-      h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout le dessin de ce fond ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); } } } }, tt("Tout effacer")));
+      layers ? h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes du calque en cours"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout ce calque ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); hist.snap(); } } } }, tt("Effacer le calque"))
+        : h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout le dessin de ce fond ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); } } } }, tt("Tout effacer")));
   }
   // point de la souris en fraction de la case, par la matrice du SVG : juste meme si l'image n'occupe pas tout son cadre a l'ecran
   const at = (e) => {
@@ -458,8 +647,12 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       if (sel) drag = { kind: "move", start: p, pts: target().p.map((q) => q.slice()) };
       return;
     }
+    if (tool === "stamp" && !cur.href) { toast(tt("Choisis d'abord l'image de la pointe du tampon (importer, ou « Pointe du tampon » sur une image importée)."), "error"); return; }
+    if (layers && layers[cl].hidden) { layers[cl].hidden = false; layUi(); }
     const sh = Object.assign({ id: uid(), t: tool, p: [p, p] }, JSON.parse(JSON.stringify(cur)));
-    shapes.push(sh); sel = sh.id; drag = { kind: "new", sh, keep: [], a: null };   // keep : coins des droites (Ctrl), gardes a l'allegement
+    if (sh.t !== "stamp") { delete sh.href; delete sh.ar; }
+    if (sh.t === "brush" || sh.t === "stamp") sh.pw = [force(e, 0, cur.sv), force(e, 0, cur.sv)];
+    shapes.push(sh); sel = sh.id; drag = { kind: "new", sh, keep: [], a: null, lt: e.timeStamp, lp: p, f: sh.pw ? sh.pw[0] : 1 };   // keep : coins des droites (Ctrl), gardes a l'allegement
     paint();
   });
   svg.addEventListener("pointermove", (e) => {
@@ -478,7 +671,15 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
           t.p.length = drag.a; t.p.push(p, p.slice());
         } else {
           if (drag.a != null) { drag.keep.push(drag.a, drag.a + 1); drag.a = null; }
-          const l = t.p[t.p.length - 1]; if (Math.hypot((p[0] - l[0]) * W, (p[1] - l[1]) * H) > 5) t.p.push(p);
+          const l = t.p[t.p.length - 1], dd = Math.hypot((p[0] - l[0]) * W, (p[1] - l[1]) * H);
+          if (dd > (t.pw ? 3 : 5)) {
+            t.p.push(p);
+            if (t.pw) {                                    // force du point : pression du stylet, sinon vitesse (vite = fin), lissee
+              const v = dd / Math.max(1, e.timeStamp - drag.lt);
+              drag.f = drag.f * 0.6 + force(e, v, t.sv) * 0.4; drag.lt = e.timeStamp;
+              t.pw.length = t.p.length - 1; t.pw.push(+drag.f.toFixed(2));
+            }
+          }
         }
       }
       else t.p[1] = p;
@@ -502,16 +703,23 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (!d || d.kind !== "new") return;
     const t = d.sh, a = t.p[0], b = t.p[t.p.length - 1];
     if (t.p.length <= 2 && Math.hypot((b[0] - a[0]) * W, (b[1] - a[1]) * H) < 6) { shapes.splice(shapes.indexOf(t), 1); sel = null; }   // simple clic : rien
-    else if (t.p.length > 40) {                           // allege la main levee, sans toucher aux coins des droites
+    else if (t.p.length > (t.pw ? 160 : SPECIAL.has(t.t) ? 90 : 40)) {   // allege la main levee, sans toucher aux coins des droites
+      const N = t.pw ? 160 : SPECIAL.has(t.t) ? 90 : 40;
       if (d.a != null) d.keep.push(d.a, d.a + 1);
-      const ix = new Set([...d.keep.filter((i) => i < t.p.length), ...Array.from({ length: 40 }, (_, i) => Math.round(i * (t.p.length - 1) / 39))]);
-      t.p = [...ix].sort((x, y) => x - y).map((i) => t.p[i]);
+      const ix = new Set([...d.keep.filter((i) => i < t.p.length), ...Array.from({ length: N }, (_, i) => Math.round(i * (t.p.length - 1) / (N - 1)))]);
+      const keep = [...ix].sort((x, y) => x - y);
+      if (t.pw) t.pw = keep.map((i) => t.pw[i] ?? 1);
+      t.p = keep.map((i) => t.p[i]);
     }
     props(); paint();
   });
   svg.addEventListener("dblclick", (e) => { if (building) { e.preventDefault(); finish(true); } });
   // Ctrl+Z / Ctrl+Y : les 5 dernieres actions
-  const hist = history(() => shapes.filter((x) => x !== building), (st) => { building = null; hover = null; drag = null; shapes.splice(0, shapes.length, ...st); if (!target()) sel = null; props(); paint(); });
+  const hist = history(() => (layers ? { layers: layers.map((l) => Object.assign({}, l, { shapes: l.shapes.filter((x) => x !== building) })), cl } : shapes.filter((x) => x !== building)),
+    (st) => { building = null; hover = null; drag = null;
+      if (layers) { layers = st.layers; cl = Math.max(0, Math.min(layers.length - 1, st.cl)); shapes = layers[cl].shapes; }
+      else shapes.splice(0, shapes.length, ...st);
+      if (!target()) sel = null; props(); paint(); });
   const key = (e) => {
     if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
@@ -524,9 +732,13 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   document.addEventListener("click", away);
   const done = () => { document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
   tools(); props(); paint();
-  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, ghostBar, extBar, h("div.draw-frame", svg), fxBox), side),
+  // un element (kit) n'a ni zone agrandie ni lignes d'effet : son cadre est celui de l'atelier
+  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, extra || "", ghostBar, kit ? "" : extBar, h("div.draw-frame", svg), kit ? "" : fxBox), side),
     [{ label: tt("Annuler"), click: done },
-     { label: saveLabel, primary: true, click: () => { finish(true); done(); onSave(Object.assign({ shapes }, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null)); if (saveLabel === tt("Enregistrer le fond")) toast(tt("Fond dessiné enregistré.")); } }]);   // ailleurs, l'appelant dit lui-meme ce qui est fait
+     { label: saveLabel, primary: true, click: () => { finish(true); done();
+       const out = layers ? { shapes: layers.filter((l) => !l.hidden).flatMap((l) => l.shapes), layers } : { shapes };
+       onSave(Object.assign(out, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null)); if (saveLabel === tt("Enregistrer le fond")) toast(tt("Fond dessiné enregistré.")); } }]);   // ailleurs, l'appelant dit lui-meme ce qui est fait
+
   m.box.classList.add("modal-wide");
   hist.watch(m.box);
   return m;
