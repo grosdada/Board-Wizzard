@@ -880,7 +880,12 @@ class Handler(BaseHTTPRequestHandler):
                 continue
             if act in ("keep", "keep_all"):
                 store.mutate_item(iid, lambda x, vid=vid: x["variants"][vid].pop("review", None))
-                if v.get("keyimg") and it.get("key") and not v.get("orbit"):   # fond de couleur : d'abord ses vues, a valider
+                if v.get("keyimg") and it.get("key") and not v.get("orbit") and v.get("sheet"):
+                    # vues deja la (tirees ailleurs, Dzine) : rien a retirer, elles attendent leur validation ; seul
+                    # « Refaire les vues » relance un tirage
+                    store.mutate_item(iid, lambda x, vid=vid: x["variants"][vid].__setitem__(
+                        "views", dict(x["variants"][vid].get("views") or {}, state=(x["variants"][vid].get("views") or {}).get("state") or "pending")))
+                elif v.get("keyimg") and it.get("key") and not v.get("orbit"):   # fond de couleur : d'abord ses vues, a valider
                     if not S.pending("item_views", item=iid, variant=vid):
                         made.append(S.add("item_views", {"item": iid, "variant": vid}, "Vues · %s · %s" % (it["name"], v.get("label") or vid), **opts))
                 elif not v.get("orbit") and not S.pending("item_orbit", item=iid, variant=vid):
