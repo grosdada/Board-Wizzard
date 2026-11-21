@@ -126,6 +126,54 @@ def pose_prompt_faithful(key, custom=""):
     return label, "Redraw this exact character in a new pose: %s. %s" % (desc, FAITHFUL)
 
 
+# ---- personnage sur fond de couleur (item["key"]) : la pose en A validee sert de fiche, et tout ce qui suit (poses, vues,
+# orbites) garde ce fond uni, decoupe ensuite par la couleur (sprites.key_rgba). Essaye le 21/11/2026 : H3 garde le fond
+# sur tout le tour, les vides (bras sur les hanches) restent ouverts, plus de rebouchage ni de halo.
+KEY_WORDS = {"vert": "pure chroma green (#00FF00)", "magenta": "pure magenta (#FF00FF)"}
+_FAITHFUL_NOBG = FAITHFUL.replace("Same plain background. ", "")
+NO_CLOTHES = ("The character wears exactly what it wears in the reference and nothing more: add no garment, no underwear, no "
+              "shorts, no accessory.")
+
+
+def _key_bg(key, keep=False):
+    c = KEY_WORDS.get(key, KEY_WORDS["vert"])
+    return ("BACKGROUND: %s one flat, uniform, %s background everywhere, including in every gap between the limbs and the body. "
+            "No ground, no shadow on the ground, no gradient, no texture, no coloured reflection on the character. The "
+            "character's own white areas stay white." % ("keep exactly the same" if keep else "replace the background by", c))
+
+
+def apose_prompt(key="vert"):
+    return ("Redraw this exact character standing in a neutral A-pose, seen as in the reference: body upright and straight, both "
+            "arms straight and held away from the body at about 40 degrees, hands open with fingers apart, legs straight and "
+            "slightly apart, feet flat, same expression. No limb touches or overlaps the body or another limb: clear empty gaps "
+            "between each arm and the torso and between the legs. %s %s %s" % (_FAITHFUL_NOBG, NO_CLOTHES, _key_bg(key)))
+
+
+def base_key_prompt(key="vert"):
+    return ("Keep this image exactly as it is: the same character, the same pose, every line and every filled area unchanged, "
+            "the same size and the same position in the frame. Do not redraw, do not clean up. Change only the background, "
+            "which is only what lies OUTSIDE the outer contour of the character. The character is an opaque figure: everything "
+            "inside its outline (the whole body, the head, the limbs, the clothes, even where the drawing leaves bare white "
+            "paper) keeps exactly its current colour and stays white where it is white. %s" % _key_bg(key))
+
+
+def pose_prompt_key(pose, custom="", key="vert"):
+    """Pose d'un personnage sur fond de couleur. Deux references : le dessin d'origine (visage, trait, remplissage) et la
+    pose en A validee (silhouette entiere, fond de couleur)."""
+    hit = find("character", pose)
+    label, desc = hit if hit else (custom[:40] or pose, custom or pose)
+    return label, ("The first image is the original drawing of the character: it is the reference for the face, the expression, "
+                   "the proportions, the line and the filling. The second image shows the same character in a neutral pose on a "
+                   "flat coloured background. Redraw this exact character in a new pose: %s. %s %s %s"
+                   % (desc, _FAITHFUL_NOBG, NO_CLOTHES, _key_bg(key, keep=True)))
+
+
+def sheet_prompt_key(view, key="vert"):
+    return ("%s Exactly the same pose: the arms, the hands, the legs and whatever the character holds stay exactly where they "
+            "are in the reference, nothing else moves. The head and the body keep real volume and thickness seen from this "
+            "angle. %s %s %s" % (dict(SHEET_VIEWS)[view], NO_CLOTHES, _FAITHFUL_NOBG, _key_bg(key, keep=True)))
+
+
 def pose_prompt(kind, key, style="photo", custom=""):
     """(nom affiche, prompt d'edition)."""
     hit = find(kind, key)

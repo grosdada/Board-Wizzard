@@ -65,8 +65,54 @@ def singles(frames):
     return list(range(n))
 
 
-def build_orbit(rgb_video, matte_video, dest, height=None, fill=False):
-    """Ecrit dest/000.webp... et renvoie {n, w, h, ext, motion, dark, cover}. matte_video None : decor, sans alpha."""
+KEYS = {"vert": (0, 255, 0), "magenta": (255, 0, 255)}
+
+
+def key_rgba(im, key="vert", lo=40, hi=110):
+    """Detourage par la couleur du fond. Le personnage est dessine sur un fond uni franc (vert, ou magenta s'il porte du
+    vert) : la transparence vient de la dominance de cette couleur, sans reseau de detourage ni rebouchage. Les vides
+    (entre un bras et la hanche) restent des vides, le blanc du sujet reste plein. La couleur du fond est retiree partout
+    (liseré compris) : elle ne fait pas partie du personnage."""
+    a = np.asarray(im.convert("RGB")).astype(np.float32)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    if key == "magenta":
+        dom = np.minimum(r, b) - g
+        spill = np.clip(dom, 0, None)
+        r, b = r - spill, b - spill
+    else:
+        dom = g - np.maximum(r, b)
+        g = g - np.clip(dom, 0, None)
+    alpha = 1 - np.clip((dom - lo) / (hi - lo), 0, 1)
+    return Image.fromarray(np.dstack([r, g, b, alpha * 255]).clip(0, 255).astype(np.uint8), "RGBA")
+
+
+def key_cut(src, dest, key="vert", height=1024):
+    """Image fixe sur fond de couleur -> detouree (comme build_cut). Renvoie (w, h, couverture)."""
+    im = key_rgba(Image.open(src), key)
+    a = np.asarray(im.getchannel("A"))
+    cover = float((a > 128).mean())
+    im = im.crop(_bbox(a > 40, pad=6))
+    if im.height > height:
+        im = im.resize((max(1, round(im.width * height / im.height)), height), Image.LANCZOS)
+    Path(dest).parent.mkdir(parents=True, exist_ok=True)
+    im.save(dest, quality=90, method=4)
+    return im.width, im.height, cover
+
+
+def key_white(src, dest, key="vert"):
+    """Image sur fond de couleur -> la meme sur papier blanc (image de reference montree dans la fiche et comparee au
+    dessin d'origine)."""
+    im = key_rgba(Image.open(src), key)
+    bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+    bg.alpha_composite(im)
+    Path(dest).parent.mkdir(parents=True, exist_ok=True)
+    bg.convert("RGB").save(dest)
+    return dest
+
+
+def build_orbit(rgb_video, matte_video, dest, height=None, fill=False, key=None):
+    """Ecrit dest/000.webp... et renvoie {n, w, h, ext, motion, dark, cover}. matte_video None : decor, sans alpha.
+    key (« vert », « magenta ») : orbite tournee sur fond de couleur, decoupee par cette couleur, sans video de masque."""
     height = height or settings.load()["render"]["frame_height"]
     dest = Path(dest)
     tmp = Path(tempfile.mkdtemp(prefix="bw_"))
@@ -81,6 +127,25 @@ def build_orbit(rgb_video, matte_video, dest, height=None, fill=False):
         if dest.exists():
             shutil.rmtree(dest)
         dest.mkdir(parents=True)
+        if key:
+            keyed = [key_rgba(Image.open(f), key) for f in rgb]
+            alphas = [np.asarray(k.getchannel("A")) for k in keyed]
+            union = np.zeros_like(alphas[0], dtype=bool)
+            for a in alphas:
+                union |= a > 40
+            box = _bbox(union, pad=6)
+            covers = [float((a > 128).mean()) for a in alphas]
+            med = float(np.median(covers))
+            lost = sum(1 for c in covers if c < 0.3 * med) / len(covers) if med > 0 else 1.0
+            w = h = 0
+            for i, im in enumerate(keyed):
+                im = im.crop(box)
+                if im.height > height:
+                    im = im.resize((max(1, round(im.width * height / im.height)), height), Image.LANCZOS)
+                w, h = im.size
+                im.save(dest / ("%03d.webp" % i), quality=86, method=4)
+            return {"n": len(rgb), "w": w, "h": h, "ext": "webp", "alpha": True, "motion": round(motion, 2),
+                    "dark": round(dark, 2), "cover": round(float(np.mean(covers)), 3), "lost": round(lost, 2), "key": key}
         if matte_video is None:
             w = h = 0
             for i, f in enumerate(rgb):

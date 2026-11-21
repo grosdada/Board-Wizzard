@@ -39,6 +39,14 @@ souris. Sœur d'Alive-Comics (même découpage, mêmes bulles, même client Comf
   machines. Qwen redessine les dessins en couleur (lavis) ; Nano Banana Pro garde trait et remplissage. Une pose peut avoir
   ses propres vues (`variants[v].sheet`, fichiers `v/<pose>/sheet/`) : l'orbite les prend à la place de celles de la base,
   qui déteignent quand l'attitude diffère (bras en trop). Sans planche du tout, les profils sortent plats.
+- **Fond de couleur** (`item.key`, `item.apose`, fiche › « Pose en A ») : première étape d'un personnage. `item_apose` tire sa
+  pose en A et sa base sur un fond uni (vert, ou magenta s'il porte du vert) ; David valide. Ensuite poses (`jobs._pose_key` :
+  dessin d'origine + pose en A en références, fidélité toujours mesurée contre le dessin d'origine), vues propres à chaque
+  pose (`item_views`, à valider ou écarter une à une) et orbites gardent ce fond ; `sprites.key_rgba` découpe par la
+  couleur, sans BiRefNet ni rebouchage (`variants[v].keyimg`, `orbit.key`). Les vides (bras sur les hanches) restent ouverts.
+  Optionnel par élément, demande le moteur Nano Banana Pro ; sans lui ou sans pose en A validée, tout passe par l'ancien
+  chemin. Sur un dessin au trait, « change seulement le fond » verdit aussi le corps : la consigne dit que l'intérieur du
+  contour reste blanc.
 - **Bouches dessinées** (`tools/levres.py`, payant) : sur une orbite dont la bouche est suivie (`mouth.json`), Nano Banana Pro
   redessine la tête de quelques images-clés avec la bouche en A, O, É, entrouverte ; on garde la différence autour de la
   bouche (`<orbite>/lips/`, `lips.json`, `orbit.lips`). `lipsync.cardMarkup` recale la carte de l'image-clé la plus proche

@@ -619,6 +619,31 @@ class Handler(BaseHTTPRequestHandler):
         if act == "sheet":                                          # planche de vues d'un personnage (dos, profil...)
             return self.send_json({"job": S.add("item_sheet", {"item": iid, "redo": bool(d.get("redo"))},
                                                 "Planche de vues · %s" % it["name"], **opts)})
+        if act == "apose" and method == "POST":                     # fiche sur fond de couleur : pose en A (+ base), a valider
+            a = d.get("action", "make")
+            if a == "make":
+                if it["kind"] != "character" or it.get("body"):
+                    raise ApiError("la pose en A ne concerne que les personnages qui ont leur propre image")
+                return self.send_json({"job": S.add("item_apose", {"item": iid, "key": d.get("key", "vert"), "seed": d.get("seed")},
+                                                    "Pose en A · %s" % it["name"], **opts)})
+            if a == "ok":
+                try:
+                    return self.send_json(store.resolve(jobs.apose_validate(iid)))
+                except ValueError as e:
+                    raise ApiError(str(e))
+            if a == "drop":                                         # retour au detourage habituel (les poses deja faites restent)
+                def off(x):
+                    x.pop("key", None)
+                    x.pop("apose", None)
+                    x["variants"]["base"].pop("keyimg", None)
+                return self.send_json(store.resolve(store.mutate_item(iid, off)))
+            raise ApiError("action inconnue : %s" % a)
+        if act == "views" and method == "POST":                     # vues d'une pose sur fond de couleur (3 images), a valider
+            vid = d.get("variant", "base")
+            if not (it["variants"].get(vid) or {}).get("keyimg"):
+                raise ApiError("cette pose n'est pas sur fond de couleur")
+            return self.send_json({"job": S.add("item_views", {"item": iid, "variant": vid}, "Vues · %s · %s" % (
+                it["name"], it["variants"][vid].get("label") or vid), **opts)})
         if act == "cut":
             vid = d.get("variant", "base")
             return self.send_json({"job": S.add("item_cut", {"item": iid, "variant": vid},
@@ -809,11 +834,28 @@ class Handler(BaseHTTPRequestHandler):
         vids = [k for k, v in it["variants"].items() if (v.get("review") or {}).get("state") == "pending"] if act == "keep_all" else [d.get("variant")]
         for vid in vids:
             v = it["variants"].get(vid)
-            if not v or vid == "base":
+            if not v or (vid == "base" and act not in ("views_ok", "views_redo", "view_drop")):
                 raise ApiError("variante inconnue : %s" % vid)
+            if act == "view_drop":                                  # une vue fautive ecartee : l'orbite se fera avec les autres
+                def drop_view(x, vid=vid):
+                    (x["variants"][vid].get("sheet") or {}).pop(d.get("view"), None)
+                store.mutate_item(iid, drop_view)
+                continue
+            if act in ("views_ok", "views_redo"):                  # fond de couleur : les vues d'une pose, vues avant son orbite
+                if act == "views_redo":
+                    made.append(S.add("item_views", {"item": iid, "variant": vid, "seed": random.randint(1, 10 ** 6)},
+                                      "Vues · %s · %s" % (it["name"], v.get("label") or vid), **opts))
+                    continue
+                store.mutate_item(iid, lambda x, vid=vid: x["variants"][vid].__setitem__("views", dict(x["variants"][vid].get("views") or {}, state="ok")))
+                if not S.pending("item_orbit", item=iid, variant=vid):
+                    made.append(S.add("item_orbit", {"item": iid, "variant": vid}, "Orbite · %s · %s" % (it["name"], v.get("label") or vid), **opts))
+                continue
             if act in ("keep", "keep_all"):
                 store.mutate_item(iid, lambda x, vid=vid: x["variants"][vid].pop("review", None))
-                if not v.get("orbit") and not S.pending("item_orbit", item=iid, variant=vid):
+                if v.get("keyimg") and it.get("key") and not v.get("orbit"):   # fond de couleur : d'abord ses vues, a valider
+                    if not S.pending("item_views", item=iid, variant=vid):
+                        made.append(S.add("item_views", {"item": iid, "variant": vid}, "Vues · %s · %s" % (it["name"], v.get("label") or vid), **opts))
+                elif not v.get("orbit") and not S.pending("item_orbit", item=iid, variant=vid):
                     made.append(S.add("item_orbit", {"item": iid, "variant": vid}, "Orbite · %s · %s" % (it["name"], v.get("label") or vid), **opts))
             elif act == "redo":
                 params = {"item": iid, "pose": v.get("pose", ""), "variant": vid, "orbit": True, "review": True, "seed": random.randint(1, 10 ** 6)}

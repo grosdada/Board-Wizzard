@@ -19,6 +19,7 @@ from pathlib import Path
 from . import comfy, falapi, poses, settings, sprites, store, vector, headtrack
 
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i", "item_sheet": "edit",
+        "item_apose": "edit", "item_views": "edit",
         "panel_integrate": "edit", "panel_orbit": "orbit"}
 POLL = 3.0
 # priorite : 0 = case en cours de travail (Integrate, orbite de case), 1 = banque a la main, 2 = remplissage en lot
@@ -162,6 +163,83 @@ def run_item_sheet(job, prov):
     ensure_sheet(it, prov, job, redo=bool(job["params"].get("redo")))
 
 
+def _key_engine(job, prov):
+    """Le fond de couleur demande le moteur des poses fidele (Nano Banana Pro) : Qwen redessine le personnage."""
+    eprov, model = _pose_prov(job, prov)
+    if not model:
+        raise RuntimeError("le fond de couleur demande le moteur des poses Nano Banana Pro (Réglages › Calcul)")
+    return eprov, model
+
+
+def run_item_apose(job, prov):
+    """Fiche du personnage : sa pose en A et son image de base, toutes deux sur un fond de couleur uni. Deux images,
+    montrees dans la fiche ; rien d'autre ne part tant qu'elles ne sont pas validees (route « apose », action ok)."""
+    p = job["params"]
+    it = store.load_item(p["item"])
+    d = store.item_dir(it["id"])
+    key = p.get("key") if p.get("key") in sprites.KEYS else "vert"
+    eprov, model = _key_engine(job, prov)
+    base = d / it["variants"]["base"]["ref"]
+    tmp = _tmp()
+    try:
+        job["progress"] = "pose en A"
+        sprites.normalize(eprov.edit([base], poses.apose_prompt(key), _seed(job), tmp), d / "apose/key.png")
+        w, h, _ = sprites.key_cut(d / "apose/key.png", d / "apose/cut.webp", key)
+        sprites.key_white(d / "apose/key.png", d / "apose/ref.png", key)
+        job["progress"] = "image de base sur fond de couleur"
+        sprites.normalize(eprov.edit([base], poses.base_key_prompt(key), _seed(job) + 1, tmp), d / "apose/base.png")
+        sprites.key_cut(d / "apose/base.png", d / "apose/base_cut.webp", key)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    store.mutate_item(it["id"], lambda x: x.update(apose={"key": key, "img": "apose/key.png", "ref": "apose/ref.png",
+                                                          "cut": "apose/cut.webp", "base": "apose/base.png",
+                                                          "base_cut": "apose/base_cut.webp", "cw": w, "ch": h,
+                                                          "state": "pending", "model": model, "t": int(time.time())}))
+
+
+def apose_validate(iid):
+    """La pose en A est validee : l'element passe sur fond de couleur. Poses, vues et orbites suivantes en partent."""
+    def apply(x):
+        a = x.get("apose") or {}
+        if not a.get("img"):
+            raise ValueError("pas de pose en A à valider")
+        a["state"] = "ok"
+        x["key"] = a.get("key", "vert")
+        if a.get("base"):
+            x["variants"]["base"]["keyimg"] = a["base"]
+    return store.mutate_item(iid, apply)
+
+
+def run_item_views(job, prov):
+    """Vues de dos, de profil et de trois-quarts dos d'une pose, sur le fond de couleur : references de son orbite.
+    Elles attendent d'etre validees (review « views_ok ») : un vetement ajoute ou un bras en trop se voit ici."""
+    p = job["params"]
+    it = store.load_item(p["item"])
+    d = store.item_dir(it["id"])
+    vid = p.get("variant", "base")
+    v = it["variants"][vid]
+    key = it.get("key") or "vert"
+    if not v.get("keyimg"):
+        raise RuntimeError("cette pose n'est pas sur fond de couleur")
+    eprov, _ = _key_engine(job, prov)
+    have = {}
+    for k, (view, _desc) in enumerate(poses.SHEET_VIEWS):
+        job["progress"] = "vues de la pose : %s" % view
+        tmp = _tmp()
+        try:
+            rel = "v/%s/sheet/%s.png" % (vid, view)
+            sprites.normalize(eprov.edit([d / v["keyimg"]], poses.sheet_prompt_key(view, key), _seed(job) + 31 + k, tmp), d / rel)
+            have[view] = rel
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    auto = bool(p.get("then_orbit"))
+    store.mutate_item(it["id"], lambda x: x["variants"][vid].update(sheet=have, views={"state": "ok" if auto else "pending",
+                                                                                     "t": int(time.time())}))
+    if auto:
+        SCHEDULER.add("item_orbit", {"item": it["id"], "variant": vid}, "Orbite · %s · %s" % (it["name"], v.get("label") or vid),
+                      target=job["target"], _fal_key=job.get("_fal_key"), prio=job.get("prio", 1), own_key=bool(job.get("own_key")))
+
+
 def run_item_orbit(job, prov):
     p = job["params"]
     it = store.load_item(p["item"])
@@ -173,7 +251,13 @@ def run_item_orbit(job, prov):
     mp = float(p.get("megapixels") or (0.8 if decor else r["megapixels"]))
     best = None
     refs = None
-    if it["kind"] == "character" and not p.get("no_sheet"):      # planche de vues d'abord : le dos et le profil servent de references
+    keyed = it.get("key") if v.get("keyimg") and (d / v["keyimg"]).exists() else None
+    if keyed:                                                   # fond de couleur : ses propres vues, jamais celles sur papier blanc
+        vs = v.get("sheet") or {}
+        views = [d / vs[k] for k, _ in poses.SHEET_VIEWS if k in vs and (d / vs[k]).exists()]
+        if views and not p.get("no_sheet"):
+            refs = {"character": [d / v["keyimg"]] + views[:3]}
+    elif it["kind"] == "character" and not p.get("no_sheet"):      # planche de vues d'abord : le dos et le profil servent de references
         try:
             # une pose peut avoir ses propres vues (v/<pose>/sheet) : celles de la base, dans une autre attitude,
             # deteignent sur l'orbite (bras en trop, mains qui retournent dans les poches)
@@ -189,15 +273,15 @@ def run_item_orbit(job, prov):
         tmp = _tmp()
         try:
             job["progress"] = "orbite, essai %d" % (attempt + 1)
-            start = d / v["ref"]
-            if (attempt or p.get("studio")) and not decor and v.get("cut"):   # 2e essai : sujet seul sur fond de studio
+            start = d / (v["keyimg"] if keyed else v["ref"])
+            if (attempt or p.get("studio")) and not decor and v.get("cut") and not keyed:   # 2e essai : sujet seul sur fond de studio
                 start = sprites.studio(d / v["cut"], tmp / "studio.png")
                 job["progress"] = "orbite sur fond de studio"
             rgb, mat = prov.orbit(start, length, _seed(job, attempt), poses.orbit_subject(it["kind"], it["name"]),
-                                  mp, not decor, tmp, refs=refs)
+                                  mp, not decor and not keyed, tmp, refs=refs)
             job["progress"] = "découpe des images"
             rel = "v/%s/o%d_%d" % (p["variant"], int(time.time()), attempt)
-            info = sprites.build_orbit(rgb, mat, d / rel, fill=it.get("style") == "dessin")
+            info = sprites.build_orbit(rgb, mat, d / rel, fill=it.get("style") == "dessin" and not keyed, key=keyed)
             info.update({"dir": rel, "seed": _seed(job, attempt), "length": length})
             if not decor:                                          # base en gros plan (portrait seul) : la face devient le personnage en pied
                 info["closeup"] = sprites.fix_closeup_start(d / rel, info["n"])
@@ -275,6 +359,80 @@ def _log_pose(item, pose, score, line=1.0, ok=None):
         pass
 
 
+def _pose_key(job, it, d, eprov, model, validate):
+    """Pose d'un personnage sur fond de couleur : dessinee d'apres le dessin d'origine et la pose en A validee, sur le meme
+    fond uni. Le detourage vient de la couleur (pas de tache de detourage). Le controle de fidelite reste mesure contre
+    le dessin d'origine, sur la pose reposee sur papier blanc."""
+    p = job["params"]
+    key = it["key"]
+    label, prompt = poses.pose_prompt_key(p.get("pose", ""), p.get("custom", ""), key)
+    base = d / it["variants"]["base"]["ref"]
+    refs = [base, d / it["apose"]["img"]]
+    drawing = it.get("style") == "dessin"
+    score, line, rejected, best = None, None, False, None
+    tmp = _tmp()
+    try:
+        for k in range(DRAW_TRIES if drawing else 1):
+            job["progress"] = "pose, tirage %d" % (k + 1)
+            cand = tmp / ("cand_%d.png" % k)
+            shutil.copyfile(eprov.edit(refs, prompt, _seed(job) + 7919 * k, tmp), cand)
+            if not drawing:
+                best = (None, cand, True, None)
+                break
+            white = sprites.key_white(cand, tmp / ("white_%d.png" % k), key)
+            sc = sprites.face_score(base, white)
+            try:
+                ratio = sprites.line_ratio(base, white)
+            except Exception:                                      # noqa: BLE001 : sans OpenCV, seul le visage est controle
+                ratio = 1.0
+            good = sc >= DRAW_MIN and _line_ok(ratio, p.get("pose", ""))
+            if best is None or (good, sc) > (best[2], best[0]):
+                best = (sc, cand, good, ratio)
+            if good and sc >= 0.9:
+                break
+        if drawing:
+            score, line = round(float(best[0]), 3), round(float(best[3]), 2)
+            _log_pose(it["id"], p.get("pose") or label, best[0], line, best[2])
+            if not best[2]:
+                if not validate:
+                    if best[0] < DRAW_MIN:
+                        raise RuntimeError("pose écartée : le visage du dessin n'était pas respecté (fidélité %.2f)" % best[0])
+                    raise RuntimeError("pose écartée : le trait n'était pas celui du dessin (%.2f fois son épaisseur)" % line)
+                rejected = True
+        box = {}
+
+        def apply(x):
+            same = [k for k, v in x["variants"].items() if p.get("pose") and v.get("pose") == p["pose"]]
+            vid = p.get("variant") or (same[0] if same else store.variant_id(x, p.get("pose") or label))
+            box["vid"] = vid
+            v = x["variants"].setdefault(vid, {"label": label, "pose": p.get("pose", ""), "ref": "v/%s/ref.png" % vid,
+                                               "cut": None, "orbit": None})
+            if p.get("custom"):
+                v["custom"] = p["custom"]
+            if p.get("variant"):                                 # pose refaite : ses vues et son orbite ne valent plus
+                v["orbit"] = None
+            v.pop("sheet", None)
+            v.pop("views", None)
+            v.update(model=model, keyimg="v/%s/key.png" % vid)
+            if validate:
+                v["review"] = {"state": "rejected" if rejected else "pending", "score": score, "line": line, "at": int(time.time())}
+            else:
+                v.pop("review", None)
+        store.mutate_item(it["id"], apply)
+        vid = box["vid"]
+        sprites.normalize(best[1], d / ("v/%s/key.png" % vid))
+        sprites.key_white(d / ("v/%s/key.png" % vid), d / ("v/%s/ref.png" % vid), key)
+        rel = "v/%s/cut.webp" % vid
+        w, h, _ = sprites.key_cut(d / ("v/%s/key.png" % vid), d / rel, key)
+        store.mutate_item(it["id"], lambda x: x["variants"][vid].update({"cut": rel, "cw": w, "ch": h, "t": int(time.time())}))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    if p.get("orbit", True) and not validate:                    # sans validation demandee : les vues puis l'orbite s'enchainent
+        SCHEDULER.add("item_views", {"item": it["id"], "variant": vid, "then_orbit": True},
+                      "Vues · %s · %s" % (it["name"], label), target=job["target"], _fal_key=job.get("_fal_key"),
+                      prio=job.get("prio", 1), own_key=bool(job.get("own_key")))
+
+
 def run_item_pose(job, prov):
     p = job["params"]
     it = store.load_item(p["item"])
@@ -286,6 +444,9 @@ def run_item_pose(job, prov):
     eprov, model = _pose_prov(job, prov)
     if model and it["kind"] == "character" and it.get("style") != "dessin":   # moteur fidele : « un autre dessin du meme auteur »
         label, prompt = poses.pose_prompt_faithful(p.get("pose", ""), p.get("custom", ""))
+    if (model and it.get("key") and it["kind"] == "character" and (it.get("apose") or {}).get("state") == "ok"
+            and "mannequin" not in (it.get("tags") or [])):
+        return _pose_key(job, it, d, eprov, model, validate)
     tmp = _tmp()
     try:
         base = d / it["variants"]["base"]["ref"]
@@ -438,6 +599,7 @@ def run_panel_orbit(job, prov):
 
 
 RUNNERS = {"item_cut": run_item_cut, "item_orbit": run_item_orbit, "item_pose": run_item_pose, "item_sheet": run_item_sheet,
+           "item_apose": run_item_apose, "item_views": run_item_views,
            "item_new": run_item_new, "panel_integrate": run_panel_integrate, "panel_orbit": run_panel_orbit}
 
 
@@ -463,7 +625,9 @@ def prepare(item_id, orbit=True, pose_keys=(), target="auto", fal_key=None, prio
     base = it["variants"]["base"]
     if it["kind"] != "decor" and not base.get("cut") and not SCHEDULER.pending("item_cut", item=item_id, variant="base"):
         made.append(SCHEDULER.add("item_cut", {"item": item_id, "variant": "base"}, "Détourage · %s" % it["name"], **follow))
-    if orbit and not base.get("orbit") and not SCHEDULER.pending("item_orbit", item=item_id, variant="base"):
+    # fond de couleur : l'orbite de la base attend ses vues, faites et validees dans la fiche (sans elles, profils plats)
+    need_views = bool(it.get("key") and base.get("keyimg") and (base.get("views") or {}).get("state") != "ok")
+    if orbit and not need_views and not base.get("orbit") and not SCHEDULER.pending("item_orbit", item=item_id, variant="base"):
         made.append(SCHEDULER.add("item_orbit", {"item": item_id, "variant": "base"}, "Orbite · %s" % it["name"], **follow))
     have = {v.get("pose") for v in it["variants"].values()}
     for key in pose_keys:

@@ -331,6 +331,7 @@ export class Bank {
     const variants = h("div.variants");
     const poseBox = h("div.posebox");
     const reviewBox = h("div.reviewbox");          // poses a valider avant leur orbite
+    const keyBox = h("div.reviewbox");             // fiche sur fond de couleur : pose en A a valider, vues des poses a valider
     const head = h("div.item-head");
     // loupe : la molette agrandit autour du pointeur (jusqu'a 10 fois) ; bouton du milieu, ou la main, pour se deplacer
     const zwrap = h("div.zoomwrap"); zwrap.append(img); stage.append(zwrap);
@@ -653,6 +654,51 @@ export class Bank {
         acts.append(h("div.sheet", h("div.sheet-head", h("span.muted", Object.keys(sh).length ? tt("Planche de vues (référence des orbites)") : tt("Pas encore de planche de vues : elle se fait avant la prochaine orbite.")), redo),
           state, views));
       }
+      // fiche sur fond de couleur : la pose en A (et la base) sur un fond uni, validees avant tout le reste. Ensuite les
+      // poses, leurs vues et leurs orbites gardent ce fond : le detourage se fait par la couleur, les vides restent ouverts.
+      keyBox.textContent = "";
+      if (item.kind === "character" && !item.body && !item.face) {
+        const ap = item.apose;
+        const running = (kind, k) => app.jobs.some((j) => (j.status === "queued" || j.status === "running") && j.kind === kind && j.params.item === id && (k == null || j.params.variant === k));
+        const call = async (path, body, msg) => { try { await post(`bank/${id}/${path}`, { ...body, target: target() }); if (msg) toast(msg); await this.reload(); app.pollSoon(); } catch (err) { toast(err.message, "error"); } };
+        const damier = "background: repeating-conic-gradient(#8884 0 25%, #0000 0 50%) 0 0 / 16px 16px; border-radius: 6px;";
+        const pic = (rel, cap, t) => h("figure", { style: "margin:0; text-align:center;" }, h("img", { src: `/bank/${id}/${rel}?t=${t || 0}`, loading: "lazy", style: "height: 240px; max-width: 100%; object-fit: contain; " + damier }), h("figcaption.muted", cap));
+        const color = h("select", { title: tt("Couleur du fond : vert, ou magenta si le personnage porte du vert") }, h("option", { value: "vert" }, tt("fond vert")), h("option", { value: "magenta" }, tt("fond magenta")));
+        if (ap && ap.key) color.value = ap.key;
+        const make = () => call("apose", { action: "make", key: color.value, seed: Math.floor(Math.random() * 1e6) }, tt("Pose en A demandée (2 images)."));
+        if (running("item_apose")) keyBox.append(h("h4", tt("Pose en A")), h("p.muted", tt("⏳ La pose en A et la base sur fond de couleur sont en calcul…")));
+        else if (!ap) keyBox.append(h("h4", tt("Pose en A (fond de couleur)")),
+          h("p.muted", tt("Avant les poses : une pose en A du personnage sur un fond uni, que tu valides. Ensuite les poses, leurs vues et leurs orbites gardent ce fond et sont découpées par la couleur : les vides (bras sur les hanches, entre les jambes) restent ouverts, sans rebouchage ni halo. Demande le moteur des poses Nano Banana Pro (2 images payantes).")),
+          h("div.row.wrap", color, h("button.mini.primary", { on: { click: make } }, tt("Faire la pose en A"))));
+        else if (ap.state !== "ok") keyBox.append(h("h4", tt("Pose en A à valider")),
+          h("p.muted", tt("Même visage, même trait, même remplissage que ton dessin ? Le fond doit être uni partout, y compris entre les membres. Tant que tu ne valides pas, rien ne change pour cet élément.")),
+          h("div.row.wrap", { style: "gap: 12px; align-items: flex-end;" }, pic(item.variants.base.ref, tt("ton dessin"), item.variants.base.t), pic(ap.cut, tt("pose en A"), ap.t), ap.base_cut ? pic(ap.base_cut, tt("base sur fond de couleur"), ap.t) : null),
+          h("div.row.wrap", h("button.mini.primary", { on: { click: () => call("apose", { action: "ok" }, tt("Pose en A validée : les prochaines poses partent sur fond de couleur.")) } }, tt("✓ Valider")),
+            color, h("button.mini", { on: { click: make } }, tt("↻ Refaire")),
+            h("button.mini.danger", { on: { click: () => call("apose", { action: "drop" }) } }, tt("Abandonner"))));
+        else {
+          keyBox.append(h("h4", tt("Fond de couleur")),
+            h("div.row.wrap", { style: "gap: 12px; align-items: center;" }, h("img", { src: `/bank/${id}/${ap.cut}?t=${ap.t || 0}`, style: "height: 90px; " + damier }),
+              h("span.muted", tt`Pose en A validée (fond ${ap.key}) : les nouvelles poses, leurs vues et leurs orbites partent sur ce fond. Les poses déjà faites ne changent pas.`),
+              color, h("button.mini", { on: { click: make } }, tt("↻ Refaire la pose en A")),
+              h("button.mini.danger", { title: tt("Les prochaines poses repassent par le détourage habituel ; celles déjà faites restent"), on: { click: () => { if (confirm(tt("Revenir au détourage habituel pour cet élément ?"))) call("apose", { action: "drop" }); } } }, tt("Désactiver"))));
+          // vues d'une pose (dos, profil, 3/4 dos) sur le fond de couleur : vues avant son orbite
+          const names = { dos: "dos", profil: "profil", "trois-quarts-dos": "3/4 dos" };
+          const keyed = Object.entries(item.variants).filter(([, vv]) => vv.keyimg && !vv.review);
+          const cards = keyed.filter(([k, vv]) => (vv.views && vv.views.state === "pending") || running("item_views", k) || !vv.sheet).map(([k, vv]) => {
+            const busy = running("item_views", k), wait = vv.views && vv.views.state === "pending";
+            return h("div.rev", { style: "grid-column: 1 / -1;" }, h("div.var-name", tr(vv.label)),
+              h("div.row.wrap", { style: "gap: 8px;" }, pic(vv.keyimg, tt("la pose"), vv.t), ...(wait ? Object.entries(vv.sheet || {}).map(([n, rel]) => h("div", pic(rel, names[n] || n, vv.views.t),
+                h("button.mini.danger", { title: tt("Écarter cette vue seulement (un vêtement ajouté, un bras en trop) : l'orbite se fera avec les autres"), on: { click: () => call("review", { variant: k, action: "view_drop", view: n }) } }, tt("✕ écarter")))) : [])),
+              busy ? h("div.muted", tt("⏳ vues en calcul")) : h("div.rev-acts",
+                wait ? h("button.mini.primary", { title: tt("Les vues sont bonnes (rien d'ajouté, bon nombre de bras, du volume) : l'orbite part en file"), on: { click: () => call("review", { variant: k, action: "views_ok" }, tt("Orbite en file.")) } }, tt("✓ Valider les vues")) : null,
+                h("button.mini", { title: tt("Trois images payantes : dos, profil, trois-quarts dos"), on: { click: () => call(wait ? "review" : "views", wait ? { variant: k, action: "views_redo" } : { variant: k }, tt("Vues demandées (3 images).")) } }, wait ? tt("↻ Refaire les vues") : tt("Faire les vues"))));
+          });
+          if (cards.length) keyBox.append(h("h4", tt("Vues à valider avant l'orbite")),
+            h("p.muted", tt("Chaque pose a ses vues de dos et de profil, sur le même fond. Regarde-les : un vêtement ajouté, un bras en trop ou un profil plat se retrouverait dans l'orbite.")),
+            h("div.revgrid", cards));
+        }
+      }
       // poses a valider : generees et detourees, leur orbite attend « Garder » (reglage « attendre ma validation »)
       reviewBox.textContent = "";
       const rev = Object.entries(item.variants).filter(([k, vv]) => k !== "base" && vv.review);
@@ -729,7 +775,7 @@ export class Bank {
     setBg(localStorage.getItem("bw.ficheFond") || "");
     const fixBar = h("div.fixbar");
     const left = h("div.item-left", stage, h("div.scrub", playBtn, slider, axisLabel, loadLabel), zoomBar, bgBar, fixBar, snapBar);
-    const body = h("div.item", left, h("div.item-right", head, reviewBox, h("h4", tt("Variantes")), variants, poseBox));
+    const body = h("div.item", left, h("div.item-right", head, keyBox, reviewBox, h("h4", tt("Variantes")), variants, poseBox));
     const m = modal(tt("Fiche"), body, [{ label: tt("Fermer"), click: () => { this.openId = null; } }]);
     m.box.classList.add("wide");
     this.refreshItem = () => { if (document.body.contains(body)) build(true); else { this.openId = null; } };
