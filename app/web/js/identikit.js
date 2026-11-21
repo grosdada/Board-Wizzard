@@ -7,14 +7,27 @@ import { tt, tr } from "./i18n.js";
 import { h, get, post, del, upload, toast, modal, history, put as apiPut } from "./api.js";
 import { openDrawEditor, drawImage } from "./draw.js";
 
-const S = 1000;                                  // cote de la feuille, en unites
-// place et taille de depart d'une categorie (centre x, y ; largeur), quand l'element n'a pas la sienne ("place" de /api/parts)
-const PLACE = { oreilles: [500, 500, 700], visage: [500, 540, 560], barbe: [500, 740, 400], bouche: [500, 670, 210], moustache: [500, 625, 230],
-                nez: [500, 545, 130], yeux: [500, 445, 300], sourcils: [500, 385, 320], signes: [640, 560, 90], lunettes: [500, 445, 350],
-                cheveux: [500, 330, 620], "couvre-chef": [500, 220, 560] };
-// ordre d'empilement, du dessous vers le dessus : les oreilles restent sous la forme du visage
-const ORDER = ["oreilles", "visage", "barbe", "bouche", "moustache", "nez", "yeux", "sourcils", "signes", "lunettes", "cheveux", "couvre-chef"];
-const MANY = new Set(["signes"]);                // categories ou l'on peut poser plusieurs elements
+const S = 1000;                                  // largeur de la feuille, en unites (la hauteur depend du kit : SH)
+// Deux kits sur le meme atelier : le visage (portrait-robot, feuille 1000 x 1000) et le corps (generateur de corps,
+// feuille 1000 x 2000, celle des corps encres de app/bodydraw.py). Pour chacun :
+//   PLACE : place et taille de depart d'une categorie (centre x, y ; largeur), quand l'element n'a pas la sienne
+//   ORDER : ordre d'empilement, du dessous vers le dessus (les oreilles restent sous la forme du visage)
+//   MANY : categories ou l'on peut poser plusieurs elements ; SPLIT : paires separables en deux moities
+const KITS = {
+  visage: { SH: 1000, start: "visage",
+    PLACE: { oreilles: [500, 500, 700], visage: [500, 540, 560], barbe: [500, 740, 400], bouche: [500, 670, 210], moustache: [500, 625, 230],
+             nez: [500, 545, 130], yeux: [500, 445, 300], sourcils: [500, 385, 320], signes: [640, 560, 90], lunettes: [500, 445, 350],
+             cheveux: [500, 330, 620], "couvre-chef": [500, 220, 560] },
+    ORDER: ["oreilles", "visage", "barbe", "bouche", "moustache", "nez", "yeux", "sourcils", "signes", "lunettes", "cheveux", "couvre-chef"],
+    MANY: new Set(["signes"]), SPLIT: new Set(["yeux", "sourcils", "moustache", "lunettes"]), PAIRCATS: ["yeux", "sourcils", "oreilles", "moustache", "lunettes"],
+    random: [["visage", "oreilles", "yeux", "sourcils", "nez", "bouche", "cheveux"], ["moustache", "barbe", "lunettes"]] },
+  corps: { SH: 2000, start: "silhouette",
+    PLACE: { silhouette: [500, 1000, 1000], tete: [500, 265, 609], torse: [500, 850, 560], bras: [500, 900, 760], mains: [500, 1230, 800],
+             jambes: [500, 1520, 340], chaussures: [500, 1790, 460], accessoires: [500, 900, 200] },
+    ORDER: ["silhouette", "jambes", "chaussures", "torse", "bras", "mains", "tete", "accessoires"],
+    MANY: new Set(["accessoires"]), SPLIT: new Set(["bras", "mains", "jambes", "chaussures"]), PAIRCATS: ["bras", "mains", "jambes", "chaussures"],
+    random: [["silhouette", "tete"], ["torse", "bras", "mains", "jambes", "chaussures"]] },
+};
 const ratios = new Map();                        // fichier -> hauteur / largeur
 const ratioOf = (file, t) => new Promise((ok) => {
   const key = file + "?t=" + (t || 0);                 // un element refait garde son nom : la version fait la difference
@@ -22,8 +35,6 @@ const ratioOf = (file, t) => new Promise((ok) => {
   const im = new Image(); im.onload = () => { ratios.set(key, im.naturalHeight / im.naturalWidth); ok(ratios.get(key)); }; im.onerror = () => ok(1); im.src = "/parts/" + key;
 });
 const url = (l) => `/parts/${l.file}?t=${l.t || 0}`;
-// elements dessines en paire (deux yeux sur une image) : separables en deux moities reglables chacune
-const SPLIT = new Set(["yeux", "sourcils", "moustache", "lunettes"]);
 // cadre d'un calque : une moitie (half « l » ou « r » : moitie gauche ou droite de l'image) n'a que la moitie de la largeur
 const boxW = (l) => l.w * l.kx * (l.half ? 0.5 : 1), boxH = (l) => l.w * l.r * l.ky;
 // ou poser l'image entiere pour que la moitie montree soit centree sur le calque (le reste est coupe)
@@ -54,22 +65,33 @@ function capPolys(l) {
   return out;
 }
 
-export async function openIdentikit(bankUI, edit = null) {   // edit : { item } a rouvrir avec sa composition
-  let cats;
-  try { cats = await get("parts"); } catch (e) { return toast(tt("Banque d'éléments indisponible : ") + e.message, "error"); }
-  for (const c of cats) { c.label = tr(c.label); for (const it of c.items) if (!it.mine) it.name = tr(it.name); }   // noms venus du serveur : traduits a l'affichage
-  let cur = cats.find((c) => c.key === "visage") || cats[0], layers = [], sel = null, drag = null, uidN = 1;
+// edit : { item } a rouvrir avec sa composition ; opts.kit : "visage" (portrait-robot) ou "corps" (generateur de corps) ;
+// opts.head : une tete (element de la categorie « tete ») a poser tout de suite sur le corps
+export async function openIdentikit(bankUI, edit = null, opts = {}) {
+  const comp00 = edit && edit.item && edit.item.identikit;
+  const kit = opts.kit || (comp00 && comp00.kit) || "visage", K = KITS[kit] || KITS.visage, BODYKIT = kit === "corps";
+  const { SH, PLACE, ORDER, MANY, SPLIT } = K, DEFPLACE = [500, SH / 2, 300];
+  // banques d'elements : la Banque Claude (celle d'origine) et celles de David, chacune dans son onglet
+  let banks = [], bank = localStorage.getItem("bw.idk.bank." + kit) || "claude", cats;
+  const loadCats = async () => {
+    const cs = await get(`parts?${new URLSearchParams({ bank, kit })}`);
+    for (const c of cs) { c.label = tr(c.label); for (const it of c.items) { it.bank = bank; if (!it.mine) it.name = tr(it.name); } }   // noms venus du serveur : traduits a l'affichage
+    return cs;
+  };
+  try { banks = await get("parts/banks"); if (!banks.some((b) => b.id === bank)) bank = "claude"; cats = await loadCats(); }
+  catch (e) { return toast(tt("Banque d'éléments indisponible : ") + e.message, "error"); }
+  let cur = cats.find((c) => c.key === K.start) || cats[0], layers = [], sel = null, drag = null, uidN = 1;
   const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", `0 0 ${S} ${S}`); svg.setAttribute("class", "idk-stage");
+  svg.setAttribute("viewBox", `0 0 ${S} ${SH}`); svg.setAttribute("class", "idk-stage"); svg.style.aspectRatio = `${S} / ${SH}`;
   const name = h("input", { type: "text", placeholder: tt("Nom du personnage") });
-  const tabs = h("div.idk-tabs"), grid = h("div.idk-grid"), knobs = h("div.idk-knobs"), bricksBox = h("div.idk-bricks");
+  const tabs = h("div.idk-tabs"), grid = h("div.idk-grid"), knobs = h("div.idk-knobs"), bricksBox = h("div.idk-bricks"), bankTabs = h("div.idk-banks");
   let pinned = false, brickSig = "", userSel = false;
   let photo = null;                                  // portrait transpose, montre en fond pour comparer : {url, w, h, M (2 x 3), on, op}
   const BODY = { key: "__corps", label: tt("🧍 Corps"), items: [] };
   let multi = new Set(), moveAll = false, band = null;   // selection de groupe (rectangle, Maj+clic) ; « Deplacer tout » ; rectangle en cours
   let off = { x: 0, y: 0 };                          // decalage de tout le visage (« Deplacer tout ») : les places de depart le suivent
   let bodies = null, bodyPick = null, bodyUrl = null;   // corps choisi pour le personnage entier, et son apercu   // userSel : choisi a la main (clic, brique), pas seulement pose                // pinned : choisi par sa brique, il se deplace meme s'il est recouvert
-  const comp0 = edit && edit.item && edit.item.identikit;
+  const comp0 = comp00;
   if (comp0 && Array.isArray(comp0.layers)) {        // reedition : la composition gardee dans l'element
     layers = JSON.parse(JSON.stringify(comp0.layers));
     uidN = Math.max(1, ...layers.map((l) => (l.n || 0) + 1));
@@ -113,15 +135,16 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
       acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${imgX(l)}" y="${-hh / 2}" width="${W}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"${l.half ? ` clip-path="url(#idkh${l.n})"` : ""}/>` +
         (sel === l.n || multi.has(l.n) ? `<rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
     }
-    const ph = photo && photo.on ? (() => { const M = photo.M; return `<image href="${photo.url}" width="${photo.w}" height="${photo.h}" preserveAspectRatio="none" opacity="${photo.op}" pointer-events="none" transform="matrix(${M[0][0]} ${M[1][0]} ${M[0][1]} ${M[1][1]} ${M[0][2]} ${M[1][2]})"/>`; })() : "";
+    const ph = !BODYKIT && photo && photo.on ? (() => { const M = photo.M; return `<image href="${photo.url}" width="${photo.w}" height="${photo.h}" preserveAspectRatio="none" opacity="${photo.op}" pointer-events="none" transform="matrix(${M[0][0]} ${M[1][0]} ${M[0][1]} ${M[1][1]} ${M[0][2]} ${M[1][2]})"/>`; })() : "";
     const bd = band ? `<rect x="${Math.min(band.x0, band.x1)}" y="${Math.min(band.y0, band.y1)}" width="${Math.abs(band.x1 - band.x0)}" height="${Math.abs(band.y1 - band.y0)}" fill="rgba(16,181,224,0.08)" stroke="#10b5e0" stroke-width="${1.5 * unit()}" stroke-dasharray="6 4" pointer-events="none"/>` : "";
-    svg.innerHTML = `<defs>${defs}</defs><rect width="${S}" height="${S}" fill="#fff"/>` + ph + acc + grips() + bd;
+    svg.innerHTML = `<defs>${defs}</defs><rect width="${S}" height="${SH}" fill="#fff"/>` + ph + acc + grips() + bd;
     svg.style.cursor = moveAll ? "move" : "";
     bricks();
   };
   // nom d'un calque : sa categorie, ou le cote pour une moitie de paire et pour chaque oreille (cote de l'ecran)
   const HALVES = { yeux: [tt("Œil gauche"), tt("Œil droit")], sourcils: [tt("Sourcil gauche"), tt("Sourcil droit")],
-    moustache: [tt("Moustache, côté gauche"), tt("Moustache, côté droit")], lunettes: [tt("Verre gauche"), tt("Verre droit")], oreilles: [tt("Oreille gauche"), tt("Oreille droite")] };
+    moustache: [tt("Moustache, côté gauche"), tt("Moustache, côté droit")], lunettes: [tt("Verre gauche"), tt("Verre droit")], oreilles: [tt("Oreille gauche"), tt("Oreille droite")],
+    bras: [tt("Bras gauche"), tt("Bras droit")], mains: [tt("Main gauche"), tt("Main droite")], jambes: [tt("Jambe gauche"), tt("Jambe droite")], chaussures: [tt("Chaussure gauche"), tt("Chaussure droite")] };
   const nameOf = (l) => {
     const two = HALVES[l.cat];
     if (two && (l.half || (l.cat === "oreilles" && layers.filter((x) => x.cat === "oreilles").length === 2))) {
@@ -261,24 +284,24 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
   // remplacer l'element d'un calque par un autre (meme categorie, ou le meme refait) : place du nouveau si le calque n'a
   // pas ete touche, sinon son decalage et son echelle sont gardes
   const swapper = (cat, it, r) => {
-    const spot = (twin) => { const p = it.place || PLACE[cat] || [500, 500, 300]; return twin ? [S - p[0] + off.x, p[1] + off.y, p[2]] : [p[0] + off.x, p[1] + off.y, p[2]]; };
+    const spot = (twin) => { const p = it.place || PLACE[cat] || DEFPLACE; return twin ? [S - p[0] + off.x, p[1] + off.y, p[2]] : [p[0] + off.x, p[1] + off.y, p[2]]; };
     const swapIn = (l) => {
       const p = spot(!!(l.twin && it.pair)), old = l.p0 || PLACE[cat] || [l.x, l.y, l.w];
       const ox = old[0] + halfOff(l, old), nx = p[0] + halfOff(l, p);             // une moitie : par rapport a la place de sa moitie
       if (l.x === ox && l.y === old[1] && l.w === old[2] && l.kx === 1 && l.ky === 1) Object.assign(l, { x: nx, y: p[1], w: p[2] });
       else Object.assign(l, { x: l.x + nx - ox, y: l.y + p[1] - old[1], w: Math.round(l.w * p[2] / old[2]) });   // regle a la main : decalage et echelle gardes
       if (!it.pair && l.twin) l.flip = false;
-      Object.assign(l, { id: it.id, name: it.name, file: it.file, t: it.t || 0, cap: it.cap || null, r, p0: p, twin: !!(l.twin && it.pair) });
+      Object.assign(l, { id: it.id, bank: it.bank || bank, name: it.name, file: it.file, t: it.t || 0, cap: it.cap || null, r, p0: p, twin: !!(l.twin && it.pair) });
     };
     return { spot, swapIn };
   };
   // place de depart d'un calque : celle de son element (p0), sinon celle de la categorie ; le jumeau d'une oreille garde son miroir
   const halfOff = (l, p) => (l.half ? (l.half === "l" ? -1 : 1) * p[2] / 4 : 0);      // une moitie se place a un quart de la largeur
-  const home = (l) => { const p = l.p0 || (PLACE[l.cat] ? [PLACE[l.cat][0] + off.x, PLACE[l.cat][1] + off.y, PLACE[l.cat][2]] : [500, 500, 300]); Object.assign(l, { x: p[0] + halfOff(l, p), y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: !!l.twin }); };
+  const home = (l) => { const p = l.p0 || (PLACE[l.cat] ? [PLACE[l.cat][0] + off.x, PLACE[l.cat][1] + off.y, PLACE[l.cat][2]] : DEFPLACE); Object.assign(l, { x: p[0] + halfOff(l, p), y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: !!l.twin }); };
   const put = async (cat, it, quiet) => {
     const r = await ratioOf(it.file, it.t);
     const { spot, swapIn } = swapper(cat, it, r);
-    const fresh = (twin) => { const p = spot(twin); return { n: uidN++, cat, id: it.id, name: it.name, file: it.file, t: it.t || 0, cap: it.cap || null, r,
+    const fresh = (twin) => { const p = spot(twin); return { n: uidN++, cat, id: it.id, bank: it.bank || bank, name: it.name, file: it.file, t: it.t || 0, cap: it.cap || null, r,
       x: p[0], y: p[1], w: p[2], kx: 1, ky: 1, rot: 0, flip: twin, twin, p0: p }; };
     let l;
     if (it.pair) {                                  // oreilles : l'image est celle de droite ; deux calques, le jumeau en miroir
@@ -297,92 +320,130 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
     sel = l.n; userSel = false; paint(); props(); marks();
     if (!quiet) hist.snap();
   };
-  const marks = () => grid.querySelectorAll("[data-id]").forEach((b) => b.classList.toggle("on", layers.some((l) => l.cat === cur.key && l.id === b.dataset.id)));
+  const ofBank = (l) => (l.bank || "claude") === bank;
+  const marks = () => grid.querySelectorAll("[data-id]").forEach((b) => b.classList.toggle("on", layers.some((l) => l.cat === cur.key && l.id === b.dataset.id && ofBank(l))));
+  // onglets des banques : la Banque Claude d'origine, puis celles de David ; ＋ en cree une, ✎ et 🗑 pour celle qui est ouverte
+  const bankName = (b) => (b.builtin ? tt("Banque Claude") : b.name);
+  const showBanks = () => {
+    bankTabs.textContent = "";
+    const now = banks.find((b) => b.id === bank) || banks[0];
+    bankTabs.append(...banks.map((b) => h("button.mini.idk-bank" + (b.id === bank ? ".on" : ""), { title: b.builtin ? tt("La banque d'origine, faite par Claude") : tt("Une banque à toi : dessine ses éléments avec ✏ Dessiner…"),
+      on: { click: () => switchBank(b.id) } }, bankName(b))),
+      h("button.mini", { title: tt("Créer une banque vide, dans un nouvel onglet : tu y dessines tes propres éléments"), on: { click: newBank } }, tt("＋ Nouvelle banque")),
+      now && !now.builtin ? h("button.mini", { title: tt("Renommer cette banque"), on: { click: renameBank } }, "✎") : "",
+      now && !now.builtin ? h("button.mini.danger", { title: tt("Supprimer cette banque (elle est mise de côté, pas détruite)"), on: { click: removeBank } }, "🗑") : "");
+  };
+  const switchBank = async (id) => {
+    if (id === bank && cats) return;
+    const was = bank;
+    bank = id;
+    try { cats = await loadCats(); } catch (e) { bank = was; return toast(e.message, "error"); }
+    localStorage.setItem("bw.idk.bank." + kit, bank);
+    cur = cur === BODY ? BODY : cats.find((c) => c.key === (cur && cur.key)) || cats[0];
+    showBanks(); showCat();
+  };
+  const newBank = async () => {
+    const nm = (prompt(tt("Nom de la nouvelle banque :"), "") || "").trim();
+    if (!nm) return;
+    try { const b = await post("parts/banks", { name: nm }); banks.push(b); await switchBank(b.id); toast(tt`Banque « ${nm} » créée : dessine ses éléments avec ✏ Dessiner… dans chaque catégorie.`); }
+    catch (e) { toast(e.message, "error"); }
+  };
+  const renameBank = async () => {
+    const b = banks.find((x) => x.id === bank);
+    const nm = (prompt(tt("Nouveau nom de la banque :"), b ? b.name : "") || "").trim();
+    if (!nm || !b) return;
+    try { await apiPut("parts/banks/" + bank, { name: nm }); b.name = nm; showBanks(); } catch (e) { toast(e.message, "error"); }
+  };
+  const removeBank = async () => {
+    const b = banks.find((x) => x.id === bank);
+    if (!b || !confirm(tt`Supprimer la banque « ${b.name} » ? Elle est mise de côté (data/parts/_retires), pas détruite ; les portraits qui l'utilisent gardent leurs éléments tant qu'elle n'est pas effacée du disque.`)) return;
+    try { await del("parts/banks/" + bank); banks = banks.filter((x) => x.id !== b.id); await switchBank("claude"); } catch (e) { toast(e.message, "error"); }
+  };
   const showCat = () => {
     tabs.textContent = "";
     tabs.append(...cats.map((c) => h("button.mini" + (c === cur ? ".on" : ""), { on: { click: () => { cur = c; showCat(); } } }, c.label, h("span.count", String(c.items.length)))),
-      h("button.mini.idk-bodytab" + (cur === BODY ? ".on" : ""), { title: tt("Poser la tête sur un corps : le personnage entier part dans la banque"), on: { click: () => { cur = BODY; showCat(); } } }, BODY.label));
+      BODYKIT ? "" : h("button.mini.idk-bodytab" + (cur === BODY ? ".on" : ""), { title: tt("Poser la tête sur un corps : le personnage entier part dans la banque"), on: { click: () => { cur = BODY; showCat(); } } }, BODY.label));
     grid.textContent = "";
     if (cur === BODY) { showBodies(); return; }
+    const fixed = (it) => BODYKIT && cur.key === "silhouette" && bank === "claude" && !it.mine;   // corps encres d'origine : ils restent
     grid.append(...cur.items.map((it) => h("button.idk-el", { "data-id": it.id, title: it.name + (it.mine ? tt(" (dessiné ici)") : ""), on: { click: () => put(cur.key, it) } },
       h("img", { src: `/parts/${it.file}?t=${it.t || 0}`, loading: "lazy", alt: "" }), h("span", it.name),
-      h("b.edit", { title: it.mine && it.editable ? tt("Éditer ce dessin (ses formes se rouvrent)") : tt("Éditer : retoucher par-dessus cette image ; donne un nouvel élément, l'original reste"), on: { click: (e) => { e.stopPropagation(); editPart(cur.key, it); } } }, "✏"),
-      h("i", { title: tt("Retirer cet élément de la banque (il est mis de côté, pas détruit)"), on: { click: async (e) => {
+      h("b.edit", { title: it.mine && it.editable ? tt("Éditer ce dessin (ses calques se rouvrent)") : tt("Éditer : retoucher par-dessus cette image ; donne un nouvel élément, l'original reste"), on: { click: (e) => { e.stopPropagation(); editElement(cur.key, it); } } }, "✏"),
+      fixed(it) ? "" : h("i", { title: tt("Retirer cet élément de la banque (il est mis de côté, pas détruit)"), on: { click: async (e) => {
         e.stopPropagation();
         if (!confirm(tt`Retirer « ${it.name} » de la banque d'éléments ?`)) return;
-        try { await del(`parts/${cur.key}/${it.id}`); cur.items = cur.items.filter((x) => x !== it); layers = layers.filter((l) => !(l.cat === cur.key && l.id === it.id)); paint(); props(); showCat(); }
+        try { await del(`parts/${cur.key}/${it.id}?bank=${encodeURIComponent(bank)}`); cur.items = cur.items.filter((x) => x !== it); layers = layers.filter((l) => !(l.cat === cur.key && l.id === it.id && ofBank(l))); paint(); props(); showCat(); }
         catch (err) { toast(err.message, "error"); }
       } } }, "✕"))),
-      h("button.idk-el.add", { title: tt("Dessiner soi-même un élément de cette catégorie : il s'ajoute à la banque"), on: { click: () => drawOne() } }, h("b", "✏"), h("span", tt("Dessiner…"))));
-    if (!cur.items.length) grid.prepend(h("p.muted", tt("Aucun élément dans cette catégorie pour l'instant.")));
+      h("button.idk-el.add", { title: tt("Dessiner soi-même un élément de cette catégorie, avec calques, pinceaux et images importées : il s'ajoute à la banque ouverte"), on: { click: () => editElement(cur.key, null) } }, h("b", "✏"), h("span", tt("Dessiner…"))));
+    if (!cur.items.length) grid.prepend(h("p.muted", bank === "claude" ? tt("Aucun élément dans cette catégorie pour l'instant.") : tt("Banque encore vide dans cette catégorie : ✏ Dessiner… pour créer le premier élément.")));
     marks();
   };
+  // l'element dessine, en PNG transparent couvrant toute la feuille (1000 pixels de large) : l'image retouchee dessous
   const pngOf = async (d, under) => {
-    const c = document.createElement("canvas"); c.width = c.height = 768;
-    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 768, 768);
+    const wpx = 1000, hpx = Math.round(1000 * SH / S), c = document.createElement("canvas"); c.width = wpx; c.height = hpx;
+    const x = c.getContext("2d");
     if (under) {                                    // l'image retouchee, a sa place, sous le dessin
       const u = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = under.url; });
-      if (u) x.drawImage(u, under.x * 768, under.y * 768, under.w * 768, under.h * 768);
+      if (u) x.drawImage(u, under.x * wpx, under.y * hpx, under.w * wpx, under.h * hpx);
     }
-    const im = d.shapes.length ? await drawImage(d, 768, 768) : null;
+    const im = d.shapes.length ? await drawImage(d, wpx, hpx) : null;
     if (d.shapes.length && !im) return null;
-    if (im) x.drawImage(im, 0, 0, 768, 768);
+    if (im) x.drawImage(im, 0, 0, wpx, hpx);
     return new Promise((ok) => c.toBlob(ok, "image/png"));
   };
-  const PAIRCATS = ["yeux", "sourcils", "oreilles", "moustache", "lunettes"];
-  // editer un element : un dessin de l'atelier se rouvre avec ses formes et se remplace ; un element de la banque (ou un
-  // ancien dessin sans formes) s'ouvre en fond dans le cadre et donne un NOUVEL element, l'original reste intact
-  const editPart = async (catKey, it) => {
+  // dessiner un element (it = null) ou l'editer : un dessin de l'atelier se rouvre avec ses calques et se remplace ; un
+  // element tout fait (ou un ancien dessin sans formes) s'ouvre en fond et donne un NOUVEL element, l'original reste intact.
+  // Un nouvel element va dans la banque ouverte ; l'enregistrement est un PNG transparent, couleurs gardees.
+  const editElement = async (catKey, it) => {
     const cat = cats.find((c) => c.key === catKey);
-    if (!cat || !it) return;
+    if (!cat) return;
+    const eb = (it && it.bank) || bank;
     let meta = null;
-    if (it.mine && it.editable) { try { meta = await get(`parts/${catKey}/${it.id}`); } catch (e) { meta = null; } }
-    const own = !!(meta && Array.isArray(meta.shapes) && meta.shapes.length), pair = !!(it.pair || (meta && meta.pair));
-    const r = await ratioOf(it.file, it.t), p = it.place || PLACE[catKey] || [500, 500, 300];
-    const under = own ? (meta.under || null) : { url: `/parts/${it.file}?t=${it.t || 0}`, x: (p[0] - p[2] / 2) / S, y: (p[1] - p[2] * r / 2) / S, w: p[2] / S, h: p[2] * r / S };
-    openDrawEditor({ draw: { shapes: own ? meta.shapes : [] }, ratio: 1, backdrop: null, under, axis: PAIRCATS.includes(catKey),
-      title: tt`Éditer : ${it.name}`, saveLabel: own ? tt("Enregistrer l'élément") : tt("Enregistrer comme nouvel élément"),
+    if (it && it.mine && it.editable) { try { meta = await get(`parts/${catKey}/${it.id}?bank=${encodeURIComponent(eb)}`); } catch (e) { meta = null; } }
+    const own = !!(meta && ((meta.layers || []).length || (meta.shapes || []).length)), pair = !!((it && it.pair) || (meta && meta.pair));
+    let under = null;
+    if (own) under = meta.under || null;
+    else if (it) { const r = await ratioOf(it.file, it.t), p = it.place || PLACE[catKey] || DEFPLACE;
+      under = { url: `/parts/${it.file}?t=${it.t || 0}`, x: (p[0] - p[2] / 2) / S, y: (p[1] - p[2] * r / 2) / SH, w: p[2] / S, h: p[2] * r / SH }; }
+    const fillBox = h("input", { type: "checkbox", checked: meta && meta.fill != null ? !!meta.fill : !!cat.fill });
+    const extra = h("label.row.check.idk-fill", { title: tt("Coché : le blanc enfermé par le contour devient opaque et cache ce qui est dessous (un visage, des cheveux). Décoché : seul ce qui est dessiné compte, le reste est transparent.") },
+      fillBox, tt("Intérieur des contours opaque (blanc)"));
+    const draw = own ? ((meta.layers || []).length ? { layers: meta.layers } : { shapes: meta.shapes }) : null;
+    openDrawEditor({ draw, ratio: SH / S, backdrop: null, under, axis: K.PAIRCATS.includes(catKey), layers: true, kit: true, extra,
+      title: it ? tt`Éditer : ${it.name}` : tt`Dessiner : ${cat.label}`,
+      saveLabel: own ? tt("Enregistrer l'élément") : it ? tt("Enregistrer comme nouvel élément") : tt("Ajouter à la banque d'éléments"),
       onSave: async (d) => {
-        let nm = it.name;
-        if (!own) { nm = (prompt(tt("Nom du nouvel élément (l'original reste dans la banque) :"), tt`${it.name} (retouché)`) || "").trim(); if (!nm) return; }
+        if (!d.shapes.length && !under) return toast(tt("Rien à enregistrer : le dessin est vide."), "error");
+        let nm = it ? it.name : "";
+        if (!own) {
+          nm = (prompt(it ? tt("Nom du nouvel élément (l'original reste dans la banque) :") : tt("Nom de cet élément :"), it ? tt`${it.name} (retouché)` : cat.label + tt(" dessiné")) || "").trim();
+          if (!nm) return;
+        }
+        const tb = own ? eb : bank;
         const blob = await pngOf(d, under);
         if (!blob) return toast(tt("Le dessin n'a pas pu être converti en image."), "error");
         try {
-          const q = new URLSearchParams({ name: nm });
+          const q = new URLSearchParams({ name: nm, bank: tb, fill: fillBox.checked ? "1" : "0" });
           if (own) q.set("replace", it.id);
           const nu = await upload(`parts/${catKey}?${q}`, blob);
-          await apiPut(`parts/${catKey}/${nu.id}`, { shapes: d.shapes, under, pair });
-          nu.editable = true; nu.pair = pair;
-          const i = cat.items.findIndex((x) => x.id === nu.id);
-          if (i >= 0) cat.items[i] = nu; else cat.items.push(nu);
-          const nr = await ratioOf(nu.file, nu.t), { swapIn } = swapper(catKey, nu, nr);
-          layers.filter((l) => l.cat === catKey && l.id === it.id).forEach(swapIn);   // les calques passent a l'element edite
+          await apiPut(`parts/${catKey}/${nu.id}?bank=${encodeURIComponent(tb)}`, { layers: d.layers || [{ name: tt("Calque 1"), shapes: d.shapes }], under, pair, fill: fillBox.checked });
+          nu.editable = true; nu.pair = pair; nu.bank = tb;
+          if (tb === bank) { const i = cat.items.findIndex((x) => x.id === nu.id); if (i >= 0) cat.items[i] = nu; else cat.items.push(nu); }
+          if (it) {
+            const nr = await ratioOf(nu.file, nu.t), { swapIn } = swapper(catKey, nu, nr);
+            layers.filter((l) => l.cat === catKey && l.id === it.id && (l.bank || "claude") === eb).forEach(swapIn);   // les calques passent a l'element edite
+          }
           brickSig = ""; cur = cat; showCat(); paint(); props(); hist.snap();
-          toast(own ? tt`« ${nm} » est mis à jour.` : tt`« ${nm} » est ajouté à la banque d'éléments ; l'original n'a pas changé.`);
+          if (!it) put(catKey, nu);
+          toast(own ? tt`« ${nm} » est mis à jour.` : it ? tt`« ${nm} » est ajouté à la banque d'éléments ; l'original n'a pas changé.` : tt`« ${nm} » est ajouté à la banque.`);
         } catch (e) { toast(tt("Élément refusé : ") + e.message, "error"); }
       } });
   };
-  const itemOf = (l) => (cats.find((c) => c.key === l.cat) || { items: [] }).items.find((x) => x.id === l.id) || { id: l.id, name: l.name, file: l.file, t: l.t, mine: false, place: l.p0 };
-  const drawOne = () => {
-    const cat = cur;
-    openDrawEditor({ draw: null, ratio: 1, backdrop: null, title: tt`Dessiner : ${cat.label}`, saveLabel: tt("Ajouter à la banque d'éléments"),
-      axis: ["yeux", "sourcils", "oreilles", "moustache", "lunettes"].includes(cat.key),
-      onSave: async (d) => {
-        if (!d.shapes.length) return;
-        const nm = (prompt(tt("Nom de cet élément :"), cat.label + tt(" dessiné")) || "").trim();
-        if (!nm) return;
-        const im = await drawImage(d, 768, 768);
-        if (!im) return toast(tt("Le dessin n'a pas pu être converti en image."), "error");
-        const c = document.createElement("canvas"); c.width = c.height = 768;
-        const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 768, 768); x.drawImage(im, 0, 0, 768, 768);
-        const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
-        try { const it = await upload(`parts/${cat.key}?name=${encodeURIComponent(nm)}`, blob); await apiPut(`parts/${cat.key}/${it.id}`, { shapes: d.shapes, under: null });
-          it.editable = true; cat.items.push(it); cur = cat; showCat(); put(cat.key, it); }
-        catch (e) { toast(tt("Élément refusé : ") + e.message, "error"); }
-      } });
-  };
+  const editPart = editElement;
+  const itemOf = (l) => (ofBank(l) && (cats.find((c) => c.key === l.cat) || { items: [] }).items.find((x) => x.id === l.id)) || { id: l.id, bank: l.bank || "claude", name: l.name, file: l.file, t: l.t, mine: false, place: l.p0 };
   // souris : glisser un element pose, molette pour sa taille
-  const pt = (e) => { const r = svg.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * S, y: (e.clientY - r.top) / r.height * S }; };
+  const pt = (e) => { const r = svg.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * S, y: (e.clientY - r.top) / r.height * SH }; };
   svg.addEventListener("pointerdown", (e) => {
     if (e.button === 2) return;                     // clic droit : le menu s'en charge
     if (moveAll) {                                  // « Deplacer tout » : le visage entier suit la souris
@@ -529,19 +590,20 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
 
   const random = async () => {
     layers = []; sel = null; multi.clear();
-    for (const key of ["visage", "oreilles", "yeux", "sourcils", "nez", "bouche", "cheveux"]) {
+    for (const key of K.random[0]) {
       const c = cats.find((k) => k.key === key);
       if (c && c.items.length) await put(key, c.items[Math.floor(Math.random() * c.items.length)], true);
     }
-    for (const key of ["moustache", "barbe", "lunettes"]) {
+    for (const key of K.random[1]) {
       const c = cats.find((k) => k.key === key);
-      if (c && c.items.length && Math.random() < 0.3) await put(key, c.items[Math.floor(Math.random() * c.items.length)], true);
+      if (c && c.items.length && Math.random() < (BODYKIT ? 0.7 : 0.3)) await put(key, c.items[Math.floor(Math.random() * c.items.length)], true);
     }
     sel = null; paint(); props(); hist.snap();                      // un tirage = une seule etape
   };
   // l'image du visage monte, elements dans l'ordre : wpx x hpx pixels, k = wpx / 1000 ; white : fond blanc (sinon
   // transparent, pour poser la tete sur un corps : cadre 1000 x 1300 de l'atelier, menton en y = 880)
-  const render = async (wpx = 1024, hpx = 1024, white = true, type = "image/png") => {
+  // crop : l'image est rognee autour du dessin, avec une marge (le corps n'occupe pas toute sa feuille)
+  const render = async (wpx = 1024, hpx = Math.round(1024 * SH / S), white = true, type = "image/png", crop = false) => {
     const k = wpx / S, c = document.createElement("canvas"); c.width = wpx; c.height = hpx;
     const a = document.createElement("canvas"); a.width = wpx; a.height = hpx;     // les calques, sur fond transparent
     const x = a.getContext("2d");
@@ -560,10 +622,32 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
       if (l.half) { x.beginPath(); x.rect(-bw / 2, -hh / 2, bw, hh); x.clip(); }      // une moitie : seulement sa moitie de l'image
       x.drawImage(im, imgX(l) * k, -hh / 2, W, hh); x.restore();
     }
+    let src = a;
+    if (crop) {                                     // la boite du dessin, plus 4 % de marge
+      const px = x.getImageData(0, 0, wpx, hpx).data;
+      let x0 = wpx, y0 = hpx, x1 = -1, y1 = -1;
+      for (let yy = 0; yy < hpx; yy += 2) for (let xx = 0; xx < wpx; xx += 2) if (px[(yy * wpx + xx) * 4 + 3] > 16) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }
+      if (x1 > x0 && y1 > y0) {
+        const m = Math.round(0.04 * Math.max(x1 - x0, y1 - y0));
+        x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(wpx, x1 + m); y1 = Math.min(hpx, y1 + m);
+        src = document.createElement("canvas"); src.width = x1 - x0; src.height = y1 - y0;
+        src.getContext("2d").drawImage(a, -x0, -y0);
+        c.width = src.width; c.height = src.height;
+      }
+    }
     const out = c.getContext("2d");
-    if (white) { out.fillStyle = "#fff"; out.fillRect(0, 0, wpx, hpx); }
-    out.drawImage(a, 0, 0);
+    if (white) { out.fillStyle = "#fff"; out.fillRect(0, 0, c.width, c.height); }
+    out.drawImage(src, 0, 0);
     return new Promise((ok) => c.toBlob(ok, type, 0.92));
+  };
+  // la tete composee, envoyee au generateur de corps : rangee dans « Tête » (Banque Claude), posee sur un corps a choisir
+  const toBody = async () => {
+    if (!layers.length) return toast(tt("Pose d'abord une tête."), "error");
+    try {
+      sel = null; multi.clear(); paint();
+      const head = await upload(`parts/heads?${new URLSearchParams({ name: name.value.trim() || tt("Tête") })}`, await render(1000, 1000, false));
+      openIdentikit(bankUI, null, { kit: "corps", head: Object.assign(head, { bank: "claude" }), name: name.value.trim() });
+    } catch (e) { toast(e.message, "error"); }
   };
   // ---- corps : la tete posee sur un des corps encres (le serveur compose, comme pour la banque)
   const composeBody = async () => {
@@ -654,7 +738,7 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
     const go = async (fmt) => {
       box.remove();
       if (!layers.length) return toast(tt("Pose au moins un élément."), "error");
-      const jpg = fmt === "jpg", blob = await render(2 * S, 2 * S, jpg, jpg ? "image/jpeg" : "image/png");
+      const jpg = fmt === "jpg", blob = await render(2 * S, 2 * SH, jpg, jpg ? "image/jpeg" : "image/png", BODYKIT);
       const a = h("a", { href: URL.createObjectURL(blob), download: (name.value.trim() || tt("portrait-robot")).replace(/[\\/:*?"<>|]+/g, "_") + (jpg ? ".jpg" : ".png") });
       document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     };
@@ -667,17 +751,19 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
     setTimeout(() => document.addEventListener("pointerdown", close, true), 0);
   };
   // composition gardee dans l'element de banque, pour le rouvrir ici
-  const composition = (withBody) => ({ v: 1, layers: JSON.parse(JSON.stringify(layers)), off, body: withBody ? bodyPick : null });
+  const composition = (withBody) => Object.assign({ v: 1, layers: JSON.parse(JSON.stringify(layers)), off, body: withBody ? bodyPick : null }, BODYKIT ? { kit: "corps" } : null);
   // petit choix a deux reponses (null si on annule)
   const choose = (title, text, opts, warn) => new Promise((ok) => {
     modal(title, h("div.form", h("p", text), warn ? h("p.idk-warn", warn) : null), [{ label: tt("Annuler"), click: () => ok(null) }, ...opts.map(([v, l]) => ({ label: l, primary: true, click: () => ok(v) }))]);
   });
-  const m = modal(edit && edit.item ? tt`Portrait-robot : ${edit.item.name}` : tt("Portrait-robot"), h("div.idk",
-    h("div.idk-left", h("div.idk-stagewrap", svg, moveBtn), bricksBox, h("div.row.wrap", h("button.mini", { title: tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
-      h("button.mini", { title: tt("Reconstruit le visage d'une photo de face avec les éléments du portrait-robot. La photo reste dans ce navigateur : seuls les points du visage partent."), on: { click: () => fileIn.click() } }, tt("📷 Transposer un portrait…")), fileIn,
+  const head = BODYKIT ? tt("Générateur de corps") : tt("Portrait-robot");
+  const m = modal(edit && edit.item ? `${head} : ${edit.item.name}` : head, h("div.idk" + (BODYKIT ? ".idk-corps" : ""),
+    h("div.idk-left", h("div.idk-stagewrap", svg, moveBtn), bricksBox, h("div.row.wrap", h("button.mini", { title: BODYKIT ? tt("Tire un corps au hasard dans la banque ouverte") : tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
+      BODYKIT ? "" : h("button.mini", { title: tt("Reconstruit le visage d'une photo de face avec les éléments du portrait-robot. La photo reste dans ce navigateur : seuls les points du visage partent."), on: { click: () => fileIn.click() } }, tt("📷 Transposer un portrait…")), BODYKIT ? "" : fileIn,
+      BODYKIT ? "" : h("button.mini", { title: tt("Ouvre le générateur de corps avec cette tête : torse, bras, jambes, chaussures… à assembler ou à dessiner"), on: { click: toBody } }, tt("🧍 Composer un corps…")),
       h("button.mini", { on: { click: () => { layers = []; sel = null; multi.clear(); paint(); props(); marks(); } } }, tt("Tout retirer")),
       h("button.mini", { title: tt("Télécharge le portrait tel qu'il est affiché, en pleine définition, sans les poignées"), on: { click: (e) => exportMenu(e) } }, tt("⬇ Exporter le portrait ▾"))), photoBox, knobs),
-    h("div.idk-right", h("label.row", tt("Nom"), name), tabs, grid)),
+    h("div.idk-right", h("label.row", tt("Nom"), name), bankTabs, tabs, grid)),
     [{ label: tt("Fermer") }, { label: edit && edit.item ? tt("Enregistrer…") : tt("Ajouter à la banque"), primary: true, click: async () => {
       if (!layers.length) { toast(tt("Pose au moins un élément."), "error"); return false; }
       const nm = name.value.trim() || tt("Portrait-robot");
@@ -690,7 +776,7 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
         replace = c === "replace";
       }
       let withBody = false;
-      if (bodyPick) {
+      if (bodyPick && !BODYKIT) {
         const c = await choose(tt("Ajouter à la banque"), tt("Le personnage entier, avec le corps choisi, ou seulement la tête ?"), [["head", tt("Tête seule")], ["body", tt("Avec ce corps")]]);
         if (!c) return false;
         withBody = c === "body";
@@ -698,7 +784,7 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
       if (replace) {
         try {
           sel = null; multi.clear(); paint();
-          const blob = withBody ? await composeBody() : await render();
+          const blob = withBody ? await composeBody() : await render(1024, Math.round(1024 * SH / S), true, "image/png", BODYKIT);
           const id = edit.item.id;
           await upload(`bank/${id}/rebase`, blob);
           edit.item = await apiPut("bank/" + id, { identikit: composition(withBody) });
@@ -710,8 +796,8 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
       const orbit = confirm(tt("Calculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : il reste une image fixe, tu pourras lancer l'orbite plus tard depuis sa fiche."));
       try {
         sel = null; multi.clear(); paint();
-        const blob = withBody ? await composeBody() : await render();
-        const it = await upload("bank?" + new URLSearchParams({ kind: "character", name: nm, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", file: withBody ? "personnage.png" : "portrait.png", folder: "Portraits-robots" }), blob);
+        const blob = withBody ? await composeBody() : await render(1024, Math.round(1024 * SH / S), true, "image/png", BODYKIT);
+        const it = await upload("bank?" + new URLSearchParams({ kind: "character", name: nm, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", file: withBody || BODYKIT ? "personnage.png" : "portrait.png", folder: "Portraits-robots" }), blob);
         try { await apiPut("bank/" + it.id, { identikit: composition(withBody) }); }   // pour le rouvrir dans l'atelier
         catch (e) { toast(tt("Composition non gardée : ") + e.message, "error"); }
         bankUI.tab = "character"; await bankUI.reload(); bankUI.reveal(it.id); bankUI.app.pollSoon();
@@ -720,5 +806,9 @@ export async function openIdentikit(bankUI, edit = null) {   // edit : { item } 
     } }]);
   m.box.classList.add("wide", "idk-box");
   hist.watch(m.box);                                // chaque geste dans la fenetre note l'etat (souris, curseurs, menus)
-  showCat(); paint(); props();
+  if (BODYKIT) m.box.classList.add("idk-corpsbox");
+  if (opts.name && !name.value) name.value = opts.name;
+  showBanks(); showCat(); paint(); props();
+  if (opts.head) { const tc = cats.find((c) => c.key === "tete"); if (tc && bank === "claude" && !tc.items.some((x) => x.id === opts.head.id)) tc.items.push(opts.head); await put("tete", opts.head); }
 }
+

@@ -575,3 +575,14 @@ svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http:
 /* fiche, fond de couleur : image sur son fond et sa decoupe cote a cote ; tirage sans le fond demande */
 .kpair { display: flex; flex-direction: column; gap: 3px; } .kpair-title { font-size: 12px; font-weight: 600; }
 .fond-rate { display: grid; place-items: center; min-width: 120px; padding: 0 10px; border: 2px dashed #e2603a; border-radius: 6px; color: #e2603a; font-weight: 700; }
+/* portrait-robot et generateur de corps : onglets des banques d'elements ; atelier d'elements : calques, pointe du tampon */
+.idk-banks { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 6px 0 4px; border-bottom: 1px solid var(--line, #3335); }
+.idk-banks .idk-bank { font-weight: 600; } .idk-banks .idk-bank.on { background: var(--accent, #6cc); color: #111; border-color: var(--accent, #6cc); }
+.idk.idk-corps { grid-template-columns: minmax(220px, 36vh) 1fr; }
+.idk-fill { margin: 0 0 6px; }
+.draw-layers { margin-top: 10px; border-top: 1px solid var(--line, #3335); padding-top: 4px; }
+.draw-layer { display: grid; grid-template-columns: auto 1fr auto 56px auto auto auto; gap: 4px; align-items: center; padding: 3px 4px; border-radius: 5px; cursor: pointer; }
+.draw-layer.on { background: color-mix(in srgb, var(--accent, #6cc) 28%, transparent); } .draw-layer.off .lname { opacity: .45; text-decoration: line-through; }
+.draw-layer .lname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .draw-layer input[type=range] { width: 56px; }
+.draw-layer .mini { padding: 1px 5px; }
+.draw-tip { max-width: 70px; max-height: 50px; background: #fff; border-radius: 4px; }
