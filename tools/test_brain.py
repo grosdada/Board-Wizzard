@@ -115,5 +115,70 @@ fake["zz"]["cost"]["allow"] = 15
 cost.check("zz", 0.9, "6 tirages")
 check(cost.cap_for(fake["zz"]) == 15, "plafond relevé par l'humain : accepté")
 
+print("Audit après tirage (faux juge)")
+from app import jobs, store  # noqa: E402
+
+store.item_dir = lambda iid: tmp                                 # element imaginaire : dessin d'origine = orig.png
+it = {"id": "zz", "variants": {"base": {"ref": "orig.png"}}}
+brain.enabled = lambda: True
+brain.config = lambda: {"key": "k", "audit": True, "auto_retry": True, "max_retries": 2}
+
+
+def scripted(*verdicts):
+    seq = list(verdicts)
+
+    def juge(etape, image, origine, contexte="", extra=(), item=None, cfg=None, transport=None):
+        v = seq.pop(0) if seq else "garder"
+        return {"verdict": v, "defauts": [] if v == "garder" else ["slip ajouté"], "consigne": "reste nu", "non_verifie": []}
+    return juge
+
+
+drawn = []
+
+
+def redraw(consigne, n):
+    drawn.append(consigne)
+    return tmp / ("redo_%d.png" % n)
+
+
+brain.juge = scripted("garder")
+im, a = jobs._audit({}, it, "pose", img, redraw=redraw)
+check(a["final"] == "garder" and im == img and not drawn, "garder du premier coup : aucune reprise")
+brain.juge = scripted("refaire", "garder")
+im, a = jobs._audit({}, it, "pose", img, redraw=redraw)
+check(a["final"] == "garder" and a["reprises"] == 1 and im.name == "redo_1.png" and drawn == ["reste nu"],
+      "refaire puis garder : une reprise, avec la consigne")
+drawn.clear()
+brain.juge = scripted("refaire", "refaire", "refaire", "refaire")
+im, a = jobs._audit({}, it, "pose", img, redraw=redraw)
+check(len(drawn) == 2 and a["final"] == "refaire" and a.get("raison"), "au plus deux reprises, puis écartée avec la raison")
+drawn.clear()
+brain.config = lambda: {"key": "k", "audit": True, "auto_retry": False, "max_retries": 2}
+brain.juge = scripted("refaire")
+im, a = jobs._audit({}, it, "pose", img, redraw=redraw)
+check(not drawn and a["final"] == "refaire", "reprise automatique coupée : avis seul")
+brain.config = lambda: {"key": "k", "audit": True, "auto_retry": True, "max_retries": 2}
+brain.juge = scripted("refaire")
+
+
+def broke(consigne, n):
+    raise cost.BudgetExceeded("zz", 9.9, 0.15, 10, "reprise")
+
+
+im, a = jobs._audit({}, it, "pose", img, redraw=broke)
+check(a["final"] == "refaire" and "plafond" in a.get("erreur", ""), "plafond atteint pendant une reprise : arrêt propre")
+brain.config = lambda: {"key": "k", "audit": False}
+check(jobs._audit({}, it, "pose", img)[1] is None, "audit coupé dans les réglages : rien")
+brain.enabled = lambda: False
+check(jobs._audit({}, it, "pose", img)[1] is None, "sans clé : rien")
+
+print("Planche de la tournette")
+odir = tmp / "orbit"
+odir.mkdir()
+for f in range(72):
+    Image.new("RGBA", (200, 400), (255, 255, 255, 255 if f % 2 else 128)).save(odir / ("%03d.webp" % f))
+out = jobs._contact_sheet(odir, 72, tmp / "planche.png")
+check(Image.open(out).size == (1200, 900), "12 angles sur une planche 4 × 3")
+
 print("\n" + ("Tout est bon." if ok else "Des essais ont raté."))
 sys.exit(0 if ok else 1)

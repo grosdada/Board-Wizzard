@@ -1,5 +1,15 @@
 {
  "ui": {
+  "tournette": "turnaround",
+  "garder": "keep",
+  "à refaire": "redo",
+  "à écarter": "discard",
+  "Vue « {0} » écartée par l'intelligence : {1}": "View « {0} » discarded by the intelligence: {1}",
+  "IA : pas d'avis": "AI: no opinion",
+  "{0} reprise(s) automatique(s)": "{0} automatic retry(ies)",
+  "Pas vérifié : ": "Not checked: ",
+  "Rien à signaler": "Nothing to report",
+  "IA : ": "AI: ",
   "Plafond du personnage atteint.\n\nDéjà dépensé : {0} $\nCe lancement (avec ce qui est déjà en file) : ≈ {1} $\nPlafond : {2} $\n\nRelever le plafond de ce personnage à {3} $ et lancer quand même ?": "Character spending cap reached.\n\nAlready spent: ${0}\nThis launch (with what is already queued): ≈ ${1}\nCap: ${2}\n\nRaise this character's cap to ${3} and launch anyway?",
   "Dernières dépenses :": "Latest spending:",
   "Aucune dépense comptée pour ce personnage.": "No spending recorded for this character.",

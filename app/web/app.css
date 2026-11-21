@@ -557,3 +557,4 @@ svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http:
 /* depense d'un personnage et estimation avant de lancer */
 .cost.warn, .pose-est.warn { color: #e2603a; font-weight: 600; }
 .pose-est { margin: 4px 0; font-size: 12px; }
+.rev-score.ai { color: #6fd3c4; } .rev-score.ai.warn { color: #e2603a; font-weight: 600; } .snapbar .rev-score.ai, .snaps .rev-score.ai { align-self: center; }

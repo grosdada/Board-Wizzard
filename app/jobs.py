@@ -16,7 +16,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from . import comfy, falapi, poses, settings, sprites, store, vector, headtrack
+from . import brain, comfy, cost, falapi, poses, settings, sprites, store, vector, headtrack
 
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i", "item_sheet": "edit",
         "item_apose": "edit", "item_views": "edit",
@@ -108,6 +108,68 @@ def run_item_cut(job, prov):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# ------------------------------------------------------------------ intelligence : audit apres chaque tirage
+def _brain_on():
+    return brain.enabled() and brain.config().get("audit", True) is not False
+
+
+def _audit(job, it, etape, image, contexte="", extra=(), redraw=None):
+    """Verdict de l'intelligence sur une image (le dessin d'origine a cote). redraw(consigne, n) : nouveau tirage avec la
+    consigne corrigee (une image payee de plus) ; au plus brain.max_retries reprises, si la reprise automatique est
+    permise. Renvoie (image retenue, audit) ; audit None sans intelligence. audit["final"] : garder | refaire | ecarter |
+    None (l'intelligence n'a pas repondu : on garde l'image, les controles mesures decident seuls)."""
+    if not _brain_on():
+        return image, None
+    cfg = brain.config()
+    tries = max(0, min(2, int(cfg.get("max_retries", 2)))) if (redraw and cfg.get("auto_retry", True) is not False) else 0
+    origin = store.item_dir(it["id"]) / it["variants"]["base"]["ref"]
+    hist, a = [], None
+    for n in range(tries + 1):
+        job["progress"] = "intelligence : %s%s" % (etape, " (reprise %d)" % n if n else "")
+        a = brain.juge(etape, image, origin, contexte, extra, item=it["id"])
+        hist.append({"verdict": a.get("verdict"), "defauts": a.get("defauts"), "consigne": a.get("consigne")})
+        if a.get("verdict") != "refaire" or n == tries:
+            break
+        try:
+            new = redraw(a.get("consigne") or "; ".join(a.get("defauts") or []), n + 1)
+        except cost.BudgetExceeded as e:                          # plafond : on s'arrete la, l'image reste a juger par l'humain
+            a["erreur"] = str(e)
+            break
+        if new is None:
+            break
+        image = new
+    a["final"] = a.get("verdict")
+    a["reprises"] = len(hist) - 1
+    a["historique"] = hist
+    if a["final"] in ("refaire", "ecarter") and (a["reprises"] >= tries):
+        a["raison"] = "; ".join(a.get("defauts") or []) or a.get("consigne") or a["final"]
+    return image, a
+
+
+def _with_consigne(prompt, consigne):
+    c = (consigne or "").strip()
+    return prompt + (" Correction demandée après contrôle : " + c if c else "")
+
+
+def _contact_sheet(orbit_dir, n, dest, cols=4, rows=3, cell=300):
+    """Planche de controle d'une tournette : 12 angles reguliers sur fond gris, numerotes."""
+    from PIL import Image, ImageDraw
+    sheet = Image.new("RGB", (cols * cell, rows * cell), (128, 128, 128))
+    dr = ImageDraw.Draw(sheet)
+    for k in range(cols * rows):
+        f = round(k * n / (cols * rows)) % n
+        try:
+            im = Image.open(Path(orbit_dir) / ("%03d.webp" % f)).convert("RGBA")
+        except OSError:
+            continue
+        im.thumbnail((cell - 8, cell - 22))
+        x, y = (k % cols) * cell, (k // cols) * cell
+        sheet.paste(im, (x + (cell - im.width) // 2, y + 18 + (cell - 22 - im.height) // 2), im)
+        dr.text((x + 6, y + 3), "%d°" % round(f * 360 / n), fill=(255, 255, 255))
+    sheet.save(dest)
+    return dest
+
+
 def _pose_prov(job, prov):
     """Moteur des poses et de la planche de vues. Reglage render.pose_engine = "fal:<modele>" : ces images-la partent sur
     fal avec ce modele, quelle que soit la machine qui tient la tache ; le detourage et l'orbite restent ou ils sont.
@@ -191,10 +253,13 @@ def run_item_apose(job, prov):
         sprites.key_cut(d / "apose/base.png", d / "apose/base_cut.webp", key)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    # avis de l'intelligence (l'humain valide la pose en A : pas de reprise automatique)
+    _, audit = _audit(job, it, "apose", d / "apose/key.png", "pose en A sur fond %s" % key)
     store.mutate_item(it["id"], lambda x: x.update(apose={"key": key, "img": "apose/key.png", "ref": "apose/ref.png",
                                                           "cut": "apose/cut.webp", "base": "apose/base.png",
                                                           "base_cut": "apose/base_cut.webp", "cw": w, "ch": h,
-                                                          "state": "pending", "model": model, "t": int(time.time())}))
+                                                          "state": "pending", "model": model, "t": int(time.time()),
+                                                          "audit": audit}))
 
 
 def apose_validate(iid):
@@ -222,19 +287,34 @@ def run_item_views(job, prov):
     if not v.get("keyimg"):
         raise RuntimeError("cette pose n'est pas sur fond de couleur")
     eprov, _ = _key_engine(job, prov)
-    have = {}
+    have, audits = {}, {}
     for k, (view, _desc) in enumerate(poses.SHEET_VIEWS):
         job["progress"] = "vues de la pose : %s" % view
         tmp = _tmp()
         try:
             rel = "v/%s/sheet/%s.png" % (vid, view)
-            sprites.normalize(eprov.edit([d / v["keyimg"]], poses.sheet_prompt_key(view, key), _seed(job) + 31 + k, tmp), d / rel)
+            prompt = poses.sheet_prompt_key(view, key)
+            sprites.normalize(eprov.edit([d / v["keyimg"]], prompt, _seed(job) + 31 + k, tmp), d / rel)
+
+            def redraw(consigne, n, view=view, k=k, prompt=prompt, tmp=tmp):
+                out = tmp / ("redo_%d.png" % n)
+                sprites.normalize(eprov.edit([d / v["keyimg"]], _with_consigne(prompt, consigne), _seed(job) + 31 + k + 101 * n, tmp), out)
+                return out
+
+            img, audit = _audit(job, it, "vues", d / rel, "vue « %s » de la pose « %s »" % (view, v.get("label") or vid),
+                                extra=[("la pose dont c'est la vue", d / v["keyimg"])], redraw=redraw)
+            if img != d / rel:
+                shutil.copyfile(img, d / rel)
+            if audit:
+                audits[view] = audit
+            if audit and audit.get("final") in ("refaire", "ecarter"):
+                continue                                         # vue fautive : ecartee, l'orbite se fait avec les autres
             have[view] = rel
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
     auto = bool(p.get("then_orbit"))
     store.mutate_item(it["id"], lambda x: x["variants"][vid].update(sheet=have, views={"state": "ok" if auto else "pending",
-                                                                                     "t": int(time.time())}))
+                                                                                     "t": int(time.time()), "audit": audits}))
     if auto:
         SCHEDULER.add("item_orbit", {"item": it["id"], "variant": vid}, "Orbite · %s · %s" % (it["name"], v.get("label") or vid),
                       target=job["target"], _fal_key=job.get("_fal_key"), prio=job.get("prio", 1), own_key=bool(job.get("own_key")))
@@ -316,6 +396,14 @@ def run_item_orbit(job, prov):
             shutil.rmtree(tmp, ignore_errors=True)
     best["snaps"] = sprites.default_snaps(best["n"], it.get("facing") or "face")
     best["t"] = int(time.time())
+    if it["kind"] == "character" and _brain_on():               # avis de l'intelligence (l'orbite est gratuite : pas de reprise)
+        try:
+            planche = _contact_sheet(d / best["dir"], best["n"], d / best["dir"] / "planche.png")
+            dos = d / best["dir"] / ("%03d.webp" % (best["snaps"].get("dos", best["n"] // 2) % best["n"]))
+            _, best["audit"] = _audit(job, it, "tournette", planche, "tournette de « %s »" % (v.get("label") or p["variant"]),
+                                      extra=[("le dos, agrandi", dos)])
+        except Exception as e:                                    # noqa: BLE001 : l'avis ne doit pas faire perdre l'orbite
+            best["audit"] = {"final": None, "erreur": str(e)[:200]}
 
     def apply(x):
         old = (x["variants"][p["variant"]].get("orbit") or {}).get("dir")
@@ -390,6 +478,28 @@ def _pose_key(job, it, d, eprov, model, validate):
                 best = (sc, cand, good, ratio)
             if good and sc >= 0.9:
                 break
+        audit = None
+        if not drawing or best[2]:                               # les controles mesures passent : l'intelligence regarde
+            def redraw(consigne, n):
+                c = tmp / ("redo_%d.png" % n)
+                shutil.copyfile(eprov.edit(refs, _with_consigne(prompt, consigne), _seed(job) + 7919 * (DRAW_TRIES + n), tmp), c)
+                if drawing:                                      # la reprise repasse les controles mesures
+                    white = sprites.key_white(c, tmp / ("white_r%d.png" % n), key)
+                    sc = sprites.face_score(base, white)
+                    try:
+                        ratio = sprites.line_ratio(base, white)
+                    except Exception:                              # noqa: BLE001
+                        ratio = 1.0
+                    redraw.measured = (sc, c, sc >= DRAW_MIN and _line_ok(ratio, p.get("pose", "")), ratio)
+                return c
+            redraw.measured = None
+            img, audit = _audit(job, it, "pose", best[1], label, redraw=redraw)
+            if img != best[1]:
+                best = redraw.measured or (best[0], img, True, best[3])
+            if audit and audit.get("final") in ("refaire", "ecarter"):
+                if not validate:
+                    raise RuntimeError("pose écartée par l'intelligence : %s" % audit.get("raison", audit["final"]))
+                rejected = True
         if drawing:
             score, line = round(float(best[0]), 3), round(float(best[3]), 2)
             _log_pose(it["id"], p.get("pose") or label, best[0], line, best[2])
@@ -416,8 +526,12 @@ def _pose_key(job, it, d, eprov, model, validate):
             v.update(model=model, keyimg="v/%s/key.png" % vid)
             if validate:
                 v["review"] = {"state": "rejected" if rejected else "pending", "score": score, "line": line, "at": int(time.time())}
+                if audit:
+                    v["review"]["audit"] = audit
             else:
                 v.pop("review", None)
+            if audit:
+                v["audit"] = audit
         store.mutate_item(it["id"], apply)
         vid = box["vid"]
         sprites.normalize(best[1], d / ("v/%s/key.png" % vid))

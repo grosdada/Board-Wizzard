@@ -653,6 +653,7 @@ export class Bank {
       }
       // reperes d'axes
       snapBar.textContent = "";
+      if (v.orbit && v.orbit.audit) snapBar.append(auditTag(v.orbit.audit, tt("tournette")));
       if (v.orbit) {
         snapBar.append(h("span.muted", tt("Aller à :")), ...AXES.map((a) => h("button.mini", { title: tt("Afficher cet axe"),
           on: { click: () => { frame = v.orbit.snaps?.[a] ?? angleToFrame(v.orbit, AXES.indexOf(a) * 45); show(); } } }, tr(a))));
@@ -761,6 +762,7 @@ export class Bank {
         else if (ap.state !== "ok") keyBox.append(h("h4", tt("Pose en A à valider")),
           h("p.muted", tt("Même visage, même trait, même remplissage que ton dessin ? Le fond doit être uni partout, y compris entre les membres. Tant que tu ne valides pas, rien ne change pour cet élément.")),
           h("div.row.wrap", { style: "gap: 12px; align-items: flex-end;" }, pic(item.variants.base.ref, tt("ton dessin"), item.variants.base.t), pic(ap.cut, tt("pose en A"), ap.t), ap.base_cut ? pic(ap.base_cut, tt("base sur fond de couleur"), ap.t) : null),
+          auditTag(ap.audit),
           h("div.row.wrap", h("button.mini.primary", { on: { click: () => call("apose", { action: "ok" }, tt("Pose en A validée : les prochaines poses partent sur fond de couleur.")) } }, tt("✓ Valider")),
             color, h("button.mini", { on: { click: make } }, tt("↻ Refaire")),
             h("button.mini.danger", { on: { click: () => call("apose", { action: "drop" }) } }, tt("Abandonner"))));
@@ -776,8 +778,10 @@ export class Bank {
           const cards = keyed.filter(([k, vv]) => (vv.views && vv.views.state === "pending") || running("item_views", k) || !vv.sheet).map(([k, vv]) => {
             const busy = running("item_views", k), wait = vv.views && vv.views.state === "pending";
             return h("div.rev", { style: "grid-column: 1 / -1;" }, h("div.var-name", tr(vv.label)),
-              h("div.row.wrap", { style: "gap: 8px;" }, pic(vv.keyimg, tt("la pose"), vv.t), ...(wait ? Object.entries(vv.sheet || {}).map(([n, rel]) => h("div", pic(rel, names[n] || n, vv.views.t),
+              h("div.row.wrap", { style: "gap: 8px;" }, pic(vv.keyimg, tt("la pose"), vv.t), ...(wait ? Object.entries(vv.sheet || {}).map(([n, rel]) => h("div", pic(rel, names[n] || n, vv.views.t), auditTag(((vv.views || {}).audit || {})[n]),
                 h("button.mini.danger", { title: tt("Écarter cette vue seulement (un vêtement ajouté, un bras en trop) : l'orbite se fera avec les autres"), on: { click: () => call("review", { variant: k, action: "view_drop", view: n }) } }, tt("✕ écarter")))) : [])),
+              ...Object.entries((vv.views || {}).audit || {}).filter(([n]) => wait && !(vv.sheet || {})[n]).map(([n, a]) =>
+                h("div.muted", tt`Vue « ${names[n] || n} » écartée par l'intelligence : ${a.raison || (a.defauts || []).join(", ")}`)),
               busy ? h("div.muted", tt("⏳ vues en calcul")) : h("div.rev-acts",
                 wait ? h("button.mini.primary", { title: tt("Les vues sont bonnes (rien d'ajouté, bon nombre de bras, du volume) : l'orbite part en file"), on: { click: () => call("review", { variant: k, action: "views_ok" }, tt("Orbite en file.")) } }, tt("✓ Valider les vues")) : null,
                 h("button.mini", { title: tt("Trois images payantes : dos, profil, trois-quarts dos"), on: { click: () => call(wait ? "review" : "views", wait ? { variant: k, action: "views_redo" } : { variant: k }, tt("Vues demandées (3 images).")) } }, wait ? tt("↻ Refaire les vues") : tt("Faire les vues"))));
@@ -808,6 +812,7 @@ export class Bank {
             h("div.var-name", tr(vv.label)),
             sc != null ? h("div.rev-score", { title: tt("Ressemblance du visage avec le dessin d'origine (1 = identique ; sous 0,85 la pose est écartée)") }, tt`fidélité ${sc.toFixed(2)}`) : null,
             vv.review.line != null ? h("div.rev-score" + (vv.review.line < 0.72 || vv.review.line > 1.45 ? ".warn" : ""), { title: tt("Épaisseur du trait de la pose par rapport au dessin d'origine, à taille égale (1 = le même trait ; sous 0,72 ou au-dessus de 1,45 la pose est écartée)") }, tt`trait × ${vv.review.line.toFixed(2)}`) : null,
+            auditTag(vv.review.audit),
             busy ? h("div.muted", tt("⏳ en calcul")) : h("div.rev-acts",
               st === "redo" ? h("div.rev-note", tt("La nouvelle génération n'a pas abouti.")) : null,
               h("button.mini.primary", { title: tt("Garder cette pose : son orbite part en file"), on: { click: () => act(k, "keep") } }, st === "rejected" ? tt("Repêcher") : tt("Garder")),
@@ -881,6 +886,17 @@ export class Bank {
     this.refreshItem = () => { if (document.body.contains(body)) build(true); else { this.openId = null; } };
     build();
   }
+}
+
+// avis de l'intelligence (app/brain.py) sur une image : une etiquette courte, le detail en bulle
+const aiWord = (v) => ({ garder: tt("garder"), refaire: tt("à refaire"), ecarter: tt("à écarter") })[v] || v;
+function auditTag(a, what = "") {
+  if (!a) return null;
+  if (!a.final && !a.verdict) return a.erreur ? h("div.rev-score.ai", { title: a.erreur }, tt("IA : pas d'avis")) : null;
+  const v = a.final || a.verdict, bad = v !== "garder";
+  const lines = [...(a.defauts || []).map((d) => "• " + d), a.reprises ? tt`${a.reprises} reprise(s) automatique(s)` : "",
+    (a.non_verifie || []).length ? tt("Pas vérifié : ") + a.non_verifie.join(", ") : "", a.erreur || "", a.modele ? `${a.modele}` : ""].filter(Boolean);
+  return h("div.rev-score.ai" + (bad ? ".warn" : ""), { title: lines.join("\n") || tt("Rien à signaler") }, (what ? what + " · " : "") + tt("IA : ") + aiWord(v));
 }
 
 function cleanName(f) {
