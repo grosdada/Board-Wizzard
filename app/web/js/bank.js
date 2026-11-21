@@ -392,7 +392,9 @@ export class Bank {
     } } }, "▶");
     let drag = null;
     // lasso : on entoure une zone a la souris, elle est videe (ou remplie) sur l'image affichee
-    let lassoMode = "", lassoPts = null;
+    // Maj tenue : droite elastique depuis le dernier point (lassoA = indice du bout provisoire) ; bouton relache avec Maj
+    // tenue, le lasso reste ouvert (lassoOpen) : chaque clic pose un coin, un clic sans Maj ferme et applique
+    let lassoMode = "", lassoPts = null, lassoA = null, lassoOpen = false;
     const lassoSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     lassoSvg.setAttribute("class", "lasso"); lassoSvg.style.display = "none"; zwrap.append(lassoSvg);
     const lassoDraw = () => {
@@ -401,11 +403,13 @@ export class Bank {
       lassoSvg.setAttribute("viewBox", "0 0 1000 1000"); lassoSvg.setAttribute("preserveAspectRatio", "none");
       lassoSvg.innerHTML = `<polygon points="${lassoPts.map((q) => (q[0] * 1000).toFixed(1) + "," + (q[1] * 1000).toFixed(1)).join(" ")}" class="${lassoMode}"/>`;
     };
-    const lassoSet = (m) => { lassoMode = lassoMode === m ? "" : m; lassoPts = null; lassoDraw(); stage.style.cursor = lassoMode ? "crosshair" : ""; fixBar.querySelectorAll("[data-lasso]").forEach((b) => b.classList.toggle("on", b.dataset.lasso === lassoMode)); };
+    const lassoSet = (m) => { lassoMode = lassoMode === m ? "" : m; lassoPts = null; lassoA = null; lassoOpen = false; lassoDraw(); stage.style.cursor = lassoMode ? "crosshair" : ""; fixBar.querySelectorAll("[data-lasso]").forEach((b) => b.classList.toggle("on", b.dataset.lasso === lassoMode)); };
     const lassoPt = (e) => { const r = img.getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; };
     const lassoSend = async () => {
-      const pts = lassoPts; lassoPts = null;
-      if (!pts || pts.length < 6) { lassoDraw(); return; }
+      const pts = lassoPts; lassoPts = null; lassoA = null; lassoOpen = false;
+      // surface du contour (formule du lacet) : un clic sans glisser ne retouche rien
+      const area = pts ? Math.abs(pts.reduce((s, q, i) => { const r = pts[(i + 1) % pts.length]; return s + q[0] * r[1] - r[0] * q[1]; }, 0)) / 2 : 0;
+      if (!pts || pts.length < 3 || area < 2e-5) { lassoDraw(); return; }
       try {
         const keepLines = !(fixBar.querySelector("input[data-lines]") || {}).checked;
         await post(`bank/${id}/lasso`, { variant: vid, frame, points: pts, mode: lassoMode, lines: !keepLines });
@@ -413,8 +417,22 @@ export class Bank {
       } catch (err) { toast(err.message, "error", 9000); }
       lassoDraw();
     };
-    stage.addEventListener("pointermove", (e) => { if (lassoPts) { lassoPts.push(lassoPt(e)); lassoDraw(); } });
-    stage.addEventListener("pointerup", () => { if (lassoPts) lassoSend(); });
+    stage.addEventListener("pointermove", (e) => {
+      if (!lassoPts) return;
+      const p = lassoPt(e);
+      if (e.shiftKey || lassoOpen) {                // droite : le bout provisoire suit la souris
+        if (lassoA == null) lassoA = lassoPts.length;
+        lassoPts.length = lassoA; lassoPts.push(p);
+      } else {                                      // Maj relachee : la droite est fixee, on repart a main levee
+        lassoA = null; lassoPts.push(p);
+      }
+      lassoDraw();
+    });
+    stage.addEventListener("pointerup", (e) => {
+      if (!lassoPts) return;
+      if (e.shiftKey) { if (lassoA == null) { lassoA = lassoPts.length; lassoPts.push(lassoPt(e)); } lassoOpen = true; lassoDraw(); return; }
+      lassoSend();
+    });
     const stepKey = (e) => {                   // fleches : image precedente / suivante, pour retoucher a la chaine
       if (!document.body.contains(stage)) return document.removeEventListener("keydown", stepKey);
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target !== slider) return;
@@ -504,7 +522,10 @@ export class Bank {
       } catch (err) { toast(err.message, "error", 9000); }
     };
     stage.addEventListener("pointerdown", () => { if (timer && !punching) stop(); }, true);
-    stage.addEventListener("pointerdown", (e) => { if (lassoMode && !punching) { e.preventDefault(); stage.setPointerCapture(e.pointerId); lassoPts = [lassoPt(e)]; lassoDraw(); return; }
+    stage.addEventListener("pointerdown", (e) => { if (lassoMode && !punching) { e.preventDefault(); stage.setPointerCapture(e.pointerId);
+        if (lassoOpen && lassoPts) { lassoPts.length = lassoA; lassoPts.push(lassoPt(e)); lassoA = null; lassoOpen = false; }   // lasso ouvert : le clic pose un coin
+        else { lassoPts = [lassoPt(e)]; lassoA = null; }
+        lassoDraw(); return; }
       if (punching) { e.preventDefault(); return punchAt(e); } drag = { x: e.clientX, f: frame }; stage.setPointerCapture(e.pointerId); e.preventDefault(); });
     stage.addEventListener("pointermove", (e) => {
       const v = variantOf(it(), vid);
@@ -573,6 +594,7 @@ export class Bank {
           h("button.mini" + (lassoMode === "remplir" ? ".on" : ""), { "data-lasso": "remplir", title: tt("Entoure à la souris un trou dans le personnage : il est rebouché en blanc sur l'image affichée."), on: { click: () => lassoSet("remplir") } }, tt("🩹 Lasso : remplir")),
           h("label.check", { title: tt("Coché : le lasso « vider » ne touche pas aux traits du dessin, seulement au blanc. Décoché : tout ce qui est entouré disparaît, traits compris.") }, h("input", { type: "checkbox", checked: true, "data-lines": "1" }), tt("garder les traits"))),
         h("p.muted", tt("Lasso : choisis un fond de couleur, clique « Lasso : vider », puis entoure la zone à la souris sur l'image. Molette : agrandir. Barre d'espace tenue + glisser : se déplacer. Flèches ← → : changer d'image.")),
+        h("p.muted", tt("Lasso et droites : Maj tenue, le tracé part en ligne droite depuis le dernier point ; Maj relâchée, il repart à main levée. Bouton relâché avec Maj tenue, le lasso reste ouvert : chaque clic pose un coin, un clic sans Maj le ferme.")),
         h("div.row.wrap",
           v.orbit ? h("button.mini", { title: tt("Analyse l'orbite et montre en couleur les zones blanches qui sont peut-être des vides remplis à tort (entre un bras et le corps, entre les jambes). Rouge : probablement. Orange : peut-être. Rien n'est vidé sans ton clic sur la zone."), on: { click: () => { if (zones && zonesFor === vid) { zones = null; drawZones(); } else loadZones(); } } }, tt("🔎 Vides suspects")) : null,
           v.orbit ? h("button.mini", { title: tt("Pour un vide rempli à tort (entre un bras et le corps, entre les jambes) : clique ce bouton, puis clique dans la zone sur l'image. Elle est vidée sur cette image et sur les voisines où elle existe. Mets un fond de couleur pour bien voir."), on: { click: () => { punching = true; stage.style.cursor = "crosshair"; toast(tt("Clique maintenant dans la zone à vider, sur l'image.")); } } }, tt("🕳 Vider une zone")) : null,
