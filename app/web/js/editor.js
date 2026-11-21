@@ -12,6 +12,7 @@ import { faceFor, opsSvg } from "./face.js";
 import { frameToAngle, thinMask, lineWidth } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
+import { makeScene } from "./montage.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const s = (tag, attrs = {}) => {
@@ -86,6 +87,7 @@ export class Editor {
   /** Poignees du calque choisi, a taille fixe a l'ecran quel que soit le cadrage : orbite au centre, inclinaison en haut,
    *  une boule par coin pour la taille. Elles suivent l'inclinaison ; sur un petit personnage, elles s'ecartent de la boite. */
   drawHandles() {
+    this.drawPlays();
     const svg = this.svg;
     svg.querySelectorAll(":scope > g.lh").forEach((x) => { if (!x.classList.contains("mh")) x.remove(); });
     const hs = this.hs, l = this.app.layer();
@@ -95,6 +97,55 @@ export class Editor {
     const gh = s("g");
     gh.innerHTML = handlesSvg({ box, rz: l.rz || 0, u, view: bb, bounds: { x0: 0, y0: 0, x1: this.pg.page.width, y1: this.pg.page.height }, orbit: !!(sp && sp.orbit) });
     svg.append(gh.firstChild);
+  }
+  /** Case animee (mode montage) : un petit bouton lecture dans la gouttiere, sous le milieu de la case, a taille fixe a
+   *  l'ecran. Il rejoue l'animation dans la case, une fois (un second clic l'arrete). */
+  drawPlays() {
+    const svg = this.svg, pg = this.pg;
+    svg.querySelectorAll(":scope > g.pv-play").forEach((x) => x.remove());
+    if (!pg || !this.geom) return;
+    const page = pg.page, u = 1 / (this.scale() || 1), r = 11 * u;
+    for (const g of this.geom.panels) {
+      const pan = pg.panels[g.id], tr = pan && pan.anim && pan.anim.tracks;
+      if (!tr || !Object.values(tr).some((k) => k && k.length)) continue;
+      const bb = g.bbox, bottom = bb.y0 + bb.h;
+      const below = bottom >= page.height - page.margin - 1 ? page.margin : (page.gutterV ?? page.gutter);
+      const cx = bb.x0 + bb.w / 2, cy = bottom + Math.max(below / 2, 0);
+      const on = this.pv && this.pv.pid === g.id;
+      const gp = s("g", { class: "pv-play" + (on ? " on" : ""), "data-pv": g.id, transform: `translate(${cx.toFixed(2)} ${(cy).toFixed(2)}) scale(${(r / 11).toFixed(5)})` });
+      const tip = s("title"); tip.textContent = on ? tt("Arrêter l'animation") : tt("Voir l'animation de cette case (mode montage)");
+      gp.append(tip, s("circle", { r: 11, class: "pv-disk", "data-pv": g.id }),
+        on ? s("rect", { x: -4, y: -4, width: 8, height: 8, class: "pv-ico", "data-pv": g.id })
+           : s("path", { d: "M-3.2 -5.2 L5.6 0 L-3.2 5.2 Z", class: "pv-ico", "data-pv": g.id }));
+      svg.append(gp);
+    }
+  }
+  /** Rejoue l'animation d'une case par-dessus son image, a sa place sur la planche, puis la retire. */
+  playPanel(pid) {
+    const stop = () => { if (!this.pv) return; cancelAnimationFrame(this.pv.raf); this.pv.el.remove(); this.pv = null; this.drawPlays(); };
+    const was = this.pv && this.pv.pid;
+    stop();
+    if (was === pid) return;
+    const pg = this.pg, g = this.geom && this.geom.panels.find((x) => x.id === pid), pan = pg && pg.panels[pid];
+    if (!g || !pan || !pan.anim) return;
+    const bb = g.bbox, scene = makeScene(this.app, pg, JSON.parse(JSON.stringify(pan)), bb.h / bb.w, "pv");
+    const w = scene.H * bb.w / bb.h, dur = pan.anim.dur || 4;
+    const inner = s("svg", { x: bb.x0, y: bb.y0, width: bb.w, height: bb.h, viewBox: `0 0 ${w.toFixed(2)} ${scene.H.toFixed(2)}`, preserveAspectRatio: "none" });
+    const el = s("g", { class: "pv-anim", "clip-path": `url(#cp-${pid})` });
+    el.append(inner);
+    const t0 = performance.now();
+    this.pv = { pid, el, raf: 0 };
+    const tick = (now) => {
+      if (!this.pv || this.pv.el !== el) return;
+      const t = (now - t0) / 1000;
+      if (t > dur) return stop();
+      if (!el.isConnected) this.svg.insertBefore(el, this.svg.querySelector(":scope > g.pv-play") || null);   // la planche a ete redessinee
+      inner.innerHTML = scene.markup(t, null, () => {});
+      this.pv.raf = requestAnimationFrame(tick);
+    };
+    this.svg.append(el);
+    this.drawPlays();
+    this.pv.raf = requestAnimationFrame(tick);
   }
   panelAt(pt) {
     if (!this.geom) return null;
@@ -353,6 +404,8 @@ export class Editor {
   // ---------------------------------------------------------------- gestes
   down(e) {
     if (e.button !== 0) return;
+    const pv = e.target.closest && e.target.closest("[data-pv]");
+    if (pv) { e.preventDefault(); e.stopPropagation(); this.playPanel(pv.dataset.pv); return; }   // lecture d'une case animee
     const t = e.target, pt = this.pagePt(e), app = this.app;
     if (t.dataset && t.dataset.cut != null) {
       const cut = this.geom.cuts[+t.dataset.cut];

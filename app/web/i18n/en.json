@@ -1,5 +1,7 @@
 {
  "ui": {
+  "Arrêter l'animation": "Stop the animation",
+  "Voir l'animation de cette case (mode montage)": "Play this panel's animation (montage mode)",
   "Enregistrer une action : choisis un personnage, arme ce bouton, puis fais le geste dans l'image (déplacer, tourner, pencher, taille). Le temps avance pendant le geste et chaque instant devient une clé, jusqu'à ce que tu relâches la souris. La voix et la lecture suivent.": "Record an action: pick a character, arm this button, then make the gesture in the image (move, turn, tilt, size). Time runs during the gesture and every moment becomes a key, until you release the mouse. Voice and playback follow.",
   "● Rec Action": "● Rec Action",
   "Action enregistrée : {0} s, {1} clés.": "Action recorded: {0} s, {1} keys.",
