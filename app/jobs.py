@@ -16,7 +16,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from . import brain, comfy, cost, falapi, poses, settings, sprites, store, vector, headtrack
+from . import brain, comfy, cost, falapi, poses, proportions, settings, sprites, store, vector, headtrack
 
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i", "item_sheet": "edit",
         "item_apose": "edit", "item_views": "edit",
@@ -146,6 +146,44 @@ def _audit(job, it, etape, image, contexte="", extra=(), redraw=None):
     return image, a
 
 
+# fond de couleur : un modele rend parfois un fond blanc (ou transparent, sans background « opaque ») malgre la consigne.
+# Une decoupe par la couleur n'en tire rien : l'image est retiree (au plus 2 fois, chaque tirage est compte dans le cout).
+BG_MIN, BG_TRIES = 0.20, 3
+
+
+def _bg_share(path, key):
+    """Part des pixels de la couleur de fond attendue (dominance franche, comme sprites.key_rgba)."""
+    import numpy as np
+    from PIL import Image
+    a = np.asarray(Image.open(path).convert("RGB")).astype(int)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    dom = (np.minimum(r, b) - g) if key == "magenta" else (g - np.maximum(r, b))
+    return float((dom > 80).mean())
+
+
+def _key_edit(job, eprov, refs, prompt, seed, tmp, key, what):
+    """Edition sur fond de couleur, controlee : moins de BG_MIN de pixels de la couleur de fond = nouveau tirage."""
+    share = 0.0
+    for n in range(BG_TRIES):
+        out = eprov.edit(refs, prompt, seed + 104729 * n, tmp)
+        c = Path(tmp) / ("bg_%d_%d.png" % (seed % 1000003, n))
+        shutil.copyfile(out, c)
+        share = _bg_share(c, key)
+        if share >= BG_MIN:
+            return c
+        job["progress"] = "%s : fond de couleur absent (%d %%), nouveau tirage" % (what, round(share * 100))
+    raise RuntimeError("%s : le modèle rend un fond sans la couleur %s (%d tirages, %d %% de fond au dernier) ; la découpe "
+                       "par la couleur est impossible" % (what, key, BG_TRIES, round(share * 100)))
+
+
+def _prop(ref, img, key):
+    """Proportions de img comparees a ref (meme fond de couleur) ; None si la mesure echoue."""
+    try:
+        return proportions.compare(ref, img, key)
+    except Exception:                                              # noqa: BLE001 : silhouette illisible, pas de mesure
+        return None
+
+
 def _with_consigne(prompt, consigne):
     c = (consigne or "").strip()
     return prompt + (" Correction demandée après contrôle : " + c if c else "")
@@ -245,21 +283,23 @@ def run_item_apose(job, prov):
     tmp = _tmp()
     try:
         job["progress"] = "pose en A"
-        sprites.normalize(eprov.edit([base], poses.apose_prompt(key), _seed(job), tmp), d / "apose/key.png")
+        sprites.normalize(_key_edit(job, eprov, [base], poses.apose_prompt(key), _seed(job), tmp, key, "pose en A"), d / "apose/key.png")
         w, h, _ = sprites.key_cut(d / "apose/key.png", d / "apose/cut.webp", key)
         sprites.key_white(d / "apose/key.png", d / "apose/ref.png", key)
         job["progress"] = "image de base sur fond de couleur"
-        sprites.normalize(eprov.edit([base], poses.base_key_prompt(key), _seed(job) + 1, tmp), d / "apose/base.png")
+        sprites.normalize(_key_edit(job, eprov, [base], poses.base_key_prompt(key), _seed(job) + 1, tmp, key, "dessin sur fond de couleur"), d / "apose/base.png")
         sprites.key_cut(d / "apose/base.png", d / "apose/base_cut.webp", key)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    prop = _prop(d / "apose/base.png", d / "apose/key.png", key)   # la pose en A contre le dessin sur le meme fond
     # avis de l'intelligence (l'humain valide la pose en A : pas de reprise automatique)
-    _, audit = _audit(job, it, "apose", d / "apose/key.png", "pose en A sur fond %s" % key)
+    _, audit = _audit(job, it, "apose", d / "apose/key.png", "pose en A sur fond %s. Proportions mesurées : %s"
+                      % (key, proportions.describe(prop) or "non mesurées"))
     store.mutate_item(it["id"], lambda x: x.update(apose={"key": key, "img": "apose/key.png", "ref": "apose/ref.png",
                                                           "cut": "apose/cut.webp", "base": "apose/base.png",
                                                           "base_cut": "apose/base_cut.webp", "cw": w, "ch": h,
                                                           "state": "pending", "model": model, "t": int(time.time()),
-                                                          "audit": audit}))
+                                                          "audit": audit, "prop": prop}))
 
 
 def apose_validate(iid):
@@ -268,6 +308,8 @@ def apose_validate(iid):
         a = x.get("apose") or {}
         if not a.get("img"):
             raise ValueError("pas de pose en A à valider")
+        if not a.get("base"):                                    # c'est lui la reference des poses : sans lui, rien ne part
+            raise ValueError("le dessin sur fond de couleur manque : refais la pose en A")
         a["state"] = "ok"
         x["key"] = a.get("key", "vert")
         if a.get("base"):
@@ -294,11 +336,11 @@ def run_item_views(job, prov):
         try:
             rel = "v/%s/sheet/%s.png" % (vid, view)
             prompt = poses.sheet_prompt_key(view, key)
-            sprites.normalize(eprov.edit([d / v["keyimg"]], prompt, _seed(job) + 31 + k, tmp), d / rel)
+            sprites.normalize(_key_edit(job, eprov, [d / v["keyimg"]], prompt, _seed(job) + 31 + k, tmp, key, "vue %s" % view), d / rel)
 
             def redraw(consigne, n, view=view, k=k, prompt=prompt, tmp=tmp):
                 out = tmp / ("redo_%d.png" % n)
-                sprites.normalize(eprov.edit([d / v["keyimg"]], _with_consigne(prompt, consigne), _seed(job) + 31 + k + 101 * n, tmp), out)
+                sprites.normalize(_key_edit(job, eprov, [d / v["keyimg"]], _with_consigne(prompt, consigne), _seed(job) + 31 + k + 101 * n, tmp, key, "vue %s" % view), out)
                 return out
 
             img, audit = _audit(job, it, "vues", d / rel, "vue « %s » de la pose « %s »" % (view, v.get("label") or vid),
@@ -455,17 +497,29 @@ def _pose_key(job, it, d, eprov, model, validate):
     key = it["key"]
     label, prompt = poses.pose_prompt_key(p.get("pose", ""), p.get("custom", ""), key)
     base = d / it["variants"]["base"]["ref"]
-    refs = [base, d / it["apose"]["img"]]
+    ap = it["apose"]                                             # 2e reference : le dessin repose sur le fond de couleur (la
+    refs = [base, d / (ap.get("base") or ap["img"])]             # pose en A amaigrit les caricatures, elle n'est qu'un controle
     drawing = it.get("style") == "dessin"
     score, line, rejected, best = None, None, False, None
+    # proportions de la caricature : mesurees contre le dessin repose sur le meme fond ; pas pour une pose ramassee
+    pref = d / ap["base"] if ap.get("base") and (d / ap["base"]).exists() else None
+    low = p.get("pose", "") in LOW_POSES
+    props = {}
+
+    def prop_of(c):
+        props[str(c)] = _prop(pref, c, key) if pref else None
+        return props[str(c)]
+
+    def prop_ok(pr):
+        return low or not pr or pr["ok"]
     tmp = _tmp()
     try:
         for k in range(DRAW_TRIES if drawing else 1):
             job["progress"] = "pose, tirage %d" % (k + 1)
             cand = tmp / ("cand_%d.png" % k)
-            shutil.copyfile(eprov.edit(refs, prompt, _seed(job) + 7919 * k, tmp), cand)
+            shutil.copyfile(_key_edit(job, eprov, refs, prompt, _seed(job) + 7919 * k, tmp, key, "pose"), cand)
             if not drawing:
-                best = (None, cand, True, None)
+                best = (None, cand, prop_ok(prop_of(cand)), None)
                 break
             white = sprites.key_white(cand, tmp / ("white_%d.png" % k), key)
             sc = sprites.face_score(base, white)
@@ -473,7 +527,7 @@ def _pose_key(job, it, d, eprov, model, validate):
                 ratio = sprites.line_ratio(base, white)
             except Exception:                                      # noqa: BLE001 : sans OpenCV, seul le visage est controle
                 ratio = 1.0
-            good = sc >= DRAW_MIN and _line_ok(ratio, p.get("pose", ""))
+            good = sc >= DRAW_MIN and _line_ok(ratio, p.get("pose", "")) and prop_ok(prop_of(cand))
             if best is None or (good, sc) > (best[2], best[0]):
                 best = (sc, cand, good, ratio)
             if good and sc >= 0.9:
@@ -482,7 +536,10 @@ def _pose_key(job, it, d, eprov, model, validate):
         if not drawing or best[2]:                               # les controles mesures passent : l'intelligence regarde
             def redraw(consigne, n):
                 c = tmp / ("redo_%d.png" % n)
-                shutil.copyfile(eprov.edit(refs, _with_consigne(prompt, consigne), _seed(job) + 7919 * (DRAW_TRIES + n), tmp), c)
+                shutil.copyfile(_key_edit(job, eprov, refs, _with_consigne(prompt, consigne), _seed(job) + 7919 * (DRAW_TRIES + n), tmp, key, "pose"), c)
+                pr_ok = prop_ok(prop_of(c))
+                if not drawing:
+                    redraw.measured = (None, c, pr_ok, None)
                 if drawing:                                      # la reprise repasse les controles mesures
                     white = sprites.key_white(c, tmp / ("white_r%d.png" % n), key)
                     sc = sprites.face_score(base, white)
@@ -490,16 +547,20 @@ def _pose_key(job, it, d, eprov, model, validate):
                         ratio = sprites.line_ratio(base, white)
                     except Exception:                              # noqa: BLE001
                         ratio = 1.0
-                    redraw.measured = (sc, c, sc >= DRAW_MIN and _line_ok(ratio, p.get("pose", "")), ratio)
+                    redraw.measured = (sc, c, sc >= DRAW_MIN and _line_ok(ratio, p.get("pose", "")) and pr_ok, ratio)
                 return c
             redraw.measured = None
-            img, audit = _audit(job, it, "pose", best[1], label, redraw=redraw)
+            pr0 = props.get(str(best[1]))
+            ctx = "%s. Proportions mesurées contre le dessin d'origine : %s" % (
+                label, "pose ramassée, mesure sans valeur : juge à l'œil" if low else (proportions.describe(pr0) or "non mesurées"))
+            img, audit = _audit(job, it, "pose", best[1], ctx, redraw=redraw)
             if img != best[1]:
                 best = redraw.measured or (best[0], img, True, best[3])
             if audit and audit.get("final") in ("refaire", "ecarter"):
                 if not validate:
                     raise RuntimeError("pose écartée par l'intelligence : %s" % audit.get("raison", audit["final"]))
                 rejected = True
+        prop = props.get(str(best[1]))
         if drawing:
             score, line = round(float(best[0]), 3), round(float(best[3]), 2)
             _log_pose(it["id"], p.get("pose") or label, best[0], line, best[2])
@@ -507,8 +568,14 @@ def _pose_key(job, it, d, eprov, model, validate):
                 if not validate:
                     if best[0] < DRAW_MIN:
                         raise RuntimeError("pose écartée : le visage du dessin n'était pas respecté (fidélité %.2f)" % best[0])
-                    raise RuntimeError("pose écartée : le trait n'était pas celui du dessin (%.2f fois son épaisseur)" % line)
+                    if not _line_ok(best[3], p.get("pose", "")):
+                        raise RuntimeError("pose écartée : le trait n'était pas celui du dessin (%.2f fois son épaisseur)" % line)
+                    raise RuntimeError("pose écartée : proportions de la caricature perdues (%s)" % proportions.describe(prop))
                 rejected = True
+        elif not prop_ok(prop):
+            if not validate:
+                raise RuntimeError("pose écartée : proportions de la caricature perdues (%s)" % proportions.describe(prop))
+            rejected = True
         box = {}
 
         def apply(x):
@@ -525,7 +592,8 @@ def _pose_key(job, it, d, eprov, model, validate):
             v.pop("views", None)
             v.update(model=model, keyimg="v/%s/key.png" % vid)
             if validate:
-                v["review"] = {"state": "rejected" if rejected else "pending", "score": score, "line": line, "at": int(time.time())}
+                v["review"] = {"state": "rejected" if rejected else "pending", "score": score, "line": line, "at": int(time.time()),
+                               "prop": prop, "low": low}
                 if audit:
                     v["review"]["audit"] = audit
             else:

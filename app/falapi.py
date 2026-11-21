@@ -123,6 +123,7 @@ class FalProvider:
             p["seed"] = int(seed) % 2147483647
         if "gpt-image-2.5" in endpoint:                          # qualite moyenne (≈ 0,02 $ en 1K) au lieu de « high »
             p["quality"] = self.cfg.get("gpt_quality") or "medium"
+            p["background"] = "opaque"                             # sinon un PNG transparent : le fond de couleur est perdu
         if "nano-banana" in endpoint:
             p["resolution"] = "1K"                                 # en 2K le trait sort deux fois plus fin que l'original
         return p

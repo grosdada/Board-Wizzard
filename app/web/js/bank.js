@@ -757,19 +757,19 @@ export class Bank {
         const make = () => call("apose", { action: "make", key: color.value, seed: Math.floor(Math.random() * 1e6) }, tt("Pose en A demandée (2 images)."));
         if (running("item_apose")) keyBox.append(h("h4", tt("Pose en A")), h("p.muted", tt("⏳ La pose en A et la base sur fond de couleur sont en calcul…")));
         else if (!ap) keyBox.append(h("h4", tt("Pose en A (fond de couleur)")),
-          h("p.muted", tt("Avant les poses : une pose en A du personnage sur un fond uni, que tu valides. Ensuite les poses, leurs vues et leurs orbites gardent ce fond et sont découpées par la couleur : les vides (bras sur les hanches, entre les jambes) restent ouverts, sans rebouchage ni halo. Demande le moteur des poses Nano Banana Pro (2 images payantes).")),
+          h("p.muted", tt("Avant les poses : ton dessin reposé sur un fond uni, qui sert de référence aux poses, et une pose en A qui sert seulement à contrôler la silhouette ; tu valides. Ensuite les poses, leurs vues et leurs orbites gardent ce fond et sont découpées par la couleur : les vides (bras sur les hanches, entre les jambes) restent ouverts, sans rebouchage ni halo. Demande un moteur des poses fal (2 images payantes).")),
           h("div.row.wrap", color, h("button.mini.primary", { on: { click: make } }, tt("Faire la pose en A"))));
         else if (ap.state !== "ok") keyBox.append(h("h4", tt("Pose en A à valider")),
-          h("p.muted", tt("Même visage, même trait, même remplissage que ton dessin ? Le fond doit être uni partout, y compris entre les membres. Tant que tu ne valides pas, rien ne change pour cet élément.")),
-          h("div.row.wrap", { style: "gap: 12px; align-items: flex-end;" }, pic(item.variants.base.ref, tt("ton dessin"), item.variants.base.t), pic(ap.cut, tt("pose en A"), ap.t), ap.base_cut ? pic(ap.base_cut, tt("base sur fond de couleur"), ap.t) : null),
-          auditTag(ap.audit),
+          h("p.muted", tt("Le dessin sur fond de couleur est la référence des poses : même visage, même trait, même remplissage, mêmes proportions que ton dessin ? La pose en A n'est qu'un contrôle de la silhouette (elle a tendance à amaigrir les caricatures). Le fond doit être uni partout, y compris entre les membres. Tant que tu ne valides pas, rien ne change pour cet élément.")),
+          h("div.row.wrap", { style: "gap: 12px; align-items: flex-end;" }, pic(item.variants.base.ref, tt("ton dessin"), item.variants.base.t), ap.base_cut ? pic(ap.base_cut, tt("ton dessin sur fond de couleur : la référence"), ap.t) : null, pic(ap.cut, tt("pose en A : contrôle"), ap.t)),
+          propTag(ap.prop), auditTag(ap.audit),
           h("div.row.wrap", h("button.mini.primary", { on: { click: () => call("apose", { action: "ok" }, tt("Pose en A validée : les prochaines poses partent sur fond de couleur.")) } }, tt("✓ Valider")),
             color, h("button.mini", { on: { click: make } }, tt("↻ Refaire")),
             h("button.mini.danger", { on: { click: () => call("apose", { action: "drop" }) } }, tt("Abandonner"))));
         else {
           keyBox.append(h("h4", tt("Fond de couleur")),
-            h("div.row.wrap", { style: "gap: 12px; align-items: center;" }, h("img", { src: `/bank/${id}/${ap.cut}?t=${ap.t || 0}`, style: "height: 90px; " + damier }),
-              h("span.muted", tt`Pose en A validée (fond ${ap.key}) : les nouvelles poses, leurs vues et leurs orbites partent sur ce fond. Les poses déjà faites ne changent pas.`),
+            h("div.row.wrap", { style: "gap: 12px; align-items: center;" }, h("img", { src: `/bank/${id}/${ap.base_cut || ap.cut}?t=${ap.t || 0}`, style: "height: 90px; " + damier }),
+              h("span.muted", tt`Fond ${ap.key} validé : les nouvelles poses partent de ton dessin sur ce fond (la pose en A n'est qu'un contrôle), et leurs vues et leurs orbites le gardent. Les poses déjà faites ne changent pas.`),
               color, h("button.mini", { on: { click: make } }, tt("↻ Refaire la pose en A")),
               h("button.mini.danger", { title: tt("Les prochaines poses repassent par le détourage habituel ; celles déjà faites restent"), on: { click: () => { if (confirm(tt("Revenir au détourage habituel pour cet élément ?"))) call("apose", { action: "drop" }); } } }, tt("Désactiver"))));
           // vues d'une pose (dos, profil, 3/4 dos) sur le fond de couleur : vues avant son orbite
@@ -812,6 +812,7 @@ export class Bank {
             h("div.var-name", tr(vv.label)),
             sc != null ? h("div.rev-score", { title: tt("Ressemblance du visage avec le dessin d'origine (1 = identique ; sous 0,85 la pose est écartée)") }, tt`fidélité ${sc.toFixed(2)}`) : null,
             vv.review.line != null ? h("div.rev-score" + (vv.review.line < 0.72 || vv.review.line > 1.45 ? ".warn" : ""), { title: tt("Épaisseur du trait de la pose par rapport au dessin d'origine, à taille égale (1 = le même trait ; sous 0,72 ou au-dessus de 1,45 la pose est écartée)") }, tt`trait × ${vv.review.line.toFixed(2)}`) : null,
+            propTag(vv.review.prop, vv.review.low),
             auditTag(vv.review.audit),
             busy ? h("div.muted", tt("⏳ en calcul")) : h("div.rev-acts",
               st === "redo" ? h("div.rev-note", tt("La nouvelle génération n'a pas abouti.")) : null,
@@ -897,6 +898,14 @@ function auditTag(a, what = "") {
   const lines = [...(a.defauts || []).map((d) => "• " + d), a.reprises ? tt`${a.reprises} reprise(s) automatique(s)` : "",
     (a.non_verifie || []).length ? tt("Pas vérifié : ") + a.non_verifie.join(", ") : "", a.erreur || "", a.modele ? `${a.modele}` : ""].filter(Boolean);
   return h("div.rev-score.ai" + (bad ? ".warn" : ""), { title: lines.join("\n") || tt("Rien à signaler") }, (what ? what + " · " : "") + tt("IA : ") + aiWord(v));
+}
+
+// proportions de la caricature (app/proportions.py) : tete dans la hauteur et largeur de tete, rapportees au dessin
+function propTag(pr, low) {
+  if (!pr) return null;
+  const pc = (v) => `${Math.round(v * 100)} %`;
+  return h("div.rev-score" + (!pr.ok && !low ? ".warn" : ""), { title: tt("Proportions comparées au dessin d'origine sur le même fond : hauteur de la tête dans le personnage, puis largeur de la tête (100 % = identique ; au-delà de ± 8 %, une pose debout est écartée). La masse du corps (épaules, bras) se juge à l'œil.") + (low ? "\n" + tt("Pose ramassée : la mesure ne vaut rien, regarde à l'œil.") : "") },
+    tt`tête ${pc(pr.tete_h)} · ${pc(pr.tete_l)}` + (low ? " ?" : ""));
 }
 
 function cleanName(f) {

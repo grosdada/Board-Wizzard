@@ -167,13 +167,15 @@ def base_key_prompt(key="vert"):
 
 
 def pose_prompt_key(pose, custom="", key="vert"):
-    """Pose d'un personnage sur fond de couleur. Deux references : le dessin d'origine (visage, trait, remplissage) et la
-    pose en A validee (silhouette entiere, fond de couleur)."""
+    """Pose d'un personnage sur fond de couleur. Deux references : le dessin d'origine (visage, trait, remplissage) et ce
+    meme dessin repose sur le fond de couleur (apose/base.png). Pas la pose en A : mesure le 21/11/2026 sur deux
+    caricatures, elle les amaigrit (epaules deux fois moins larges, bras 40 % plus fins) et les poses en heritaient."""
     hit = find("character", pose)
     label, desc = hit if hit else (custom[:40] or pose, custom or pose)
     return label, ("The first image is the original drawing of the character: it is the reference for the face, the expression, "
-                   "the proportions, the line and the filling. The second image shows the same character in a neutral pose on a "
-                   "flat coloured background. Redraw this exact character in a new pose: %s. %s %s %s"
+                   "the proportions, the line and the filling. The second image shows the same character exactly as drawn, on a "
+                   "flat coloured background. Redraw this exact character in a new pose: %s. %s %s %s The background of the "
+                   "result is the flat coloured background of the SECOND image, never the white paper of the first image."
                    % (desc, _FAITHFUL_NOBG + " " + PROPORTIONS, NO_CLOTHES, _key_bg(key, keep=True)))
 
 

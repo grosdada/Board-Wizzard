@@ -32,9 +32,12 @@ La référence de toute comparaison est **le dessin d'origine**, jamais une imag
 Chaque étape est contrôlée avant la suivante. On ne lance jamais une tournette sur une pose ou des vues non contrôlées :
 le calcul est perdu et la tournette part à la poubelle.
 
-### Étape 1 : pose en A sur fond de couleur (validée par l'humain)
-- Deux images : le personnage en pose en A (bras écartés à 40°, jambes écartées, aucun membre ne touche le corps) et le
-  dessin d'origine reposé sur le même fond uni. Fond vert franc ; magenta si le personnage porte du vert.
+### Étape 1 : le dessin sur fond de couleur, et la pose en A pour contrôle (validés par l'humain)
+- Deux images : le dessin d'origine reposé sur un fond uni, et le personnage en pose en A (bras écartés à 40°, jambes
+  écartées, aucun membre ne touche le corps) sur le même fond. Fond vert franc ; magenta si le personnage porte du vert.
+- **La référence des poses est le dessin sur fond de couleur, pas la pose en A.** Mesuré le 21/11/2026 sur deux
+  caricatures (cinq tirages chacune) : la pose en A les amaigrit (épaules deux fois moins larges, bras 40 % plus fins) et
+  les poses en héritaient ; le dessin reposé sur fond vert reste fidèle. La pose en A sert seulement à voir la silhouette.
 - Pourquoi le fond de couleur : sur un dessin au trait, le blanc du corps et le blanc du papier sont le même blanc. Un
   détourage par réseau troue le corps, et le rebouchage referme les vrais vides (entre le bras et la hanche, entre les
   jambes). Sur fond de couleur, la découpe se fait par la couleur : les vides restent des vides, plus de halo.
@@ -43,8 +46,9 @@ le calcul est perdu et la tournette part à la poubelle.
 - C'est la fiche du personnage : l'humain la valide. Rien d'autre ne part avant.
 
 ### Étape 2 : les poses
-- Références : le dessin d'origine **et** la pose en A. Avec la pose en A seule, le visage dérive (un personnage qui
-  fait la moue se met à sourire). Consigne : « un autre dessin du même auteur, avec les mêmes outils, le même jour ».
+- Références : le dessin d'origine **et** ce même dessin sur fond de couleur (jamais la pose en A, qui amaigrit). La
+  consigne dit que le fond du résultat est celui de la deuxième image, jamais le papier blanc de la première. Consigne :
+  « un autre dessin du même auteur, avec les mêmes outils, le même jour ».
 - Une image par pose. Même fond de couleur, une seule figure, en pied.
 - Contrôles automatiques contre le dessin d'origine : fidélité du visage ≥ 0,85 ; épaisseur du trait entre 0,72 et 1,45
   fois celle de l'original (1,95 pour les poses ramassées : assis, accroupi, à terre). Une pose d'expression (rit, triste,

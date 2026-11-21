@@ -32,10 +32,14 @@ VERDICTS = ("garder", "refaire", "ecarter")
 ETAPES = {
     "apose": "Étape 1, pose en A sur fond de couleur. L'humain valide cette image : donne seulement ton avis. Vérifie : "
              "fond uni partout, y compris entre les membres ; le corps est resté blanc (pas verdi) ; visage, proportions "
-             "et trait fidèles au dessin d'origine ; bras écartés, aucun membre ne touche le corps ; rien d'ajouté.",
+             "et trait fidèles au dessin d'origine ; bras écartés, aucun membre ne touche le corps ; rien d'ajouté. Compare aussi "
+             "à l'œil la masse du corps (largeur des épaules, épaisseur des bras et des jambes), que la mesure ne voit pas : "
+             "une caricature amaigrie est un défaut.",
     "pose": "Étape 2, une pose. Vérifie contre le dessin d'origine : même visage et mêmes proportions ; même trait et "
             "même remplissage ; aucun vêtement ajouté (t-shirt, short, slip) ; la pose demandée est bien prise (pas "
-            "identique à la base) ; aucun détail du corps perdu ; aucun membre en trop ; aucune couleur apparue.",
+            "identique à la base) ; aucun détail du corps perdu ; aucun membre en trop ; aucune couleur apparue. Compare aussi "
+            "à l'œil la masse du corps (largeur des épaules, épaisseur des bras et des jambes, largeur du torse), que la "
+            "mesure des proportions ne voit pas : un personnage plus filiforme que le dessin est à refaire.",
     "vues": "Étape 3, une vue (dos, profil ou trois-quarts dos) d'une pose. Vérifie : ligne de ceinture ou d'élastique "
             "au dos (slip ajouté) ; nombre de bras ; un « profil » qui n'est qu'un trois-quarts ; crâne devenu tout noir ; "
             "visage qui change d'expression ; l'attitude est celle de la pose. Une vue fautive s'écarte (verdict ecarter).",
