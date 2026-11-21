@@ -1,5 +1,7 @@
 {
  "ui": {
+  "Proportions comparées au dessin d'origine sur le même fond : hauteur de la tête dans le personnage, puis largeur de la tête (100 % = identique, ± 8 % toléré). Un simple signalement, mesuré seulement sur les poses debout bras le long du corps ou écartés : il n'écarte jamais une pose. La masse du corps (épaules, bras) se juge à l'œil.": "Proportions compared with the original drawing on the same background: height of the head within the character, then width of the head (100 % = identical, ± 8 % tolerated). Only a flag, measured only on standing poses with arms down or apart: it never discards a pose. Body mass (shoulders, arms) is judged by eye.",
+  "proportions à vérifier (tête {0} · {1})": "proportions to check (head {0} · {1})",
   "sur fond magenta": "on magenta background",
   "sur fond vert": "on green background",
   "découpée": "cut out",
@@ -13,8 +15,6 @@
   "Taille de la marge (%)": "Margin size (%)",
   "Ajoute une marge tout autour de l'image : la zone de dessin grandit du même pourcentage de chaque côté": "Adds a margin all around the image: the drawing area grows by the same percentage on every side",
   "⬚ Marge": "⬚ Margin",
-  "Proportions comparées au dessin d'origine sur le même fond : hauteur de la tête dans le personnage, puis largeur de la tête (100 % = identique ; au-delà de ± 8 %, une pose debout est écartée). La masse du corps (épaules, bras) se juge à l'œil.": "Proportions compared with the original drawing on the same background: height of the head within the character, then width of the head (100 % = identical; beyond ± 8 %, a standing pose is discarded). Body mass (shoulders, arms) is judged by eye.",
-  "Pose ramassée : la mesure ne vaut rien, regarde à l'œil.": "Crouched pose: the measure is meaningless, check by eye.",
   "tête {0} · {1}": "head {0} · {1}",
   "Avant les poses : ton dessin reposé sur un fond uni, qui sert de référence aux poses, et une pose en A qui sert seulement à contrôler la silhouette ; tu valides. Ensuite les poses, leurs vues et leurs orbites gardent ce fond et sont découpées par la couleur : les vides (bras sur les hanches, entre les jambes) restent ouverts, sans rebouchage ni halo. Demande un moteur des poses fal (2 images payantes).": "Before the poses: your drawing placed on a plain background, which is the reference for the poses, and an A-pose that only serves to check the silhouette; you validate. Then the poses, their views and their turnarounds keep this background and are cut out by colour: gaps (arms on hips, between the legs) stay open, with no filling and no halo. Requires a fal pose engine (2 paid images).",
   "Le dessin sur fond de couleur est la référence des poses : même visage, même trait, même remplissage, mêmes proportions que ton dessin ? La pose en A n'est qu'un contrôle de la silhouette (elle a tendance à amaigrir les caricatures). Le fond doit être uni partout, y compris entre les membres. Tant que tu ne valides pas, rien ne change pour cet élément.": "The drawing on the coloured background is the reference for the poses: same face, same line, same filling, same proportions as your drawing? The A-pose is only a silhouette check (it tends to slim caricatures down). The background must be plain everywhere, including between the limbs. Until you validate, nothing changes for this item.",
@@ -1391,6 +1391,7 @@
   "↺ Ordre par défaut": "↺ Default order"
  },
  "server": {
+  "silhouette introuvable": "silhouette not found",
   "le dessin sur fond de couleur manque : refais la pose en A": "the drawing on the coloured background is missing: redo the A-pose",
   "Parle": "Speaks",
   "Écoute": "Listens",

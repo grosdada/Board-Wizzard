@@ -834,7 +834,7 @@ export class Bank {
             h("div.var-name", tr(vv.label)),
             sc != null ? h("div.rev-score", { title: tt("Ressemblance du visage avec le dessin d'origine (1 = identique ; sous 0,85 la pose est écartée)") }, tt`fidélité ${sc.toFixed(2)}`) : null,
             vv.review.line != null ? h("div.rev-score" + (vv.review.line < 0.72 || vv.review.line > 1.45 ? ".warn" : ""), { title: tt("Épaisseur du trait de la pose par rapport au dessin d'origine, à taille égale (1 = le même trait ; sous 0,72 ou au-dessus de 1,45 la pose est écartée)") }, tt`trait × ${vv.review.line.toFixed(2)}`) : null,
-            propTag(vv.review.prop, vv.review.low),
+            propTag(vv.review.prop),
             auditTag(vv.review.audit),
             busy ? h("div.muted", tt("⏳ en calcul")) : h("div.rev-acts",
               st === "redo" ? h("div.rev-note", tt("La nouvelle génération n'a pas abouti.")) : null,
@@ -923,11 +923,11 @@ function auditTag(a, what = "") {
 }
 
 // proportions de la caricature (app/proportions.py) : tete dans la hauteur et largeur de tete, rapportees au dessin
-function propTag(pr, low) {
-  if (!pr) return null;
+function propTag(pr) {
+  if (!pr || pr.tete_h == null) return null;
   const pc = (v) => `${Math.round(v * 100)} %`;
-  return h("div.rev-score" + (!pr.ok && !low ? ".warn" : ""), { title: tt("Proportions comparées au dessin d'origine sur le même fond : hauteur de la tête dans le personnage, puis largeur de la tête (100 % = identique ; au-delà de ± 8 %, une pose debout est écartée). La masse du corps (épaules, bras) se juge à l'œil.") + (low ? "\n" + tt("Pose ramassée : la mesure ne vaut rien, regarde à l'œil.") : "") },
-    tt`tête ${pc(pr.tete_h)} · ${pc(pr.tete_l)}` + (low ? " ?" : ""));
+  return h("div.rev-score" + (!pr.ok ? ".warn" : ""), { title: tt("Proportions comparées au dessin d'origine sur le même fond : hauteur de la tête dans le personnage, puis largeur de la tête (100 % = identique, ± 8 % toléré). Un simple signalement, mesuré seulement sur les poses debout bras le long du corps ou écartés : il n'écarte jamais une pose. La masse du corps (épaules, bras) se juge à l'œil.") },
+    !pr.ok ? tt`proportions à vérifier (tête ${pc(pr.tete_h)} · ${pc(pr.tete_l)})` : tt`tête ${pc(pr.tete_h)} · ${pc(pr.tete_l)}`);
 }
 
 function cleanName(f) {

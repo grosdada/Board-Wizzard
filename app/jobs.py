@@ -474,6 +474,8 @@ DRAW_TRIES, DRAW_MIN = 6, 0.85
 # Les poses ramassees (assis, accroupi, a terre) sont moins hautes : leur trait parait plus gras, la borne haute est relevee.
 LINE_MIN, LINE_MAX, LINE_MAX_LOW = 0.72, 1.45, 1.95
 LOW_POSES = ("assis", "accroupi", "a-terre", "assis-tete")
+# proportions mesurees (signalement seulement) : poses debout, bras le long du corps ou ecartes, mains loin de la tete
+PROP_POSES = ("ecoute", "marche", "mains-hanches", "tend-main")
 
 
 def _line_ok(ratio, pose):
@@ -501,58 +503,53 @@ def _pose_key(job, it, d, eprov, model, validate):
     refs = [base, d / (ap.get("base") or ap["img"])]             # pose en A amaigrit les caricatures, elle n'est qu'un controle
     drawing = it.get("style") == "dessin"
     score, line, rejected, best = None, None, False, None
-    # proportions de la caricature : mesurees contre le dessin repose sur le meme fond ; pas pour une pose ramassee
+    # proportions de la caricature : un SIGNALEMENT, jamais un rejet. La mesure (cou = rangee la plus etroite du haut du
+    # corps) se trompe des qu'une main passe pres de la tete, que la tete penche ou que les bras se levent : 28 poses sur
+    # 54 ecartees a tort le 21/11/2026. On ne la prend que pour les poses debout, bras le long du corps ou ecartes.
     pref = d / ap["base"] if ap.get("base") and (d / ap["base"]).exists() else None
     low = p.get("pose", "") in LOW_POSES
     props = {}
 
     def prop_of(c):
-        props[str(c)] = _prop(pref, c, key) if pref else None
+        props[str(c)] = _prop(pref, c, key) if pref and p.get("pose", "") in PROP_POSES else None
         return props[str(c)]
 
-    def prop_ok(pr):
-        return low or not pr or pr["ok"]
+    def measure(c, tag):
+        """Fidelite du visage et epaisseur du trait contre le dessin d'origine, quel que soit le style (seuils inchanges).
+        Renvoie (fidelite ou None, image, bon, trait)."""
+        white = sprites.key_white(c, tmp / ("white_%s.png" % tag), key)
+        try:
+            sc = float(sprites.face_score(base, white))
+        except Exception:                                          # noqa: BLE001 : visage introuvable, pas de mesure
+            sc = None
+        try:
+            ratio = float(sprites.line_ratio(base, white))
+        except Exception:                                          # noqa: BLE001 : sans OpenCV, seul le visage est controle
+            ratio = 1.0
+        prop_of(c)
+        return (sc, c, (sc is None or sc >= DRAW_MIN) and _line_ok(ratio, p.get("pose", "")), ratio)
     tmp = _tmp()
     try:
         for k in range(DRAW_TRIES if drawing else 1):
             job["progress"] = "pose, tirage %d" % (k + 1)
             cand = tmp / ("cand_%d.png" % k)
             shutil.copyfile(_key_edit(job, eprov, refs, prompt, _seed(job) + 7919 * k, tmp, key, "pose"), cand)
-            if not drawing:
-                best = (None, cand, prop_ok(prop_of(cand)), None)
-                break
-            white = sprites.key_white(cand, tmp / ("white_%d.png" % k), key)
-            sc = sprites.face_score(base, white)
-            try:
-                ratio = sprites.line_ratio(base, white)
-            except Exception:                                      # noqa: BLE001 : sans OpenCV, seul le visage est controle
-                ratio = 1.0
-            good = sc >= DRAW_MIN and _line_ok(ratio, p.get("pose", "")) and prop_ok(prop_of(cand))
-            if best is None or (good, sc) > (best[2], best[0]):
-                best = (sc, cand, good, ratio)
-            if good and sc >= 0.9:
+            m = measure(cand, k)
+            if best is None or (m[2], m[0] or 0) > (best[2], best[0] or 0):
+                best = m
+            if m[2] and (m[0] or 0) >= 0.9:
                 break
         audit = None
-        if not drawing or best[2]:                               # les controles mesures passent : l'intelligence regarde
+        if best[2]:                                              # les controles mesures passent : l'intelligence regarde
             def redraw(consigne, n):
                 c = tmp / ("redo_%d.png" % n)
                 shutil.copyfile(_key_edit(job, eprov, refs, _with_consigne(prompt, consigne), _seed(job) + 7919 * (DRAW_TRIES + n), tmp, key, "pose"), c)
-                pr_ok = prop_ok(prop_of(c))
-                if not drawing:
-                    redraw.measured = (None, c, pr_ok, None)
-                if drawing:                                      # la reprise repasse les controles mesures
-                    white = sprites.key_white(c, tmp / ("white_r%d.png" % n), key)
-                    sc = sprites.face_score(base, white)
-                    try:
-                        ratio = sprites.line_ratio(base, white)
-                    except Exception:                              # noqa: BLE001
-                        ratio = 1.0
-                    redraw.measured = (sc, c, sc >= DRAW_MIN and _line_ok(ratio, p.get("pose", "")) and pr_ok, ratio)
+                redraw.measured = measure(c, "r%d" % n)          # la reprise repasse les controles mesures
                 return c
             redraw.measured = None
             pr0 = props.get(str(best[1]))
             ctx = "%s. Proportions mesurées contre le dessin d'origine : %s" % (
-                label, "pose ramassée, mesure sans valeur : juge à l'œil" if low else (proportions.describe(pr0) or "non mesurées"))
+                label, proportions.describe(pr0) if pr0 else "non mesurées pour cette pose : juge à l'œil")
             img, audit = _audit(job, it, "pose", best[1], ctx, redraw=redraw)
             if img != best[1]:
                 best = redraw.measured or (best[0], img, True, best[3])
@@ -561,20 +558,14 @@ def _pose_key(job, it, d, eprov, model, validate):
                     raise RuntimeError("pose écartée par l'intelligence : %s" % audit.get("raison", audit["final"]))
                 rejected = True
         prop = props.get(str(best[1]))
-        if drawing:
-            score, line = round(float(best[0]), 3), round(float(best[3]), 2)
-            _log_pose(it["id"], p.get("pose") or label, best[0], line, best[2])
-            if not best[2]:
-                if not validate:
-                    if best[0] < DRAW_MIN:
-                        raise RuntimeError("pose écartée : le visage du dessin n'était pas respecté (fidélité %.2f)" % best[0])
-                    if not _line_ok(best[3], p.get("pose", "")):
-                        raise RuntimeError("pose écartée : le trait n'était pas celui du dessin (%.2f fois son épaisseur)" % line)
-                    raise RuntimeError("pose écartée : proportions de la caricature perdues (%s)" % proportions.describe(prop))
-                rejected = True
-        elif not prop_ok(prop):
+        score = round(best[0], 3) if best[0] is not None else None
+        line = round(float(best[3]), 2)
+        _log_pose(it["id"], p.get("pose") or label, best[0] if best[0] is not None else 1.0, line, best[2])
+        if not best[2]:
             if not validate:
-                raise RuntimeError("pose écartée : proportions de la caricature perdues (%s)" % proportions.describe(prop))
+                if best[0] is not None and best[0] < DRAW_MIN:
+                    raise RuntimeError("pose écartée : le visage du dessin n'était pas respecté (fidélité %.2f)" % best[0])
+                raise RuntimeError("pose écartée : le trait n'était pas celui du dessin (%.2f fois son épaisseur)" % line)
             rejected = True
         box = {}
 
