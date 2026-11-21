@@ -559,8 +559,20 @@ export class Bank {
       const nameIn = h("input", { type: "text", value: item.name, on: { change: async (e) => { await put("bank/" + id, { name: e.target.value }); this.reload(); } } });
       const styleIn = h("select", { on: { change: async (e) => { await put("bank/" + id, { style: e.target.value }); this.reload(); } } },
         STYLES.map(([k, l]) => h("option", { value: k, selected: k === item.style }, l)));
-      const fold = this.folderInput(item.folder, item.kind);
-      fold.querySelector("input").addEventListener("change", async (e) => { await put("bank/" + id, { folder: e.target.value.trim() }); this.reload(); });
+      // dossier : deroulant de tous les dossiers de l'onglet (sous-dossiers en retrait), plus « Sans dossier » et « Nouveau dossier… »
+      const fold = h("select", h("option", { value: "", selected: !item.folder }, tt("Sans dossier")),
+        this.folders(item.kind).map((f) => h("option", { value: f, selected: f === item.folder }, "\u00a0\u00a0\u00a0".repeat(f.split("/").length - 1) + f.replace(/\//g, " \u203a "))),
+        h("option", { value: "__new__" }, tt("＋ Nouveau dossier…")));
+      fold.addEventListener("change", async () => {
+        let f = fold.value;
+        if (f === "__new__") {
+          f = (prompt(tt("Nom du dossier (sous-dossier : « Parent/Nom ») :"), item.folder || "") || "").trim().replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+          if (!f) { fold.value = item.folder || ""; return; }
+        }
+        if (![...fold.options].some((o) => o.value === f)) fold.insertBefore(h("option", { value: f }, f), fold.lastChild);
+        fold.value = f; item.folder = f;
+        await put("bank/" + id, { folder: f }); this.reload();
+      });
       head.append(h("label.row", tt("Nom"), nameIn), h("label.row", tt("Dossier"), fold), h("label.row", tt("Rendu"), styleIn));
       }
       // reperes d'axes

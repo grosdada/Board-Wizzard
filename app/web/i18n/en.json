@@ -1,5 +1,7 @@
 {
  "ui": {
+  "＋ Nouveau dossier…": "＋ New folder…",
+  "Nom du dossier (sous-dossier : « Parent/Nom ») :": "Folder name (subfolder: « Parent/Name »):",
   "connexion requise": "login required",
   "erreur ": "error ",
   "Rien de plus à annuler.": "Nothing more to undo.",
