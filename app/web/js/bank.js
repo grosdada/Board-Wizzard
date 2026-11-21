@@ -752,6 +752,26 @@ export class Bank {
         const call = async (path, body, msg) => { try { await post(`bank/${id}/${path}`, { ...body, target: target() }); if (msg) toast(msg); await this.reload(); app.pollSoon(); } catch (err) { toast(err.message, "error"); } };
         const damier = "background: repeating-conic-gradient(#8884 0 25%, #0000 0 50%) 0 0 / 16px 16px; border-radius: 6px;";
         const pic = (rel, cap, t) => h("figure", { style: "margin:0; text-align:center;" }, h("img", { src: `/bank/${id}/${rel}?t=${t || 0}`, loading: "lazy", style: "height: 240px; max-width: 100%; object-fit: contain; " + damier }), h("figcaption.muted", cap));
+        // une image sur fond de couleur, montree sur son fond, a cote de sa decoupe ; si son fond n'est pas de la couleur
+        // attendue (fond blanc d'un tirage rate), « fond raté » a la place des deux
+        const keyName = (k) => (k === "magenta" ? tt("sur fond magenta") : tt("sur fond vert"));
+        const pair = (title, keyRel, cutRel, t, key, hgt = 240) => {
+          const img = h("img", { src: `/bank/${id}/${keyRel}?t=${t || 0}`, style: `height: ${hgt}px; max-width: 100%; object-fit: contain;` });
+          const row = h("div.row", { style: "gap: 6px; align-items: flex-end;" },
+            h("figure", { style: "margin:0; text-align:center;" }, img, h("figcaption.muted", keyName(key))),
+            cutRel ? h("figure", { style: "margin:0; text-align:center;" }, h("img", { src: `/bank/${id}/${cutRel}?t=${t || 0}`, style: `height: ${hgt}px; max-width: 100%; object-fit: contain; ` + damier }), h("figcaption.muted", tt("découpée"))) : null);
+          img.addEventListener("load", () => {
+            try {
+              const c = document.createElement("canvas"), w = (c.width = 64), hh = (c.height = Math.max(1, Math.round(64 * img.naturalHeight / img.naturalWidth)));
+              const x = c.getContext("2d"); x.drawImage(img, 0, 0, w, hh);
+              const d = x.getImageData(0, 0, w, hh).data;
+              let n = 0;
+              for (let i = 0; i < d.length; i += 4) { const dom = key === "magenta" ? Math.min(d[i], d[i + 2]) - d[i + 1] : d[i + 1] - Math.max(d[i], d[i + 2]); if (dom > 80) n++; }
+              if (n / (w * hh) < 0.2) row.replaceChildren(h("div.fond-rate", { style: `height: ${hgt}px;`, title: tt("Ce tirage n'a pas le fond de couleur demandé (fond blanc ou transparent) : la découpe par la couleur n'en tirera rien. Refais-le.") }, tt("fond raté")));
+            } catch (err) { /* image illisible : on la laisse */ }
+          }, { once: true });
+          return h("div.kpair", h("div.kpair-title", title), row);
+        };
         const color = h("select", { title: tt("Couleur du fond : vert, ou magenta si le personnage porte du vert") }, h("option", { value: "vert" }, tt("fond vert")), h("option", { value: "magenta" }, tt("fond magenta")));
         if (ap && ap.key) color.value = ap.key;
         const make = () => call("apose", { action: "make", key: color.value, seed: Math.floor(Math.random() * 1e6) }, tt("Pose en A demandée (2 images)."));
@@ -761,14 +781,16 @@ export class Bank {
           h("div.row.wrap", color, h("button.mini.primary", { on: { click: make } }, tt("Faire la pose en A"))));
         else if (ap.state !== "ok") keyBox.append(h("h4", tt("Pose en A à valider")),
           h("p.muted", tt("Le dessin sur fond de couleur est la référence des poses : même visage, même trait, même remplissage, mêmes proportions que ton dessin ? La pose en A n'est qu'un contrôle de la silhouette (elle a tendance à amaigrir les caricatures). Le fond doit être uni partout, y compris entre les membres. Tant que tu ne valides pas, rien ne change pour cet élément.")),
-          h("div.row.wrap", { style: "gap: 12px; align-items: flex-end;" }, pic(item.variants.base.ref, tt("ton dessin"), item.variants.base.t), ap.base_cut ? pic(ap.base_cut, tt("ton dessin sur fond de couleur : la référence"), ap.t) : null, pic(ap.cut, tt("pose en A : contrôle"), ap.t)),
-          propTag(ap.prop), auditTag(ap.audit),
+          h("div.row.wrap", { style: "gap: 14px; align-items: flex-end;" }, h("div.kpair", h("div.kpair-title", tt("ton dessin")), pic(item.variants.base.ref, tt("d'origine"), item.variants.base.t)),
+            ap.base ? pair(tt("ton dessin sur fond de couleur : la référence"), ap.base, ap.base_cut, ap.t, ap.key) : null,
+            pair(tt("pose en A : contrôle"), ap.img, ap.cut, ap.t, ap.key)),
+          h("div.row.wrap", propTag(ap.prop), auditTag(ap.audit)),
           h("div.row.wrap", h("button.mini.primary", { on: { click: () => call("apose", { action: "ok" }, tt("Pose en A validée : les prochaines poses partent sur fond de couleur.")) } }, tt("✓ Valider")),
             color, h("button.mini", { on: { click: make } }, tt("↻ Refaire")),
             h("button.mini.danger", { on: { click: () => call("apose", { action: "drop" }) } }, tt("Abandonner"))));
         else {
           keyBox.append(h("h4", tt("Fond de couleur")),
-            h("div.row.wrap", { style: "gap: 12px; align-items: center;" }, h("img", { src: `/bank/${id}/${ap.base_cut || ap.cut}?t=${ap.t || 0}`, style: "height: 90px; " + damier }),
+            h("div.row.wrap", { style: "gap: 12px; align-items: center;" }, ap.base ? pair(tt("la référence"), ap.base, ap.base_cut, ap.t, ap.key, 90) : h("img", { src: `/bank/${id}/${ap.cut}?t=${ap.t || 0}`, style: "height: 90px; " + damier }),
               h("span.muted", tt`Fond ${ap.key} validé : les nouvelles poses partent de ton dessin sur ce fond (la pose en A n'est qu'un contrôle), et leurs vues et leurs orbites le gardent. Les poses déjà faites ne changent pas.`),
               color, h("button.mini", { on: { click: make } }, tt("↻ Refaire la pose en A")),
               h("button.mini.danger", { title: tt("Les prochaines poses repassent par le détourage habituel ; celles déjà faites restent"), on: { click: () => { if (confirm(tt("Revenir au détourage habituel pour cet élément ?"))) call("apose", { action: "drop" }); } } }, tt("Désactiver"))));

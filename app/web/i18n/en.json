@@ -1,5 +1,13 @@
 {
  "ui": {
+  "sur fond magenta": "on magenta background",
+  "sur fond vert": "on green background",
+  "découpée": "cut out",
+  "Ce tirage n'a pas le fond de couleur demandé (fond blanc ou transparent) : la découpe par la couleur n'en tirera rien. Refais-le.": "This draw does not have the requested coloured background (white or transparent): cutting by colour will get nothing from it. Redo it.",
+  "fond raté": "failed background",
+  "ton dessin": "your drawing",
+  "d'origine": "original",
+  "la référence": "the reference",
   "Créer une marge": "Create a margin",
   "En pourcentage de la case, ajouté à gauche, à droite, en haut et en bas": "As a percentage of the panel, added left, right, top and bottom",
   "Taille de la marge (%)": "Margin size (%)",
@@ -1383,6 +1391,7 @@
   "↺ Ordre par défaut": "↺ Default order"
  },
  "server": {
+  "le dessin sur fond de couleur manque : refais la pose en A": "the drawing on the coloured background is missing: redo the A-pose",
   "Parle": "Speaks",
   "Écoute": "Listens",
   "Pointe du doigt": "Points a finger",
