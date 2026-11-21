@@ -22,24 +22,25 @@ const pts = (poly) => poly.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).jo
 const PX_PER_FRAME = 5;                       // glisser de 5 px = une image d'orbite
 
 // ---------------------------------------------------------------- icones des poignees (pixels, centre 0 0)
+// Un arc epais termine par une pointe pleine : la pointe est posee sur la tangente au dernier point de l'arc, sa base
+// centree sur le trait ; l'ensemble (arc, pointe, epaisseur) est recentre dans la pastille.
+const ICO_W = 3, HEAD_L = 6.8, HEAD_W = 4.9;               // epaisseur du trait, longueur et demi-largeur de la pointe
 const f2 = (v) => v.toFixed(2);
-const tri = (x, y, dx, dy, L = 6.2, W = 4.4) => {          // pointe pleine au bout (x, y), dans la direction (dx, dy)
-  const n = Math.hypot(dx, dy) || 1, ux = dx / n, uy = dy / n;
-  return `M${f2(x + ux * L * 0.55)} ${f2(y + uy * L * 0.55)}L${f2(x - ux * L * 0.45 - uy * W)} ${f2(y - uy * L * 0.45 + ux * W)}L${f2(x - ux * L * 0.45 + uy * W)} ${f2(y - uy * L * 0.45 - ux * W)}Z`;
+const arcIcon = (pt, t0, t1, n = 40) => {                  // pt(t) : point de la courbe ; de t0 a t1, pointe au bout
+  const P = Array.from({ length: n + 1 }, (_, i) => pt(t0 + (t1 - t0) * i / n));
+  const e = P[n], q = pt(t1 - (t1 - t0) * 1e-3), tl = Math.hypot(e[0] - q[0], e[1] - q[1]) || 1;
+  const ux = (e[0] - q[0]) / tl, uy = (e[1] - q[1]) / tl;  // tangente au bout, dans le sens du trace
+  const H = [[e[0] + ux * HEAD_L, e[1] + uy * HEAD_L], [e[0] - uy * HEAD_W, e[1] + ux * HEAD_W], [e[0] + uy * HEAD_W, e[1] - ux * HEAD_W]];
+  const all = P.concat(H), xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
+  const dx = -(Math.min(...xs) + Math.max(...xs)) / 2, dy = -(Math.min(...ys) + Math.max(...ys)) / 2;   // recentrage
+  const mv = (p) => f2(p[0] + dx) + " " + f2(p[1] + dy);
+  return { arc: P.map((p, i) => (i ? "L" : "M") + mv(p)).join(""), head: "M" + H.map(mv).join("L") + "Z" };
 };
-// orbite : un anneau en perspective (ellipse un peu penchee) autour d'un axe, deux fleches qui se suivent
-const ORX = 11.5, ORY = 4.6, OTILT = -10 * Math.PI / 180;
-const oPt = (t) => { const x = ORX * Math.cos(t), y = ORY * Math.sin(t); return [x * Math.cos(OTILT) - y * Math.sin(OTILT), x * Math.sin(OTILT) + y * Math.cos(OTILT)]; };
-const oTan = (t) => { const x = -ORX * Math.sin(t), y = ORY * Math.cos(t); return [x * Math.cos(OTILT) - y * Math.sin(OTILT), x * Math.sin(OTILT) + y * Math.cos(OTILT)]; };
-const oArc = (t0, t1) => { let d = ""; for (let i = 0; i <= 16; i++) { const p = oPt(t0 + (t1 - t0) * i / 16); d += (i ? "L" : "M") + f2(p[0]) + " " + f2(p[1]); } return d; };
 const DEG = Math.PI / 180;
-const ICON_ORBIT = oArc(18 * DEG, 150 * DEG);              // devant (bas de l'anneau), vers la gauche
-const ICON_ORBIT_BACK = oArc(198 * DEG, 330 * DEG);        // derriere (haut de l'anneau), vers la droite
-const ICON_ORBIT_HEADS = tri(...oPt(150 * DEG), ...oTan(150 * DEG), 5.4, 3.7) + tri(...oPt(330 * DEG), ...oTan(330 * DEG), 5.4, 3.7);
-const ICON_ORBIT_AXIS = "M0 -11.5V-3.2M0 3.6V11.5";
-// inclinaison : un arc de cercle aux trois quarts, pointe pleine
-const ICON_ROT = (() => { let d = ""; for (let i = 0; i <= 18; i++) { const t = (-200 + 250 * i / 18) * DEG; d += (i ? "L" : "M") + f2(7.2 * Math.cos(t)) + " " + f2(7.2 * Math.sin(t)); } return d; })();
-const ICON_ROT_HEAD = (() => { const t = 50 * DEG; return tri(7.2 * Math.cos(t), 7.2 * Math.sin(t), -Math.sin(t), Math.cos(t), 6.6, 4.6); })();
+// inclinaison : trois quarts de cercle, dans le sens des aiguilles d'une montre
+const ICON_R = arcIcon((t) => [7 * Math.cos(t), 7 * Math.sin(t)], -215 * DEG, 45 * DEG);
+// orbite : un anneau aplati vu en perspective ; il passe derriere par le haut et revient devant, pointe vers la gauche
+const ICON_O = arcIcon((t) => [11.5 * Math.cos(t), 5.6 * Math.sin(t)], 118 * DEG, 412 * DEG);
 
 export class Editor {
   constructor(host, app) {
@@ -137,7 +138,7 @@ export class Editor {
     const top = P(cx, cy - hh), knob = keep(P(cx, cy - hh - 30 * u));
     gh.append(s("line", { x1: top[0], y1: top[1], x2: knob[0], y2: knob[1], class: "lh-stem", style: thin }));
     const ro = at(knob, "lh-grip lh-rot", "rot");
-    ro.append(s("circle", { r: 15, "data-h": "rot", class: "lh-disk" }), s("path", { d: ICON_ROT, class: "lh-ico", "data-h": "rot" }), s("path", { d: ICON_ROT_HEAD, class: "lh-ico-head", "data-h": "rot" }));
+    ro.append(s("circle", { r: 15, "data-h": "rot", class: "lh-disk" }), s("path", { d: ICON_R.arc, class: "lh-ico", "data-h": "rot" }), s("path", { d: ICON_R.head, class: "lh-ico-head", "data-h": "rot" }));
     gh.append(ro);
     // taille : une boule par coin (zone de prise plus large que la boule)
     [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], i) => {
@@ -152,8 +153,7 @@ export class Editor {
       const pick = small ? spots.find((q) => inPage(q[1])) || spots[0] : null, op = small ? keep(pick[1]) : P(cx, cy);
       if (small) gh.append(s("line", { x1: pick[0][0], y1: pick[0][1], x2: op[0], y2: op[1], class: "lh-stem", style: thin }));
       const ob = at(op, "lh-grip lh-orbit", "turn");
-      ob.append(s("circle", { r: 18, "data-h": "turn", class: "lh-disk" }), s("path", { d: ICON_ORBIT_BACK, class: "lh-ico lh-ico-back", "data-h": "turn" }),
-        s("path", { d: ICON_ORBIT_AXIS, class: "lh-ico lh-ico-axis", "data-h": "turn" }), s("path", { d: ICON_ORBIT, class: "lh-ico", "data-h": "turn" }), s("path", { d: ICON_ORBIT_HEADS, class: "lh-ico-head", "data-h": "turn" }));
+      ob.append(s("circle", { r: 17, "data-h": "turn", class: "lh-disk" }), s("path", { d: ICON_O.arc, class: "lh-ico", "data-h": "turn" }), s("path", { d: ICON_O.head, class: "lh-ico-head", "data-h": "turn" }));
       gh.append(ob);
     }
     svg.append(gh);
