@@ -2,7 +2,7 @@
 // unis ou en degrade. panel.draw = { shapes: [...] }. Une forme :
 //   { id, t (primitive ou trace, voir PRIMS et PATHS), p: [[x, y]...] en fraction de la case, r (rotation en degres),
 //     stroke: "#111111" | "#ffffff" | "none", sw (epaisseur), fill: none | white | black | tone | grad,
-//     tone, tone2 (0 = blanc, 1 = noir), ga (angle du degrade), dot (taille de la trame), form: points | lignes | croix | triple | carres | cercles | vagues | grain,
+//     tone, tone2 (0 = blanc, 1 = noir), ga (angle du degrade), dot (taille de la trame), tc (couleur du fonce de la trame, noir par defaut), form: points | lignes | croix | triple | carres | cercles | vagues | grain,
 //     ha (angle de la trame), mx (primitive retournee gauche-droite par « Miroir ») }
 // La trame est faite par le navigateur : un motif en « cones » de gris + le ton voulu, puis un seuil. Les points
 // grossissent donc tout seuls la ou le ton fonce, sans dessiner chaque point.
@@ -176,7 +176,17 @@ export function drawSvg(draw, H, pre) {
       } else tone = grey(sh.tone);
       // moyenne du motif et du ton, puis seuil a mi-gris : noir la ou le motif est plus sombre que le ton demande
       // le blanc de la trame laisse voir la couleur dessous (multiplication), ses points noirs restent noirs
-      one += `<g ${tag} filter="url(#${pre}th)" style="mix-blend-mode:multiply"><g clip-path="url(#${id}c)" style="isolation:isolate">${rect("#fff")}${cone}${rect(tone, ` opacity="0.5"`)}</g></g>`;
+      // couleur de la trame : apres le seuil, le noir devient tc et le blanc reste blanc (sortie = tc + v (1 - tc))
+      let th = `${pre}th`;
+      const tc = /^#[0-9a-f]{6}$/i.test(sh.tc || "") ? sh.tc.toLowerCase() : "#000000";
+      if (tc !== "#000000") {
+        th = id + "k";
+        const ch = [1, 3, 5].map((k) => parseInt(tc.slice(k, k + 2), 16) / 255);
+        defs += `<filter id="${th}" color-interpolation-filters="sRGB" x="-5%" y="-5%" width="110%" height="110%"><feComponentTransfer>` +
+          ["R", "G", "B"].map((c) => `<feFunc${c} type="linear" slope="26" intercept="-12.5"/>`).join("") + `</feComponentTransfer><feComponentTransfer>` +
+          ["R", "G", "B"].map((c, k) => `<feFunc${c} type="linear" slope="${(1 - ch[k]).toFixed(4)}" intercept="${ch[k].toFixed(4)}"/>`).join("") + `</feComponentTransfer></filter>`;
+      }
+      one += `<g ${tag} filter="url(#${th})" style="mix-blend-mode:multiply"><g clip-path="url(#${id}c)" style="isolation:isolate">${rect("#fff")}${cone}${rect(tone, ` opacity="0.5"`)}</g></g>`;
     }
     if (sh.stroke !== "none" && sh.sw > 0) one += `<path ${tag} d="${d}" fill="none" stroke="${sh.stroke}" stroke-width="${f1(sh.sw * 4)}" stroke-linecap="round" stroke-linejoin="round"/>`;
     else if (open || !fl.on) one += `<path ${tag} d="${d}" fill="none" stroke="#111111" stroke-opacity="0.001" stroke-width="12"/>`;
@@ -363,7 +373,10 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
         fl.on ? h("select", { title: tt("Trame posée par-dessus la couleur"), on: { change: (e) => setFill({ tr: e.target.value }) } }, Object.entries(TRAMES).map(([v, n]) => h("option", { value: v, selected: fl.tr === v }, n))) : ""));
       const fill = fl.on ? fl.tr : "none";
       if (fill === "tone" || fill === "grad") {
-        side.append(h("h4", tt("Trame")), pick(tt("Motif"), "form", FORMS), range(tt("Taille"), "dot", 4, 60, 0.5), range(tt("Angle de la trame"), "ha", 0, 180, 1),
+        side.append(h("h4", tt("Trame")), pick(tt("Motif"), "form", FORMS),
+          h("span.row.colrow", { title: tt("Couleur du foncé de la trame (ses points, lignes, carrés…). Le clair reste transparent sur la couleur de fond.") }, tt("Couleur de la trame"),
+            swatch(val("tc") || "#000000", (c) => set("tc", c), () => hist.snap())),
+          range(tt("Taille"), "dot", 4, 60, 0.5), range(tt("Angle de la trame"), "ha", 0, 180, 1),
           range(fill === "grad" ? tt("Gris au départ") : tt("Gris"), "tone", 0, 1, 0.01));
         if (fill === "grad") side.append(range(tt("Gris à l'arrivée"), "tone2", 0, 1, 0.01), range(tt("Sens du dégradé"), "ga", 0, 360, 1));
       }

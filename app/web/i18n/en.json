@@ -316,6 +316,8 @@
   "Gris au départ": "Grey at the start",
   "Gris": "Grey",
   "Gris à l'arrivée": "Grey at the end",
+  "Couleur de la trame": "Screen tone colour",
+  "Couleur du foncé de la trame (ses points, lignes, carrés…). Le clair reste transparent sur la couleur de fond.": "Colour of the dark part of the screen tone (its dots, lines, squares\u2026). The light part stays transparent over the background colour.",
   "Sens du dégradé": "Gradient direction",
   "Rotation": "Rotation",
   "Ordre": "Order",
