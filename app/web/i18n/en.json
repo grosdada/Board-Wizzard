@@ -1,5 +1,15 @@
 {
  "ui": {
+  "Coche les vignettes d'un clic (Maj + clic : toute une suite), puis déplace-les ou supprime-les ensemble": "Tick thumbnails with a click (Shift + click: a whole run), then move or delete them together",
+  "Multi-sélection": "Multi-select",
+  "Tout": "All",
+  "Clique les vignettes à cocher (Maj + clic : toute une suite).": "Click the thumbnails to tick (Shift + click: a whole run).",
+  "Déplacer vers…": "Move to…",
+  "{0} sélectionné(s)": "{0} selected",
+  "🗑 Supprimer": "🗑 Delete",
+  "{0} élément(s) déplacé(s) dans « {1} ».": "{0} item(s) moved to « {1} ».",
+  "Supprimer {0} élément(s) de la banque ? Tu es sûr ?\n\n{1}\n\nIls partent à la corbeille du dossier de données.": "Delete {0} item(s) from the bank? Are you sure?\n\n{1}\n\nThey go to the data folder's trash.",
+  "{0} élément(s) supprimé(s).": "{0} item(s) deleted.",
   "＋ Nouveau dossier…": "＋ New folder…",
   "Nom du dossier (sous-dossier : « Parent/Nom ») :": "Folder name (subfolder: « Parent/Name »):",
   "connexion requise": "login required",

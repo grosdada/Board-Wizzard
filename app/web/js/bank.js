@@ -54,7 +54,8 @@ export class Bank {
       (!this.query || (it.name + " " + (it.tags || []).join(" ") + " " + (it.text || "")).toLowerCase().includes(this.query)));
     const pick = h("input", { type: "file", accept: isAudio ? "audio/*,video/mp4,.webm" : "image/*", multiple: true, style: { display: "none" },
                               on: { change: (e) => { if (e.target.files.length) (isAudio ? this.importAudio([...e.target.files]) : this.importDialog([...e.target.files])); e.target.value = ""; } } });
-    const grid = h("div.bank-grid" + (isAudio ? ".audio" : ""), items.map((it) => (isAudio ? this.audioCard(it) : this.card(it))));
+    if (isAudio) this.multi = false;                  // multi-selection : personnages, decors, assets
+    const grid = h("div.bank-grid" + (isAudio ? ".audio" : "") + (this.multi ? ".multi" : ""), items.map((it) => (isAudio ? this.audioCard(it) : this.card(it))));
     if (!items.length) grid.append(h("p.muted.bank-empty", isAudio ? tt("Aucun son pour l'instant. Les voix importées, enregistrées au micro ou générées dans le montage arrivent ici ; tu peux aussi glisser des fichiers son.") : tt`Aucun ${KIND_ONE[this.tab]} pour l'instant. Glisse des images ici, ou « Générer ».`));
     const search = h("input.search", { type: "search", placeholder: tt("Chercher…"), value: this.query,
                                        on: { input: (e) => { this.query = e.target.value.toLowerCase(); this.renderGrid(); } } });
@@ -77,6 +78,66 @@ export class Bank {
         isAudio ? "" : h("button.mini", { title: tt("Paquets de personnages : exporter ce dossier dans un fichier, importer un paquet reçu, ou piocher dans la bibliothèque en ligne"), on: { click: () => this.packDialog() } }, tt("📦 Paquets")), pick),
       grid);
     this.grid = grid;
+    this.pickBar = h("div.pick-bar");
+    if (!isAudio) this.host.append(this.pickBar);
+    this.updatePick();
+  }
+
+  // ---------------------------------------------------------------- multi-selection : cocher des vignettes, puis les deplacer ou les supprimer
+  pickedIds() {                      // les elements coches presents dans la grille affichee
+    this.picked = this.picked || new Set();
+    const shown = new Set([...this.grid.querySelectorAll(".card")].map((c) => c.dataset.id));
+    return [...this.picked].filter((id) => shown.has(id) && this.app.bank.has(id));
+  }
+  pickCard(id, range) {              // clic : coche ou decoche ; Maj + clic : coche tout depuis la vignette cliquee juste avant
+    this.picked = this.picked || new Set();
+    const order = [...this.grid.querySelectorAll(".card")].filter((c) => c.style.display !== "none").map((c) => c.dataset.id);
+    const a = order.indexOf(this.lastPick), b = order.indexOf(id);
+    if (range && a >= 0 && b >= 0) order.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => this.picked.add(x));
+    else if (this.picked.has(id)) this.picked.delete(id); else this.picked.add(id);
+    this.lastPick = id;
+    this.updatePick();
+  }
+  updatePick() {
+    const bar = this.pickBar;
+    if (!bar || !this.grid) return;
+    this.picked = this.picked || new Set();
+    this.grid.querySelectorAll(".card").forEach((c) => c.classList.toggle("picked", !!this.multi && this.picked.has(c.dataset.id)));
+    const ids = this.multi ? this.pickedIds() : [];
+    bar.textContent = "";
+    const box = h("input", { type: "checkbox", checked: !!this.multi, on: { change: (e) => {
+      this.multi = e.target.checked; if (!this.multi) this.picked.clear(); this.lastPick = null; this.render(); } } });
+    bar.append(h("label.check.pick-toggle", { title: tt("Coche les vignettes d'un clic (Maj + clic : toute une suite), puis déplace-les ou supprime-les ensemble") }, box, tt("Multi-sélection")));
+    if (!this.multi) return;
+    const all = [...this.grid.querySelectorAll(".card")].filter((c) => c.style.display !== "none").map((c) => c.dataset.id);
+    bar.append(h("button.mini", { on: { click: () => { all.forEach((x) => this.picked.add(x)); this.updatePick(); } } }, tt("Tout")),
+      h("button.mini", { on: { click: () => { this.picked.clear(); this.lastPick = null; this.updatePick(); } } }, tt("Aucun")));
+    if (!ids.length) { bar.append(h("span.muted", tt("Clique les vignettes à cocher (Maj + clic : toute une suite)."))); return; }
+    const move = h("select", { on: { change: () => this.movePicked(move) } },
+      h("option", { value: "__", disabled: true, selected: true }, tt("Déplacer vers…")),
+      h("option", { value: "" }, tt("Sans dossier")),
+      this.folders().map((f) => h("option", { value: f }, "\u00a0\u00a0\u00a0".repeat(f.split("/").length - 1) + f.replace(/\//g, " \u203a "))),
+      h("option", { value: "__new__" }, tt("＋ Nouveau dossier…")));
+    bar.append(h("div.pick-acts", h("b", tt`${ids.length} sélectionné(s)`), move,
+      h("button.mini.danger", { on: { click: () => this.deletePicked() } }, tt("🗑 Supprimer"))));
+  }
+  async movePicked(sel) {
+    const ids = this.pickedIds();
+    let f = sel.value;
+    if (f === "__new__") f = (prompt(tt("Nom du dossier (sous-dossier : « Parent/Nom ») :"), this.folder && this.folder !== "·" ? this.folder : "") || "").trim().replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+    if (f === "__new__" || (sel.value === "__new__" && !f)) { sel.value = "__"; return; }
+    try { for (const id of ids) await put("bank/" + id, { folder: f }); toast(tt`${ids.length} élément(s) déplacé(s) dans « ${f || tt("Sans dossier")} ».`); }
+    catch (err) { toast(err.message, "error"); }
+    this.reload();
+  }
+  async deletePicked() {
+    const ids = this.pickedIds();
+    if (!ids.length) return;
+    const names = ids.slice(0, 8).map((id) => "• " + this.app.bank.get(id).name).join("\n") + (ids.length > 8 ? "\n…" : "");
+    if (!confirm(tt`Supprimer ${ids.length} élément(s) de la banque ? Tu es sûr ?\n\n${names}\n\nIls partent à la corbeille du dossier de données.`)) return;
+    try { for (const id of ids) { await del("bank/" + id); this.picked.delete(id); if (this.openId === id) this.openId = null; } toast(tt`${ids.length} élément(s) supprimé(s).`); }
+    catch (err) { toast(err.message, "error"); }
+    this.reload();
   }
   folders(kind = this.tab) {          // dossiers d'un onglet : ceux de ses elements, ceux crees vides, et leurs parents
     const things = kind === "audio" ? this.audio || [] : [...this.app.bank.values()].filter((it) => it.kind === kind);
@@ -190,8 +251,9 @@ export class Bank {
       "data-name": (it.name + " " + (it.tags || []).join(" ")).toLowerCase(),
       on: {
         dragstart: (e) => { e.dataTransfer.setData("application/x-bw-item", JSON.stringify({ id: it.id, v: this.cover(it) })); e.dataTransfer.effectAllowed = "copy"; },
-        click: () => this.openItem(it.id),
+        click: (e) => { if (this.multi) { e.preventDefault(); this.pickCard(it.id, e.shiftKey); } else this.openItem(it.id); },
       } },
+      this.multi ? h("span.card-check", "✓") : null,
       it.face ? portraitThumb(h("div.card-svg"), it) : h("img", { src: this.thumb(it, this.cover(it)), loading: "lazy", draggable: false, alt: "" }),
       h("div.card-name", it.name),
       h("div.card-meta", orbits ? h("span.b.ok", { title: tt("orbites prêtes") }, "↻ " + orbits) : h("span.b", tt("fixe")),
