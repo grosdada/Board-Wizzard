@@ -31,14 +31,15 @@ from app import falapi, settings, store  # noqa: E402
 
 MODEL = "fal-ai/nano-banana-pro/edit"
 KEEP = (" Change ONLY the mouth. Everything else stays exactly as in the reference, pixel for pixel: same head, same eyes, same "
-        "nose, same jaw outline, same hair, same clothes, same framing, same position, same size, same viewing angle. The new mouth "
+        "nose, same moustache or beard if there is one (same shape, same size, same hatching, never removed), same jaw outline, same hair, same clothes, same framing, same position, same size, same viewing angle. The new mouth "
         "is drawn by the same artist with the same tools: the same kind of line with the same thickness and roughness, the same "
         "way of filling, the same colours as the rest of the drawing. No clean ink, no new colours, no added detail, no added shading.")
 SHAPES = {
     "A": "The character is speaking: the mouth is wide open as when saying 'AH', the lower lip dropped. The inside of the mouth is "
-         "NOT a flat black or flat dark shape: it is painted with the same loose, uneven wash as the rest of the drawing, in a "
-         "mid-dark tone of a colour already used, with the brush texture and the paper showing through, a lighter rounded tongue "
-         "resting at the bottom and a few rough pencil hatching strokes in the upper part.",
+         "NOT a flat black or flat dark shape: it is shaded only with the medium this drawing already uses for its dark areas "
+         "(rough pencil hatching if it is a line drawing with no paint, loose uneven wash if it is painted), in a tone already "
+         "present in the drawing, with the paper showing through, a lighter rounded tongue resting at the bottom. On a drawing "
+         "that has no paint, add no grey paint and no wash: lines and hatching only.",
     "O": "The character is speaking: the lips are pushed forward into a small round 'OH' shape, a small round opening filled with "
          "the darkest colour already used in the drawing.",
     "E": "The character is speaking: the mouth is half open and stretched wide as when saying 'EE', showing a plain row of upper "

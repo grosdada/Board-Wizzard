@@ -18,7 +18,8 @@ from app import falapi, poses, settings, sprites, store  # noqa: E402
 
 MODEL = "fal-ai/nano-banana-pro/edit"
 SAME = ("Exactly the same pose: the arms, the hands, the legs and whatever the character holds stay exactly where they are in "
-        "the reference, nothing else moves. The head and the body keep real volume and thickness seen from this angle. ")
+        "the reference, nothing else moves. The character wears exactly what it wears in the reference and nothing more: add no "
+        "garment, no underwear, no shorts, no accessory. The head and the body keep real volume and thickness seen from this angle. ")
 
 
 def main():
