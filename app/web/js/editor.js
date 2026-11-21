@@ -13,6 +13,7 @@ import { frameToAngle, thinMask, lineWidth } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
+import { voiceTime } from "./lipsync.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const s = (tag, attrs = {}) => {
@@ -122,7 +123,7 @@ export class Editor {
   }
   /** Rejoue l'animation d'une case par-dessus son image, a sa place sur la planche, puis la retire. */
   playPanel(pid) {
-    const stop = () => { if (!this.pv) return; cancelAnimationFrame(this.pv.raf); this.pv.el.remove(); this.pv = null; this.drawPlays(); };
+    const stop = () => { if (!this.pv) return; cancelAnimationFrame(this.pv.raf); for (const a of this.pv.voices) a.a.pause(); this.pv.el.remove(); this.pv = null; this.drawPlays(); };
     const was = this.pv && this.pv.pid;
     stop();
     if (was === pid) return;
@@ -133,12 +134,27 @@ export class Editor {
     const inner = s("svg", { x: bb.x0, y: bb.y0, width: bb.w, height: bb.h, viewBox: `0 0 ${w.toFixed(2)} ${scene.H.toFixed(2)}`, preserveAspectRatio: "none" });
     const el = s("g", { class: "pv-anim", "clip-path": `url(#cp-${pid})` });
     el.append(inner);
+    // les voix de la case (montage, lip sync) : chacune suit le temps de la lecture, comme dans le montage
+    const voices = (pan.layers || []).filter((l) => l.lip && l.lip.src).map((l) => {
+      const a = new Audio(`/projects/${this.app.project.id}/${l.lip.src}`); a.preload = "auto";
+      return { a, lip: l.lip };
+    });
+    const sync = (t) => {
+      for (const v of voices) {
+        const want = voiceTime(v.lip, t);
+        if (want < 0) { if (!v.a.paused) v.a.pause(); continue; }
+        if (v.a.paused) { try { v.a.currentTime = want; } catch (e) { /* pas encore charge */ } v.a.play().catch(() => {}); }
+        else if (Math.abs(v.a.currentTime - want) > 0.25) v.a.currentTime = want;
+      }
+    };
     const t0 = performance.now();
-    this.pv = { pid, el, raf: 0 };
+    this.pv = { pid, el, raf: 0, voices };
+    sync(0);                                                 // dans le clic : le navigateur laisse partir le son
     const tick = (now) => {
       if (!this.pv || this.pv.el !== el) return;
       const t = (now - t0) / 1000;
       if (t > dur) return stop();
+      sync(t);
       if (!el.isConnected) this.svg.insertBefore(el, this.svg.querySelector(":scope > g.pv-play") || null);   // la planche a ete redessinee
       inner.innerHTML = scene.markup(t, null, () => {});
       this.pv.raf = requestAnimationFrame(tick);
