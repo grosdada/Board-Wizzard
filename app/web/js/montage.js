@@ -1117,27 +1117,62 @@ export function openMontage(app, pid) {
       hover = null; draw(); const d = ctx.getImageData(x, y, 1, 1).data;
       ink = "#" + [d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, "0")).join(""); inkIn.value = ink; draw();
     }
-    // Pousser (facon Fluidite) : les pixels sous le pinceau suivent la souris, fort au centre, nul au bord
+    // Pousser (facon Fluidite) : les pixels sous le pinceau suivent la souris, fort au centre, nul au bord. Le pinceau
+    // deplace un champ de deformation (ws.DX, ws.DY : ou chaque pixel va chercher sa couleur dans l'image du debut du coup
+    // de pinceau) ; l'image est recalculee depuis cet original, une seule fois, en bicubique : le trait reste net, il ne
+    // se brouille plus a chaque petit pas.
+    const pushWs = new Map();                                 // par carte : l'original et le champ de « Pousser »
+    const cubic = (a, b, c, d, t) => b + 0.5 * t * (c - a + t * (2 * a - 5 * b + 4 * c - d + t * (3 * (b - c) + d - a)));
     function push(a, b) {
       const c = cards[shape], g = c.getContext("2d"), W0 = c.width, H0 = c.height;
+      if (!drag.ws || drag.ws.c !== c) {                      // debut du coup : on reprend le champ des coups precedents si
+        const cur = g.getImageData(0, 0, W0, H0).data;         // rien d'autre n'a touche la bouche depuis (un seul recalcul en tout)
+        let ws = pushWs.get(c);
+        if (!ws || !ws.last || ws.last.length !== cur.length || ws.last.some((v, q) => v !== cur[q])) ws = { c, src: g.getImageData(0, 0, W0, H0), DX: new Float32Array(W0 * H0), DY: new Float32Array(W0 * H0) };
+        pushWs.set(c, ws); drag.ws = ws;
+      }
+      const { src, DX, DY } = drag.ws, S = src.data;
       const p0 = toCard(a), p1 = toCard(b), R = rad / box.s * W0, steps = Math.max(1, Math.ceil(Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / (R / 4)));
-      for (let s = 1; s <= steps; s++) {
-        const qa = [p0[0] + (p1[0] - p0[0]) * (s - 1) / steps, p0[1] + (p1[1] - p0[1]) * (s - 1) / steps], dx = (p1[0] - p0[0]) / steps * force, dy = (p1[1] - p0[1]) / steps * force;
+      let X0 = W0, Y0 = H0, X1 = 0, Y1 = 0;
+      const field = (A, x, y) => {                            // le champ, lu entre ses points (il est lisse : pas de flou)
+        x = Math.min(W0 - 1.001, Math.max(0, x)); y = Math.min(H0 - 1.001, Math.max(0, y));
+        const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy, k = iy * W0 + ix;
+        return (A[k] * (1 - fx) + A[k + 1] * fx) * (1 - fy) + (A[k + W0] * (1 - fx) + A[k + W0 + 1] * fx) * fy;
+      };
+      for (let st = 1; st <= steps; st++) {
+        const qa = [p0[0] + (p1[0] - p0[0]) * (st - 1) / steps, p0[1] + (p1[1] - p0[1]) * (st - 1) / steps], dx = (p1[0] - p0[0]) / steps * force, dy = (p1[1] - p0[1]) / steps * force;
         const x0 = Math.max(0, Math.floor(qa[0] - R - 2)), y0 = Math.max(0, Math.floor(qa[1] - R - 2)), x1 = Math.min(W0, Math.ceil(qa[0] + R + 2)), y1 = Math.min(H0, Math.ceil(qa[1] + R + 2));
         if (x1 <= x0 || y1 <= y0) continue;
-        const src = g.getImageData(0, 0, W0, H0), out = g.getImageData(x0, y0, x1 - x0, y1 - y0), S = src.data, O = out.data;
+        const rw = x1 - x0, nx = new Float32Array(rw * (y1 - y0)), ny = new Float32Array(rw * (y1 - y0));
         for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-          const dd = Math.hypot(x + 0.5 - qa[0] - dx, y + 0.5 - qa[1] - dy) / R;
-          if (dd >= 1) continue;
-          const w = (1 - dd * dd) * (1 - dd * dd), sx = Math.min(W0 - 1.001, Math.max(0, x - dx * w)), sy = Math.min(H0 - 1.001, Math.max(0, y - dy * w));
-          const ix = Math.floor(sx), iy = Math.floor(sy), fx = sx - ix, fy = sy - iy, o = ((y - y0) * (x1 - x0) + (x - x0)) * 4;
-          for (let ch = 0; ch < 4; ch++) {
-            const i00 = (iy * W0 + ix) * 4 + ch, i10 = i00 + 4, i01 = i00 + W0 * 4, i11 = i01 + 4;
-            O[o + ch] = (S[i00] * (1 - fx) + S[i10] * fx) * (1 - fy) + (S[i01] * (1 - fx) + S[i11] * fx) * fy;
-          }
+          const k = (y - y0) * rw + (x - x0), dd = Math.hypot(x + 0.5 - qa[0] - dx, y + 0.5 - qa[1] - dy) / R;
+          if (dd >= 1) { nx[k] = DX[y * W0 + x]; ny[k] = DY[y * W0 + x]; continue; }
+          const w = (1 - dd * dd) * (1 - dd * dd), px = x - dx * w, py = y - dy * w;   // ce pixel prend ce qu'il y avait en (px, py)
+          nx[k] = px - x + field(DX, px, py); ny[k] = py - y + field(DY, px, py);
         }
-        g.putImageData(out, x0, y0);
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const k = (y - y0) * rw + (x - x0); DX[y * W0 + x] = nx[k]; DY[y * W0 + x] = ny[k]; }
+        X0 = Math.min(X0, x0); Y0 = Math.min(Y0, y0); X1 = Math.max(X1, x1); Y1 = Math.max(Y1, y1);
       }
+      if (X1 <= X0 || Y1 <= Y0) return;
+      // l'image, recalculee depuis l'original du coup de pinceau (bicubique, couleurs premultipliees : pas de liseré sombre)
+      const out = g.createImageData(X1 - X0, Y1 - Y0), O = out.data, px = (xi, yi, ch) => {
+        xi = xi < 0 ? 0 : xi >= W0 ? W0 - 1 : xi; yi = yi < 0 ? 0 : yi >= H0 ? H0 - 1 : yi;
+        const q = (yi * W0 + xi) * 4;
+        return ch === 3 ? S[q + 3] : S[q + ch] * S[q + 3] / 255;
+      };
+      for (let y = Y0; y < Y1; y++) for (let x = X0; x < X1; x++) {
+        const sx = x + DX[y * W0 + x], sy = y + DY[y * W0 + x], ix = Math.floor(sx), iy = Math.floor(sy), fx = sx - ix, fy = sy - iy, o = ((y - Y0) * (X1 - X0) + (x - X0)) * 4;
+        const v = [0, 0, 0, 0];
+        for (let ch = 0; ch < 4; ch++) {
+          const r = [];
+          for (let m = -1; m <= 2; m++) r.push(cubic(px(ix - 1, iy + m, ch), px(ix, iy + m, ch), px(ix + 1, iy + m, ch), px(ix + 2, iy + m, ch), fx));
+          v[ch] = cubic(r[0], r[1], r[2], r[3], fy);
+        }
+        const al = Math.max(0, Math.min(255, v[3]));
+        O[o + 3] = al;
+        for (let ch = 0; ch < 3; ch++) O[o + ch] = al > 0.5 ? Math.max(0, Math.min(255, v[ch] * 255 / al)) : 0;
+      }
+      g.putImageData(out, X0, Y0);
       dirty.add(shape);
     }
     let drag = null, rad = 4, force = 0.7, ink = "#3a1a14";
@@ -1242,7 +1277,9 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     });
     cv.addEventListener("pointerleave", () => { hover = null; if (!drag) draw(); });
     cv.addEventListener("pointerup", () => {
-      if (!drag) return; drag = null;
+      if (!drag) return;
+      if (drag.ws) { const c = drag.ws.c; drag.ws.last = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; }   // pour reconnaitre la carte au coup suivant
+      drag = null;
       if (lasso) { if (lasso.length > 2) applyLasso(lasso, tool); lasso = null; }
       draw();
     });
