@@ -1,5 +1,9 @@
 {
  "ui": {
+  "Taille du pinceau : crayon, gomme et « Pousser » (touches [ et ])": "Brush size: pencil, eraser and « Push » ([ and ] keys)",
+  "Annule la dernière retouche (Ctrl+Z)": "Undo the last touch-up (Ctrl+Z)",
+  "↶ Annuler (Ctrl+Z)": "↶ Undo (Ctrl+Z)",
+  "Rien à annuler": "Nothing to undo",
   "(dossier vide)": "(empty folder)",
   "Grille": "Grid",
   "Lignes (bandes)": "Lines (bands)",

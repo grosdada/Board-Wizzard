@@ -827,6 +827,7 @@ export function openMontage(app, pid) {
   // agrandir la carte (les quatre bouches ensemble), corriger son detourage (lasso vider / remettre, gomme), la
   // deformer (Pousser, facon Fluidite). Vue : molette ou curseur pour zoomer, Espace ou clic droit + glisser pour se
   // deplacer, oeil pour cacher la bouche. Enregistre dans le personnage (POST bank/<id>/lips) : vaut pour tous les storyboards.
+  let lipsCv = null;                                         // vue de l'editeur des bouches calculees, quand il est ouvert
   async function editLips(l) {
     const it = itemOf(l), sp = spriteNow(l), st = stateOf(l), vid = st.v && (it.variants || {})[st.v] ? st.v : "base";
     const mf = sp && mouthFrame(sp), L = mf && mf.lips;
@@ -836,6 +837,7 @@ export function openMontage(app, pid) {
     if (!keys.length) return toast(tt("Ces bouches viennent d'une autre pose : retouche-les sur cette pose-là."), "error");
     let ki = keys.indexOf(keys.reduce((a, b) => (dist(b) < dist(a) ? b : a))), shape = "A", tool = "move", bg = "#7fd47f", shown = true;
     const SZ = 440, cv = h("canvas", { width: SZ, height: SZ, style: { border: "1px solid #555", touchAction: "none", cursor: "move", maxWidth: "100%" } });
+    lipsCv = cv;                                             // tant qu'il est ouvert, Ctrl+Z et Espace sont a lui, pas au montage
     const ctx = cv.getContext("2d"), info = h("div.muted"), shapes = h("div.row.wrap"), tools = h("div.row.wrap");
     let K, box, frame, cards, orig, undo, dirty, vz = 1, vc = [0, 0], hover = null, space = false;
     const load = (u) => new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = u; });
@@ -916,6 +918,11 @@ export function openMontage(app, pid) {
     }
     let drag = null, rad = 4, force = 0.7, ink = "#3a1a14";
     const inkIn = h("input", { type: "color", value: ink, title: tt("Couleur du crayon (Alt + clic dans la vue : prendre une couleur)"), on: { input: (e) => { ink = e.target.value; } } });
+    // taille du pinceau (crayon, gomme, pousser), dans la barre d'outils ; touches [ et ] aussi
+    const radVal = h("span.muted", { style: { minWidth: "3.2em", display: "inline-block" } }, rad.toFixed(1));
+    const radIn = h("input", { type: "range", min: 0.3, max: 30, step: 0.1, value: rad, style: { width: "110px" }, title: tt("Taille du pinceau : crayon, gomme et « Pousser » (touches [ et ])"), on: { input: (e) => { setRad(+e.target.value); } } });
+    const setRad = (r) => { rad = Math.max(0.3, Math.min(30, Math.round(r * 10) / 10)); radIn.value = rad; radVal.textContent = rad.toFixed(1); draw(); };
+    const doUndo = () => { const u = undo.pop(); if (!u) return toast(tt("Rien à annuler")); cards[u.shape].getContext("2d").putImageData(u.data, 0, 0); box = u.box; sizeIn.value = box.s / K.s; draw(); };
     const panning = (e) => space || e.button === 1 || e.button === 2;
     cv.addEventListener("contextmenu", (e) => e.preventDefault());
     cv.addEventListener("pointerdown", (e) => {
@@ -952,6 +959,9 @@ export function openMontage(app, pid) {
     const keyFn = (e) => {
       if (!cv.isConnected) { window.removeEventListener("keydown", keyFn); window.removeEventListener("keyup", keyFn); return; }
       if (e.code === "Space" && !(e.target instanceof HTMLInputElement && e.target.type === "text")) { space = e.type === "keydown"; cv.style.cursor = space ? "grab" : curOf(tool); e.preventDefault(); }
+      if (e.type !== "keydown" || /^(TEXTAREA)$/.test(e.target.tagName) || (e.target instanceof HTMLInputElement && e.target.type === "text")) return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") { e.preventDefault(); e.stopPropagation(); doUndo(); }   // Ctrl+Z / Cmd+Z
+      else if (e.key === "[" || e.key === "]") { e.preventDefault(); setRad(rad * (e.key === "]" ? 1.25 : 0.8)); }
     };
     window.addEventListener("keydown", keyFn); window.addEventListener("keyup", keyFn);
     const curOf = (k) => (k === "move" ? "move" : k === "gomme" || k === "pousser" || k === "crayon" ? "none" : "crosshair");
@@ -968,7 +978,8 @@ export function openMontage(app, pid) {
         tb("remettre", tt("🩹 Lasso : remettre"), tt("Entoure une zone vidée à tort : la bouche d'origine y revient.")),
         tb("gomme", tt("◌ Gomme"), tt("Efface au pinceau, sur la bouche choisie")),
         tb("crayon", tt("✏ Crayon"), tt("Dessine sur la bouche choisie, à la taille du pinceau et dans la couleur choisie. Alt + clic : prendre une couleur dans la vue.")), inkIn,
-        h("button.mini", { title: tt("Annule la dernière retouche"), on: { click: () => { const u = undo.pop(); if (!u) return; cards[u.shape].getContext("2d").putImageData(u.data, 0, 0); box = u.box; sizeIn.value = box.s / K.s; draw(); } } }, tt("↶ Annuler")),
+        h("label.row", { style: { gap: "4px", margin: 0 }, title: tt("Taille du pinceau : crayon, gomme et « Pousser » (touches [ et ])") }, h("span.muted", tt("Taille")), radIn, radVal),
+        h("button.mini", { title: tt("Annule la dernière retouche (Ctrl+Z)"), on: { click: doUndo } }, tt("↶ Annuler (Ctrl+Z)")),
         h("select", { title: tt("Fond de la vue, pour bien voir le détourage"), on: { change: (e) => { bg = e.target.value; draw(); } } }, [["#7fd47f", tt("Fond vert")], ["#ff6fd0", tt("Fond rose")], ["#222222", tt("Fond noir")], ["#ffffff", tt("Fond blanc")]].map(([c, nm]) => h("option", { value: c, selected: bg === c }, nm))));
     }
     const touched = () => dirty.size || box.x !== K.x || box.y !== K.y || box.s !== K.s;
@@ -987,7 +998,6 @@ export function openMontage(app, pid) {
       shapes, tools, cv, info,
       range(tt("Zoom ⓘ"), zoomIn, tt("Agrandit la vue (ou molette). Pour se déplacer dans la vue : Espace tenue + glisser, ou clic droit + glisser.")),
       range(tt("Taille de la bouche"), sizeIn),
-      range(tt("Pinceau (crayon, gomme, pousser)"), h("input", { type: "range", min: 0.3, max: 30, step: 0.1, value: rad, on: { input: (e) => { rad = +e.target.value; draw(); } } })),
       range(tt("Force de « Pousser »"), h("input", { type: "range", min: 0.1, max: 1, step: 0.05, value: force, on: { input: (e) => { force = +e.target.value; } } }))), [
       { label: tt("Revenir à l'original"), click: async () => { if (!confirm(tt("Remettre les bouches d'origine de cette image-clé (place, taille et détourage) ?"))) return false; try { await send({ original: true }); toast(tt("Bouches d'origine remises.")); } catch (err) { toast(err.message, "error"); return false; } } },
       { label: tt("Annuler") },
@@ -1395,6 +1405,7 @@ export function openMontage(app, pid) {
     // fenetre fermee sans « Annuler » ni « Enregistrer » (croix, clic a cote) : ce montage ne doit plus rien jouer. Sinon
     // la barre d'espace relancait sa copie de la case, avec des voix retirees depuis : une voix fantome, sans piste.
     if (!m.box.isConnected) return done();
+    if (lipsCv && lipsCv.isConnected) return;               // editeur des bouches ouvert : ses touches (Ctrl+Z, Espace) a lui
     if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === " ") { e.preventDefault(); e.stopPropagation(); return playing ? stop() : play(); }
