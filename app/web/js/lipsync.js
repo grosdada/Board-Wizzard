@@ -222,16 +222,27 @@ const LIPS_REACH = 4, CARD_OF = { A: "A", L: "A", O: "O", U: "O", E: "E", D: "D"
 /** lips : lips.json charge ; frames : toutes les images de mouth.json ; i : image montree. Rend le balisage, "" (silence
  *  ou bouche fermee : le dessin intact) ou null (pas de carte pour cet angle). */
 export function cardMarkup(lip, lips, frames, i, t) {
+  const c = cardPick(lip, lips, frames, i, t);
+  return c && c.file ? `<image href="${lips.base}/${c.file}?v=${lips.v}" x="${c.key.x}" y="${c.key.y}" width="${c.key.s}" height="${c.key.s}" preserveAspectRatio="none"${c.tf}/>` : c && c.empty ? "" : null;
+}
+/** Gomme de la carte montree (lips/kFFF_X_g.webp, noire, alpha = dessin d'origine a effacer) : meme place et meme
+ *  recalage que la carte, a poser en noir dans un masque du sprite. "" s'il n'y en a pas. */
+export function cardGom(lip, lips, frames, i, t) {
+  const c = cardPick(lip, lips, frames, i, t), g = c && c.file && c.key.gom && c.key.gom[c.letter];
+  return g ? `<image href="${lips.base}/${g}?v=${lips.v}" x="${c.key.x}" y="${c.key.y}" width="${c.key.s}" height="${c.key.s}" preserveAspectRatio="none"${c.tf}/>` : "";
+}
+// choix commun a la carte et a sa gomme : { key, letter, file, tf }, { empty } (silence) ou null (pas de carte pour cet angle)
+function cardPick(lip, lips, frames, i, t) {
   if (!lip || !lip.on || !lips || !frames) return null;
   const m = frames[i], n = frames.length;
   if (!m || !m.up) return null;
   let key = null, far = 1e9;
   for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (d < far) { far = d; key = k; } }
   if (!key || far > LIPS_REACH) return null;
-  if (!speakingAt(lip, t)) return "";
+  if (!speakingAt(lip, t)) return { empty: true };
   const shape = cueAt(lip, t);
-  if (shape === "X" || shape === "M" || shape === "F") return "";
-  const file = key.cards[CARD_OF[shape] || "A"] || key.cards.A || Object.values(key.cards)[0];
+  if (shape === "X" || shape === "M" || shape === "F") return { empty: true };
+  const letter = key.cards[CARD_OF[shape] || "A"] ? CARD_OF[shape] || "A" : key.cards.A ? "A" : Object.keys(key.cards)[0], file = key.cards[letter];
   if (!file) return null;
   const ends = (q) => [q.up[0], q.up[q.up.length - 1]], mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   // carte reportee d'une autre orbite (tools/levres_report.py) : sa bouche d'origine est dans la cle (up0), et elle est
@@ -242,7 +253,7 @@ export function cardMarkup(lip, lips, frames, i, t) {
   const sx = moved ? Math.max(0.5, Math.min(2, w1 / w0)) : far ? Math.max(0.6, Math.min(1.4, w1 / w0)) : 1;
   const rot = far || moved ? Math.max(-20, Math.min(20, (Math.atan2(b1[1] - a1[1], b1[0] - a1[0]) - Math.atan2(b0[1] - a0[1], b0[0] - a0[0])) * 180 / Math.PI)) : 0;
   const tf = far || moved ? ` transform="translate(${c1[0].toFixed(2)} ${c1[1].toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(3)} ${moved ? sx.toFixed(3) : 1}) translate(${(-c0[0]).toFixed(2)} ${(-c0[1]).toFixed(2)})"` : "";
-  return `<image href="${lips.base}/${file}?v=${lips.v}" x="${key.x}" y="${key.y}" width="${key.s}" height="${key.s}" preserveAspectRatio="none"${tf}/>`;
+  return { key, letter, file, tf };
 }
 
 /** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face) ;

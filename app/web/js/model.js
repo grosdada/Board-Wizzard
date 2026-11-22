@@ -63,7 +63,7 @@ export function mouthFrame(sp, onReady) {
   if (e.data === null) { if (onReady && e.wait.length < 4) e.wait.push(onReady); return null; }
   return e.data ? { w: e.data.w, h: e.data.h, m: e.data.frames[sp.i] || null, all: e.data.frames, lips: lipsOf(sp, onReady) } : null;
 }
-// ---- bouches dessinees : lips.json d'une orbite = { w, h, keys: [{ f, x, y, s, cards: { A, O, E, D } }] } (tools/levres.py)
+// ---- bouches dessinees : lips.json d'une orbite = { w, h, keys: [{ f, x, y, s, cards: { A, O, E, D }, gom?: { A, ... } }] } (tools/levres.py ; gom : gommes)
 const lipsFiles = new Map();
 function lipsOf(sp, onReady) {
   if (!sp.lips) return null;
@@ -73,7 +73,7 @@ function lipsOf(sp, onReady) {
     lipsFiles.set(sp.lips, e);
     fetch(sp.lips).then((r) => (r.ok ? r.json() : null)).then((d) => {
       e.data = d ? Object.assign(d, { base: sp.dir, v: sp.lips.split("?v=")[1] || "0" }) : false;
-      if (d) for (const k of d.keys) for (const f of Object.values(k.cards)) new Image().src = `${sp.dir}/${f}?v=${e.data.v}`;   // deja en memoire quand la voix demarre
+      if (d) for (const k of d.keys) for (const f of Object.values(k.cards).concat(Object.values(k.gom || {}))) new Image().src = `${sp.dir}/${f}?v=${e.data.v}`;   // deja en memoire quand la voix demarre
       if (onReady) onReady();
     }).catch(() => { e.data = false; });
     if (lipsFiles.size > 40) lipsFiles.delete(lipsFiles.keys().next().value);
