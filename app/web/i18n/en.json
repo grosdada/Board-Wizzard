@@ -1,5 +1,11 @@
 {
  "ui": {
+  "Retirer cette clé du canal « {0} »": "Remove this key from the « {0} » channel",
+  "Retirer la clé (tous les canaux)": "Remove the key (all channels)",
+  "{0} s · {1} = {2} (glisser : ce canal seul ; clic droit : retirer)": "{0} s · {1} = {2} (drag: this channel only; right-click: remove)",
+  "Canal de la caméra : clic droit sur la piste Caméra pour replier": "Camera channel: right-click the Camera track to fold",
+  "Replier les canaux": "Fold the channels",
+  "Déployer les canaux (cadre, zoom, inclinaison, avancer)": "Deploy the channels (frame, zoom, tilt, push in)",
   "Choisir d'un clic le dossier où ranger les éléments cochés": "Pick with one click the folder for the checked items",
   "📁 Ranger dans…": "📁 Put in…",
   "Ranger {0} élément(s) dans…": "Put {0} item(s) in…",

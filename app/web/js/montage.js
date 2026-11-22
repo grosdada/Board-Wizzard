@@ -43,9 +43,27 @@ export const MOVES = {
   "fixe": [tt("Plan fixe (retire le mouvement)"), null, null],
 };
 
-/** Valeurs d'une piste a l'instant t. base : valeurs sans cle. n : nombre d'images de l'orbite (pour tourner au plus court). */
+// Canaux de la camera, quand on les deploie dans la timeline (clic droit sur la piste Camera)
+export const CHANNELS = [["cx", tt("Cadre ↔")], ["cy", tt("Cadre ↕")], ["z", tt("Zoom")], ["rot", tt("Inclinaison")], ["dz", tt("Avancer")]];
+/** Valeurs d'une piste a l'instant t. base : valeurs sans cle. n : nombre d'images de l'orbite (pour tourner au plus court).
+ *  Une cle peut ne valoir que pour certains canaux : k.skip = canaux ou elle ne compte pas (canaux deployes). Chaque canal
+ *  s'interpole alors entre les cles qui le portent. */
 export function valueAt(keys, base, t, n) {
   if (!keys || !keys.length) return Object.assign({}, base);
+  if (keys.some((k) => k.skip && k.skip.length)) {
+    const out = valueAt(keys.map((k) => (k.skip ? Object.fromEntries(Object.entries(k).filter(([q]) => q !== "skip")) : k)), base, t, n);
+    for (const p of NUM) {
+      const ks = keys.filter((k) => k[p] != null && !(k.skip || []).includes(p));
+      if (!ks.length) { if (keys.some((k) => k[p] != null)) out[p] = base[p]; continue; }
+      if (t <= ks[0].t) { out[p] = ks[0][p]; continue; }
+      if (t >= ks[ks.length - 1].t) { out[p] = ks[ks.length - 1][p]; continue; }
+      let i = 0;
+      while (i < ks.length - 2 && ks[i + 1].t <= t) i++;
+      const a = ks[i], b = ks[i + 1], u = ease((t - a.t) / Math.max(1e-6, b.t - a.t), b.e);
+      out[p] = a[p] + (b[p] - a[p]) * u;
+    }
+    return out;
+  }
   const ks = keys;
   if (t <= ks[0].t) return Object.assign({}, base, ks[0]);
   if (t >= ks[ks.length - 1].t) return Object.assign({}, base, ks[ks.length - 1]);
@@ -206,6 +224,7 @@ export function openMontage(app, pid) {
   const stateOf = (l) => scene.stateOf(l, t);
   const KEYED = ["x", "y", "s", "rz", "f", "v", "lw", "shg", "shw", "sha"];
   const camAt = () => scene.camAt(t);
+  let chanOpen = localStorage.getItem("bw.camChannels") === "1";      // canaux de la camera deployes dans la timeline
   const CAMS = { cam: tt("Caméra"), fo: tt("Mise au point"), bl: tt("Flou"), fx: tt("Lignes d'effet") };      // pistes de la camera ; fo et bl : profondeur de champ
 
   // ------------------------------------------------------------------------------------------ visionneuse
@@ -276,9 +295,11 @@ export function openMontage(app, pid) {
       const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot, dz: full.dz || 0 } : CAMS[id] ? { [id]: full[id] } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
       if (!keys.length && t > 0.04) keys.push(Object.assign({ t: 0 }, base));     // premiere cle posee plus loin : on garde le depart
       k = Object.assign({ t: f3(t) }, base);
+      if (id === "cam" && chanOpen && keys.length && CHANNELS.some(([c]) => c in patch)) k.skip = CHANNELS.map(([c]) => c).filter((c) => !(c in patch));   // canaux deployes : la cle ne porte que ce qu'on regle
       keys.push(k); keys.sort((a, b) => a.t - b.t);
     }
     Object.assign(k, patch);
+    if (k.skip) { k.skip = k.skip.filter((c) => !(c in patch)); if (!k.skip.length) delete k.skip; }
     selKey = k;
   }
   function change(id, patch) {                             // un reglage bouge : cle automatique, ou valeur de base
@@ -489,13 +510,27 @@ export function openMontage(app, pid) {
       { label: depthView ? tt("🖼 Voir l'image") : tt("⬒ Vue de dessus (profondeur)"), click: () => depthBtn.click() });
     ctxMenu(e, items);
   }
-  function keyMenu(e, id, k) {                              // clic droit sur une cle : son interpolation
+  const chanOn = (k, c) => k[c] != null && !(k.skip || []).includes(c);
+  function dropChannel(k, c) {                              // la cle ne compte plus pour ce canal ; sans canal, elle disparait
+    k.skip = [...new Set([...(k.skip || []), c])];
+    if (CHANNELS.every(([q]) => !chanOn(k, q))) anim.tracks.cam = keysOf("cam").filter((x) => x !== k);
+  }
+  function splitChannel(k, c) {                             // deplacer un seul canal : il part dans sa propre cle, au meme instant
+    if (CHANNELS.every(([q]) => q === c || !chanOn(k, q))) return k;
+    const n = { t: k.t, [c]: k[c], skip: CHANNELS.map(([q]) => q).filter((q) => q !== c) };
+    if (k.e) n.e = k.e;
+    dropChannel(k, c);
+    keysOf("cam").push(n); keysOf("cam").sort((a, b) => a.t - b.t);
+    return n;
+  }
+  function keyMenu(e, id, k, ch) {                          // clic droit sur une cle : son interpolation ; ch : canal deploye de la camera
     e.preventDefault();
     document.querySelector(".mt-menu")?.remove();
     const group = picked.has(k) && picked.size > 1 ? [...picked] : [k];   // plusieurs cles selectionnees : elles prennent toutes le choix
     const box = h("div.menu.mt-menu", h("div.mhead", group.length > 1 ? tt`${group.length} clés sélectionnées · arrivée` : tt`Clé à ${k.t.toFixed(2)} s · arrivée`),
       Object.entries(EASES).map(([v, n]) => h("button" + ((k.e || "doux") === v ? ".on" : ""), { on: { click: () => { for (const q of group) q.e = v; box.remove(); paint(); lanes(); props(); } } }, ((k.e || "doux") === v ? "✓ " : "") + n)),
-      h("button.danger", { on: { click: () => { anim.tracks[id] = keysOf(id).filter((x) => x !== k); selKey = null; box.remove(); paint(); lanes(); props(); } } }, tt("Retirer cette clé")));
+      ch ? h("button.danger", { on: { click: () => { dropChannel(k, ch); selKey = null; box.remove(); paint(); lanes(); props(); } } }, tt`Retirer cette clé du canal « ${CHANNELS.find(([c]) => c === ch)[1]} »`) : "",
+      h("button.danger", { on: { click: () => { anim.tracks[id] = keysOf(id).filter((x) => x !== k); selKey = null; box.remove(); paint(); lanes(); props(); } } }, ch ? tt("Retirer la clé (tous les canaux)") : tt("Retirer cette clé")));
     document.body.append(box);
     const r = box.getBoundingClientRect();
     box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px";
@@ -964,6 +999,11 @@ export function openMontage(app, pid) {
       tl.append(h("div.mt-row" + (sel === id ? ".on" : ""), h("div.mt-name", { on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, ico, " ", name, keysOf(id).length ? h("span.count", String(keysOf(id).length)) : ""), lane));
     };
     row("cam", tt("Caméra"), "🎥");
+    if (chanOpen) for (const [c, name] of CHANNELS) {           // canaux deployes : une piste par reglage de la camera
+      const ks = keysOf("cam").filter((k) => chanOn(k, c));
+      const lane = h("div.mt-lane", { "data-lane": "cam", "data-ch": c }, ks.map((k) => { const d = h("span.key" + (k === selKey || picked.has(k) ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: tt`${k.t.toFixed(2)} s · ${name} = ${(+k[c]).toFixed(2)} (glisser : ce canal seul ; clic droit : retirer)` }); d.__key = k; d.dataset.key = "cam"; d.dataset.ch = c; return d; }));
+      tl.append(h("div.mt-row.chan" + (sel === "cam" ? ".on" : ""), h("div.mt-name", { title: tt("Canal de la caméra : clic droit sur la piste Caméra pour replier") }, "\u00a0\u00a0└ ", name, ks.length ? h("span.count", String(ks.length)) : ""), lane));
+    }
     if (dof.on) { row("fo", tt("Mise au point"), "◎"); row("bl", tt("Flou"), "◌"); }
     if (fxAnim()) row("fx", tt("Lignes d'effet"), "⚡");
     for (const l of [...pan.layers].reverse()) {
@@ -997,7 +1037,13 @@ export function openMontage(app, pid) {
     }
     return x;
   };
-  tl.addEventListener("contextmenu", (e) => { if (e.target.__key) { sel = e.target.dataset.key; selKey = e.target.__key; keyMenu(e, sel, selKey); lanes(); } else e.preventDefault(); });
+  tl.addEventListener("contextmenu", (e) => {
+    if (e.target.__key) { sel = e.target.dataset.key; selKey = e.target.__key; keyMenu(e, sel, selKey, e.target.dataset.ch); lanes(); return; }
+    e.preventDefault();
+    const row = e.target.closest(".mt-row"), lane = row && row.querySelector(".mt-lane");
+    if (lane && lane.dataset.lane === "cam")                // piste Camera (ou un de ses canaux) : deployer ou replier les canaux
+      ctxMenu(e, [{ head: tt("Caméra") }, { label: chanOpen ? tt("Replier les canaux") : tt("Déployer les canaux (cadre, zoom, inclinaison, avancer)"), click: () => { chanOpen = !chanOpen; localStorage.setItem("bw.camChannels", chanOpen ? "1" : ""); lanes(); } }]);
+  });
   tl.addEventListener("pointerdown", (e) => {
     // les marges a gauche et a droite des pistes comptent aussi : on peut y commencer un lasso pour prendre les cles des bouts
     const rowEl = e.target.closest(".mt-row"), lane = e.target.closest(".mt-lane") || (rowEl && !e.target.closest(".mt-name") ? rowEl.querySelector(".mt-lane") : null);
@@ -1022,7 +1068,7 @@ export function openMontage(app, pid) {
         drag = { kind: "keys", t0: timeAt({ clientX: e.clientX }, lane), start: new Map([...picked].map((q) => [q, q.t])) }; return;
       }
       picked.clear();
-      sel = e.target.dataset.key; selKey = k; drag = { kind: "key", key: selKey, lane }; seek(selKey.t, true); return;
+      sel = e.target.dataset.key; selKey = e.target.dataset.ch ? splitChannel(k, e.target.dataset.ch) : k; drag = { kind: "key", key: selKey, lane }; seek(selKey.t, true); return;
     }
     if (lane.dataset.lane === "ruler") { picked.clear(); selKey = null; drag = { kind: "seek", lane }; seek(timeAt(e, lane), true); return; }
     drag = { kind: "box", lane, x0: e.clientX, y0: e.clientY };  // dans une piste : simple clic = aller a cet instant, glisser = lasso
@@ -1064,7 +1110,7 @@ export function openMontage(app, pid) {
     }
     lanes(); props();
   });
-  tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); setKey(sel, {}); paint(); lanes(); props(); } });
+  tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); const c = lane.dataset.ch; setKey(sel, c ? { [c]: camAt()[c] } : {}); paint(); lanes(); props(); } });
 
   // ------------------------------------------------------------------------------------------ gestes dans l'image
   // point de la souris en fraction de l'image. On passe par la matrice du SVG : son cadre a l'ecran peut etre plus grand
