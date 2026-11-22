@@ -823,6 +823,36 @@ export function openMontage(app, pid) {
     keysOf("cam").push(n); keysOf("cam").sort((a, b) => a.t - b.t);
     return n;
   }
+  // copier / coller des cles (Ctrl+C, Ctrl+V, « Dupliquer » au clic droit) : elles gardent leurs ecarts ; la premiere se
+  // pose a la tete de lecture. Les cles d'un seul element se collent sur l'element choisi s'il en est un autre.
+  let keyClip = null;
+  const trackOf = (k) => Object.keys(anim.tracks).find((id) => anim.tracks[id].includes(k));
+  const keysSel = () => (picked.size ? [...picked] : selKey ? [selKey] : []);
+  function copyKeys(quiet) {
+    const ks = keysSel().map((k) => ({ id: trackOf(k), k })).filter((x) => x.id);
+    if (!ks.length) return false;
+    const t0 = Math.min(...ks.map((x) => x.k.t));
+    keyClip = ks.map(({ id, k }) => ({ id, dt: k.t - t0, k: JSON.parse(JSON.stringify(k)) }));
+    if (!quiet) toast(ks.length > 1 ? tt`${ks.length} clés copiées.` : tt("Clé copiée."));
+    return true;
+  }
+  function pasteKeys(at) {
+    if (!keyClip || !keyClip.length) return toast(tt("Aucune clé copiée (Ctrl+C sur une clé)."), "error");
+    const ids = [...new Set(keyClip.map((x) => x.id))], one = ids.length === 1 && layerOf(ids[0]) && layerOf(sel) ? sel : null;
+    const made = [];
+    for (const { id, dt, k } of keyClip) {
+      const to = one || id;
+      if (!CAMS[to] && !layerOf(to)) continue;               // element retire depuis
+      const nk = Object.assign(JSON.parse(JSON.stringify(k)), { t: f3(clamp(at + dt, 0, anim.dur)) });
+      const ks = (anim.tracks[to] = (anim.tracks[to] || []).filter((x) => Math.abs(x.t - nk.t) > 0.02));   // une cle au meme instant est remplacee
+      ks.push(nk); ks.sort((a, b) => a.t - b.t);
+      made.push(nk);
+    }
+    if (!made.length) return toast(tt("Les pistes de ces clés n'existent plus."), "error");
+    picked.clear(); if (made.length > 1) made.forEach((k) => picked.add(k));
+    selKey = made[0]; if (one) sel = one;
+    hist.snap(); paint(); lanes(); props();
+  }
   function keyMenu(e, id, k, ch) {                          // clic droit sur une cle : son interpolation ; ch : canal deploye de la camera
     e.preventDefault();
     document.querySelector(".mt-menu")?.remove();
@@ -830,6 +860,13 @@ export function openMontage(app, pid) {
     const box = h("div.menu.mt-menu", h("div.mhead", group.length > 1 ? tt`${group.length} clés sélectionnées · arrivée` : tt`Clé à ${k.t.toFixed(2)} s · arrivée`),
       Object.entries(EASES).map(([v, n]) => h("button" + ((k.e || "doux") === v ? ".on" : ""), { on: { click: () => { for (const q of group) q.e = v; box.remove(); paint(); lanes(); props(); } } }, ((k.e || "doux") === v ? "✓ " : "") + n)),
       ch ? h("button.danger", { on: { click: () => { dropChannel(k, ch); selKey = null; box.remove(); paint(); lanes(); props(); } } }, tt`Retirer cette clé du canal « ${CHANNELS.find(([c]) => c === ch)[1]} »`) : "",
+      h("button", { title: tt("La copie se pose à la tête de lecture (une demi-seconde plus loin si la tête est sur la clé)"), on: { click: () => {
+        box.remove(); if (!picked.has(k)) { picked.clear(); selKey = k; }
+        const t0 = Math.min(...group.map((q) => q.t)), at = Math.abs(t - t0) < 0.02 ? t0 + 0.5 : t;
+        if (copyKeys(true)) pasteKeys(at);
+      } } }, group.length > 1 ? tt`⧉ Dupliquer les ${group.length} clés` : tt("⧉ Dupliquer la clé")),
+      h("button", { on: { click: () => { box.remove(); if (!picked.has(k)) { picked.clear(); selKey = k; } copyKeys(); } } }, tt("Copier (Ctrl+C)")),
+      keyClip ? h("button", { on: { click: () => { box.remove(); pasteKeys(t); } } }, tt("Coller à la tête de lecture (Ctrl+V)")) : "",
       h("button.danger", { on: { click: () => { anim.tracks[id] = keysOf(id).filter((x) => x !== k); selKey = null; box.remove(); paint(); lanes(); props(); } } }, ch ? tt("Retirer la clé (tous les canaux)") : tt("Retirer cette clé")));
     document.body.append(box);
     const r = box.getBoundingClientRect();
@@ -1744,6 +1781,8 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === " ") { e.preventDefault(); e.stopPropagation(); return playing ? stop() : play(); }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "c" && keysSel().length && !String(getSelection())) { e.preventDefault(); e.stopPropagation(); copyKeys(); return; }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "v" && keyClip) { e.preventDefault(); e.stopPropagation(); stop(); pasteKeys(t); return; }
     if ((e.key === "Delete" || e.key === "Backspace") && picked.size) {
       e.preventDefault(); e.stopPropagation();
       for (const id of Object.keys(anim.tracks)) anim.tracks[id] = anim.tracks[id].filter((x) => !picked.has(x));

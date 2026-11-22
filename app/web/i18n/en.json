@@ -1,5 +1,14 @@
 {
  "ui": {
+  "{0} clés copiées.": "{0} keys copied.",
+  "Clé copiée.": "Key copied.",
+  "Aucune clé copiée (Ctrl+C sur une clé).": "No key copied (Ctrl+C on a key).",
+  "Les pistes de ces clés n'existent plus.": "The tracks of these keys no longer exist.",
+  "La copie se pose à la tête de lecture (une demi-seconde plus loin si la tête est sur la clé)": "The copy goes at the playhead (half a second later if the playhead is on the key)",
+  "⧉ Dupliquer les {0} clés": "⧉ Duplicate the {0} keys",
+  "⧉ Dupliquer la clé": "⧉ Duplicate the key",
+  "Copier (Ctrl+C)": "Copy (Ctrl+C)",
+  "Coller à la tête de lecture (Ctrl+V)": "Paste at the playhead (Ctrl+V)",
   "Lavis (aquarelle)": "Wash (watercolour)",
   "Avec une carte de sol, les éléments ont les pieds sur le sol. Coché : celui-ci vole, il garde sa profondeur.": "With a floor map, the elements stand on the floor. Checked: this one flies, it keeps its depth.",
   "🕊 Vole (pas collé au sol)": "🕊 Flies (not on the floor)",
