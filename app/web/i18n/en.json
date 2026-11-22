@@ -1,5 +1,9 @@
 {
  "ui": {
+  "Couleur du crayon (Alt + clic dans la vue : prendre une couleur)": "Pencil colour (Alt + click in the view: pick a colour)",
+  "✏ Crayon": "✏ Pencil",
+  "Dessine sur la bouche choisie, à la taille du pinceau et dans la couleur choisie. Alt + clic : prendre une couleur dans la vue.": "Draws on the chosen mouth, at the brush size and in the chosen colour. Alt + click: pick a colour in the view.",
+  "Pinceau (crayon, gomme, pousser)": "Brush (pencil, eraser, push)",
   "Montre ou cache la bouche ajoutée, pour comparer avec le dessin et voir les défauts de détourage": "Shows or hides the added mouth, to compare with the drawing and spot cut-out defects",
   "👁 Bouche visible": "👁 Mouth shown",
   "👁 Bouche cachée": "👁 Mouth hidden",
@@ -10,7 +14,6 @@
   "Zoom ⓘ": "Zoom ⓘ",
   "Agrandit la vue (ou molette). Pour se déplacer dans la vue : Espace tenue + glisser, ou clic droit + glisser.": "Enlarges the view (or mouse wheel). To move around the view: hold Space + drag, or right-click + drag.",
   "Taille de la bouche": "Mouth size",
-  "Pinceau (gomme, pousser)": "Brush (eraser, push)",
   "Force de « Pousser »": "« Push » strength",
   "Au mur": "On the wall",
   "Au mur : l'ombre se dresse à la verticale sur le côté, derrière le personnage, au lieu d'être couchée au sol. Mêmes réglages.": "On the wall: the shadow stands upright to the side, behind the character, instead of lying on the ground. Same settings.",

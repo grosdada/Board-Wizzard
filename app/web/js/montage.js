@@ -706,7 +706,7 @@ export function openMontage(app, pid) {
       ctx.strokeStyle = "rgba(95,196,168,.9)"; ctx.setLineDash([5, 4]); ctx.lineWidth = 1;
       ctx.strokeRect((box.x - v.x) * v.k, (box.y - v.y) * v.k, box.s * v.k, box.s * v.k); ctx.setLineDash([]);
       if (lasso && lasso.length > 1) { ctx.strokeStyle = "#ff3b8d"; ctx.lineWidth = 1.5; ctx.beginPath(); lasso.forEach((p, i) => { const q = [(p[0] - v.x) * v.k, (p[1] - v.y) * v.k]; if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }); ctx.stroke(); }
-      if (hover && (tool === "gomme" || tool === "pousser")) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc((hover[0] - v.x) * v.k, (hover[1] - v.y) * v.k, rad * v.k, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = "#000"; ctx.beginPath(); ctx.arc((hover[0] - v.x) * v.k, (hover[1] - v.y) * v.k, rad * v.k + 1, 0, Math.PI * 2); ctx.stroke(); }
+      if (hover && (tool === "gomme" || tool === "pousser" || tool === "crayon")) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc((hover[0] - v.x) * v.k, (hover[1] - v.y) * v.k, rad * v.k, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = "#000"; ctx.beginPath(); ctx.arc((hover[0] - v.x) * v.k, (hover[1] - v.y) * v.k, rad * v.k + 1, 0, Math.PI * 2); ctx.stroke(); }
       info.textContent = tt`Image-clé ${ki + 1} sur ${keys.length} (image ${K.f} de l'orbite) · taille ${Math.round(box.s)} px`;
     }
     const snap = () => { const c = cards[shape]; undo.push({ shape, data: c.getContext("2d").getImageData(0, 0, c.width, c.height), box: { ...box } }); if (undo.length > 30) undo.shift(); };
@@ -720,6 +720,17 @@ export function openMontage(app, pid) {
     function brush(p, r) {
       const c = cards[shape], g = c.getContext("2d"), q = toCard(p), rr = r / box.s * c.width;
       g.save(); g.globalCompositeOperation = "destination-out"; g.beginPath(); g.arc(q[0], q[1], rr, 0, Math.PI * 2); g.fill(); g.restore(); dirty.add(shape);
+    }
+    // Crayon : trait rond de la couleur choisie, sur la bouche choisie (Alt + clic : prendre une couleur dans la vue)
+    function pencil(a, b) {
+      const c = cards[shape], g = c.getContext("2d"), p0 = toCard(a), p1 = toCard(b);
+      g.save(); g.strokeStyle = g.fillStyle = ink; g.lineWidth = rad / box.s * c.width * 2; g.lineCap = g.lineJoin = "round";
+      g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0] + 0.01, p1[1]); g.stroke(); g.restore(); dirty.add(shape);
+    }
+    function pick(e) {
+      const r = cv.getBoundingClientRect(), x = Math.round((e.clientX - r.left) * SZ / r.width), y = Math.round((e.clientY - r.top) * SZ / r.height);
+      hover = null; draw(); const d = ctx.getImageData(x, y, 1, 1).data;
+      ink = "#" + [d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, "0")).join(""); inkIn.value = ink; draw();
     }
     // Pousser (facon Fluidite) : les pixels sous le pinceau suivent la souris, fort au centre, nul au bord
     function push(a, b) {
@@ -744,7 +755,8 @@ export function openMontage(app, pid) {
       }
       dirty.add(shape);
     }
-    let drag = null, rad = 4, force = 0.7;
+    let drag = null, rad = 4, force = 0.7, ink = "#3a1a14";
+    const inkIn = h("input", { type: "color", value: ink, title: tt("Couleur du crayon (Alt + clic dans la vue : prendre une couleur)"), on: { input: (e) => { ink = e.target.value; } } });
     const panning = (e) => space || e.button === 1 || e.button === 2;
     cv.addEventListener("contextmenu", (e) => e.preventDefault());
     cv.addEventListener("pointerdown", (e) => {
@@ -753,15 +765,17 @@ export function openMontage(app, pid) {
       if (tool === "move") { snap(); drag = { p, x: box.x, y: box.y }; }
       else if (tool === "gomme") { snap(); drag = { p }; brush(p, rad); draw(); }
       else if (tool === "pousser") { snap(); drag = { p, last: p }; }
+      else if (tool === "crayon") { if (e.altKey) { pick(e); return; } snap(); drag = { p, last: p }; pencil(p, p); draw(); }
       else { lasso = [p]; drag = { p }; }
     });
     cv.addEventListener("pointermove", (e) => {
       const p = toOrbit(e); hover = p;
-      if (!drag) { if (tool === "gomme" || tool === "pousser") draw(); return; }
+      if (!drag) { if (tool === "gomme" || tool === "pousser" || tool === "crayon") draw(); return; }
       if (drag.pan) { const r = cv.getBoundingClientRect(), v = view(); vc = [drag.c[0] - (e.clientX - drag.x) * (SZ / r.width) / v.k, drag.c[1] - (e.clientY - drag.y) * (SZ / r.height) / v.k]; }
       else if (tool === "move") { box.x = drag.x + p[0] - drag.p[0]; box.y = drag.y + p[1] - drag.p[1]; }
       else if (tool === "gomme") brush(p, rad);
       else if (tool === "pousser") { push(drag.last, p); drag.last = p; }
+      else if (tool === "crayon") { pencil(drag.last, p); drag.last = p; }
       else lasso.push(p);
       draw();
     });
@@ -781,7 +795,7 @@ export function openMontage(app, pid) {
       if (e.code === "Space" && !(e.target instanceof HTMLInputElement && e.target.type === "text")) { space = e.type === "keydown"; cv.style.cursor = space ? "grab" : curOf(tool); e.preventDefault(); }
     };
     window.addEventListener("keydown", keyFn); window.addEventListener("keyup", keyFn);
-    const curOf = (k) => (k === "move" ? "move" : k === "gomme" || k === "pousser" ? "none" : "crosshair");
+    const curOf = (k) => (k === "move" ? "move" : k === "gomme" || k === "pousser" || k === "crayon" ? "none" : "crosshair");
     function bar() {
       shapes.textContent = "";
       shapes.append(h("span.muted", tt("Bouche : ")), ...Object.keys(cards).map((k) => h("button.mini" + (k === shape ? ".on" : ""), { title: MOUTHS[k] || k, on: { click: () => { shape = k; bar(); draw(); } } }, k === "E" ? "É" : k)),
@@ -794,6 +808,7 @@ export function openMontage(app, pid) {
         tb("vider", tt("✂ Lasso : vider"), tt("Entoure à la souris ce qui dépasse de la bouche : cela devient transparent, sur la bouche choisie.")),
         tb("remettre", tt("🩹 Lasso : remettre"), tt("Entoure une zone vidée à tort : la bouche d'origine y revient.")),
         tb("gomme", tt("◌ Gomme"), tt("Efface au pinceau, sur la bouche choisie")),
+        tb("crayon", tt("✏ Crayon"), tt("Dessine sur la bouche choisie, à la taille du pinceau et dans la couleur choisie. Alt + clic : prendre une couleur dans la vue.")), inkIn,
         h("button.mini", { title: tt("Annule la dernière retouche"), on: { click: () => { const u = undo.pop(); if (!u) return; cards[u.shape].getContext("2d").putImageData(u.data, 0, 0); box = u.box; sizeIn.value = box.s / K.s; draw(); } } }, tt("↶ Annuler")),
         h("select", { title: tt("Fond de la vue, pour bien voir le détourage"), on: { change: (e) => { bg = e.target.value; draw(); } } }, [["#7fd47f", tt("Fond vert")], ["#ff6fd0", tt("Fond rose")], ["#222222", tt("Fond noir")], ["#ffffff", tt("Fond blanc")]].map(([c, nm]) => h("option", { value: c, selected: bg === c }, nm))));
     }
@@ -813,7 +828,7 @@ export function openMontage(app, pid) {
       shapes, tools, cv, info,
       range(tt("Zoom ⓘ"), zoomIn, tt("Agrandit la vue (ou molette). Pour se déplacer dans la vue : Espace tenue + glisser, ou clic droit + glisser.")),
       range(tt("Taille de la bouche"), sizeIn),
-      range(tt("Pinceau (gomme, pousser)"), h("input", { type: "range", min: 1, max: 30, step: 0.5, value: rad, on: { input: (e) => { rad = +e.target.value; draw(); } } })),
+      range(tt("Pinceau (crayon, gomme, pousser)"), h("input", { type: "range", min: 0.3, max: 30, step: 0.1, value: rad, on: { input: (e) => { rad = +e.target.value; draw(); } } })),
       range(tt("Force de « Pousser »"), h("input", { type: "range", min: 0.1, max: 1, step: 0.05, value: force, on: { input: (e) => { force = +e.target.value; } } }))), [
       { label: tt("Revenir à l'original"), click: async () => { if (!confirm(tt("Remettre les bouches d'origine de cette image-clé (place, taille et détourage) ?"))) return false; try { await send({ original: true }); toast(tt("Bouches d'origine remises.")); } catch (err) { toast(err.message, "error"); return false; } } },
       { label: tt("Annuler") },
