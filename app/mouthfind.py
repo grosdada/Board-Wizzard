@@ -339,6 +339,8 @@ def extend_back(folder, n, snaps, reach=BACK_REACH):
     real = [i for i, m in enumerate(frames) if m and not m.get("ext")]
     if not real:
         return 0
+    old = sum(1 for m in frames if m and m.get("ext"))
+    frames = [m if m and not m.get("ext") else None for m in frames]   # repartir de zero : les reperes ont pu changer
     wface = float(np.median([frames[i]["w"] for i in real]))
     stroke = float(np.median([frames[i].get("stroke") or 2 for i in real]))
     added = 0
@@ -370,7 +372,7 @@ def extend_back(folder, n, snaps, reach=BACK_REACH):
             frames[i] = dict(up=[[round(cx - wk / 2, 2), round(cy, 2)], [round(cx + wk / 2, 2), round(cy, 2)]], lo=None, w=round(wk, 2),
                              stroke=round(stroke, 2), open=False, drop=round(min(wk * 0.22, stroke * 14), 2), cx=round(cx, 2), cy=round(cy, 2), ext=1)
             added += 1
-    if added:
+    if added or old:
         data["frames"] = frames
         path.write_text(json.dumps(data), encoding="utf-8")
     return added
