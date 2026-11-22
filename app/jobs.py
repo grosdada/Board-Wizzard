@@ -795,7 +795,26 @@ def _lips_copy(folder, card_rel, dest_rel):
     return None
 
 
-LIPS_MODEL = "fal-ai/nano-banana-2/edit"                  # bouche regeneree : Nano Banana 2 (0,08 $), fidele comme le Pro (0,15 $)
+# bouche regeneree : GPT Image 2.5, qualite moyenne (0,02 $). Essai du 22/11/2026 sur 5 images-cles d'un dessin au trait :
+# trait et visage gardes (rien de change hors de la bouche), la ou Nano Banana 2 (0,08 $) ajoutait des ombres grises
+LIPS_MODEL = "openai/gpt-image-2.5/flare/edit"
+# levres.py envoie le format de Nano Banana ; GPT Image 2.5 veut une taille, la qualite moyenne et un fond opaque
+_LIPS_RUN = """import sys
+sys.path.insert(0, %r)
+sys.argv = ["levres.py"] + %r
+import levres
+from app import falapi
+_run = falapi.FalProvider.run
+def run(self, ep, p):
+    if "gpt-image" in ep:
+        p = dict(p)
+        p.pop("aspect_ratio", None)
+        p.update(image_size={"width": 1024, "height": 1024}, quality="medium", background="opaque")
+    return _run(self, ep, p)
+falapi.FalProvider.run = run
+levres.MODEL = %r
+levres.main()
+"""
 
 
 def run_item_lips(job, prov):
@@ -819,8 +838,7 @@ def run_item_lips(job, prov):
             cur[sh] = 0
         _lips_copy(folder, card, vers[sh][cur.get(sh, 0)])    # la version montree, avec ses retouches enregistrees
     root = Path(__file__).resolve().parent.parent
-    run = ("import sys; sys.path.insert(0, %r); sys.argv = ['levres.py'] + %r; import levres; levres.MODEL = %r; levres.main()"
-           % (str(root / "tools"), [iid, vid, "--images", str(f), "--formes", sh], LIPS_MODEL))
+    run = _LIPS_RUN % (str(root / "tools"), [iid, vid, "--images", str(f), "--formes", sh], LIPS_MODEL)
     r = subprocess.run([sys.executable, "-c", run],
                        cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
     out = (r.stdout or "") + (r.stderr or "")
