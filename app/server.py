@@ -803,6 +803,11 @@ class Handler(BaseHTTPRequestHandler):
         got = mouthfind.track(folder, int(o["n"]), f0, line)
         if not got:
             return {"frames": 0, "item": store.resolve(store.load_item(iid))}
+        back = lambda dr, oo: mouthfind.extend_back(dr, int(o["n"]), oo.get("snaps") or sprites.default_snaps(int(o["n"])))
+        try:                                                        # bouche de dos : le bout des levres, apres chaque profil
+            back(folder, o)
+        except Exception as e:
+            print("bouche de dos %s/%s : %s" % (iid, vid, e), flush=True)
         mark(True)
         # les autres poses du personnage qui n'ont pas encore de bouche partent de celle-ci : le visage y est retrouve et
         # le trait reporte. Une pose deja tracee a la main n'est pas touchee.
@@ -816,6 +821,7 @@ class Handler(BaseHTTPRequestHandler):
                 r = mouthfind.carry(folder, f0, line, dst, int(o["n"]))
                 if r and mouthfind.track(dst, int(o["n"]), f0, r[0], need_ink=True):
                     carried[k] = oo["dir"]
+                    back(dst, oo)
             except Exception as e:                                  # une pose qui rate ne doit pas faire echouer le trace
                 print("bouche reportee sur %s/%s : %s" % (iid, k, e), flush=True)
 

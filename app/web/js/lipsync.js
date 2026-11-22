@@ -174,7 +174,7 @@ function smooth(p, move = true) {
 /** Bouche du dessin a l'instant t, en pixels de l'image d'orbite. m : frames[i] de mouth.json (null : rien). fill :
  *  couleur du personnage, pour couvrir une bouche deja ouverte quand elle se ferme. */
 export function traceMarkup(lip, m, t, id = "", fill = "#ffffff") {
-  if (!lip || !lip.on || !m || !m.up || !speakingAt(lip, t)) return "";    // silence : le dessin intact
+  if (!lip || !lip.on || !m || !m.up || m.ext || !speakingAt(lip, t)) return "";    // silence, ou bouche de dos placee (ext) : le dessin intact
   const shape = cueAt(lip, t), closed = shape === "X" || shape === "M" || shape === "F", lw = lip.lw ?? 1, sw = m.stroke || 2;
   const n = m.up.length, ow = lip.ow ?? 1, oh = lip.oh ?? 1, ink = (w) => `stroke="#111" stroke-width="${(sw * w).toFixed(2)}" stroke-linejoin="round" stroke-linecap="round"`;
   const gap = m.lo ? Math.max(...m.up.map((p, i) => m.lo[i][1] - p[1])) : 0;
@@ -237,7 +237,9 @@ function cardPick(lip, lips, frames, i, t) {
   const m = frames[i], n = frames.length;
   if (!m || !m.up) return null;
   let key = null, far = 1e9;
-  for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (d < far) { far = d; key = k; } }
+  // image de dos (mouth.json ext : le bout des levres sur le bord de la silhouette) : seulement les cartes de dos, et
+  // inversement, pour ne pas poser une bouche de face sur un dos
+  for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; if (!!m.ext !== !!(k.dos || (frames[k.f] && frames[k.f].ext))) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (d < far) { far = d; key = k; } }
   if (!key || far > LIPS_REACH) return null;
   if (!speakingAt(lip, t)) return { empty: true };
   const shape = cueAt(lip, t);

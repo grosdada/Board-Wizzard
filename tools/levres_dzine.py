@@ -13,6 +13,15 @@ d'origine sous la carte : menton ou joue plus etroits dans la tete redessinee), 
 --test : n'ecrit rien dans la banque ni dans l'orbite ; la planche part dans data/qa/levres-<element>-<variante>-test.jpg.
 Mesure out : part de la case changee HORS de la bouche (doit rester sous 1 a 2 %).
 Ensuite, pour les poses : python tools/levres_report.py <element> base <element> <pose>.
+
+Bouches de dos (3/4 dos, quand on ne voit plus que le bout des levres sur le bord de la silhouette) :
+    python tools/levres_dzine.py dos-suivi [element ...]                    # place la bouche apres chaque profil (mouth.json)
+    python tools/levres_dzine.py prep <element> dos --dos [--out DOSSIER]    # une grille par cote, a profil + 3
+    python tools/levres_dzine.py assemble <element> <f> <rendu.png> --dos [--test]
+dos-suivi (gratuit) : sur les orbites dont la bouche est suivie, la bouche est placee sur les 6 images qui suivent chaque
+profil vers le dos (mouthfind.extend_back) ; l'ancien mouth.json est garde dans data/backup/mouth/. Sans element : toutes.
+--dos : grille a deux formes (haut-gauche : bouche ouverte, haut-droite : entrouverte ; en bas la tete inchangee, bouche
+fermee). Deux cartes A et D ; a l'affichage les autres sons prennent A, et la bouche fermee reste le dessin.
 """
 import json
 import sys
@@ -44,6 +53,71 @@ PROMPT = ("The image is a 2x2 grid of four panels separated by thin white gutter
           "Bottom-right panel: " + levres.SHAPES["D"] + " "
           "All panels: " + levres.KEEP.strip() + " No grey halo around the mouth, the same framing and the same head size in each "
           "panel, never a flat black fill inside the mouth.")
+
+
+PROMPT_DOS = ("The image is a 2x2 grid of four panels separated by thin white gutters. All four panels show the SAME drawn head, "
+              "seen from three-quarter back: only the very tip of the lips and of the chin show on the edge of the face. Redraw the "
+              "four panels so that the head stays identical in every panel, pixel for pixel, and ONLY the visible tip of the mouth "
+              "changes. Keep the grid layout, every panel at the same size and position, no text, no labels. "
+              "Top-left panel: the character is speaking with the mouth open: on the edge of the profile, the lower lip and the "
+              "chin drop a little and a small dark gap opens between the lips, drawn with the same line and the same colours. "
+              "Top-right panel: the character is speaking with the mouth barely open: a very thin dark gap between the lips on the "
+              "edge of the profile. Bottom-left and bottom-right panels: exactly the reference, mouth closed, unchanged. "
+              "All panels: the head is still seen from three-quarter back, never turned towards the viewer, no new mouth drawn on "
+              "the cheek, no teeth, no tongue." + levres.KEEP + " Never a flat black fill.")
+DOS_ORDER = ["A", "D", None, None]          # haut-gauche, haut-droite ; en bas : la tete inchangee
+
+
+def dos_frames(iid, vid="base"):
+    """Images-cles des bouches de dos : profil + 3 vers le dos, de chaque cote, la ou la bouche est placee."""
+    from app import sprites
+    it = store.load_item(iid)
+    o = it["variants"][vid]["orbit"]
+    n = int(o["n"])
+    snaps = o.get("snaps") or sprites.default_snaps(n)
+    fr = json.loads((store.item_dir(iid) / o["dir"] / "mouth.json").read_text(encoding="utf-8"))["frames"]
+    out = []
+    for p, b in (("profil gauche", "3/4 dos gauche"), ("profil droit", "3/4 dos droite")):
+        p, b = int(snaps[p]) % n, int(snaps[b]) % n
+        step = 1 if (b - p) % n <= n // 2 else -1
+        for k in (3, 2, 4, 1, 5):                  # profil + 3, sinon le plus pres possible
+            f = (p + step * k) % n
+            if fr[f] and fr[f].get("ext"):
+                out.append(f)
+                break
+    if not out:
+        sys.exit("pas de bouche de dos placee sur %s : lancer d'abord dos-suivi" % iid)
+    return out
+
+
+def dos_suivi(ids):
+    """Place la bouche de dos (mouthfind.extend_back) sur les orbites dont la bouche est suivie. Garde l'ancien mouth.json."""
+    import shutil
+    from app import mouthfind, sprites
+    for iid in ids or [p.name for p in sorted((settings.DATA / "bank").iterdir()) if (p / "item.json").exists()]:
+        try:
+            it = store.load_item(iid)
+        except Exception:
+            continue
+        for vid, v in it["variants"].items():
+            o = v.get("orbit") or {}
+            if not o.get("dir") or not o.get("n"):
+                continue
+            folder = store.item_dir(iid) / o["dir"]
+            mj = folder / "mouth.json"
+            if not mj.exists():
+                continue
+            bk = settings.DATA / "backup" / "mouth" / iid / vid
+            bk.mkdir(parents=True, exist_ok=True)
+            shutil.copy(mj, bk / ("mouth-%d.json" % int(time.time())))
+            got = mouthfind.extend_back(folder, int(o["n"]), o.get("snaps") or sprites.default_snaps(int(o["n"])))
+            print("%s/%s : %d images de dos" % (iid, vid, got))
+            if got:
+                def fn(x, vid=vid, d=o["dir"]):
+                    oo = (x["variants"].get(vid) or {}).get("orbit") or {}
+                    if oo.get("dir") == d:
+                        oo["mt"] = int(time.time() * 1000)     # le navigateur recharge mouth.json
+                store.mutate_item(iid, fn)
 
 
 def cell_origin(c):
@@ -84,7 +158,7 @@ def grid_from(flat, jitter=None):
     return g
 
 
-def prep(iid, frames, out):
+def prep(iid, frames, out, dos=False):
     out.mkdir(parents=True, exist_ok=True)
     mf = out / "bouches.json"
     try:
@@ -93,12 +167,13 @@ def prep(iid, frames, out):
         manifest = []
     for f in frames:
         _, _, s, _, flat, _, _, _ = crop_source(iid, "base", f)
-        name = "grille_%s_%d.png" % (iid, f)
+        name = "grille_%s_%d%s.png" % (iid, f, "_dos" if dos else "")
         grid_from(flat).save(out / name)
         manifest = [e for e in manifest if not (e["id"] == iid and e["f"] == f)]
-        manifest.append({"id": iid, "variante": "base", "f": f, "fichier": name, "prompt": PROMPT, "ratio": "1:1", "taille": "1K",
-                         "modele": "Nano Banana Pro",
-                         "cases": {"haut-gauche": "A", "haut-droite": "O", "bas-gauche": "E", "bas-droite": "D"}})
+        manifest.append({"id": iid, "variante": "base", "f": f, "fichier": name, "prompt": PROMPT_DOS if dos else PROMPT, "ratio": "1:1", "taille": "1K",
+                         "modele": "Nano Banana Pro", "dos": dos,
+                         "cases": {"haut-gauche": "A (ouverte)", "haut-droite": "D (entrouverte)", "bas-gauche": "inchangee", "bas-droite": "inchangee"} if dos else
+                                  {"haut-gauche": "A", "haut-droite": "O", "bas-gauche": "E", "bas-droite": "D"}})
         print("grille", out / name)
     mf.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
     return manifest
@@ -169,7 +244,7 @@ def register_cell(src, wide, zone):
     return Image.fromarray(out), (round(float(v), 4), round(float(k), 3), round(float(Wf[0, 2]), 1), round(float(Wf[1, 2]), 1))
 
 
-def assemble(iid, f, path, vid="base", test=False):
+def assemble(iid, f, path, vid="base", test=False, dos=False):
     x, y, s, rgba, flat, m, folder, mouth = crop_source(iid, vid, f)
     cells, _ = split_cells(Image.open(path))
     mx, my, mw = m["cx"] - x, m["cy"] - y, m["w"]
@@ -177,8 +252,9 @@ def assemble(iid, f, path, vid="base", test=False):
     zone0 = np.zeros((s, s), bool)
     yy, xx = np.mgrid[0:s, 0:s]
     zone0 = (((xx - mx) / (mw * 1.05)) ** 2 + ((yy - my - mw * 0.22) / (mw * 0.95)) ** 2) <= 1.0    # zone de recalage : hors bouche
-    for sh, wide in zip(ORDER, cells):
-        gens[sh], regs[sh] = register_cell(flat, wide, zone0)
+    for sh, wide in zip(DOS_ORDER if dos else ORDER, cells):
+        if sh:
+            gens[sh], regs[sh] = register_cell(flat, wide, zone0)
     alphas, outside, goms = levres.card_alpha(gens, flat, rgba, mx, my, mw)
     cards, cardimgs = {}, {}
     for sh, g in gens.items():
@@ -189,6 +265,8 @@ def assemble(iid, f, path, vid="base", test=False):
     print("image %d : recalage (score, echelle, dx, dy) %s" % (f, regs))
     print("image %d : change hors de la bouche %s" % (f, {a: "%.2f %%" % (b * 100) for a, b in outside.items()}))
     entry = {"f": f, "x": x, "y": y, "s": s, "cards": cards, "out": {a: round(b, 4) for a, b in outside.items()}}
+    if dos:
+        entry["dos"] = 1                          # bouche de dos : servie aux images de dos (mouth.json ext), et a elles seules
     if not test:
         (folder / "lips").mkdir(exist_ok=True)
         gom = {}
@@ -216,7 +294,7 @@ def assemble(iid, f, path, vid="base", test=False):
         im = Image.new("RGBA", (s, s), (110, 200, 110, 255))
         return Image.alpha_composite(Image.alpha_composite(im, src), cardimgs[sh]).convert("RGB")
     row = [flat] + [shown(sh) for sh in cardimgs]
-    sheet = Image.new("RGB", (s * z * 5, s * z), "white")
+    sheet = Image.new("RGB", (s * z * len(row), s * z), "white")
     for c, im in enumerate(row):
         sheet.paste(im.resize((s * z, s * z), Image.LANCZOS), (c * s * z, 0))
     outp = settings.DATA / "qa" / ("levres-%s-%s%s.jpg" % (iid, vid, "-test" if test else ""))
@@ -248,9 +326,12 @@ def main():
             raw = sys.argv[sys.argv.index("--out") + 1]
             out = Path(raw)
             a.remove(raw)
-        prep(a[1], [int(v) for v in a[2].split(",")], out)
+        dos = "--dos" in sys.argv
+        prep(a[1], dos_frames(a[1]) if a[2] == "dos" else [int(v) for v in a[2].split(",")], out, dos)
     elif cmd == "assemble":
-        assemble(a[1], int(a[2]), a[3], vid, "--test" in sys.argv)
+        assemble(a[1], int(a[2]), a[3], vid, "--test" in sys.argv, "--dos" in sys.argv)
+    elif cmd == "dos-suivi":
+        dos_suivi(a[1:])
     elif cmd == "fake":
         fake(a[1], int(a[2]), a[3])
     else:

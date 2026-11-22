@@ -314,6 +314,68 @@ def track(folder, n, f0, line, reach=20, need_ink=False):
     (folder / "mouth.json").write_text(json.dumps(dict(w=im.width, h=im.height, src=dict(f=int(f0), auto=bool(need_ink), line=[[round(float(p[0]), 1), round(float(p[1]), 1)] for p in line]), frames=frames)), encoding="utf-8")
     return sum(1 for f in frames if f)
 
+BACK_REACH = 6
+
+
+def extend_back(folder, n, snaps, reach=BACK_REACH):
+    """Bouche de dos : passe le profil, le suivi perd la bouche (il n'en reste que le bout des levres, sur le bord de la
+    silhouette). On la place la, sur les `reach` images qui suivent chaque profil vers le dos (sans depasser le 3/4 dos) :
+    meme hauteur que la bouche suivie la plus proche, collee au bord avant de la silhouette (a gauche pour le profil gauche,
+    a droite pour le profil droit : le cote vers lequel le sujet regarde), de plus en plus etroite. Ces images sont marquees
+    ext : les bouches dessinees de dos (tools/levres_dzine.py --dos) s'y recalent ; la bouche tracee ne s'y dessine pas.
+    Ne touche pas aux images deja suivies. Rend le nombre d'images ajoutees (0 : rien a faire, mouth.json intact)."""
+    import json
+    from pathlib import Path
+    from PIL import Image
+    folder = Path(folder)
+    path = folder / "mouth.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return 0
+    frames = data.get("frames") or []
+    if len(frames) != n:
+        return 0
+    real = [i for i, m in enumerate(frames) if m and not m.get("ext")]
+    if not real:
+        return 0
+    wface = float(np.median([frames[i]["w"] for i in real]))
+    stroke = float(np.median([frames[i].get("stroke") or 2 for i in real]))
+    added = 0
+    for side, left in (("gauche", True), ("droit", False)):
+        p, b = snaps.get("profil " + side), snaps.get("3/4 dos " + ("gauche" if left else "droite"))
+        if p is None or b is None:
+            continue
+        p, b = int(p) % n, int(b) % n
+        fwd = (b - p) % n                              # images du profil au 3/4 dos, dans le sens croissant ?
+        step, span = (1, fwd) if fwd <= n // 2 else (-1, n - fwd)
+        near = min(real, key=lambda i: min(abs(i - p), n - abs(i - p)))
+        cy = float(frames[near]["cy"])
+        w0 = float(frames[p]["w"]) if frames[p] and not frames[p].get("ext") else wface * 0.5
+        last = min(reach, max(1, span - 1))
+        for k in range(0, last + 1):
+            i = (p + step * k) % n
+            if frames[i] is not None and not frames[i].get("ext"):
+                continue
+            im = np.asarray(Image.open(folder / ("%03d.webp" % i)).convert("RGBA"))
+            row = im[int(round(min(max(cy, 0), im.shape[0] - 1))), :, 3] > 100
+            xs = np.where(row)[0]
+            if not xs.size:
+                break
+            runs = np.split(xs, np.where(np.diff(xs) > 1)[0] + 1)
+            run = max(runs, key=len)                   # la tete : le plus long passage opaque a hauteur de bouche
+            wk = max(6.0, w0 * (1 - 0.45 * k / max(1, last)))
+            edge = float(run[0] if left else run[-1])
+            cx = edge + wk * 0.5 if left else edge - wk * 0.5
+            frames[i] = dict(up=[[round(cx - wk / 2, 2), round(cy, 2)], [round(cx + wk / 2, 2), round(cy, 2)]], lo=None, w=round(wk, 2),
+                             stroke=round(stroke, 2), open=False, drop=round(min(wk * 0.22, stroke * 14), 2), cx=round(cx, 2), cy=round(cy, 2), ext=1)
+            added += 1
+    if added:
+        data["frames"] = frames
+        path.write_text(json.dumps(data), encoding="utf-8")
+    return added
+
+
 def carry(src, f0, line, dst, n, f1=None):
     """Reporte un trait de bouche d'une orbite sur une autre pose du meme personnage : le visage autour du trait (image f0
     de src) est recherche dans l'image f1 de dst (f0 par defaut), a quelques echelles. Rend (trait reporte, note de 0 a 1)
