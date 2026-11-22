@@ -593,6 +593,13 @@ svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http:
 .mt-voice .seg { display: flex; margin: 4px 0 6px; border: 1px solid #5fc4a8; border-radius: 6px; overflow: hidden; }
 .mt-voice .seg button { flex: 1; border: 0; border-radius: 0; padding: 5px 4px; background: transparent; color: inherit; cursor: pointer; font-weight: 600; }
 .mt-voice .seg button.on { background: #5fc4a8; color: #111; }
+.mt-libpick { width: 100%; text-align: left; position: relative; padding-right: 22px; }
+.mt-libpick::after { content: "▾"; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); opacity: .7; }
+.menu.mt-casc { width: auto; min-width: 200px; max-width: 360px; max-height: 70vh; flex-wrap: nowrap; flex-direction: column; z-index: 210; }
+.menu.mt-casc button { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; flex: none; }
+.menu.mt-casc button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu.mt-casc button small { flex: none; color: var(--muted); font-size: 11px; }
+.menu.mt-casc button.dir.open { background: var(--panel2); }
 
 /* onglet Audio : multi-selection, comme les vignettes */
 .bank-grid.audio.multi .acard { position: relative; padding-left: 32px; cursor: pointer; }

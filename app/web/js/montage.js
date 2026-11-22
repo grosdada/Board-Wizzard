@@ -655,19 +655,67 @@ export function openMontage(app, pid) {
   }
   // voix de synthese ElevenLabs : un texte, une voix du compte, et le son arrive comme une voix importee
   let ttsVoices = null, ttsBusy = false, libAudio = null;
-  function libBox(l) {                                     // reprendre une voix deja rangee dans la banque audio
-    const pick = h("select", { title: tt("Les voix importées, enregistrées ou générées sont rangées dans l'onglet Audio de la banque"), on: { change: async (e) => {
-      const id = e.target.value; e.target.value = "";
-      if (!id) return;
+  function libBox(l) {                                     // reprendre une voix deja rangee dans la banque audio : menu en cascade par dossier
+    const take = async (id) => {
       try {
         const r = await post(`projects/${app.project.id}/audio-from`, { id });
         await setVoice(l, await (await fetch(`/projects/${app.project.id}/${r.file}`)).blob(), r.name, r.file);
       } catch (err) { toast(tt("Son non repris : ") + err.message, "error"); }
-    } } }, h("option", { value: "" }, libAudio ? (libAudio.length ? tt("📁 Prendre dans la banque audio…") : tt("Banque audio vide")) : tt("Banque audio…")));
-    const fill = () => pick.append(...libAudio.map((a) => h("option", { value: a.id, title: a.text || "" }, (a.folder ? a.folder + " / " : "") + a.name + (a.dur ? ` · ${a.dur.toFixed(1)} s` : ""))));
-    if (libAudio) fill();
-    else get("audio").then((v) => { libAudio = v || []; pick.options[0].textContent = libAudio.length ? tt("📁 Prendre dans la banque audio…") : tt("Banque audio vide"); fill(); }).catch(() => {});
-    return pick;
+    };
+    const label = () => (libAudio ? (libAudio.length ? tt("📁 Prendre dans la banque audio…") : tt("Banque audio vide")) : tt("Banque audio…"));
+    const btn = h("button.mt-libpick", { title: tt("Les voix importées, enregistrées ou générées sont rangées dans l'onglet Audio de la banque"), on: { click: () => { if (libAudio && libAudio.length) cascade(btn, libAudio, take); } } }, label());
+    if (!libAudio) get("audio").then((v) => { libAudio = v || []; btn.textContent = label(); }).catch(() => {});
+    return btn;
+  }
+  /** Menu en cascade des sons de la banque : les dossiers d'abord (survol : leur contenu s'ouvre a cote), puis les sons. */
+  function cascade(anchor, list, onPick) {
+    document.querySelectorAll(".mt-casc").forEach((m) => m.remove());
+    const root = { dirs: new Map(), files: [] };
+    for (const a of list) {
+      let n = root;
+      for (const part of (a.folder || "").split("/").map((s) => s.trim()).filter(Boolean)) {
+        if (!n.dirs.has(part)) n.dirs.set(part, { dirs: new Map(), files: [] });
+        n = n.dirs.get(part);
+      }
+      n.files.push(a);
+    }
+    const count = (n) => n.files.length + [...n.dirs.values()].reduce((s, d) => s + count(d), 0);
+    const levels = [];
+    const closeFrom = (i) => { while (levels.length > i) levels.pop().remove(); };
+    const closeAll = () => { closeFrom(0); document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", esc, true); };
+    const outside = (ev) => { if (!levels.some((m) => m.contains(ev.target)) && ev.target !== anchor) closeAll(); };
+    const esc = (ev) => { if (ev.key === "Escape") { ev.stopPropagation(); closeAll(); } };
+    function open(node, depth, x, y, leftEdge) {
+      closeFrom(depth);
+      const box = h("div.menu.mt-menu.mt-casc");
+      for (const [name, d] of [...node.dirs.entries()].sort((p, q) => p[0].localeCompare(q[0]))) {
+        const row = h("button.dir", { title: name }, h("span", "📁 " + name), h("small", `${count(d)} ▸`));
+        const go = () => {
+          box.querySelectorAll(".dir.open").forEach((r) => r.classList.remove("open"));
+          row.classList.add("open");
+          const r = row.getBoundingClientRect();
+          open(d, depth + 1, r.right + 2, r.top - 6, r.left - 2);
+        };
+        row.addEventListener("pointerenter", go);
+        row.addEventListener("click", go);
+        box.append(row);
+      }
+      for (const a of node.files) {
+        const row = h("button.snd", { title: a.text || a.name, on: { click: () => { closeAll(); onPick(a.id); } } }, h("span", "🔊 " + a.name), a.dur ? h("small", `${a.dur.toFixed(1)} s`) : "");
+        row.addEventListener("pointerenter", () => { closeFrom(depth + 1); box.querySelectorAll(".dir.open").forEach((r) => r.classList.remove("open")); });
+        box.append(row);
+      }
+      if (!node.dirs.size && !node.files.length) box.append(h("div.mnote", tt("(dossier vide)")));
+      document.body.append(box);
+      levels.push(box);
+      const r = box.getBoundingClientRect();
+      const left = x + r.width > innerWidth - 6 && leftEdge != null ? leftEdge - r.width : x;
+      box.style.left = Math.max(4, Math.min(left, innerWidth - r.width - 6)) + "px";
+      box.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 6)) + "px";
+    }
+    const r = anchor.getBoundingClientRect();
+    open(root, 0, r.left, r.bottom + 2, null);
+    setTimeout(() => { document.addEventListener("pointerdown", outside, true); document.addEventListener("keydown", esc, true); }, 0);
   }
   const tts = { text: "", voice: localStorage.getItem("bw.ttsVoice") || "" };
   function ttsBox(l) {
