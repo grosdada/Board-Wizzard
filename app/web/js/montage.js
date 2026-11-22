@@ -232,7 +232,8 @@ export function openMontage(app, pid) {
   // ------------------------------------------------------------------------------------------ visionneuse
   function paint() {
     recSync();
-    svg.innerHTML = isoView ? isoMarkup() : depthView ? topView() : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
+    svg.innerHTML = isoView ? isoMarkup() : depthView ? topView() : v3 ? `<rect width="${W}" height="${f1(H)}" fill="#26292d"/>` : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
+    if (v3) render3(); else box3.style.display = "none";
     if (showMask && !playing) svg.querySelectorAll('[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
   }
 
@@ -339,6 +340,147 @@ export function openMontage(app, pid) {
     return o;
   }
   function isoSave() { localStorage.setItem("bw.iso", JSON.stringify(iso)); }
+  // ------------------------------------------------------------------------------------------ vue 3D
+  // La scene en vraie perspective : chaque element est une carte plate, debout dans l'espace, face a la camera de la case.
+  // Reconstruction d'apres la case : camera de la case en (0,5 ; hauteur des yeux ; -D0), regard horizontal, horizon a la
+  // hauteur hz de la case ; une carte a la profondeur d est a z = d x ZD ; sa place et sa taille sont celles qui redonnent
+  // exactement l'image (la vue 3D de depart = l'image). On deplace ensuite la camera : orbite sur 120 degres autour de la
+  // scene (glisser), hauteur (glisser haut / bas), plongee (Maj + glisser), distance (molette), focale (curseur).
+  // « Recalculer la perspective » : chaque carte prend la place, la taille et la profondeur vues par la nouvelle camera,
+  // et l'image de sa tournette qui correspond a l'angle sous lequel la camera la voit desormais.
+  let v3 = false, v3drag = null;
+  const FOV0 = 53.13, D0 = 0.5 / Math.tan(FOV0 * Math.PI / 360);      // camera de la case : la case entiere a 1 de distance
+  const CAM3 = { yaw: 0, crane: 0, pitch: 0, dolly: 1, fov: FOV0 };
+  const cam3 = Object.assign({}, CAM3);
+  const box3 = h("div.mt-3d", { style: { display: "none" } });
+  const hzOf = () => (pan.ground && pan.ground.hz != null ? pan.ground.hz : estimateHorizon(pan));
+  /** Les cartes de la case dans l'espace (unites : largeur de la case). */
+  function rebuild3() {
+    const hw = H / W, hz = hzOf(), cards = [];
+    for (const l of pan.layers) {
+      const s = stateOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
+      if (!sp) continue;
+      const z = depthNow(l) * ZD, zc = z + D0, Hc = (s.s || 0.5) * hw * zc / D0;
+      cards.push({ l, s, sp, z, X: 0.5 + (s.x - 0.5) * zc / D0, Hc, Wc: Hc * (sp.w || 1) / (sp.h || 1), yf: s.y, zc });
+    }
+    const eyes = cards.map((c) => (c.yf - hz) * hw * c.zc / D0).filter((v) => v > 0.01).sort((a, b) => a - b);
+    const camY = eyes.length ? eyes[Math.floor(eyes.length / 2)] : 0.3 * hw;
+    for (const c of cards) c.Y = camY - (c.yf - hz) * hw * c.zc / D0;       // les pieds : la ou la case les montre
+    const zMid = cards.length ? cards.reduce((a, c) => a + c.z, 0) / cards.length : ZD / 2;
+    return { hw, hz, camY, zMid, cards };
+  }
+  /** Camera deplacee : position, axes (droite, haut, avant), focale (en largeurs de case). */
+  function camera3(rb) {
+    const ya = cam3.yaw * Math.PI / 180, pa = cam3.pitch * Math.PI / 180, R = (rb.zMid + D0) * cam3.dolly;
+    const C = [0.5 + R * Math.sin(ya), rb.camY + cam3.crane, rb.zMid - R * Math.cos(ya)];
+    const fw = [-Math.sin(ya) * Math.cos(pa), -Math.sin(pa), Math.cos(ya) * Math.cos(pa)], r = [Math.cos(ya), 0, Math.sin(ya)];
+    const u = [fw[1] * r[2] - fw[2] * r[1], fw[2] * r[0] - fw[0] * r[2], fw[0] * r[1] - fw[1] * r[0]];
+    return { C, fw, r, u, f: 0.5 / Math.tan(cam3.fov * Math.PI / 360) };
+  }
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const camOf = (cm, p) => { const d = sub(p, cm.C); return [dot(cm.r, d), dot(cm.u, d), dot(cm.fw, d)]; };
+  /** Point de l'espace -> place dans la case (fractions de largeur et de hauteur), et sa distance. */
+  const proj3 = (cm, rb, p) => { const c = camOf(cm, p); return { x: 0.5 + c[0] * cm.f / c[2], y: rb.hz - c[1] * cm.f / c[2] / rb.hw, zc: c[2] }; };
+  function render3() {
+    const vr = svg.parentElement.getBoundingClientRect(), ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const Wp = W * ctm.a, Hp = H * ctm.d;
+    Object.assign(box3.style, { display: "", left: (ctm.e - vr.left) + "px", top: (ctm.f - vr.top) + "px", width: Wp + "px", height: Hp + "px" });
+    const rb = rebuild3(), cm = camera3(rb), P = cm.f * Wp;
+    const stage = h("div.mt-3d-stage", { style: { perspective: P + "px", perspectiveOrigin: `50% ${(rb.hz * 100).toFixed(2)}%` } });
+    // un plan : son coin p0, ses axes ex, ey (par pixel de l'element) -> matrix3d ; null s'il passe derriere la camera
+    const plane = (p0, ex, ey, wpx, hpx) => {
+      for (const q of [p0, [p0[0] + ex[0] * wpx, p0[1] + ex[1] * wpx, p0[2] + ex[2] * wpx], [p0[0] + ey[0] * hpx, p0[1] + ey[1] * hpx, p0[2] + ey[2] * hpx]])
+        if (camOf(cm, q)[2] < 0.03) return null;
+      const L = (e) => [dot(cm.r, e) * Wp, -dot(cm.u, e) * Wp, -dot(cm.fw, e) * Wp], k = camOf(cm, p0);
+      const a = L(ex), b = L(ey);
+      return `matrix3d(${[a[0], a[1], a[2], 0, b[0], b[1], b[2], 0, 0, 0, 1, 0, k[0] * Wp, -k[1] * Wp, P - k[2] * Wp, 1].map((v) => +v.toFixed(5)).join(",")})`;
+    };
+    const put = (el, tr, w, hh) => { if (!tr) return; Object.assign(el.style, { width: w + "px", height: hh + "px", transform: tr }); el.classList.add("w3"); stage.append(el); };
+    // le decor de la case : un mur au fond, a la taille qui redonne l'image depuis la camera de la case
+    const bgI = background(pan, app.bank, app.project.id);
+    if (bgI) {
+      const zW = ZD * 1.05, zc = zW + D0, ww = zc / D0, hh = rb.hw * zc / D0, top = rb.camY + rb.hz * rb.hw * zc / D0;
+      const pl = placement(bb, bgI.w || 16, bgI.h || 9, pan.view), el = h("div");
+      el.innerHTML = `<svg viewBox="0 0 ${W} ${f1(H)}" width="400" height="${f1(400 * H / W)}" preserveAspectRatio="none" style="display:block"><rect width="${W}" height="${f1(H)}" fill="#fff"/><image href="${bgI.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/></svg>`;
+      put(el, plane([0.5 - ww / 2, top, zW], [ww / 400, 0, 0], [0, -hh / (400 * H / W), 0], 400, 400 * H / W), 400, 400 * H / W);
+    }
+    // sol (devant le mur) : des dalles (celles qui passent derriere la camera sont omises), motif de la carte de sol s'il y en a une
+    const TS = 0.25, TP = 60, gr = pan.ground && pan.ground.on ? pan.ground : null;
+    for (let gx = -1.5; gx < 2.5; gx += TS) for (let gz = -1.5; gz + TS < ZD * 1.05 + 1e-6; gz += TS) {
+      const tr = plane([gx, 0, gz], [TS / TP, 0, 0], [0, 0, TS / TP], TP, TP);
+      if (!tr) continue;
+      const id = `mt3g${Math.round(gx * 10)}_${Math.round(gz * 10)}`.replace(/-/g, "m");
+      const el = h("div");
+      el.innerHTML = `<svg viewBox="${gx} ${gz} ${TS} ${TS}" width="${TP}" height="${TP}" preserveAspectRatio="none" style="display:block"><defs>${gr ? groundPattern(gr, id) : ""}</defs><rect x="${gx}" y="${gz}" width="${TS}" height="${TS}" fill="#d8d4cb"/>${gr ? `<rect x="${gx}" y="${gz}" width="${TS}" height="${TS}" fill="url(#${id})"/>` : ""}` +
+        (gx >= 0 && gx < 1 && gz >= 0 && gz < ZD ? `<rect x="${gx}" y="${gz}" width="${TS}" height="${TS}" fill="none" stroke="#5fc4a8" stroke-opacity=".35" stroke-width=".004"/>` : "") + "</svg>";
+      put(el, tr, TP, TP);
+    }
+    // les cartes, de la plus loin a la plus proche
+    const order = rb.cards.map((c) => ({ c, d: camOf(cm, [c.X, c.Y + c.Hc / 2, c.z])[2] })).sort((a, b) => b.d - a.d);
+    for (const { c } of order) {
+      const hp = 200, wp = hp * c.Wc / c.Hc, fl = !!c.l.flip;
+      const img = h("img", { src: c.sp.url, draggable: false });
+      if (sel === c.l.id) img.classList.add("on");
+      put(img, plane([c.X + (fl ? c.Wc / 2 : -c.Wc / 2), c.Y + c.Hc, c.z], [(fl ? -1 : 1) * c.Wc / wp, 0, 0], [0, -c.Hc / hp, 0], wp, hp), wp, hp);
+    }
+    box3.textContent = "";
+    box3.append(stage, bar3());
+  }
+  function bar3() {
+    const moved = cam3.yaw || cam3.crane || cam3.pitch || cam3.dolly !== 1 || cam3.fov !== FOV0;
+    const fov = h("input", { type: "range", min: 20, max: 100, step: 1, value: cam3.fov, title: tt("Focale : petit angle = téléobjectif (peu de perspective), grand angle = perspective forte"),
+      on: { input: (e) => { cam3.fov = +e.target.value; paint(); }, pointerdown: (e) => e.stopPropagation() } });
+    return h("div.mt-3d-bar", { on: { pointerdown: (e) => e.stopPropagation(), wheel: (e) => e.stopPropagation() } },
+      h("button.mini" + (moved ? ".star" : ""), { title: tt("Chaque carte prend la place, la taille et la profondeur vues par cette caméra, et l'image de sa tournette qui correspond à ce nouvel angle"), on: { click: recalc3 } }, tt("↻ Recalculer la perspective")),
+      h("button.mini", { title: tt("Revenir à la caméra de la case (double-clic dans la vue)"), on: { click: () => { Object.assign(cam3, CAM3); paint(); } } }, tt("⟲ Caméra de la case")),
+      h("label.mt-3d-fov", tt("Focale"), fov, h("span", Math.round(cam3.fov) + "°")),
+      h("span.mt-3d-info", tt`Orbite ${Math.round(cam3.yaw)}° · plongée ${Math.round(cam3.pitch)}°`));
+  }
+  function recalc3() {
+    const rb = rebuild3(), cm = camera3(rb), base = { C: [0.5, rb.camY, -D0] };
+    if (!rb.cards.length) return toast(tt("Aucun élément à recalculer dans cette case."), "error");
+    let n = 0;
+    for (const c of rb.cards) {
+      const feet = proj3(cm, rb, [c.X, c.Y, c.z]), top = proj3(cm, rb, [c.X, c.Y + c.Hc, c.z]);
+      if (feet.zc < 0.05) continue;
+      const patch = { x: f3(feet.x), y: f3(feet.y), s: f3(Math.max(0.02, feet.y - top.y)) };
+      // l'angle sous lequel la camera voit la carte a tourne de da (vu de dessus) : la tournette tourne d'autant
+      const an = (p) => Math.atan2(p[2], p[0]) * 180 / Math.PI;
+      let da = an(sub(cm.C, [c.X, 0, c.z])) - an(sub(base.C, [c.X, 0, c.z]));
+      da = ((da + 540) % 360) - 180;
+      const it = itemOf(c.l), vv = it && variantOf(it, c.s.v);
+      if (vv && vv.orbit && vv.orbit.n > 1) {
+        const a = frameToAngle(vv.orbit, c.s.f || 0);
+        patch.f = angleToFrame(vv.orbit, c.l.flip ? a - da : a + da);
+      }
+      change(c.l.id, patch);
+      setDepth(c.l, clamp((feet.zc - D0) / ZD, 0, 1));
+      n++;
+    }
+    if (pan.ground && cam3.pitch) pan.ground.hz = f3(clamp(rb.hz - cm.f * Math.tan(cam3.pitch * Math.PI / 180) / rb.hw, 0.02, 0.95));
+    Object.assign(cam3, CAM3);                               // la case montre maintenant ce que voyait la camera : elle redevient la reference
+    hist.snap(); paint(); lanes(); props();
+    toast(tt`Perspective recalculée : ${n} élément(s), place, taille, profondeur et image de tournette.`);
+  }
+  box3.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    stop(); box3.setPointerCapture(e.pointerId);
+    v3drag = { x: e.clientX, y: e.clientY, yaw: cam3.yaw, crane: cam3.crane, pitch: cam3.pitch, shift: e.shiftKey };
+    box3.style.cursor = "grabbing";
+  });
+  box3.addEventListener("pointermove", (e) => {
+    if (!v3drag) return;
+    const dx = (e.clientX - v3drag.x) / box3.clientWidth, dy = (e.clientY - v3drag.y) / box3.clientHeight;
+    cam3.yaw = clamp(v3drag.yaw - dx * 140, -60, 60);        // un arc de 120 degres autour de la scene
+    if (v3drag.shift) cam3.pitch = clamp(v3drag.pitch + dy * 60, -20, 45);
+    else cam3.crane = clamp(v3drag.crane - dy * 0.8, -0.4, 1.2);   // vers le haut : la camera monte
+    paint();
+  });
+  box3.addEventListener("pointerup", () => { v3drag = null; box3.style.cursor = ""; });
+  box3.addEventListener("dblclick", () => { Object.assign(cam3, CAM3); paint(); });
+  box3.addEventListener("wheel", (e) => { e.preventDefault(); cam3.dolly = clamp(cam3.dolly * Math.exp(e.deltaY * 0.0012), 0.35, 2.5); paint(); }, { passive: false });
   // carte de sol : un motif sur le sol, vu en perspective dans l'image jusqu'a l'horizon
   function groundDialog() {
     if (!pan.ground) pan.ground = Object.assign({}, GROUND0, { hz: estimateHorizon(pan) });
@@ -1506,12 +1648,13 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   const dur = h("input", { type: "number", min: 0.5, max: 60, step: 0.5, value: anim.dur, title: tt("Durée du plan, en secondes"),
     on: { change: (e) => { const d = clamp(+e.target.value || 4, 0.5, 60), k = d / anim.dur; if (confirm(tt("Étirer aussi les clés sur la nouvelle durée ?\nAnnuler : les clés gardent leur instant."))) for (const ks of Object.values(anim.tracks)) for (const x of ks) x.t = f3(x.t * k); anim.dur = d; t = Math.min(t, d); paint(); lanes(); props(); } } });
   const fullBtn = h("button.mini", { title: tt("La fenêtre de montage prend tout l'écran"), on: { click: () => { const on = m.box.classList.toggle("modal-full"); fullBtn.textContent = on ? tt("🗗 Fenêtre") : tt("⛶ Plein écran"); } } }, tt("⛶ Plein écran"));
-  // trois vues : l'image, la profondeur (schema vu de dessus), l'isometrique
+  // quatre vues : l'image, la profondeur (schema vu de dessus), l'isometrique, la 3D
   const VIEWS = [["image", tt("🖼 Image"), tt("L'image de la case, comme elle sera montrée")], ["depth", tt("⬒ Profondeur"), tt("Schéma vu de dessus : chaque élément est une carte, à glisser vers le fond ou vers la caméra")],
-    ["iso", tt("◇ Isométrique"), tt("La scène sur son sol, vue d'en haut et de côté : glisser pour changer de point de vue, clic sur le sol pour la carte de sol")]];
+    ["iso", tt("◇ Isométrique"), tt("La scène sur son sol, vue d'en haut et de côté : glisser pour changer de point de vue, clic sur le sol pour la carte de sol")],
+    ["3d", tt("🧊 3D"), tt("La scène en vraie perspective, avec des cartes plates : glisser pour tourner autour (120°), molette pour avancer, puis « Recalculer la perspective »")]];
   const viewSeg = h("div.mt-views");
   function setView(v) {
-    depthView = v === "depth"; isoView = v === "iso"; isoDrag = null;
+    depthView = v === "depth"; isoView = v === "iso"; isoDrag = null; v3 = v === "3d"; v3drag = null;
     viewSeg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
     svg.style.cursor = isoView ? "grab" : "";
     paint();
@@ -1557,7 +1700,7 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
     } } }, tt("⤓ 1re image → case")),
     h("label.row", tt("Durée (s)"), dur));
   paint(); lanes(); props();
-  const m = modal(tt`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, keyBox, tl),
+  const m = modal(tt`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg, box3), side), bar, keyBox, tl),
     [{ label: tt("Annuler"), click: done },
      { label: tt("Enregistrer le montage"), click: () => { save(); toast(tt("Montage enregistré.")); } },
      { label: tt("Enregistrer et envoyer dans le deck ▸"), primary: true, click: () => { save(); app.sendToDeck(pid); } }]);

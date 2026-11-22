@@ -1,5 +1,16 @@
 {
  "ui": {
+  "Focale : petit angle = téléobjectif (peu de perspective), grand angle = perspective forte": "Focal length: narrow angle = telephoto (little perspective), wide angle = strong perspective",
+  "Chaque carte prend la place, la taille et la profondeur vues par cette caméra, et l'image de sa tournette qui correspond à ce nouvel angle": "Each card takes the place, size and depth seen by this camera, and the turntable frame that matches this new angle",
+  "↻ Recalculer la perspective": "↻ Recompute the perspective",
+  "Revenir à la caméra de la case (double-clic dans la vue)": "Back to the panel's camera (double-click in the view)",
+  "⟲ Caméra de la case": "⟲ Panel camera",
+  "Focale": "Focal",
+  "Orbite {0}° · plongée {1}°": "Orbit {0}° · tilt {1}°",
+  "Aucun élément à recalculer dans cette case.": "No item to recompute in this panel.",
+  "Perspective recalculée : {0} élément(s), place, taille, profondeur et image de tournette.": "Perspective recomputed: {0} item(s), place, size, depth and turntable frame.",
+  "🧊 3D": "🧊 3D",
+  "La scène en vraie perspective, avec des cartes plates : glisser pour tourner autour (120°), molette pour avancer, puis « Recalculer la perspective »": "The scene in true perspective, with flat cards: drag to turn around (120°), wheel to move in, then « Recompute the perspective »",
   "Taches (sol sali)": "Stains (dirty floor)",
   "Densité des taches": "Stain density",
   "Part du sol couverte de taches": "Share of the floor covered with stains",
