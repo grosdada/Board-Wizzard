@@ -9,6 +9,7 @@
 import { tt, tr } from "./i18n.js";
 import { swatch } from "./colors.js";
 import { h, modal, toast, history, upload } from "./api.js";
+import { PRESETS, PRESET_CATS, presetPath, presetThumb } from "./presets.js";
 
 export const W = 1000;                                   // largeur de travail ; la hauteur suit le format de la case
 const uid = () => Math.random().toString(36).slice(2, 8);
@@ -92,6 +93,7 @@ function geom(sh, H) {
   }
   const [a, b] = P, x0 = Math.min(a[0], b[0]), y0 = Math.min(a[1], b[1]), x1 = Math.max(a[0], b[0]), y1 = Math.max(a[1], b[1]);
   const w = x1 - x0, hh = y1 - y0, cy = (y0 + y1) / 2, at = (u, v) => [x0 + (sh.mx ? 1 - u : u) * w, y0 + v * hh];   // mx : retournee
+  if (sh.t === "pre") return presetPath(sh.k, x0, y0, w, hh, sh.mx);   // forme toute faite (presets.js), recalee dans sa boite
   switch (sh.t) {
     case "rrect": { const r = Math.min(w, hh) * 0.2; return `M${f1(x0 + r)} ${f1(y0)}H${f1(x1 - r)}Q${f1(x1)} ${f1(y0)} ${f1(x1)} ${f1(y0 + r)}V${f1(y1 - r)}Q${f1(x1)} ${f1(y1)} ${f1(x1 - r)} ${f1(y1)}H${f1(x0 + r)}Q${f1(x0)} ${f1(y1)} ${f1(x0)} ${f1(y1 - r)}V${f1(y0 + r)}Q${f1(x0)} ${f1(y0)} ${f1(x0 + r)} ${f1(y0)}Z`; }
     case "ellipse": return `M${f1(x0)} ${f1(cy)}a${f1(w / 2)} ${f1(hh / 2)} 0 1 0 ${f1(w)} 0a${f1(w / 2)} ${f1(hh / 2)} 0 1 0 ${f1(-w)} 0Z`;
@@ -335,6 +337,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   let shapes = layers ? layers[cl].shapes : JSON.parse(JSON.stringify((draw && draw.shapes) || []));
   const allShapes = () => (layers ? layers.flatMap((l) => l.shapes) : shapes);
   let tool = "blob", prim = "rect", path = "blob", brushT = "brush", sel = null, drag = null, building = null, hover = null;
+  let preK = "arbre";                                      // forme toute faite en cours (banque de formes, presets.js)
   const cur = Object.assign({}, DEF);
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -469,7 +472,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       const c = JSON.parse(JSON.stringify(sh));
       c.id = uid(); c.p = c.p.map(([x, y]) => [1 - x, y]);
       if (c.r) c.r = -c.r;
-      if (PRIMS[c.t] || c.t === "img") c.mx = !c.mx;                          // une primitive se dessine dans sa boite : on la retourne
+      if (PRIMS[c.t] || c.t === "img" || c.t === "pre") c.mx = !c.mx;                          // une primitive se dessine dans sa boite : on la retourne
       if (c.ga != null) c.ga = (540 - c.ga) % 360;
       if (c.ha != null) c.ha = (180 - c.ha + 180) % 180;
       return c;
@@ -596,6 +599,29 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (layers && layers[cl].hidden) layers[cl].hidden = false;
     shapes.push(sh); tool = "select"; sel = sh.id; tools(); props(); paint(); hist.snap();
   });
+  // banque de formes : une palette par familles ; un clic choisit la forme (et remplace celle de la forme selectionnee)
+  function presetDrop() {
+    const wrap = h("div.draw-drop" + (tool === "pre" ? ".on" : ""));
+    const pick = (k) => {
+      preK = k; wrap.classList.remove("open");
+      const s0 = tool === "select" && sel ? shapes.find((x) => x.id === sel) : null;
+      if (s0 && s0.t === "pre") { s0.k = k; paint(); props(); hist.snap(); tools(); return; }
+      finish(false); tool = "pre"; sel = null; tools(); props(); paint();
+    };
+    const menu = h("div.draw-menu.draw-presets", Object.entries(PRESET_CATS).map(([c, name]) => {
+      const ks = Object.keys(PRESETS).filter((k) => PRESETS[k].c === c);
+      return h("div.pcat", h("div.phead", name), h("div.pgrid", ks.map((k) => {
+        const b = h("button" + (k === preK ? ".on" : ""), { type: "button", title: PRESETS[k].n, on: { click: (e) => { e.stopPropagation(); pick(k); } } });
+        b.innerHTML = presetThumb(k, 34);
+        return b;
+      })));
+    }));
+    const cur0 = PRESETS[preK];
+    const ico = h("span.pico"); ico.innerHTML = presetThumb(preK, 16);
+    wrap.append(h("button.mini.main", { type: "button", title: tt("Banque de formes : ") + cur0.n + tt(". Glisser dans le cadre pour la poser (Maj : sans garder ses proportions). Aplat ou trait : réglages de la forme, à droite."), on: { click: () => { finish(false); tool = "pre"; sel = null; tools(); props(); paint(); } } }, ico, " ", cur0.n),
+      h("button.mini.caret", { type: "button", title: tt("Choisir une forme dans la banque (une centaine : objets, nature, ville, véhicules, êtres, signes, formes abstraites)"), on: { click: (e) => { e.stopPropagation(); const was = wrap.classList.contains("open"); bar.querySelectorAll(".draw-drop.open").forEach((x) => x.classList.remove("open")); wrap.classList.toggle("open", !was); } } }, tt("Formes ▾")), menu);
+    return wrap;
+  }
   function tools() {
     bar.textContent = "";
     const pickTool = (k) => { finish(false); tool = k; if (PRIMS[k]) prim = k; if (PATHS[k]) path = k; if (BRUSHES[k]) brushT = k; if (k !== "select") sel = null; tools(); props(); paint(); };
@@ -608,7 +634,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       return wrap;
     };
     bar.append(h("button.mini" + (tool === "select" ? ".on" : ""), { type: "button", title: tt("Choisir, déplacer, étirer, tourner"), on: { click: () => pickTool("select") } }, tt("↖ Sélection")),
-      drop(tt("Primitives"), PRIMS, prim), drop(tt("Tracés"), PATHS, path), kit ? drop(tt("Pinceaux"), BRUSHES, brushT) : "",
+      drop(tt("Primitives"), PRIMS, prim), presetDrop(), drop(tt("Tracés"), PATHS, path), kit ? drop(tt("Pinceaux"), BRUSHES, brushT) : "",
       kit ? h("button.mini", { type: "button", title: tt("Importer une image (crayon scanné, forme, texture) : elle se pose au milieu, à déplacer et étirer avec la Sélection ; le blanc du papier devient transparent"), on: { click: () => importImg(false) } }, tt("🖼 Importer une image…")) : "", kit ? fileIn : "",
       h("button.mini", { type: "button", title: tt("Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite"), on: { click: mirror } }, tt("⇋ Miroir")),
       layers ? h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes du calque en cours"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout ce calque ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); hist.snap(); } } } }, tt("Effacer le calque"))
@@ -651,6 +677,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (tool === "stamp" && !cur.href) { toast(tt("Choisis d'abord l'image de la pointe du tampon (importer, ou « Pointe du tampon » sur une image importée)."), "error"); return; }
     if (layers && layers[cl].hidden) { layers[cl].hidden = false; layUi(); }
     const sh = Object.assign({ id: uid(), t: tool, p: [p, p] }, JSON.parse(JSON.stringify(cur)));
+    if (tool === "pre") sh.k = preK;
     if (sh.t !== "stamp") { delete sh.href; delete sh.ar; }
     if (!SPECIAL.has(sh.t)) for (const k of BRUSH_KEYS) delete sh[k];   // une forme ordinaire (fond de case) ne garde pas les reglages des pinceaux
     if (sh.t === "brush" || sh.t === "stamp") sh.pw = [force(e, 0, cur.sv), force(e, 0, cur.sv)];
@@ -683,6 +710,11 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
             }
           }
         }
+      }
+      else if (t.t === "pre" && !e.shiftKey && PRESETS[t.k]) {      // forme toute faite : ses proportions (Maj : libres)
+        const [, , bw, bh] = PRESETS[t.k].box, a = t.p[0], dx = (p[0] - a[0]) * W, dy = (p[1] - a[1]) * H, ar = bw / bh;
+        const s = Math.max(Math.abs(dx), Math.abs(dy) * ar);
+        t.p[1] = [a[0] + Math.sign(dx || 1) * s / W, a[1] + Math.sign(dy || 1) * s / ar / H];
       }
       else t.p[1] = p;
     } else if (drag.kind === "rot") {

@@ -15,6 +15,7 @@ import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, tintOf, tintFilter } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
+import { PRESETS } from "./presets.js";
 import { faceFor, opsSvg } from "./face.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 
@@ -290,7 +291,7 @@ export function openMontage(app, pid) {
   const shapes = () => (pan.draw && pan.draw.shapes) || [];
   const fxAnim = () => !!(pan.draw && pan.draw.fx && pan.draw.fx.on && pan.draw.fx.anim);
   const shapeOf = (id) => (typeof id === "string" && id.startsWith("s:") ? shapes().find((x) => "s:" + x.id === id) : null);
-  const shapeName = (sh, i) => tt`Forme ${i + 1} (${((PRIMS[sh.t] || PATHS[sh.t] || ["forme"])[0]).toLowerCase()})`;
+  const shapeName = (sh, i) => tt`Forme ${i + 1} (${((sh.t === "pre" && PRESETS[sh.k] ? [PRESETS[sh.k].n] : null) || PRIMS[sh.t] || PATHS[sh.t] || ["forme"])[0].toLowerCase()})`;
   function topView() {
     const c = camAt(), yOf = (d) => H * (DY0 + (DY1 - DY0) * d), fs = Math.max(11, H * 0.03), camY = yOf(camD(c.dz || 0)), camX = c.cx * W, half = 0.5 / c.z * W;
     let o = `<rect width="${W}" height="${f1(H)}" fill="#f3f1ec"/>`;
