@@ -1166,7 +1166,7 @@
   "La tête de lecture est hors de la voix.": "The playhead is outside the voice.",
   "Décalage (s)": "Offset (s)",
   "Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée.": "Click a mouth to force it at the time shown (two frames). To fix a badly guessed mouth.",
-  "Bouche à cet instant ⓘ : {0}": "Mouth at this time ⓘ: {0}",
+  "Bouche à cet instant ⓘ : {0} · clic = la forcer ici": "Mouth at this time ⓘ: {0} · click = force it here",
   "{0} s · {1} (clic droit pour changer)": "{0} s · {1} (right-click to change)",
   "{0} · glisser pour déplacer, tirer un bout pour raccourcir": "{0} · drag to move, pull an end to trim",
   "Voix de {0}": "Voice of {0}",

@@ -874,8 +874,8 @@ export function openMontage(app, pid) {
         // bouches generees ou bouche du dessin : des boutons en lettres, pas les formes simples qui preteraient a confusion
         const word = trace ? (simple ? { X: tt("Fermée"), A: tt("Ouverte") } : { X: tt("Fermée"), M: "M", A: "A", E: "É", O: "O", U: "OU", F: "F", D: "D", L: "L" }) : null;
         rows.push(
-          h("div.muted", { title: tt("Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée.") }, tt`Bouche à cet instant ⓘ : ${MOUTHS[cueAt(lip, t)]}`),
-          h("div.row.wrap.mouths", (simple ? SIMPLE : Object.keys(MOUTHS)).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); if (word) b.textContent = word[k]; else b.innerHTML = mouthIcon(k, lip.set, itemOf(l)); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));
+          h("div.muted", { title: tt("Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée.") }, tt`Bouche à cet instant ⓘ : ${MOUTHS[cueAt(lip, t)]} · clic = la forcer ici`),
+          h("div.row.wrap.mouths", (simple ? SIMPLE : Object.keys(MOUTHS)).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); if (word) b.textContent = word[k]; else b.innerHTML = mouthIcon(k, lip.set, itemOf(l)); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.color = "#111"; b.style.padding = word ? "2px 8px" : "1px 3px"; return b; })));
       }
     }
     return h("div.mt-voice",
