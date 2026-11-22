@@ -81,8 +81,9 @@ export class Editor {
     this.host.classList.toggle("focused", !!g);
     if (!g) { this.focusId = null; this.drawHandles(); return; }
     const wr = w.getBoundingClientRect(), cr = this.host.getBoundingClientRect(), s0 = wr.width / this.pg.page.width;
-    const k = Math.min((cr.width - 28) / (g.bbox.w * s0), (cr.height - 44) / (g.bbox.h * s0));
-    const tx = cr.left + cr.width / 2 - (wr.left + (g.bbox.x0 + g.bbox.w / 2) * s0 * k), ty = cr.top + (cr.height - 16) / 2 - (wr.top + (g.bbox.y0 + g.bbox.h / 2) * s0 * k);
+    const pad = this.animated(g.id) ? 46 : 0;                    // case animee : place pour le bouton lecture sous la case
+    const k = Math.min((cr.width - 28) / (g.bbox.w * s0), (cr.height - 44 - pad) / (g.bbox.h * s0));
+    const tx = cr.left + cr.width / 2 - (wr.left + (g.bbox.x0 + g.bbox.w / 2) * s0 * k), ty = cr.top + (cr.height - 16 - pad) / 2 - (wr.top + (g.bbox.y0 + g.bbox.h / 2) * s0 * k);
     w.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${k.toFixed(4)})`;
     this.drawHandles();
   }
@@ -102,17 +103,17 @@ export class Editor {
   }
   /** Case animee (mode montage) : un petit bouton lecture dans la gouttiere, sous le milieu de la case, a taille fixe a
    *  l'ecran. Il rejoue l'animation dans la case, une fois (un second clic l'arrete). */
+  animated(pid) { const pan = this.pg && this.pg.panels[pid], tr = pan && pan.anim && pan.anim.tracks; return !!(tr && Object.values(tr).some((k) => k && k.length)); }
   drawPlays() {
     const svg = this.svg, pg = this.pg;
     svg.querySelectorAll(":scope > g.pv-play").forEach((x) => x.remove());
     if (!pg || !this.geom) return;
     const page = pg.page, u = 1 / (this.scale() || 1), r = 11 * u;
     for (const g of this.geom.panels) {
-      const pan = pg.panels[g.id], tr = pan && pan.anim && pan.anim.tracks;
-      if (!tr || !Object.values(tr).some((k) => k && k.length)) continue;
+      if (!this.animated(g.id)) continue;
       const bb = g.bbox, bottom = bb.y0 + bb.h;
       const below = bottom >= page.height - page.margin - 1 ? page.margin : (page.gutterV ?? page.gutter);
-      const cx = bb.x0 + bb.w / 2, cy = bottom + Math.max(below / 2, 0);
+      const cx = bb.x0 + bb.w / 2, cy = bottom + (this.focusId === g.id ? 22 * u : Math.max(below / 2, 0));   // case agrandie : juste sous elle
       const on = this.pv && this.pv.pid === g.id;
       const gp = s("g", { class: "pv-play" + (on ? " on" : ""), "data-pv": g.id, transform: `translate(${cx.toFixed(2)} ${(cy).toFixed(2)}) scale(${(r / 11).toFixed(5)})` });
       const tip = s("title"); tip.textContent = on ? tt("Arrêter l'animation") : tt("Voir l'animation de cette case (mode montage)");
