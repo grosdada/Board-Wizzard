@@ -146,6 +146,8 @@ def _rows(bid, cat):
     if bid == CLAUDE and cat == "silhouette":                       # les corps encres d'abord (ils restent), puis ceux dessines
         _bodies()
         dirs.insert(0, (ROOT / "_corps", "_corps/", False))
+    elif bid == CLAUDE and cat in BODY:                             # les elements decoupes dans les corps encres (app/bodycut.py)
+        dirs.insert(0, (ROOT / "_corps-claude" / cat, "_corps-claude/%s/" % cat, False))
     for d, pre, mine in dirs:
         if not d.is_dir():
             continue
@@ -247,7 +249,8 @@ def save_raw(bid, cat, name, png_bytes, replace=None, fill=False):
         pid = replace
     else:
         pid = _free_id(d, name)
-        while bid == CLAUDE and cat == "silhouette" and (ROOT / "_corps" / (pid + ".png")).exists():   # pas le nom d'un corps encre
+        fixed = ROOT / ("_corps" if cat == "silhouette" else "_corps-claude/" + cat)
+        while bid == CLAUDE and cat in BODY and (fixed / (pid + ".png")).exists():   # pas le nom d'un corps encre ou d'un de ses elements
             pid = _free_id(d, pid + "-2")
     im = Image.open(io.BytesIO(png_bytes))
     meta = _meta(d, pid) if replace else {}

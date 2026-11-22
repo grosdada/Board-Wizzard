@@ -5,6 +5,9 @@ portrait-robot est posee par-dessus (voir bodydraw.personnage).
   python tools/corps.py encrer                 encre les corps qui manquent (data/bodies/<id>.png, guide dans _guide/)
   python tools/corps.py encrer "Costume" --refaire --graine 7 --machine 2
   python tools/corps.py planche                data/qa/corps.jpg : guide | encre, pour controle
+  python tools/corps.py decouper               coupe chaque corps encre en torse, bras, mains, jambes, chaussures pour le
+                                               generateur de corps (app/bodycut.py), planches dans data/qa/corps-el/ ;
+                                               --refaire : recoupe ceux deja faits
 """
 import argparse
 import shutil
@@ -44,13 +47,20 @@ def guide(kw, seed):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("action", choices=["encrer", "planche"])
+    ap.add_argument("action", choices=["encrer", "planche", "decouper"])
     ap.add_argument("noms", nargs="*")
     ap.add_argument("--refaire", action="store_true")
     ap.add_argument("--graine", type=int, default=11)
     ap.add_argument("--machine", type=int, default=1)
     a = ap.parse_args()
     var = [(n, kw) for n, kw in bodydraw.CORPS_VARIANTES if not a.noms or n in a.noms]
+    if a.action == "decouper":
+        from app import bodycut
+        n = sum(bodycut.decouper(refaire=a.refaire, seul=nom) for nom, _ in var)
+        for c in bodycut.CATS:
+            bodycut.planche(c, settings.DATA / "qa" / "corps-el" / (c + ".jpg"))
+        print(n, "élément(s) découpé(s) ; planches dans", settings.DATA / "qa" / "corps-el")
+        return
     if a.action == "planche":
         tiles = []
         for n, kw in var:

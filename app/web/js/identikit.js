@@ -26,7 +26,7 @@ const KITS = {
              jambes: [500, 1520, 340], chaussures: [500, 1790, 460], accessoires: [500, 900, 200] },
     ORDER: ["silhouette", "jambes", "chaussures", "torse", "bras", "mains", "tete", "accessoires"],
     MANY: new Set(["accessoires"]), SPLIT: new Set(["bras", "mains", "jambes", "chaussures"]), PAIRCATS: ["bras", "mains", "jambes", "chaussures"],
-    random: [["silhouette", "tete"], ["torse", "bras", "mains", "jambes", "chaussures"]] },
+    random: [["tete"], ["torse", "bras", "mains", "jambes", "chaussures"]], whole: "silhouette", follow: { bras: "torse", mains: "torse" } },
 };
 const ratios = new Map();                        // fichier -> hauteur / largeur
 const ratioOf = (file, t) => new Promise((ok) => {
@@ -365,7 +365,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       BODYKIT ? "" : h("button.mini.idk-bodytab" + (cur === BODY ? ".on" : ""), { title: tt("Poser la tête sur un corps : le personnage entier part dans la banque"), on: { click: () => { cur = BODY; showCat(); } } }, BODY.label));
     grid.textContent = "";
     if (cur === BODY) { showBodies(); return; }
-    const fixed = (it) => BODYKIT && cur.key === "silhouette" && bank === "claude" && !it.mine;   // corps encres d'origine : ils restent
+    const fixed = (it) => BODYKIT && bank === "claude" && !it.mine;   // corps encres d'origine et leurs elements decoupes : ils restent
     grid.append(...cur.items.map((it) => h("button.idk-el", { "data-id": it.id, title: it.name + (it.mine ? tt(" (dessiné ici)") : ""), on: { click: () => put(cur.key, it) } },
       h("img", { src: `/parts/${it.file}?t=${it.t || 0}`, loading: "lazy", alt: "" }), h("span", it.name),
       h("b.edit", { title: it.mine && it.editable ? tt("Éditer ce dessin (ses calques se rouvrent)") : tt("Éditer : retoucher par-dessus cette image ; donne un nouvel élément, l'original reste"), on: { click: (e) => { e.stopPropagation(); editElement(cur.key, it); } } }, "✏"),
@@ -590,14 +590,20 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
 
   const random = async () => {
     layers = []; sel = null; multi.clear();
-    for (const key of K.random[0]) {
+    const got = {};                                 // bras et mains suivent le torse tire : les epaules d'un corps vont avec ses bras
+    const pick = async (key) => {
       const c = cats.find((k) => k.key === key);
-      if (c && c.items.length) await put(key, c.items[Math.floor(Math.random() * c.items.length)], true);
-    }
-    for (const key of K.random[1]) {
-      const c = cats.find((k) => k.key === key);
-      if (c && c.items.length && Math.random() < (BODYKIT ? 0.7 : 0.3)) await put(key, c.items[Math.floor(Math.random() * c.items.length)], true);
-    }
+      if (!c || !c.items.length) return;
+      const lead = K.follow && got[K.follow[key]], it = (lead && c.items.find((x) => x.id === lead)) || c.items[Math.floor(Math.random() * c.items.length)];
+      got[key] = it.id;
+      await put(key, it, true);
+    };
+    // corps : un corps entier, ou bien un torse, des bras, des jambes… tires chacun dans un corps different
+    const parts = K.random[1].filter((key) => (cats.find((k) => k.key === key) || { items: [] }).items.length);
+    const whole = K.whole && (!parts.length || Math.random() < 0.35);
+    if (whole) await pick(K.whole);
+    for (const key of K.random[0]) await pick(key);
+    if (!whole) for (const key of K.random[1]) if (K.whole || Math.random() < 0.3) await pick(key);
     sel = null; paint(); props(); hist.snap();                      // un tirage = une seule etape
   };
   // l'image du visage monte, elements dans l'ordre : wpx x hpx pixels, k = wpx / 1000 ; white : fond blanc (sinon
