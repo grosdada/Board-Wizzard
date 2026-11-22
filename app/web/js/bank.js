@@ -54,7 +54,6 @@ export class Bank {
       (!this.query || (it.name + " " + (it.tags || []).join(" ") + " " + (it.text || "")).toLowerCase().includes(this.query)));
     const pick = h("input", { type: "file", accept: isAudio ? "audio/*,video/mp4,.webm" : "image/*", multiple: true, style: { display: "none" },
                               on: { change: (e) => { if (e.target.files.length) (isAudio ? this.importAudio([...e.target.files]) : this.importDialog([...e.target.files])); e.target.value = ""; } } });
-    if (isAudio) this.multi = false;                  // multi-selection : personnages, decors, assets
     const grid = h("div.bank-grid" + (isAudio ? ".audio" : "") + (this.multi ? ".multi" : ""), items.map((it) => (isAudio ? this.audioCard(it) : this.card(it))));
     if (!items.length) grid.append(h("p.muted.bank-empty", isAudio ? tt("Aucun son pour l'instant. Les voix importées, enregistrées au micro ou générées dans le montage arrivent ici ; tu peux aussi glisser des fichiers son.") : tt`Aucun ${KIND_ONE[this.tab]} pour l'instant. Glisse des images ici, ou « Générer ».`));
     const search = h("input.search", { type: "search", placeholder: tt("Chercher…"), value: this.query,
@@ -80,25 +79,28 @@ export class Bank {
     this.grid = grid;
     if (!this.hostClick) {                           // multi-selection : un clic ailleurs que sur une vignette ou un bouton decoche tout
       this.hostClick = (e) => {
-        if (!this.multi || !this.picked || !this.picked.size || e.target.closest(".card, button, input, select, label, a, .pick-acts")) return;
+        if (!this.multi || !this.picked || !this.picked.size || e.target.closest(".card, .acard, button, input, select, label, a, .pick-acts")) return;
         this.picked.clear(); this.lastPick = null; this.updatePick();
       };
       this.host.addEventListener("click", this.hostClick);
     }
     this.pickBar = h("div.pick-bar");
-    if (!isAudio) this.host.append(this.pickBar);
+    this.host.append(this.pickBar);
     this.updatePick();
   }
 
   // ---------------------------------------------------------------- multi-selection : cocher des vignettes, puis les deplacer ou les supprimer
+  // les vignettes de la grille : elements de banque (.card) ou sons (.acard, onglet Audio)
+  cards() { return [...this.grid.querySelectorAll(".card, .acard")]; }
+  sound(id) { return (this.audio || []).find((a) => a.id === id); }
   pickedIds() {                      // les elements coches presents dans la grille affichee
     this.picked = this.picked || new Set();
-    const shown = new Set([...this.grid.querySelectorAll(".card")].map((c) => c.dataset.id));
-    return [...this.picked].filter((id) => shown.has(id) && this.app.bank.has(id));
+    const shown = new Set(this.cards().map((c) => c.dataset.id)), audio = this.tab === "audio";
+    return [...this.picked].filter((id) => shown.has(id) && (audio ? !!this.sound(id) : this.app.bank.has(id)));
   }
   pickCard(id, range) {              // clic : coche ou decoche ; Maj + clic : coche tout depuis la vignette cliquee juste avant
     this.picked = this.picked || new Set();
-    const order = [...this.grid.querySelectorAll(".card")].filter((c) => c.style.display !== "none").map((c) => c.dataset.id);
+    const order = this.cards().filter((c) => c.style.display !== "none").map((c) => c.dataset.id);
     const a = order.indexOf(this.lastPick), b = order.indexOf(id);
     if (range && a >= 0 && b >= 0) order.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => this.picked.add(x));
     else if (this.picked.has(id)) this.picked.delete(id); else this.picked.add(id);
@@ -109,42 +111,59 @@ export class Bank {
     const bar = this.pickBar;
     if (!bar || !this.grid) return;
     this.picked = this.picked || new Set();
-    this.grid.querySelectorAll(".card").forEach((c) => c.classList.toggle("picked", !!this.multi && this.picked.has(c.dataset.id)));
+    this.cards().forEach((c) => c.classList.toggle("picked", !!this.multi && this.picked.has(c.dataset.id)));
     const ids = this.multi ? this.pickedIds() : [];
     bar.textContent = "";
     const box = h("input", { type: "checkbox", checked: !!this.multi, on: { change: (e) => {
       this.multi = e.target.checked; if (!this.multi) this.picked.clear(); this.lastPick = null; this.render(); } } });
     bar.append(h("label.check.pick-toggle", { title: tt("Coche les vignettes d'un clic (Maj + clic : toute une suite), puis déplace-les ou supprime-les ensemble") }, box, tt("Multi-sélection")));
     if (!this.multi) return;
-    const all = [...this.grid.querySelectorAll(".card")].filter((c) => c.style.display !== "none").map((c) => c.dataset.id);
+    const all = this.cards().filter((c) => c.style.display !== "none").map((c) => c.dataset.id);
     bar.append(h("button.mini", { on: { click: () => { all.forEach((x) => this.picked.add(x)); this.updatePick(); } } }, tt("Tout")),
       h("button.mini", { on: { click: () => { this.picked.clear(); this.lastPick = null; this.updatePick(); } } }, tt("Aucun")));
     if (!ids.length) { bar.append(h("span.muted", tt("Clique les vignettes à cocher (Maj + clic : toute une suite)."))); return; }
-    const move = h("select", { on: { change: () => this.movePicked(move) } },
-      h("option", { value: "__", disabled: true, selected: true }, tt("Déplacer vers…")),
-      h("option", { value: "" }, tt("Sans dossier")),
-      this.folders().map((f) => h("option", { value: f }, "\u00a0\u00a0\u00a0".repeat(f.split("/").length - 1) + f.replace(/\//g, " \u203a "))),
-      h("option", { value: "__new__" }, tt("＋ Nouveau dossier…")));
+    const move = h("button.mini", { title: tt("Choisir d'un clic le dossier où ranger les éléments cochés"), on: { click: () => this.movePicked() } }, tt("📁 Ranger dans…"));
     bar.append(h("div.pick-acts", h("b", tt`${ids.length} sélectionné(s)`), move,
       h("button.mini.danger", { on: { click: () => this.deletePicked() } }, tt("🗑 Supprimer"))));
   }
-  async movePicked(sel) {
+  async movePicked() {
     const ids = this.pickedIds();
-    let f = sel.value;
-    if (f === "__new__") f = (prompt(tt("Nom du dossier (sous-dossier : « Parent/Nom ») :"), this.folder && this.folder !== "·" ? this.folder : "") || "").trim().replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
-    if (f === "__new__" || (sel.value === "__new__" && !f)) { sel.value = "__"; return; }
-    try { for (const id of ids) await put("bank/" + id, { folder: f }); toast(tt`${ids.length} élément(s) déplacé(s) dans « ${f || tt("Sans dossier")} ».`); }
+    if (!ids.length) return;
+    const f = await this.pickFolder(this.tab, null, tt`Ranger ${ids.length} élément(s) dans…`);
+    if (f === null) return;
+    const route = this.tab === "audio" ? "audio/" : "bank/";
+    try { for (const id of ids) await put(route + id, { folder: f }); this.picked.clear(); this.lastPick = null; toast(tt`${ids.length} élément(s) déplacé(s) dans « ${f || tt("Sans dossier")} ».`); }
     catch (err) { toast(err.message, "error"); }
     this.reload();
   }
   async deletePicked() {
     const ids = this.pickedIds();
     if (!ids.length) return;
-    const names = ids.slice(0, 8).map((id) => "• " + this.app.bank.get(id).name).join("\n") + (ids.length > 8 ? "\n…" : "");
-    if (!confirm(tt`Supprimer ${ids.length} élément(s) de la banque ? Tu es sûr ?\n\n${names}\n\nIls partent à la corbeille du dossier de données.`)) return;
-    try { for (const id of ids) { await del("bank/" + id); this.picked.delete(id); if (this.openId === id) this.openId = null; } toast(tt`${ids.length} élément(s) supprimé(s).`); }
+    const audio = this.tab === "audio", nameOf = (id) => (audio ? this.sound(id) : this.app.bank.get(id)).name;
+    const names = ids.slice(0, 8).map((id) => "• " + nameOf(id)).join("\n") + (ids.length > 8 ? "\n…" : "");
+    if (!confirm(audio ? tt`Retirer ${ids.length} son(s) de la banque audio ? Tu es sûr ?\n\n${names}\n\nLes montages qui s'en servent gardent leur copie.`
+      : tt`Supprimer ${ids.length} élément(s) de la banque ? Tu es sûr ?\n\n${names}\n\nIls partent à la corbeille du dossier de données.`)) return;
+    if (audio && this.player && ids.includes(this.playing)) this.player.pause();
+    try { for (const id of ids) { await del((audio ? "audio/" : "bank/") + id); this.picked.delete(id); if (this.openId === id) this.openId = null; } toast(tt`${ids.length} élément(s) supprimé(s).`); }
     catch (err) { toast(err.message, "error"); }
     this.reload();
+  }
+  /** Choisir un dossier d'un clic : fenetre avec les dossiers de l'onglet (sous-dossiers en retrait), « Sans dossier » et
+   *  « Nouveau dossier… » (seul cas ou l'on tape un nom). Rend le dossier choisi ("" = sans dossier), ou null. */
+  pickFolder(kind, current, title) {
+    return new Promise((done) => {
+      let m = null;
+      const choose = (f) => { m.close(); done(f); };
+      const row = (f, label, depth = 0) => h("button.folder-pick" + (current != null && f === current ? ".on" : ""), { style: { paddingLeft: 10 + depth * 18 + "px" }, on: { click: () => choose(f) } }, label);
+      const list = h("div.folder-picks", row("", tt("Sans dossier")),
+        this.folders(kind).map((f) => { const p = f.split("/"); return row(f, (p.length > 1 ? "└ " : "📁 ") + p[p.length - 1], p.length - 1); }),
+        h("button.folder-pick.new", { on: { click: () => {
+          const f = (prompt(tt("Nom du nouveau dossier (sous-dossier : « Parent/Nom ») :"), "") || "").trim().replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+          if (f) choose(f);
+        } } }, tt("＋ Nouveau dossier…")));
+      m = modal(title || tt("Ranger dans quel dossier ?"), list, [{ label: tt("Annuler"), click: () => { done(null); } }]);
+      const x = m.box.querySelector("header button"); if (x) x.addEventListener("click", () => done(null));
+    });
   }
   folders(kind = this.tab) {          // dossiers d'un onglet : ceux de ses elements, ceux crees vides, et leurs parents
     const things = kind === "audio" ? this.audio || [] : [...this.app.bank.values()].filter((it) => it.kind === kind);
@@ -183,10 +202,19 @@ export class Bank {
     await this.reload();
     toast(tt`Dossier « ${f} » supprimé.`);
   }
-  folderInput(value, kind = this.tab) {                // champ « dossier » avec les dossiers existants en suggestion
-    const id = "bwf" + Math.random().toString(36).slice(2, 7);
-    return h("span.fin", h("input", { type: "text", value: value || "", placeholder: tt("Dossier (projet)…"), list: id }),
-      h("datalist", { id }, this.folders(kind).map((f) => h("option", { value: f }))));
+  folderInput(value, kind = this.tab) {                // dossier ou ranger : deroulant des dossiers existants, plus « Nouveau dossier… »
+    const opt = (f) => h("option", { value: f, selected: f === (value || "") }, "   ".repeat(f.split("/").length - 1) + f.replace(/\//g, " › "));
+    const sel = h("select", { title: tt("Dossier où ranger l'élément") }, h("option", { value: "", selected: !value }, tt("Sans dossier")), this.folders(kind).map(opt),
+      h("option", { value: "__new__" }, tt("＋ Nouveau dossier…")));
+    let last = value || "";
+    sel.addEventListener("change", () => {
+      if (sel.value !== "__new__") { last = sel.value; return; }
+      const f = (prompt(tt("Nom du nouveau dossier (sous-dossier : « Parent/Nom ») :"), "") || "").trim().replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+      if (!f) { sel.value = last; return; }
+      if (![...sel.options].some((o) => o.value === f)) sel.insertBefore(opt(f), sel.lastChild);
+      sel.value = last = f;
+    });
+    return h("span.fin", sel);
   }
   reveal(id) {                       // montre ou se trouve un element : son onglet, son dossier, sa vignette mise en avant
     const it = this.app.bank.get(id);
@@ -244,11 +272,13 @@ export class Bank {
   audioCard(a) {
     const play = h("button.mini.aplay", { title: tt("Écouter"), on: { click: () => this.playAudio(a, play) } }, this.playing === a.id && this.player && !this.player.paused ? "■" : "▶");
     const info = [a.dur ? a.dur.toFixed(1) + " s" : null, SOURCES[a.source] || a.source, a.voice || null].filter(Boolean).join(" · ");
-    return h("div.acard", { "data-name": (a.name + " " + (a.text || "")).toLowerCase(), title: a.text ? `« ${a.text} »` : a.name },
+    return h("div.acard", { "data-id": a.id, "data-name": (a.name + " " + (a.text || "")).toLowerCase(), title: a.text ? `« ${a.text} »` : a.name,
+      on: { click: (e) => { if (this.multi && !e.target.closest("button")) { e.preventDefault(); this.pickCard(a.id, e.shiftKey); } } } },
+      this.multi ? h("span.card-check", "✓") : null,
       play,
       h("div.ainfo", h("div.aname", a.name), h("div.ameta", info + (a.folder ? " · 📁 " + a.folder : ""))),
       h("button.mini", { title: tt("Renommer"), on: { click: async () => { const n = (prompt(tt("Nom du son :"), a.name) || "").trim(); if (n && n !== a.name) { await put("audio/" + a.id, { name: n }); this.reload(); } } } }, "✎"),
-      h("button.mini", { title: tt("Ranger dans un dossier de l'onglet Audio (vide = sans dossier)"), on: { click: async () => { const f = prompt(tt("Dossier (ex. Projet/Scène 1) :\n") + (this.folders("audio").join("\n") || tt("(aucun dossier pour l'instant)")), a.folder || ""); if (f !== null && f.trim() !== (a.folder || "")) { await put("audio/" + a.id, { folder: f.trim() }); this.reload(); } } } }, "📁"),
+      h("button.mini", { title: tt("Ranger dans un dossier de l'onglet Audio : un clic sur le dossier"), on: { click: async () => { const f = await this.pickFolder("audio", a.folder || "", tt`Ranger « ${a.name} » dans…`); if (f !== null && f !== (a.folder || "")) { await put("audio/" + a.id, { folder: f }); this.reload(); } } } }, "📁"),
       h("button.mini.danger", { title: tt("Retirer de la banque audio (les montages qui s'en servent gardent leur copie)"), on: { click: async () => { if (!confirm(tt`Retirer « ${a.name} » de la banque audio ?`)) return; if (this.playing === a.id && this.player) this.player.pause(); await del("audio/" + a.id); this.reload(); } } }, "🗑"));
   }
   card(it) {
@@ -358,7 +388,7 @@ export class Bank {
         for (const f of files) {
           const q = new URLSearchParams({ kind: kind.value, name: files.length === 1 ? (name.value || cleanName(f.name)) : cleanName(f.name),
                                           style: style.value, facing: facing.value, orbit: orbit.checked ? "1" : "0", target: target(), file: f.name,
-                                          folder: folder.querySelector("input").value.trim() });
+                                          folder: folder.querySelector("select").value });
           try {
             const it = await upload("bank?" + q, f);
             if (kind.value === "character" && keys.length) await post(`bank/${it.id}/prepare`, { orbit: orbit.checked, review: review.value === "1", poses: keys, target: target() });
@@ -381,7 +411,7 @@ export class Bank {
       [{ label: tt("Annuler") }, { label: tt("Générer"), primary: true, click: async () => {
         if (!prompt.value.trim()) { toast(tt("Décris ce qu'il faut générer."), "error"); return false; }
         await post("bank/generate", { kind: kind.value, name: name.value.trim() || prompt.value.trim().slice(0, 30), prompt: prompt.value.trim(),
-                                      style: style.value, orbit: orbit.checked, target: target(), folder: folder.querySelector("input").value.trim() });
+                                      style: style.value, orbit: orbit.checked, target: target(), folder: folder.querySelector("select").value });
         toast(tt("Génération lancée : l'élément apparaîtra dans la banque.")); this.app.pollSoon();
       } }]);
   }

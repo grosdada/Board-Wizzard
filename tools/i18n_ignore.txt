@@ -42,3 +42,4 @@ A
 É
 OU
 Space
+.card, .acard, button, input, select, label, a, .pick-acts

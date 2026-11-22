@@ -593,3 +593,15 @@ svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http:
 .mt-voice .seg { display: flex; margin: 4px 0 6px; border: 1px solid #5fc4a8; border-radius: 6px; overflow: hidden; }
 .mt-voice .seg button { flex: 1; border: 0; border-radius: 0; padding: 5px 4px; background: transparent; color: inherit; cursor: pointer; font-weight: 600; }
 .mt-voice .seg button.on { background: #5fc4a8; color: #111; }
+
+/* onglet Audio : multi-selection, comme les vignettes */
+.bank-grid.audio.multi .acard { position: relative; padding-left: 32px; cursor: pointer; }
+.acard .card-check { top: 50%; left: 8px; transform: translateY(-50%); }
+.acard.picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.acard.picked .card-check { background: var(--accent); border-color: var(--accent); color: #0e1b19; }
+/* ranger dans un dossier : liste cliquable */
+.folder-picks { display: flex; flex-direction: column; gap: 3px; min-width: 280px; max-height: 60vh; overflow: auto; }
+.folder-pick { text-align: left; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+.folder-pick:hover { border-color: var(--accent); }
+.folder-pick.on { background: var(--accent); color: #0e1b19; }
+.folder-pick.new { margin-top: 6px; border-style: dashed; }
