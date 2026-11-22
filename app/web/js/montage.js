@@ -302,7 +302,7 @@ export function openMontage(app, pid) {
   // ------------------------------------------------------------------------------------------ reglages (droite)
   const side = h("div.mt-side");
   let syncProps = () => {};
-  const folds = { sh: true, gs: true, lip: true, lipt: false, lipm: false, tts: false, wig: false };
+  const folds = { sh: true, gs: true, voice: true, mouth: true, lipt: false, lipm: false, tts: false, wig: false };
   const fold = (key, label, ...rows) => h("details.fold", { open: !!folds[key], on: { toggle: (e) => { folds[key] = e.target.open; } } }, h("summary", label), ...rows);
                     // depliants ouverts ou fermes
   function props() {
@@ -473,7 +473,7 @@ export function openMontage(app, pid) {
     if (sprite(it, st.v, st.f)?.vec) items.push({ label: tt("Ombre"), checked: !!(l.sh && l.sh.on), click: () => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: !(l.sh && l.sh.on) }); paint(); props(); } },
       { label: tt("Animer le tremblé"), checked: !!(l.boil && l.boil.on), click: () => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: !(l.boil && l.boil.on) }); paint(); props(); } });
     items.push({ label: tt("Ombre portée"), checked: !!(l.gs && l.gs.on), click: () => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { on: !(l.gs && l.gs.on) }); paint(); props(); } },
-      { label: tt("Bouche dessinée"), checked: !!(l.lip && l.lip.on), click: async () => { l.lip = Object.assign({ off: 0, bg: true }, l.lip, { on: !(l.lip && l.lip.on) }); await persoFirst(l); paint(); props(); } },
+      { label: tt("Bouche qui parle"), checked: !!(l.lip && l.lip.on), click: async () => { l.lip = Object.assign({ off: 0, bg: true }, l.lip, { on: !(l.lip && l.lip.on) }); await persoFirst(l); paint(); props(); } },
       l.lip && l.lip.on ? { label: tt("✛ Placer la bouche à la main"), click: () => { placing = l.id; svg.style.cursor = "crosshair"; props(); } } : null,
       { head: tt("Clés") },
       keysOf(l.id).length ? { label: tt("Vider sa piste"), danger: true, click: () => { delete anim.tracks[l.id]; selKey = null; paint(); lanes(); props(); } } : { note: tt("Aucune clé sur cet élément") });
@@ -663,6 +663,113 @@ export function openMontage(app, pid) {
     } catch (err) { toast(tt("Tracé refusé : ") + err.message, "error"); }
     paint(); props();
   }
+  // Retouche des bouches calculees (tools/levres.py) : l'image-cle la plus proche de l'image affichee. Deplacer et
+  // agrandir la carte (les quatre bouches ensemble), corriger son detourage (lasso vider / remettre, gomme). Enregistre
+  // dans le personnage (POST bank/<id>/lips) : vaut pour tous les storyboards.
+  async function editLips(l) {
+    const it = itemOf(l), sp = spriteNow(l), st = stateOf(l), vid = st.v && (it.variants || {})[st.v] ? st.v : "base";
+    const mf = sp && mouthFrame(sp), L = mf && mf.lips;
+    if (!L || !L.keys.length) return toast(tt("Bouches calculées pas encore chargées : réessaie dans un instant."), "error");
+    const n = sp.n || 72, dist = (k) => { const d = Math.abs(k.f - sp.i); return Math.min(d, n - d); };
+    const keys = L.keys.filter((k) => !k.up0).sort((a, b) => a.f - b.f);
+    if (!keys.length) return toast(tt("Ces bouches viennent d'une autre pose : retouche-les sur cette pose-là."), "error");
+    let ki = keys.indexOf(keys.reduce((a, b) => (dist(b) < dist(a) ? b : a))), shape = "A", tool = "move", bg = "#7fd47f";
+    const SZ = 440, cv = h("canvas", { width: SZ, height: SZ, style: { border: "1px solid #555", touchAction: "none", cursor: "move", maxWidth: "100%" } });
+    const ctx = cv.getContext("2d"), info = h("div.muted"), shapes = h("div.row.wrap"), tools = h("div.row.wrap");
+    let K, box, frame, cards, orig, undo, dirty;
+    const load = (u) => new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = u; });
+    const toCanvas = (im) => { const c = document.createElement("canvas"); c.width = im ? im.naturalWidth : 256; c.height = im ? im.naturalHeight : 256; if (im) c.getContext("2d").drawImage(im, 0, 0); return c; };
+    async function openKey() {
+      K = keys[ki]; box = { x: K.x, y: K.y, s: K.s }; cards = {}; orig = {}; undo = []; dirty = new Set();
+      frame = await load(`${sp.dir}/${String(K.f).padStart(3, "0")}.webp`);
+      await Promise.all(Object.entries(K.cards).map(async ([k, f]) => { const im = await load(`${L.base}/${f}?v=${L.v}`); cards[k] = toCanvas(im); orig[k] = toCanvas(im); }));
+      if (!cards[shape]) shape = Object.keys(cards)[0];
+      bar(); draw();
+    }
+    // vue : un carre de 2 x s autour de la carte d'origine, en pixels de l'orbite
+    const view = () => { const s0 = K.s * 2, cx = K.x + K.s / 2, cy = K.y + K.s / 2; return { x: cx - s0 / 2, y: cy - s0 / 2, k: SZ / s0 }; };
+    const toOrbit = (e) => { const r = cv.getBoundingClientRect(), v = view(); return [v.x + (e.clientX - r.left) * (SZ / r.width) / v.k, v.y + (e.clientY - r.top) * (SZ / r.height) / v.k]; };
+    const toCard = (p) => { const c = cards[shape]; return [(p[0] - box.x) / box.s * c.width, (p[1] - box.y) / box.s * c.height]; };
+    let lasso = null;
+    function draw() {
+      const v = view();
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, SZ, SZ);
+      if (frame) ctx.drawImage(frame, -v.x * v.k, -v.y * v.k, frame.naturalWidth * v.k, frame.naturalHeight * v.k);
+      const c = cards[shape];
+      if (c) ctx.drawImage(c, (box.x - v.x) * v.k, (box.y - v.y) * v.k, box.s * v.k, box.s * v.k);
+      ctx.strokeStyle = "rgba(95,196,168,.9)"; ctx.setLineDash([5, 4]); ctx.lineWidth = 1;
+      ctx.strokeRect((box.x - v.x) * v.k, (box.y - v.y) * v.k, box.s * v.k, box.s * v.k); ctx.setLineDash([]);
+      if (lasso && lasso.length > 1) { ctx.strokeStyle = "#ff3b8d"; ctx.lineWidth = 1.5; ctx.beginPath(); lasso.forEach((p, i) => { const q = [(p[0] - v.x) * v.k, (p[1] - v.y) * v.k]; if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }); ctx.stroke(); }
+      info.textContent = tt`Image-clé ${ki + 1} sur ${keys.length} (image ${K.f} de l'orbite) · taille ${Math.round(box.s)} px`;
+    }
+    const snap = () => { const c = cards[shape]; undo.push({ shape, data: c.getContext("2d").getImageData(0, 0, c.width, c.height), box: { ...box } }); if (undo.length > 30) undo.shift(); };
+    function applyLasso(pts, mode) {
+      const c = cards[shape], g = c.getContext("2d"), q = pts.map(toCard);
+      snap(); g.save(); g.beginPath(); q.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath(); g.clip();
+      g.clearRect(0, 0, c.width, c.height);
+      if (mode === "remettre") g.drawImage(orig[shape], 0, 0);
+      g.restore(); dirty.add(shape);
+    }
+    function brush(p, r) {
+      const c = cards[shape], g = c.getContext("2d"), q = toCard(p), rr = r / box.s * c.width;
+      g.save(); g.globalCompositeOperation = "destination-out"; g.beginPath(); g.arc(q[0], q[1], rr, 0, Math.PI * 2); g.fill(); g.restore(); dirty.add(shape);
+    }
+    let drag = null, rad = 4;
+    cv.addEventListener("pointerdown", (e) => {
+      cv.setPointerCapture(e.pointerId); const p = toOrbit(e);
+      if (tool === "move") { snap(); drag = { p, x: box.x, y: box.y }; }
+      else if (tool === "gomme") { snap(); drag = { p }; brush(p, rad); draw(); }
+      else { lasso = [p]; drag = { p }; }
+    });
+    cv.addEventListener("pointermove", (e) => {
+      if (!drag) return; const p = toOrbit(e);
+      if (tool === "move") { box.x = drag.x + p[0] - drag.p[0]; box.y = drag.y + p[1] - drag.p[1]; }
+      else if (tool === "gomme") brush(p, rad);
+      else lasso.push(p);
+      draw();
+    });
+    cv.addEventListener("pointerup", () => {
+      if (!drag) return; drag = null;
+      if (lasso) { if (lasso.length > 2) applyLasso(lasso, tool); lasso = null; }
+      draw();
+    });
+    cv.addEventListener("wheel", (e) => { e.preventDefault(); snap(); const f = e.deltaY < 0 ? 1.03 : 1 / 1.03, cx = box.x + box.s / 2, cy = box.y + box.s / 2; box.s *= f; box.x = cx - box.s / 2; box.y = cy - box.s / 2; draw(); }, { passive: false });
+    function bar() {
+      shapes.textContent = "";
+      shapes.append(h("span.muted", tt("Bouche : ")), ...Object.keys(cards).map((k) => h("button.mini" + (k === shape ? ".on" : ""), { title: MOUTHS[k] || k, on: { click: () => { shape = k; bar(); draw(); } } }, k === "E" ? "É" : k)),
+        h("button.mini", { title: tt("Image-clé précédente"), on: { click: () => change(-1) } }, "◀"), h("button.mini", { title: tt("Image-clé suivante"), on: { click: () => change(1) } }, "▶"));
+      tools.textContent = "";
+      const tb = (k, label, title) => h("button.mini" + (tool === k ? ".on" : ""), { title, on: { click: () => { tool = k; cv.style.cursor = k === "move" ? "move" : "crosshair"; bar(); } } }, label);
+      tools.append(tb("move", tt("✥ Déplacer"), tt("Glisser : déplace la bouche (les quatre bouches de cette image-clé ensemble). Molette : agrandir ou réduire.")),
+        tb("vider", tt("✂ Lasso : vider"), tt("Entoure à la souris ce qui dépasse de la bouche : cela devient transparent, sur la bouche choisie.")),
+        tb("remettre", tt("🩹 Lasso : remettre"), tt("Entoure une zone vidée à tort : la bouche d'origine y revient.")),
+        tb("gomme", tt("◌ Gomme"), tt("Efface au pinceau, sur la bouche choisie")),
+        h("button.mini", { title: tt("Annule la dernière retouche"), on: { click: () => { const u = undo.pop(); if (!u) return; cards[u.shape].getContext("2d").putImageData(u.data, 0, 0); box = u.box; draw(); } } }, tt("↶ Annuler")),
+        h("select", { title: tt("Fond de la vue, pour bien voir le détourage"), on: { change: (e) => { bg = e.target.value; draw(); } } }, [["#7fd47f", tt("Fond vert")], ["#ff6fd0", tt("Fond rose")], ["#222222", tt("Fond noir")], ["#ffffff", tt("Fond blanc")]].map(([c, nm]) => h("option", { value: c, selected: bg === c }, nm))));
+    }
+    const touched = () => dirty.size || box.x !== K.x || box.y !== K.y || box.s !== K.s;
+    async function change(d) {
+      if (touched() && !confirm(tt("Quitter cette image-clé sans enregistrer ses retouches ?"))) return;
+      ki = (ki + d + keys.length) % keys.length; await openKey();
+    }
+    const send = async (body) => {
+      const r = await post(`bank/${encodeURIComponent(it.id)}/lips`, Object.assign({ variant: vid, f: K.f }, body));
+      if (r.item) app.bank.set(it.id, r.item);
+      paint(); props();
+    };
+    modal(tt("Retoucher les bouches calculées"), h("div.form",
+      h("p.muted", tt("Chaque image-clé porte quatre bouches (A, O, É, D) dessinées pour ce personnage. Corrige leur place, leur taille ou leur détourage ; « Enregistrer » les garde dans le personnage, pour tous les storyboards.")),
+      shapes, tools, cv, info,
+      h("label.row.range", tt("Taille de la gomme"), h("input", { type: "range", min: 1, max: 20, step: 0.5, value: rad, on: { input: (e) => { rad = +e.target.value; } } }))), [
+      { label: tt("Revenir à l'original"), click: async () => { if (!confirm(tt("Remettre les bouches d'origine de cette image-clé (place, taille et détourage) ?"))) return false; try { await send({ original: true }); toast(tt("Bouches d'origine remises.")); } catch (err) { toast(err.message, "error"); return false; } } },
+      { label: tt("Annuler") },
+      { label: tt("Enregistrer dans le personnage"), primary: true, click: async () => {
+        if (!touched()) return;
+        const c = {}; for (const k of dirty) c[k] = cards[k].toDataURL("image/png");
+        try { await send({ x: box.x, y: box.y, s: box.s, cards: c }); toast(tt("Bouches retouchées, enregistrées dans le personnage.")); } catch (err) { toast(tt("Retouche non enregistrée : ") + err.message, "error"); return false; }
+      } }]);
+    await openKey();
+  }
   async function traceClear(l) {
     const it = itemOf(l), st = stateOf(l), vid = st.v && (it.variants || {})[st.v] ? st.v : "base";
     try {
@@ -691,20 +798,38 @@ export function openMontage(app, pid) {
       return h("label.row.range", label, h("input", { type: "range", min, max, step, value: lip[k] ?? def, on: { input: (e) => { put(k, +e.target.value); out.textContent = fmt(+e.target.value); } } }), out); };
     const file = h("input", { type: "file", accept: "audio/*,video/mp4,.webm", style: { display: "none" }, on: { change: (e) => { const f = e.target.files[0]; if (f) setVoice(l, f, f.name); e.target.value = ""; } } });
     const micBtn = h("button.mini", { title: tt("Enregistre ta voix au micro ; clique encore pour arrêter"), on: { click: () => micro(l, micBtn) } }, rec ? tt("■ Arrêter l'enregistrement") : tt("● Micro"));
-    const rows = [h("div.row.wrap", h("button.mini", { title: tt("Fichier son : wav, mp3, m4a, ogg, webm"), on: { click: () => file.click() } }, lip.src ? tt("Changer la voix…") : tt("Importer une voix…")), micBtn, file,
+    const vrows = [h("div.row.wrap", h("button.mini", { title: tt("Fichier son : wav, mp3, m4a, ogg, webm"), on: { click: () => file.click() } }, lip.src ? tt("Changer la voix…") : tt("Importer une voix…")), micBtn, file,
       lip.src ? h("button.mini.danger", { title: tt("Retire la voix et ses bouches (la place de la bouche est gardée)"), on: { click: () => { const a = players.get(l.id); if (a) a.pause(); players.delete(l.id); delete l.lip.src; delete l.lip.cues; delete l.lip.name; delete l.lip.dur; delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, tt("Retirer")) : "")];
-    rows.push(libBox(l), ttsBox(l));
+    vrows.push(libBox(l), ttsBox(l));
     if (lip.src) {
       const [va, vb] = voiceSpan(lip);
-      rows.push(h("div.muted", { title: lip.name || "" }, `🔊 ${(lip.name || "voix").slice(0, 22)} · ${(vb - va).toFixed(1)} s` + (vb - va < (lip.dur || 0) - 0.01 ? tt` sur ${(lip.dur || 0).toFixed(1)}` : "")),
+      vrows.push(h("div.muted", { title: lip.name || "" }, `🔊 ${(lip.name || "voix").slice(0, 22)} · ${(vb - va).toFixed(1)} s` + (vb - va < (lip.dur || 0) - 0.01 ? tt` sur ${(lip.dur || 0).toFixed(1)}` : "")),
         h("div.row.wrap",
           h("button.mini", { title: tt("Retire le silence avant le premier son et après le dernier"), on: { click: () => { trimBlanks(l); } } }, tt("✂ Couper les blancs")),
           h("button.mini", { title: tt("Coupe la voix à la tête de lecture : ce qui vient après n'est plus joué"), on: { click: () => { const v = voiceTime(lip, t); if (v < 0) return toast(tt("Place la tête de lecture dans la voix.")); put("out", f3(v)); lanes(); props(); } } }, tt("✂ Couper ici")),
-          vb - va < (lip.dur || 0) - 0.01 ? h("button.mini", { title: tt("Retrouve la voix entière"), on: { click: () => { delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, tt("Entière")) : ""));
+          vb - va < (lip.dur || 0) - 0.01 ? h("button.mini", { title: tt("Retrouve la voix entière"), on: { click: () => { delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, tt("Entière")) : ""),
+        h("div", { title: tt("Décale la voix (et la bouche qui la suit) dans le plan") }, plain(tt("Décalage (s)"), "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2))));
     }
-    rows.push(h("label.row.check", { title: tt("Affiche la bouche dessinée sur le personnage") }, h("input", { type: "checkbox", checked: !!lip.on, on: { change: async (e) => { put("on", e.target.checked); await persoFirst(l); paint(); props(); } } }), tt("Bouche dessinée")));
-    const sp0 = spriteNow(l), trace = usesTrace(lip, sp0);
-    if (lip.on && sp0 && sp0.orbit && !(itemOf(l) || {}).body) {   // bouche du dessin : la tracer sur le personnage
+    // --- bouche : ce qui la fait parler. Bouches generees (dessinees dans le style du personnage, ou ses propres
+    // cartes) d'office quand elles existent ; un interrupteur passe aux formes simples (trait et capsule, cartoon...).
+    const rows = [h("label.row.check", { title: tt("La bouche du personnage bouge sur la voix") }, h("input", { type: "checkbox", checked: !!lip.on, on: { change: async (e) => { put("on", e.target.checked); await persoFirst(l); paint(); props(); } } }), tt("Bouche qui parle"))];
+    const sp0 = spriteNow(l), trace = usesTrace(lip, sp0), it0 = itemOf(l) || {};
+    const genLips = !!(sp0 && sp0.lips), gen = genLips || hasPerso(it0), graphic = !!lip.set && lip.set !== TRACE && lip.set !== PERSO;
+    if (lip.on && gen) {
+      const pick = async (g) => {
+        if (g === graphic) return;
+        const was = (l.lip || {}).set === PERSO, to = g ? (lip.gset || "capsule") : (genLips ? TRACE : PERSO);
+        put("set", to);
+        if (was !== (to === PERSO)) await autoMouth(l, true);
+        hist.snap(); paint(); props();
+      };
+      rows.push(h("div.seg", { title: tt("Bouches calculées : générées pour ce personnage, dans son dessin. Bouches dessinées : des formes toutes faites (trait et capsule, cartoon, pâte à modeler…) posées sur le visage.") },
+        h("button" + (graphic ? "" : ".on"), { on: { click: () => pick(false) } }, tt("Bouches calculées")),
+        h("button" + (graphic ? ".on" : ""), { on: { click: () => pick(true) } }, tt("Bouches dessinées"))));
+      if (!graphic) rows.push(h("div.muted", genLips ? tt("Générées dans le style du personnage ; elles suivent la bouche tracée.") : tt("Les bouches du personnage lui-même (générées).")),
+        genLips ? h("button.mini", { title: tt("Retoucher la place, la taille ou le détourage des bouches calculées de l'image-clé la plus proche ; enregistré dans le personnage."), on: { click: () => editLips(l) } }, tt("✎ Éditer les bouches")) : "");
+    }
+    if (lip.on && sp0 && sp0.orbit && !it0.body && !(gen && graphic)) {   // bouche du dessin : la tracer sur le personnage
       const on = tracing === l.id;
       rows.push(h("div.row.wrap",
         h("button.mini" + (on ? ".on" : ""), { title: tt("Trace un trait sur la bouche du personnage, d'un coin à l'autre, sur l'image affichée : elle est retrouvée puis suivie quand il tourne. Vaut pour cet élément et cette pose, dans tous les calques qui l'utilisent."), on: { click: () => { tracing = on ? null : l.id; placing = null; svg.style.cursor = ""; pen(tracing); props(); } } }, on ? tt("Trace sur la bouche…") : tt("✎ Tracer la bouche")),
@@ -712,16 +837,18 @@ export function openMontage(app, pid) {
           [["crayon", tt("Crayon")], ["droite", tt("Droite")]].map(([k, n]) => h("option", { value: k, selected: traceMode === k }, n))),
         sp0.mouth ? h("button.mini.danger", { title: tt("Retire la bouche suivie de cette pose (pour tous les calques qui l'utilisent)"), on: { click: () => traceClear(l) } }, tt("Effacer le tracé")) : ""));
     }
+    const calc = gen && !graphic;                          // bouches calculees : ni ouverture ni trait a regler
     if (lip.on && trace) {                                 // bouche du dessin : pas de place, d'axe ni de masque a regler
       rows.push(
         h("label.row", { title: tt("Simple : fermée sur les silences ; dès que ça parle, elle alterne ouverte et fermée. Varié : pareil, mais la bouche ouverte change selon le son. Détaillé : les neuf bouches, sans battement.") }, tt("Lip sync"),
           h("select", { on: { change: (e) => { put("mode", e.target.value); lanes(); props(); } } }, Object.entries(MODES).map(([k, n]) => h("option", { value: k, selected: (lip.mode || "simple") === k }, n)))),
         lip.mode !== "detail" ? h("div", { title: tt("Nombre de battements de bouche par seconde pendant que ça parle") }, plain(tt("Rythme ⓘ"), "flap", 1.5, 6, 0.5, 4, (x) => (+x).toFixed(1) + " /s")) : "",
-        h("div", { title: tt("Bouche en trait : de combien la lèvre du bas descend (↕) et la largeur de la bouche ouverte (↔). Une bouche déjà ouverte dans le dessin garde sa forme.") }, plain(tt("Ouverture ↔ ⓘ"), "ow", 0.3, 1.3, 0.01, 1, (x) => (+x).toFixed(2)), plain(tt("Ouverture ↕"), "oh", 0.2, 5, 0.01, 1, (x) => (+x).toFixed(2))));
+        calc ? "" : h("div", { title: tt("Bouche en trait : de combien la lèvre du bas descend (↕) et la largeur de la bouche ouverte (↔). Une bouche déjà ouverte dans le dessin garde sa forme.") }, plain(tt("Ouverture ↔ ⓘ"), "ow", 0.3, 1.3, 0.01, 1, (x) => (+x).toFixed(2)), plain(tt("Ouverture ↕"), "oh", 0.2, 5, 0.01, 1, (x) => (+x).toFixed(2))));
     }
     if (lip.on) {
-      rows.push(h("label.row", { title: tt("Le dessin des bouches") }, tt("Jeu de bouches"), h("select", { on: { change: async (e) => { const was = (l.lip || {}).set === PERSO; put("set", e.target.value); if (was !== (e.target.value === PERSO)) { await autoMouth(l, true); hist.snap(); paint(); } props(); } } }, [...(sp0 && sp0.mouth || lip.set === TRACE ? [[TRACE, TRACE_NAME]] : []), ...(hasPerso(itemOf(l)) ? [[PERSO, PERSO_NAME]] : []), ...Object.entries(SETS)].map(([k, n]) => h("option", { value: k, selected: (lip.set || (trace ? TRACE : "capsule")) === k }, n)))),
-        trace ? fold("lipt", tt("Trait de la bouche"), plain(tt("Épaisseur"), "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain(tt("Tremblé"), "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain(tt("Ondulation"), "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))) : "");
+      const opts = gen ? Object.entries(SETS) : [...(sp0 && sp0.mouth || lip.set === TRACE ? [[TRACE, TRACE_NAME]] : []), ...Object.entries(SETS)];
+      rows.push(!gen || graphic ? h("label.row", { title: tt("Le dessin des bouches") }, tt("Jeu de bouches"), h("select", { on: { change: (e) => { put("set", e.target.value); if (SETS[e.target.value]) l.lip.gset = e.target.value; props(); } } }, opts.map(([k, n]) => h("option", { value: k, selected: (lip.set || (trace ? TRACE : "capsule")) === k }, n)))) : "",
+        trace && !calc ? fold("lipt", tt("Trait de la bouche"), plain(tt("Épaisseur"), "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain(tt("Tremblé"), "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain(tt("Ondulation"), "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))) : "");
     }
     if (lip.on && !trace) {
       rows.push(h("div.row.wrap",
@@ -734,7 +861,7 @@ export function openMontage(app, pid) {
           h("select", { on: { change: (e) => { put("mode", e.target.value); lanes(); props(); } } }, Object.entries(MODES).map(([k, n]) => h("option", { value: k, selected: (lip.mode || "simple") === k }, n)))),
         lip.mode !== "detail" ? h("div", { title: tt("Nombre de battements de bouche par seconde pendant que ça parle") }, plain(tt("Rythme ⓘ"), "flap", 1.5, 6, 0.5, 4, (x) => (+x).toFixed(1) + " /s")) : "",
         (lip.set || "capsule") === "capsule" || lip.set === TRACE ? h("div", { title: tt("Taille de la bouche ouverte, par rapport au trait de la bouche fermée") }, plain(tt("Ouverture ↔ ⓘ"), "ow", 0.15, 1.2, 0.01, 0.55, (x) => (+x).toFixed(2)), plain(tt("Ouverture ↕"), "oh", 0.2, 2.5, 0.01, 1, (x) => (+x).toFixed(2))) : "",
-        fold("lipt", tt("Trait de la bouche"), plain(tt("Épaisseur"), "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain(tt("Tremblé"), "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain(tt("Ondulation"), "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))),
+        calc ? "" : fold("lipt", tt("Trait de la bouche"), plain(tt("Épaisseur"), "lw", 0.2, 4, 0.05, 1, (x) => (+x).toFixed(2)), plain(tt("Tremblé"), "hand", 0, 10, 0.1, 0, (x) => (+x).toFixed(1)), plain(tt("Ondulation"), "wave", 0.5, 12, 0.1, 4, (x) => (+x).toFixed(1))),
         h("label.row.check", { title: tt("Une forme derrière la bouche, pour couvrir celle du dessin. Elle prend la couleur choisie pour le personnage (blanc s'il n'en a pas).") }, h("input", { type: "checkbox", checked: lip.bg !== false, on: { change: (e) => { put("bg", e.target.checked); props(); } } }), tt("Masque de peau")));
       if (lip.bg !== false) rows.push(fold("lipm", tt("Réglages du masque"), plain(tt("Largeur"), "mw", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)), plain(tt("Hauteur"), "mh", 0.1, 4, 0.02, 1, (x) => (+x).toFixed(2)),
         plain(tt("Décalage ↔"), "mx", -120, 120, 1, 0, (x) => String(Math.round(x))), plain(tt("Décalage ↕"), "my", -120, 120, 1, 0, (x) => String(Math.round(x))),
@@ -743,12 +870,16 @@ export function openMontage(app, pid) {
     if (lip.on) {
       if (lip.cues) {
         const simple = lip.mode !== "detail" && lip.mode !== "mix", force = (sh) => { const i = cueIndex(lip, t); if (i < 0) return toast(tt("La tête de lecture est hors de la voix.")); const c = lip.cues.split(""); for (let q = i; q < Math.min(c.length, i + 2); q++) c[q] = sh; put("cues", c.join("")); props(); };
-        rows.push(plain(tt("Décalage (s)"), "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2)),
+        // bouches generees ou bouche du dessin : des boutons en lettres, pas les formes simples qui preteraient a confusion
+        const word = trace ? (simple ? { X: tt("Fermée"), A: tt("Ouverte") } : { X: tt("Fermée"), M: "M", A: "A", E: "É", O: "O", U: "OU", F: "F", D: "D", L: "L" }) : null;
+        rows.push(
           h("div.muted", { title: tt("Clique une bouche pour l'imposer à l'instant affiché (deux images). Pour corriger une bouche mal devinée.") }, tt`Bouche à cet instant ⓘ : ${MOUTHS[cueAt(lip, t)]}`),
-          h("div.row.wrap.mouths", (simple ? SIMPLE : Object.keys(MOUTHS)).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); b.innerHTML = mouthIcon(k, lip.set, itemOf(l)); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));
+          h("div.row.wrap.mouths", (simple ? SIMPLE : Object.keys(MOUTHS)).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); if (word) b.textContent = word[k]; else b.innerHTML = mouthIcon(k, lip.set, itemOf(l)); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.padding = "1px 3px"; return b; })));
       }
     }
-    return h("div", h("h4", { title: tt("Une voix importée ou enregistrée fait parler le personnage : le navigateur écoute le son et appelle la bonne bouche, sans calcul sur les machines.") }, tt("🗣 Voix et bouche ⓘ")), fold("lip", tt("Réglages de la voix"), ...rows));
+    return h("div.mt-voice",
+      fold("voice", tt("🔊 Voix"), h("div.muted", tt("La bande son : une voix de la banque audio, générée, ou enregistrée au micro.")), ...vrows),
+      fold("mouth", tt("👄 Bouche"), lip.src ? "" : h("div.muted", tt("Sans voix, la bouche reste fermée.")), ...rows));
   }
 
   // ------------------------------------------------------------------------------------------ timeline (bas)

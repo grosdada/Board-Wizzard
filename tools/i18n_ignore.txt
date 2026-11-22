@@ -38,3 +38,6 @@ identikit.js: IMAGE
 fal:openai/gpt-image-2.5/flare/edit
 Anthropic (Claude)
 OpenAI (GPT)
+A
+É
+OU

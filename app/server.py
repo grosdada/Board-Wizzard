@@ -607,6 +607,8 @@ class Handler(BaseHTTPRequestHandler):
                                                 mode=d.get("mode", "vider"), lines=bool(d.get("lines"))))
         if act == "mouth" and method in ("POST", "DELETE"):         # lip sync : la bouche tracee sur le dessin, suivie dans l'orbite
             return self.send_json(self._mouth(iid, it, method, d if method == "POST" else {"variant": q.get("variant") or q.get("v") or "base"}))
+        if act == "lips" and method == "POST":                      # bouches calculees : corriger la place ou le detourage d'une image-cle
+            return self.send_json(self._lips(iid, it, d))
         if act == "restore" and method == "POST":                   # remettre les images d'avant les retouches
             return self.send_json(retouch.restore(iid, d.get("variant", "base")))
         if act == "undo" and method == "POST":                      # Ctrl+Z / Ctrl+Y d'une retouche (15 pas par orbite)
@@ -693,6 +695,60 @@ class Handler(BaseHTTPRequestHandler):
                     x.pop("cover", None)
             return self.send_json(store.mutate_item(iid, drop))
         raise ApiError("route inconnue", 404)
+
+    def _lips(self, iid, it, d):
+        """Retouche d'une image-cle des bouches calculees (tools/levres.py) depuis le montage. d = {variant, f (image-cle),
+        x, y, s (place et taille de la carte, pixels de l'orbite), cards: {A: "data:image/png;base64,..."} (cartes
+        regommees), original (true : remettre les cartes d'origine)}. La premiere retouche d'une carte garde l'originale
+        dans lips/orig/ ; lips.json est sauvegarde dans data/backup/. Rend {item}."""
+        import base64
+        from PIL import Image
+        vid = d.get("variant") or "base"
+        o = (it["variants"].get(vid) or {}).get("orbit") or {}
+        folder = store.item_dir(iid) / o["dir"] if o.get("dir") else None
+        if not folder or not (folder / "lips.json").exists():
+            raise ApiError("cette pose n'a pas de bouches calculées")
+        data = json.loads((folder / "lips.json").read_text(encoding="utf-8"))
+        key = next((k for k in data.get("keys", []) if int(k.get("f", -1)) == int(d.get("f", -2))), None)
+        if not key:
+            raise ApiError("image-clé introuvable")
+        bk = settings.DATA / "backup" / ("lips_%s_%s_%s.json" % (iid, vid, time.strftime("%Y%m%d_%H%M%S")))
+        bk.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(folder / "lips.json", bk)
+        orig = folder / "lips" / "orig"
+        if d.get("original"):
+            for rel in key.get("cards", {}).values():
+                src = orig / Path(rel).name
+                if src.exists():
+                    shutil.copyfile(src, folder / rel)
+            if key.get("orig_box"):
+                key["x"], key["y"], key["s"] = key.pop("orig_box")
+        else:
+            box = [key.get("x"), key.get("y"), key.get("s")]
+            for name in ("x", "y", "s"):
+                if d.get(name) is not None:
+                    v = int(round(float(d[name])))
+                    key[name] = max(8, min(4096, v)) if name == "s" else max(-4096, min(8192, v))
+            if [key.get("x"), key.get("y"), key.get("s")] != box:
+                key.setdefault("orig_box", box)
+            for shape, url in (d.get("cards") or {}).items():
+                rel = key.get("cards", {}).get(shape)
+                if not rel or not isinstance(url, str) or "," not in url:
+                    continue
+                dest = store.safe(folder, rel)
+                orig.mkdir(parents=True, exist_ok=True)
+                if not (orig / dest.name).exists():
+                    shutil.copyfile(dest, orig / dest.name)
+                im = Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))).convert("RGBA")
+                im.save(dest, "WEBP", lossless=True)
+        (folder / "lips.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        stamp = int(time.time() * 1000)
+
+        def fn(x):
+            oo = (x["variants"].get(vid) or {}).get("orbit") or {}
+            if oo.get("dir") == o["dir"]:
+                oo["lips"] = stamp
+        return {"item": store.resolve(store.mutate_item(iid, fn))}
 
     def _mouth(self, iid, it, method, d):
         """Bouche du dessin (jeu « trace » du lip sync) : POST {variant, f, line} accroche la bouche au trait trace sur
