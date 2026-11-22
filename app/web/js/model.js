@@ -141,7 +141,17 @@ export function preload(item, vid) {
 }
 
 // ---- axes : les reperes (snaps) d'une orbite donnent l'angle de chaque image, par morceaux
+// orbite qui tourne a l'envers (apres la face, le sujet regarde vers la droite de l'ecran : ses reperes decroissent dans
+// l'ordre des AXES) : on lit ses images en sens inverse, f -> n - f, et tout le reste marche pareil
+function reversed(orbit) {
+  const n = orbit.n, s = orbit.snaps || {}, fr = AXES.map((a) => s[a]).filter((v) => v != null);
+  let back = 0, fwd = 0;
+  for (let k = 0; k < fr.length; k++) { const d = (((fr[(k + 1) % fr.length] - fr[k]) % n) + n) % n; if (d) (d > n / 2 ? back++ : fwd++); }
+  return back > fwd;
+}
+const flipF = (n, f) => (n - (((f % n) + n) % n)) % n;
 function table(orbit) {
+  if (reversed(orbit)) return table(Object.assign({}, orbit, { snaps: Object.fromEntries(Object.entries(orbit.snaps).map(([a, f]) => [a, flipF(orbit.n, f)])), rev: true }));
   const n = orbit.n, snaps = orbit.snaps || {};
   const rows = AXES.map((a, k) => [k * 45, snaps[a]]).filter((r) => r[1] != null);
   if (rows.length < 2) return null;
@@ -154,6 +164,7 @@ function table(orbit) {
 export function frameToAngle(orbit, f) {
   const n = orbit.n, t = table(orbit);
   f = ((f % n) + n) % n;
+  if (t && reversed(orbit)) f = flipF(n, f);
   if (!t) return f / n * 360;
   for (const ff of [f, f + n]) {
     for (let k = 0; k < t.length - 1; k++) {
@@ -169,11 +180,12 @@ export function angleToFrame(orbit, ang) {
   const n = orbit.n, t = table(orbit);
   ang = ((ang % 360) + 360) % 360;
   if (!t) return Math.round(ang / 360 * n) % n;
+  const rv = reversed(orbit);
   for (const aa of [ang, ang + 360]) {
     for (let k = 0; k < t.length - 1; k++) {
       if (aa >= t[k][0] && aa <= t[k + 1][0]) {
-        const u = (aa - t[k][0]) / Math.max(1e-6, t[k + 1][0] - t[k][0]);
-        return Math.round(t[k][1] + u * (t[k + 1][1] - t[k][1])) % n;
+        const u = (aa - t[k][0]) / Math.max(1e-6, t[k + 1][0] - t[k][0]), fr = Math.round(t[k][1] + u * (t[k + 1][1] - t[k][1])) % n;
+        return rv ? flipF(n, fr) : fr;
       }
     }
   }
