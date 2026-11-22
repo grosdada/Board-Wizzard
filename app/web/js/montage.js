@@ -346,19 +346,27 @@ export function openMontage(app, pid) {
     const range = (label, k, min, max, step, title) => { const out = h("output", (+gr[k]).toFixed(2));
       return h("label.row.range", title ? { title } : {}, label, h("input", { type: "range", min, max, step, value: gr[k], on: { input: (e) => { gr[k] = +e.target.value; out.textContent = (+gr[k]).toFixed(2); upd(); } } }), out); };
     if (gr.hz == null) gr.hz = estimateHorizon(pan);
+    // taches (sol sali) : leurs reglages, montres seulement pour ce motif
+    for (const [k, v] of [["dn", 0.35], ["ts", 1], ["sf", 0.5], ["seed", 1]]) if (gr[k] == null) gr[k] = v;
+    const stainBox = h("div", { style: { display: gr.pat === "taches" ? "" : "none" } },
+      range(tt("Densité des taches"), "dn", 0.03, 1, 0.01, tt("Part du sol couverte de taches")),
+      range(tt("Taille des taches"), "ts", 0.2, 3, 0.01),
+      range(tt("Flou des bords"), "sf", 0, 2, 0.01),
+      h("button.mini", { title: tt("Un autre tirage des taches, mêmes réglages"), on: { click: () => { gr.seed = Math.floor(Math.random() * 9999) + 1; upd(); } } }, tt("🎲 Autres taches")));
     const hzRow = range(tt("Horizon ⓘ"), "hz", 0.02, 0.95, 0.005, tt("Hauteur de la ligne d'horizon dans la case (0 en haut, 1 en bas) : le sol s'arrête là. Estimée d'après les personnages : à hauteur de leurs yeux, comme une caméra à hauteur d'homme."));
     modal(tt("Carte de sol"), h("div.form",
       h("p.muted", tt("Un motif posé sur le sol de la case, vu en perspective dans l'image, sous les personnages. Il se voit dans la case, au montage et dans les images exportées.")),
       h("label.row.check", h("input", { type: "checkbox", checked: !!gr.on, on: { change: (e) => { gr.on = e.target.checked; upd(); } } }), tt("Sol dans l'image")),
-      h("label.row", tt("Motif"), h("select", { on: { change: (e) => { gr.pat = e.target.value; upd(); } } }, Object.entries(PATS).map(([k, n]) => h("option", { value: k, selected: (gr.pat || "damier") === k }, n)))),
+      h("label.row", tt("Motif"), h("select", { on: { change: (e) => { gr.pat = e.target.value; stainBox.style.display = gr.pat === "taches" ? "" : "none"; upd(); } } }, Object.entries(PATS).map(([k, n]) => h("option", { value: k, selected: (gr.pat || "damier") === k }, n)))),
+      stainBox,
       hzRow,
       h("button.mini", { title: tt("Replace l'horizon à hauteur des yeux des personnages"), on: { click: () => { gr.hz = estimateHorizon(pan); hzRow.querySelector("input").value = gr.hz; hzRow.querySelector("output").textContent = gr.hz.toFixed(2); upd(); } } }, tt("◎ Estimer l'horizon")),
-      range(tt("Taille des carreaux"), "sc", 0.12, 2, 0.01),
+      range(tt("Taille du motif"), "sc", 0.12, 2, 0.01, tt("Taille des carreaux, des points ou de l'espacement des taches")),
       range(tt("Opacité"), "a", 0.03, 1, 0.01),
       h("label.row", tt("Couleur"), h("input", { type: "color", value: gr.col || "#000000", on: { input: (e) => { gr.col = e.target.value; upd(); } } }))), [
       { label: tt("Retirer la carte de sol"), click: () => { delete pan.ground; paint(); hist.snap(); } },
       { label: tt("Voir dans l'image"), click: () => { hist.snap(); setView("image"); } },
-      { label: tt("OK"), primary: true, click: () => { hist.snap(); } }]);
+      { label: tt("✓ Garder le sol dans l'image"), primary: true, click: () => { gr.on = true; hist.snap(); setView("image"); } }]);
   }
 
   // ------------------------------------------------------------------------------------------ cles
@@ -1463,8 +1471,9 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     toast(tt`Action enregistrée : ${(t1 - r.t0).toFixed(2)} s, ${r.keys.size} clés.`);
   }
   // Ctrl+Z / Ctrl+Y : les 5 dernieres actions (elements, cles, camera, profondeur de champ)
-  const hist = history(() => ({ layers: pan.layers, anim, dof, draw: pan.draw || null }), (st) => {
+  const hist = history(() => ({ layers: pan.layers, anim, dof, draw: pan.draw || null, ground: pan.ground || null }), (st) => {
     if (st.draw) pan.draw = st.draw;
+    if (st.ground) pan.ground = st.ground; else delete pan.ground;
     pan.layers = st.layers;
     for (const k of Object.keys(anim)) delete anim[k];
     Object.assign(anim, st.anim);
@@ -1514,6 +1523,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     real.layers = pan.layers;
     real.dof = dof;
     if (pan.draw) real.draw = pan.draw;                   // profondeur des formes du decor
+    if (pan.ground) real.ground = pan.ground; else delete real.ground;   // carte de sol : gardee dans la case
     for (const id of Object.keys(anim.tracks)) if (!anim.tracks[id].length) delete anim.tracks[id];
     real.anim = anim;
     app.commit("montage"); app.editor.render(); app.refreshInspector();

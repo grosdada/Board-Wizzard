@@ -3,7 +3,7 @@
 // sc (taille des carreaux), col (couleur), a (opacite) }. Le meme trace dans la case, au montage et dans l'image aplatie.
 import { tt } from "./i18n.js";
 
-export const PATS = { damier: tt("Damier"), grille: tt("Grille"), points: tt("Points"), lignes: tt("Lignes (bandes)"), uni: tt("Uni") };
+export const PATS = { damier: tt("Damier"), grille: tt("Grille"), points: tt("Points"), lignes: tt("Lignes (bandes)"), taches: tt("Taches (sol sali)"), uni: tt("Uni") };
 export const GROUND0 = { on: true, pat: "damier", sc: 0.5, col: "#000000", a: 0.22 };
 
 /** Horizon estime d'apres les personnages : camera a hauteur d'homme, l'horizon passe a hauteur de leurs yeux (pied moins
@@ -17,6 +17,31 @@ export function estimateHorizon(pan) {
 }
 
 const f1 = (n) => n.toFixed(1);
+// hasard reproductible : le meme sol a chaque dessin (graine gr.seed)
+const rnd = (i, j, s, k) => { let x = Math.sin(i * 127.1 + j * 311.7 + s * 74.7 + k * 19.19) * 43758.5453; return x - Math.floor(x); };
+/** Taches : des salissures posees sur le sol (coordonnees du sol X, Z), chacune faite de 3 a 5 ronds qui se chevauchent,
+ *  ecrasees par la perspective. gr.dn : densite (part des cases tachees), gr.ts : taille des taches, gr.seed : tirage. */
+function stains(gr, sc, P, f, xmax, Z0, zEnd) {
+  const dn = gr.dn ?? 0.35, ts = gr.ts ?? 1, seed = gr.seed ?? 1;
+  let d = "";
+  for (let i = 0, Z = Z0; Z < zEnd; i++, Z += sc) {
+    const n = Math.ceil(xmax(Z) / sc) + 1;
+    for (let j = -n; j <= n; j++) {
+      if (rnd(i, j, seed, 0) > dn) continue;
+      const X = (j + rnd(i, j, seed, 1)) * sc, Zc = Z + rnd(i, j, seed, 2) * sc, r0 = sc * ts * (0.18 + 0.55 * rnd(i, j, seed, 3) ** 2);
+      const parts = 3 + Math.floor(rnd(i, j, seed, 4) * 3);
+      for (let q = 0; q < parts; q++) {
+        const a = rnd(i, j, seed, 5 + q) * Math.PI * 2, dd = r0 * 0.7 * rnd(i, j, seed, 9 + q), r = r0 * (0.35 + 0.65 * rnd(i, j, seed, 13 + q));
+        const zz = Zc + Math.sin(a) * dd;
+        if (zz <= 0.2) continue;
+        const c = P(X + Math.cos(a) * dd, zz), rx = f * r / zz, ry = f * r / (zz * zz);
+        if (rx < 0.25) continue;
+        d += `M${f1(c[0] - rx)} ${f1(c[1])}a${rx.toFixed(2)} ${ry.toFixed(2)} 0 1 0 ${(2 * rx).toFixed(2)} 0a${rx.toFixed(2)} ${ry.toFixed(2)} 0 1 0 ${(-2 * rx).toFixed(2)} 0Z`;
+      }
+    }
+  }
+  return d;
+}
 /** Sol en perspective dans une boite {x, y, w, h} (unites de la case). id : prefixe unique pour les degrades. */
 export function groundSvg(gr, box, id = "gr") {
   if (!gr || !gr.on) return "";
@@ -41,17 +66,22 @@ export function groundSvg(gr, box, id = "gr") {
     for (let j = -n; j <= n; j++) { const p1 = P(j * sc, Z0), p2 = P(j * sc, ZMAX); d += `M${f1(p1[0])} ${f1(p1[1])}L${f1(p2[0])} ${f1(p2[1])}`; }
     for (const Z of rows) { const y = P(0, Z)[1]; d += `M${f1(box.x)} ${f1(y)}H${f1(box.x + box.w)}`; }
     d = `<path d="${d}" fill="none" stroke="${col}" stroke-width="${w.toFixed(2)}"/>`;
+  } else if (pat === "taches") {
+    d = stains(gr, sc, P, f, xmax, Z0, 9);
   } else if (pat === "points") {
     for (const Z of rows) {
       const n = Math.ceil(xmax(Z) / sc), r = Math.max(0.4, f * 0.012 / Z);
       for (let j = -n; j <= n; j++) { const p = P(j * sc, Z); d += `M${f1(p[0] - r)} ${f1(p[1])}a${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(2 * r).toFixed(2)} 0a${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(-2 * r).toFixed(2)} 0Z`; }
     }
   }
-  const body = pat === "grille" ? d : `<path d="${d}" fill="${col}"/>`;
+  // taches : bords adoucis (gr.sf), le flou ne deborde pas du sol
+  const soft = pat === "taches" ? Math.max(0, gr.sf ?? 0.5) * box.h * 0.006 : 0;
+  const body = pat === "grille" ? d : `<path d="${d}" fill="${col}"${soft > 0.05 ? ` filter="url(#${id}-sf)"` : ""}/>`;
   // vers l'horizon le motif s'efface (trop fin pour etre dessine)
   const yFar = P(0, ZMAX)[1], yMid = P(0, ZMAX / 4)[1];
   return `<defs><linearGradient id="${id}-fade" gradientUnits="userSpaceOnUse" x1="0" y1="${f1(yFar)}" x2="0" y2="${f1(yMid)}"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="1"/></linearGradient>` +
     `<mask id="${id}-m" maskUnits="userSpaceOnUse" x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(box.y + box.h - yH)}"><rect x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(box.y + box.h - yH)}" fill="url(#${id}-fade)"/></mask>` +
+    (soft > 0.05 ? `<filter id="${id}-sf" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="${soft.toFixed(2)}"/></filter>` : "") +
     `<clipPath id="${id}-c"><rect x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(box.y + box.h - yH)}"/></clipPath></defs>` +
     `<g clip-path="url(#${id}-c)" mask="url(#${id}-m)" opacity="${a}" style="pointer-events:none">${body}</g>`;
 }
@@ -63,6 +93,8 @@ export function groundPattern(gr, id) {
   const inner = g.pat === "damier" ? `<rect width="${hs}" height="${hs}" fill="${col}"/><rect x="${hs}" y="${hs}" width="${hs}" height="${hs}" fill="${col}"/>`
     : g.pat === "grille" ? `<path d="M0 0H${s}M0 0V${s}" fill="none" stroke="${col}" stroke-width="${(sc * 0.06).toFixed(4)}"/>`
     : g.pat === "points" ? `<circle cx="0" cy="0" r="${(sc * 0.07).toFixed(4)}" fill="${col}"/>`
-    : g.pat === "lignes" ? `<rect width="${s}" height="${hs}" fill="${col}"/>` : `<rect width="${s}" height="${s}" fill="${col}"/>`;
+    : g.pat === "lignes" ? `<rect width="${s}" height="${hs}" fill="${col}"/>`
+    : g.pat === "taches" ? Array.from({ length: 4 }, (_, q) => (rnd(q, 0, g.seed ?? 1, 0) < (g.dn ?? 0.35) * 1.6 ? `<circle cx="${(rnd(q, 1, g.seed ?? 1, 1) * sc).toFixed(4)}" cy="${(rnd(q, 2, g.seed ?? 1, 2) * sc).toFixed(4)}" r="${(sc * 0.18 * (g.ts ?? 1) * (0.5 + rnd(q, 3, g.seed ?? 1, 3))).toFixed(4)}" fill="${col}"/>` : "")).join("")
+    : `<rect width="${s}" height="${s}" fill="${col}"/>`;
   return `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${s}" height="${s}"><g opacity="${a}">${inner}</g></pattern>`;
 }

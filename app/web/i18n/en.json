@@ -1,5 +1,15 @@
 {
  "ui": {
+  "Taches (sol sali)": "Stains (dirty floor)",
+  "Densité des taches": "Stain density",
+  "Part du sol couverte de taches": "Share of the floor covered with stains",
+  "Taille des taches": "Stain size",
+  "Flou des bords": "Edge softness",
+  "Un autre tirage des taches, mêmes réglages": "Another draw of the stains, same settings",
+  "🎲 Autres taches": "🎲 Other stains",
+  "Taille du motif": "Pattern size",
+  "Taille des carreaux, des points ou de l'espacement des taches": "Size of the tiles, the dots or the spacing of the stains",
+  "✓ Garder le sol dans l'image": "✓ Keep the floor in the image",
   "Versions de la bouche « {0} »": "Versions of the « {0} » mouth",
   "Les retouches non enregistrées de cette bouche seront perdues. Continuer ?": "The unsaved touch-ups of this mouth will be lost. Continue?",
   "Version {0}": "Version {0}",
