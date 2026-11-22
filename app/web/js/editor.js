@@ -9,7 +9,7 @@ import { markShape, thin } from "./marks.js";
 import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
-import { frameToAngle, thinMask, lineWidth } from "./model.js";
+import { frameToAngle, thinMask, lineWidth, tintOf, tintFilter } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
@@ -294,7 +294,13 @@ export class Editor {
             x: box.x, y: box.y, width: box.w, height: box.h, preserveAspectRatio: "xMidYMax meet", "data-layer": l.id,
             "data-panel": g.id, transform: ((l.rz ? `rotate(${l.rz} ${box.cx} ${box.y + box.h / 2}) ` : "") + (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1)` : "")) || null,
             filter: this.blur(defs, blurOf(pan, depthOf(pan, i), bb)), class: "layer" });
-          grp.append(im);
+          const tc = tintOf(l);
+          if (tc) {                                          // colorize : la couleur en produit dans la decoupe
+            const tid = "tn-" + g.id + "-" + l.id;
+            defs.insertAdjacentHTML("beforeend", tintFilter(tid, tc));
+            const gt = s("g", { filter: `url(#${tid})` });
+            gt.append(im); grp.append(gt);
+          } else grp.append(im);
           if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };
         });
       }

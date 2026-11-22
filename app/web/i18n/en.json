@@ -1,5 +1,7 @@
 {
  "ui": {
+  "Pose une couleur en produit sur le personnage, dans sa découpe : le blanc prend la couleur, les traits et la peinture restent visibles. Les bouches du lip sync prennent la même couleur.": "Lays a colour in multiply over the character, inside its cut-out: the white takes the colour, the lines and the paint stay visible. The lip sync mouths take the same colour.",
+  "Colorize ⓘ": "Colorize ⓘ",
   "{0} clés copiées.": "{0} keys copied.",
   "Clé copiée.": "Key copied.",
   "Aucune clé copiée (Ctrl+C sur une clé).": "No key copied (Ctrl+C on a key).",

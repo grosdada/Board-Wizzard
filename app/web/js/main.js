@@ -855,6 +855,13 @@ class App {
         h("div.row.colrow", { title: tt("Couleur du trait : tout ce qui est noir dans le dessin prend cette couleur.") }, h("span", tt("Contour")),
           swatch(l.ink || "#111111", (c) => { l.ink = c; this.editor.render(true); this.commitSoon("ink"); }),
           l.ink && l.ink.toLowerCase() !== "#111111" ? h("button.mini", { on: { click: () => { delete l.ink; this.commit("ink"); this.editor.render(); this.refreshInspector(); } } }, tt("Noir")) : ""));
+      if (sp && !sp.vec) {                                   // colorize : une couleur en produit dans la decoupe (le blanc la prend)
+        const tn = l.tint || {};
+        const cb = h("input", { type: "checkbox", checked: !!tn.on, on: { change: (e) => { l.tint = Object.assign({ c: "#e9b98f" }, l.tint, { on: e.target.checked }); this.commit("tint"); this.editor.render(); } } });
+        box.append(h("div.row.colrow", { title: tt("Pose une couleur en produit sur le personnage, dans sa découpe : le blanc prend la couleur, les traits et la peinture restent visibles. Les bouches du lip sync prennent la même couleur.") },
+          h("label.row.check", cb, tt("Colorize ⓘ")),
+          swatch(tn.c || "#e9b98f", (c) => { l.tint = { on: true, c }; cb.checked = true; this.editor.render(true); this.commitSoon("tint"); })));
+      }
       box.append(range(tt("Inclinaison"), l.rz || 0, -180, 180, 1, (x) => { l.rz = x; }, "rz"));
       box.append(rs, rpx, rpy,
         range(tt("Profondeur"), depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"));

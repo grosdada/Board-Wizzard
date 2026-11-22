@@ -5,7 +5,7 @@ import { loadImage } from "./api.js";
 import { groundSvg } from "./ground.js";
 import { drawImage } from "./draw.js";
 import { faceOps, headReady, opsCanvas } from "./face.js";
-import { frameToAngle, variantOf, lineWidth } from "./model.js";
+import { frameToAngle, variantOf, lineWidth, tintOf } from "./model.js";
 import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
@@ -98,8 +98,18 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       ctx.restore();
       continue;
     }
-    const im = await loadImage(sp.url);
+    let im = await loadImage(sp.url);
     const box = layerBox(local, l, { w: im.naturalWidth, h: im.naturalHeight });
+    const tc = tintOf(l);
+    if (tc) {                                              // colorize : la couleur en produit, gardee dans la decoupe
+      const tcv = document.createElement("canvas"), w = im.naturalWidth, hh = im.naturalHeight;
+      tcv.width = w; tcv.height = hh;
+      const tx = tcv.getContext("2d");
+      tx.drawImage(im, 0, 0);
+      tx.globalCompositeOperation = "multiply"; tx.fillStyle = tc; tx.fillRect(0, 0, w, hh);
+      tx.globalCompositeOperation = "destination-in"; tx.drawImage(im, 0, 0);
+      im = tcv;
+    }
     cast(l, box);
     draw(im, box.x, box.y, box.w, box.h, sharp ? 0 : blurOf(pan, depthOf(pan, i), bb), l.flip, l.rz);
   }

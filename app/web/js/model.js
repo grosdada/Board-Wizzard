@@ -95,6 +95,13 @@ export function wiggleFilter(id, hand, wave, w, h, seed = 5) {
 }
 /** Couleur unie d'un dessin en traces (l.col) : blanc par defaut. */
 export function bodyFill(l) { return l && /^#[0-9a-f]{6}$/i.test(l.col || "") ? l.col : "#ffffff"; }
+/** Colorize d'une image (l.tint = { on, c }) : la couleur posee en produit dans la decoupe ; le blanc la prend,
+ *  traits et peinture restent visibles. null : pas de colorize. */
+export function tintOf(l) { return l && l.tint && l.tint.on && /^#[0-9a-f]{6}$/i.test(l.tint.c || "") ? l.tint.c : null; }
+export function tintFilter(id, c) {
+  return `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feFlood flood-color="${c}"/>` +
+    `<feBlend in2="SourceGraphic" mode="multiply"/><feComposite in2="SourceGraphic" operator="in"/></filter>`;
+}
 /** Ombre d'un dessin : la couleur du corps assombrie (un gris sur un corps blanc), decalee vers la lumiere. */
 export function shadeOf(sh, h, col = "#ffffff", ink = "#111111") {
   if (!sh || !sh.on) return null;

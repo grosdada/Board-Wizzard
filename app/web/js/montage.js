@@ -13,7 +13,7 @@ import { h, modal, toast, history, upload, get, post, put, del } from "./api.js"
 import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth } from "./model.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, tintOf, tintFilter } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
@@ -196,6 +196,8 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
           o += `<g${bl}><g data-mouth="${l.id}" transform="${mt}" style="pointer-events:none">${mf ? (cardMarkup(l.lip, mf.lips, mf.all, sp.i, t) ?? traceMarkup(l.lip, mf.m, t, `${pre}lp-${l.id}`, bodyFill(l))) : ""}</g></g>`;
         }
       }
+      const tc = !vf && tintOf(l);                         // colorize : l'image et ses bouches prennent la meme couleur, en produit
+      if (tc) o = o.slice(0, o1) + tintFilter(`${pre}tn-${l.id}`, tc) + `<g filter="url(#${pre}tn-${l.id})">` + o.slice(o1) + "</g>";
       if (rz) o = o.slice(0, o1) + `<g transform="rotate(${f1(rz)} ${f1(box.cx)} ${f1(box.y + box.h / 2)})">` + o.slice(o1) + "</g>";
       if (sel === l.id) {                                  // poignees : les memes que dans les cases (handles.js)
         const u = 1 / ((px || 1 / 2.4) * c.z), hx = W / 2 / c.z, hy = H / 2 / c.z;
@@ -682,6 +684,12 @@ export function openMontage(app, pid) {
           h("div.row.colrow", { title: tt("Couleur du trait : tout ce qui est noir dans le dessin prend cette couleur.") }, h("span", tt("Contour")),
             swatch(l.ink || "#111111", (c) => { l.ink = c; paint(); }),
             l.ink && l.ink.toLowerCase() !== "#111111" ? h("button.mini", { on: { click: () => { delete l.ink; paint(); props(); } } }, tt("Noir")) : ""));
+      } else if (sprite(it, cur().v, cur().f)) {               // colorize : la couleur en produit dans la decoupe, bouches comprises
+        const tn = l.tint || {};
+        const cb = h("input", { type: "checkbox", checked: !!tn.on, on: { change: (e) => { l.tint = Object.assign({ c: "#e9b98f" }, l.tint, { on: e.target.checked }); hist.snap(); paint(); } } });
+        side.append(h("div.row.colrow", { title: tt("Pose une couleur en produit sur le personnage, dans sa découpe : le blanc prend la couleur, les traits et la peinture restent visibles. Les bouches du lip sync prennent la même couleur.") },
+          h("label.row.check", cb, tt("Colorize ⓘ")),
+          swatch(tn.c || "#e9b98f", (c) => { l.tint = { on: true, c }; cb.checked = true; paint(); })));
       }
       side.append(voiceBox(l));
       if (l.boil && l.boil.on && sprite(it, cur().v, cur().f)?.vec) {
