@@ -388,7 +388,8 @@ export function openMontage(app, pid) {
       {
         const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); paint(); };
         const plain = (label, k, min, max, def) => { const out = h("output", (gs[k] ?? def).toFixed(2)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.01, value: gs[k] ?? def, on: { input: (e) => { putg(k, +e.target.value); out.textContent = (+e.target.value).toFixed(2); } } }), out); };
-        side.append(h("label.row.check", { title: tt("Une tache sombre et floue sous l'élément, pour le poser au sol") }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); props(); } } }), tt("Ombre portée")));
+        side.append(h("div.row.wrap", h("label.row.check", { title: tt("Une tache sombre et floue sous l'élément, pour le poser au sol") }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); props(); } } }), tt("Ombre portée")),
+          gs.on ? h("label.row.check", { title: tt("Au mur : l'ombre se dresse à la verticale sur le côté, derrière le personnage, au lieu d'être couchée au sol. Mêmes réglages.") }, h("input", { type: "checkbox", checked: !!gs.wall, on: { change: (e) => putg("wall", e.target.checked) } }), tt("Au mur")) : ""));
         if (gs.on) side.append(fold("gs", tt("Réglages de l'ombre portée"),
           h("label.row.check", { title: tt("L'ombre prend la couleur choisie pour le contour du dessin, au lieu du noir") }, h("input", { type: "checkbox", checked: !!gs.ink, on: { change: (e) => putg("ink", e.target.checked) } }), tt("Couleur du contour")),
           plain(tt("Opacité"), "a", 0.05, 1, 0.35), h("div", { title: tt("0 : bord net. Vers la droite : de plus en plus floue.") }, plain(tt("Flou ⓘ"), "b", 0, 4, 1)), plain(tt("Largeur"), "w", 0.2, 2.5, 0.8), plain(tt("Épaisseur"), "h", 0.2, 4, 1),

@@ -1,5 +1,7 @@
 {
  "ui": {
+  "Au mur": "On the wall",
+  "Au mur : l'ombre se dresse à la verticale sur le côté, derrière le personnage, au lieu d'être couchée au sol. Mêmes réglages.": "On the wall: the shadow stands upright to the side, behind the character, instead of lying on the ground. Same settings.",
   "Bouches calculées pas encore chargées : réessaie dans un instant.": "Computed mouths not loaded yet: try again in a moment.",
   "Ces bouches viennent d'une autre pose : retouche-les sur cette pose-là.": "These mouths come from another pose: retouch them on that pose.",
   "Image-clé {0} sur {1} (image {2} de l'orbite) · taille {3} px": "Key frame {0} of {1} (turnaround frame {2}) · size {3} px",

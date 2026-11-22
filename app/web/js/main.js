@@ -871,7 +871,8 @@ class App {
       }
       {
         const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); };
-        box.append(h("label.row.check", { title: tt("Une tache sombre et floue sous l'élément, pour le poser au sol") }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); this.commit("cast"); this.editor.render(); this.refreshInspector(); } } }), tt("Ombre portée")));
+        box.append(h("div.row.wrap", h("label.row.check", { title: tt("Une tache sombre et floue sous l'élément, pour le poser au sol") }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); this.commit("cast"); this.editor.render(); this.refreshInspector(); } } }), tt("Ombre portée")),
+          gs.on ? h("label.row.check", { title: tt("Au mur : l'ombre se dresse à la verticale sur le côté, derrière le personnage, au lieu d'être couchée au sol. Mêmes réglages.") }, h("input", { type: "checkbox", checked: !!gs.wall, on: { change: (e) => { putg("wall", e.target.checked); this.commit("cast"); this.editor.render(); } } }), tt("Au mur")) : ""));
         if (gs.on) box.append(fold("gs", tt("Réglages de l'ombre portée"),
           h("label.row.check", { title: tt("L'ombre prend la couleur choisie pour le contour du dessin, au lieu du noir") }, h("input", { type: "checkbox", checked: !!gs.ink, on: { change: (e) => { putg("ink", e.target.checked); this.editor.render(true); this.commit("cast"); } } }), tt("Cloner la couleur de contour")),
           range(tt("Opacité"), gs.a ?? 0.35, 0.05, 1, 0.01, (x) => putg("a", x), "cast"),
