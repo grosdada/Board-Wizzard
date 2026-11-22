@@ -251,6 +251,8 @@ export function openMontage(app, pid) {
   const stateOf = (l) => scene.stateOf(l, t);
   const KEYED = ["x", "y", "s", "rz", "f", "v", "lw", "shg", "shw", "sha"];
   const camAt = () => scene.camAt(t);
+  let focusPick = false, focusBtn = null;                  // cible : le prochain clic sur un element fait la mise au point sur lui
+  const setFocusPick = (on) => { focusPick = !!on; svg.classList.toggle("focus-pick", focusPick); if (focusBtn) focusBtn.classList.toggle("on", focusPick); };
   let camLock = false;                                       // « Bouger la camera » verrouille : tout geste dans l'image deplace le cadre
   const muteOf = (id) => { const q = anim.mute && anim.mute[id]; return q != null ? q : null; };
   function toggleMute(id) {                                  // couper une piste : elle reste figee a l'instant de la tete de lecture
@@ -667,7 +669,13 @@ export function openMontage(app, pid) {
         h("select", { on: { change: (e) => { applyMove(e.target.value); e.target.value = ""; } } }, h("option", { value: "" }, tt("Choisir un mouvement…")), Object.entries(MOVES).map(([k, [name]]) => h("option", { value: k }, name))),
         h("h4", { title: tt("0 = tout devant, 1 = le décor. Quand le flou est coché, la mise au point et le flou ont chacun leur piste dans la timeline, avec leurs propres clés : la mise au point peut passer d'un personnage à l'autre. La vue « Profondeur » montre le plan net.") }, tt("Profondeur de champ ⓘ")),
         h("label.row.check", h("input", { type: "checkbox", checked: !!dof.on, on: { change: (e) => { dof.on = e.target.checked; if (!dof.on && (sel === "fo" || sel === "bl")) sel = "cam"; paint(); lanes(); props(); } } }), tt("Flou de profondeur")));
-      if (dof.on) side.append(range(tt("Mise au point"), "fo", 0, 1, 0.01, undefined, "fo"), range(tt("Flou"), "bl", 0, 60, 1, (x) => String(Math.round(x)), "bl"));
+      if (dof.on) {
+        const rf = range(tt("Mise au point"), "fo", 0, 1, 0.01, undefined, "fo");
+        focusBtn = h("button.mini.target" + (focusPick ? ".on" : ""), { title: tt("Cible : clique ensuite sur un personnage ou un élément dans l'image, la mise au point se fait sur lui. Avec des clés (ou la clé automatique), elle se pose à la tête de lecture : la mise au point passe d'un personnage à l'autre. Échap : annuler."),
+          on: { click: (e) => { e.preventDefault(); setFocusPick(!focusPick); } } }, "🎯");
+        rf.append(focusBtn);
+        side.append(rf, range(tt("Flou"), "bl", 0, 60, 1, (x) => String(Math.round(x)), "bl"));
+      }
       side.append(
         fxAnim() ? h("h4", { title: tt("Les lignes d'effet dessinées dans le fond de la case. 0 : aucune ; 1 : pleines ; au-delà : plus épaisses. Se pose en clés sur la piste « Lignes d'effet » : elles arrivent, grossissent, disparaissent.") }, tt("⚡ Lignes d'effet ⓘ")) : "",
         fxAnim() ? range(tt("Force"), "fx", 0, 2.5, 0.01, undefined, "fx") : "",
@@ -1692,6 +1700,12 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     stop();
     if (placing) { placeMouth(e); return; }
     if (tracing && e.button === 0) { traceDown(e); return; }
+    if (focusPick && e.button === 0) {                     // cible : mise au point sur l'element clique (cle a la tete de lecture)
+      const fid = (e.target.closest("[data-layer]") || {}).dataset?.layer, fl = fid && layerOf(fid);
+      setFocusPick(false);
+      if (fl) { dof.on = true; change("fo", { fo: f3(depthNow(fl)) }); sel = "fo"; paint(); lanes(); props(); }
+      return;
+    }
     const lockCam = camLock && !depthView;                 // camera verrouillee : on ne prend ni personnage ni forme
     const id = lockCam ? null : e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
     const shId = id || lockCam ? null : (e.target.closest("[data-shape]") || {}).dataset?.shape, shp = shId ? shapeOf("s:" + shId) : null;
@@ -1833,6 +1847,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === " ") { e.preventDefault(); e.stopPropagation(); return playing ? stop() : play(); }
     if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "c" || e.key === "C") && !isoView && !v3) { e.preventDefault(); e.stopPropagation(); setCamLock(!camLock); return; }
+    if (e.key === "Escape" && focusPick) { e.preventDefault(); e.stopPropagation(); setFocusPick(false); return; }
     if (e.key === "Escape" && stretchOn) { e.preventDefault(); e.stopPropagation(); stretchOn = false; lanes(); return; }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "c" && keysSel().length && !String(getSelection())) { e.preventDefault(); e.stopPropagation(); copyKeys(); return; }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "v" && keyClip) { e.preventDefault(); e.stopPropagation(); stop(); pasteKeys(t); return; }

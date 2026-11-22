@@ -1,5 +1,7 @@
 {
  "ui": {
+  "Cible : clique ensuite sur un personnage ou un élément de la case, la mise au point se fait sur lui (sur sa profondeur). Échap : annuler.": "Target: then click a character or an element of the panel, the focus goes to it (to its depth). Esc: cancel.",
+  "Cible : clique ensuite sur un personnage ou un élément dans l'image, la mise au point se fait sur lui. Avec des clés (ou la clé automatique), elle se pose à la tête de lecture : la mise au point passe d'un personnage à l'autre. Échap : annuler.": "Target: then click a character or an element in the image, the focus goes to it. With keys (or auto key), it is set at the playhead: the focus moves from one character to another. Esc: cancel.",
   "Muette : figée à {0} s. Clic : remettre son animation": "Muted: frozen at {0} s. Click: bring its animation back",
   "Mute : figer cette piste à l'instant de la tête de lecture (son animation ne joue plus)": "Mute: freeze this track at the playhead time (its animation no longer plays)",
   "Verrouillé : dans l'image, tout geste déplace le cadre de la caméra, même sur un personnage (touche C). Déverrouiller pour reprendre les personnages.": "Locked: in the image, every drag moves the camera frame, even over a character (C key). Unlock to move the characters again.",

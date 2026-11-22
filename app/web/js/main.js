@@ -206,6 +206,23 @@ class App {
   }
 
   // ---------------------------------------------------------------- selection
+  // cible de la mise au point : le prochain clic sur un element de la case y fait la mise au point
+  setFocusPick(on) {
+    this.focusPick = !!on;
+    document.body.classList.toggle("focus-pick", this.focusPick);
+    document.querySelectorAll(".insp button.target").forEach((b) => b.classList.toggle("on", this.focusPick));
+    if (on && !this.focusEsc) {
+      this.focusEsc = (e) => { if (e.key === "Escape" && this.focusPick) { e.stopPropagation(); this.setFocusPick(false); } };
+      document.addEventListener("keydown", this.focusEsc, true);
+    }
+  }
+  focusOn(pid, l) {
+    const pan = this.page().panels[pid] || {}, i = (pan.layers || []).indexOf(l);
+    this.setFocusPick(false);
+    if (i < 0) return;
+    pan.dof = Object.assign({ on: false, focus: 0.3, amount: 12 }, pan.dof, { on: true, focus: Math.round(depthOf(pan, i) * 100) / 100 });
+    this.commit("dof"); this.sel = { panel: pid }; this.editor.render(); this.refreshInspector();
+  }
   select(sel, keepOverlay) {
     const same = sel.panel === this.sel.panel && sel.layer === this.sel.layer && sel.bubble === this.sel.bubble && sel.mark === this.sel.mark;
     this.sel = sel;
@@ -956,7 +973,9 @@ class App {
     box.append(h("button", { title: tt("Vue de dessus de la case : la caméra en bas, le décor en haut, chaque élément posé à sa profondeur. Glisser une carte : haut / bas = sa profondeur, gauche / droite = sa place. C'est la même position que dans le montage."), on: { click: () => this.depthDialog(this.sel.panel) } }, tt("⬒ Profondeur (vue de dessus)")));
     box.append(h("h4", { title: tt("0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre).") }, tt("Profondeur de champ ⓘ")),
       h("label.row.check", h("input", { type: "checkbox", checked: dof.on, on: { change: (e) => { dof.on = e.target.checked; this.commit("dof"); this.editor.render(); } } }), tt("Flouter selon la profondeur")),
-      range(tt("Mise au point"), dof.focus, 0, 1, 0.01, (x) => { dof.focus = x; dof.on = true; }, "dof"),
+      (() => { const r = range(tt("Mise au point"), dof.focus, 0, 1, 0.01, (x) => { dof.focus = x; dof.on = true; }, "dof");
+        r.append(h("button.mini.target" + (this.focusPick ? ".on" : ""), { title: tt("Cible : clique ensuite sur un personnage ou un élément de la case, la mise au point se fait sur lui (sur sa profondeur). Échap : annuler."), on: { click: (e) => { e.preventDefault(); this.setFocusPick(!this.focusPick); } } }, "🎯"));
+        return r; })(),
       range(tt("Flou"), dof.amount, 0, 60, 1, (x) => { dof.amount = x; dof.on = true; }, "dof"));
     const style = h("select", { title: INTEGRATE_STYLES.map(([, l, tip]) => l + " : " + tip).join("\n") }, INTEGRATE_STYLES.map(([v, t]) => h("option", { value: v, selected: v === (pan.style || this.guessStyle(pan)) }, t)));
     style.addEventListener("change", () => { pan.style = style.value; this.commitSoon("style"); });

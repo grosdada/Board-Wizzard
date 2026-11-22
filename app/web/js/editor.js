@@ -484,6 +484,7 @@ export class Editor {
       const pid = t.dataset.panel, g = this.geom.panels.find((x) => x.id === pid);
       const l = (this.panel(pid).layers || []).find((x) => x.id === t.dataset.layer);
       if (!l || !g) return;
+      if (app.focusPick) { app.focusOn(pid, l); e.preventDefault(); return; }      // cible : la mise au point se fait sur lui
       app.select({ panel: pid, layer: l.id });
       const item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
       if (item) preload(item, l.v);
