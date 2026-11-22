@@ -249,6 +249,7 @@ export function openMontage(app, pid) {
   const stateOf = (l) => scene.stateOf(l, t);
   const KEYED = ["x", "y", "s", "rz", "f", "v", "lw", "shg", "shw", "sha"];
   const camAt = () => scene.camAt(t);
+  let stretchOn = false;                                     // « Resize » : une barre a deux poignees etire ou resserre les cles prises
   let chanOpen = localStorage.getItem("bw.camChannels") === "1";      // canaux de la camera deployes dans la timeline
   const CAMS = { cam: tt("Caméra"), fo: tt("Mise au point"), bl: tt("Flou"), fx: tt("Lignes d'effet") };      // pistes de la camera ; fo et bl : profondeur de champ
 
@@ -875,6 +876,7 @@ export function openMontage(app, pid) {
       } } }, group.length > 1 ? tt`⧉ Dupliquer les ${group.length} clés` : tt("⧉ Dupliquer la clé")),
       h("button", { on: { click: () => { box.remove(); if (!picked.has(k)) { picked.clear(); selKey = k; } copyKeys(); } } }, tt("Copier (Ctrl+C)")),
       keyClip ? h("button", { on: { click: () => { box.remove(); pasteKeys(t); } } }, tt("Coller à la tête de lecture (Ctrl+V)")) : "",
+      group.length > 1 ? h("button", { title: tt("Une barre apparaît au-dessus des pistes, de la première à la dernière clé prise : tirer une poignée élargit ou rétrécit leur durée, en gardant leurs proportions ; glisser la barre les déplace toutes"), on: { click: () => { box.remove(); stretchOn = true; lanes(); } } }, tt("⟷ Resize (durée des clés)")) : "",
       h("button.danger", { on: { click: () => { anim.tracks[id] = keysOf(id).filter((x) => x !== k); selKey = null; box.remove(); paint(); lanes(); props(); } } }, ch ? tt("Retirer la clé (tous les canaux)") : tt("Retirer cette clé")));
     document.body.append(box);
     const r = box.getBoundingClientRect();
@@ -1507,6 +1509,13 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     const ticks = []; for (let s = 0; s <= anim.dur + 1e-6; s += anim.dur > 8 ? 1 : 0.5) ticks.push(s);
     const ruler = h("div.mt-lane.ruler", { "data-lane": "ruler" }, ticks.map((s) => h("span.tick", { style: `left:${pct(s)}` }, Number.isInteger(s) ? s + " s" : "")));
     tl.append(h("div.mt-row", h("div.mt-name", ""), ruler));
+    if (stretchOn && picked.size < 2) stretchOn = false;
+    if (stretchOn) {                                       // Resize : de la premiere a la derniere cle prise
+      const ts = [...picked].map((k) => k.t), a = Math.min(...ts), b = Math.max(...ts);
+      const bar = h("div.mt-clip.stretch", { "data-stretch": "1", title: tt`${picked.size} clés · ${(b - a).toFixed(2)} s · tirer un bout pour élargir ou rétrécir, glisser pour déplacer`, style: `left:${pct(a)};width:${pct(b - a)}` },
+        h("span.dk-h.l", { "data-edge": "l" }), h("span.dk-h.r", { "data-edge": "r" }), h("span.len", (b - a).toFixed(2) + " s"));
+      tl.append(h("div.mt-row.voice.stretch", h("div.mt-name", { title: tt("Clic sur la croix ou Échap : fermer la barre") }, "⟷ ", tt("Resize"), " ", h("button.mini", { on: { click: () => { stretchOn = false; lanes(); } } }, "✕")), h("div.mt-lane", { "data-lane": "stretch" }, bar)));
+    }
     const row = (id, name, ico) => {
       const lane = h("div.mt-lane", { "data-lane": id }, keysOf(id).map((k) => { const d = h("span.key" + (k === selKey || picked.has(k) ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: tt`${k.t.toFixed(2)} s · ${EASES[k.e || "doux"]} (clic droit pour changer)` }); d.__key = k; d.dataset.key = id; return d; }));
       tl.append(h("div.mt-row" + (sel === id ? ".on" : ""), h("div.mt-name", { on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, ico, " ", name, keysOf(id).length ? h("span.count", String(keysOf(id).length)) : ""), lane));
@@ -1563,6 +1572,12 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (!lane || e.button !== 0) return;
     stop();
     try { tl.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+    if (lane.dataset.lane === "stretch") {                 // barre Resize : tirer un bout, ou glisser la barre
+      if (!e.target.closest(".mt-clip")) return;
+      const ts = [...picked].map((k) => k.t);
+      drag = { kind: "stretch", mode: e.target.dataset.edge || "move", x0: e.clientX, w: lane.getBoundingClientRect().width, a: Math.min(...ts), b: Math.max(...ts), start: new Map([...picked].map((q) => [q, q.t])) };
+      return;
+    }
     const clipEl = e.target.closest(".mt-clip");
     if (clipEl) {                                          // bloc de voix : le deplacer, ou le raccourcir par un bout
       const l = layerOf(clipEl.dataset.clip), [va, vb] = voiceSpan(l.lip);
@@ -1605,6 +1620,16 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       else lip.out = f3(clamp(drag.b + dt, drag.a + 0.1, lip.dur || 1e9));
       paint(); lanes(); return;
     }
+    if (drag.kind === "stretch") {                         // les cles gardent leurs proportions entre les deux bouts
+      const { a, b } = drag, dt = (e.clientX - drag.x0) / drag.w * anim.dur, span = Math.max(b - a, 1e-6), MIN = 0.05;
+      let na = a, nb = b;
+      if (drag.mode === "r") nb = clamp(b + dt, a + MIN, anim.dur);
+      else if (drag.mode === "l") na = clamp(a + dt, 0, b - MIN);
+      else { const d = clamp(dt, -a, anim.dur - b); na = a + d; nb = b + d; }
+      for (const [k, t0] of drag.start) k.t = f3(b - a < 1e-6 ? t0 + na - a : na + (t0 - a) / span * (nb - na));
+      for (const ks of Object.values(anim.tracks)) ks.sort((p, q) => p.t - q.t);
+      paint(); lanes(); return;
+    }
     if (drag.kind === "keys") {
       const dt = timeAt({ clientX: e.clientX }, tl.querySelector(".mt-lane")) - drag.t0;
       for (const [k, t0] of drag.start) k.t = f3(clamp(t0 + dt, 0, anim.dur));
@@ -1617,6 +1642,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   tl.addEventListener("pointerup", (e) => {
     if (!drag) return;
     const d = drag; drag = null;
+    if (d.kind === "stretch") hist.snap();
     if (d.kind === "box") {
       if (d.el) { d.el.remove(); if (picked.size === 1) { selKey = [...picked][0]; picked.clear(); } }
       else { picked.clear(); sel = d.lane.dataset.lane; selKey = null; t = clamp(timeAt(e, d.lane), 0, anim.dur); paint(); }
@@ -1789,6 +1815,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === " ") { e.preventDefault(); e.stopPropagation(); return playing ? stop() : play(); }
+    if (e.key === "Escape" && stretchOn) { e.preventDefault(); e.stopPropagation(); stretchOn = false; lanes(); return; }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "c" && keysSel().length && !String(getSelection())) { e.preventDefault(); e.stopPropagation(); copyKeys(); return; }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "v" && keyClip) { e.preventDefault(); e.stopPropagation(); stop(); pasteKeys(t); return; }
     if ((e.key === "Delete" || e.key === "Backspace") && picked.size) {

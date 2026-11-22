@@ -1,5 +1,10 @@
 {
  "ui": {
+  "Une barre apparaît au-dessus des pistes, de la première à la dernière clé prise : tirer une poignée élargit ou rétrécit leur durée, en gardant leurs proportions ; glisser la barre les déplace toutes": "A bar appears above the tracks, from the first to the last selected key: drag a handle to widen or shrink their duration, keeping their proportions; drag the bar to move them all",
+  "⟷ Resize (durée des clés)": "⟷ Resize (key duration)",
+  "{0} clés · {1} s · tirer un bout pour élargir ou rétrécir, glisser pour déplacer": "{0} keys · {1} s · drag an end to widen or shrink, drag to move",
+  "Clic sur la croix ou Échap : fermer la barre": "Click the cross or press Esc: close the bar",
+  "Resize": "Resize",
   "Pose une couleur en produit sur le personnage, dans sa découpe : le blanc prend la couleur, les traits et la peinture restent visibles. Les bouches du lip sync prennent la même couleur.": "Lays a colour in multiply over the character, inside its cut-out: the white takes the colour, the lines and the paint stay visible. The lip sync mouths take the same colour.",
   "Colorize ⓘ": "Colorize ⓘ",
   "{0} clés copiées.": "{0} keys copied.",

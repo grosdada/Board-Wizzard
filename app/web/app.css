@@ -357,6 +357,12 @@ details.fold > summary:hover { opacity: 1; }
 .mt-clip { position: absolute; top: 3px; bottom: 3px; min-width: 20px; background: #4a3f24; border: 1px solid #a88a45; border-radius: 5px; cursor: grab; overflow: hidden; touch-action: none; }
 .mt-clip svg { position: absolute; left: 9px; right: 9px; top: 0; height: 100%; width: calc(100% - 18px); fill: #ffd27a; pointer-events: none; }
 .mt-clip .dk-h { background: #ffd27a; }
+/* barre « Resize » des cles prises */
+.mt-row.stretch { background: rgba(125, 211, 192, 0.07); }
+.mt-row.stretch .mt-name .mini { padding: 0 5px; margin-left: 4px; }
+.mt-clip.stretch { background: rgba(125, 211, 192, 0.22); border-color: #7dd3c0; }
+.mt-clip.stretch .dk-h { background: #7dd3c0; width: 12px; }
+.mt-clip.stretch .len { position: absolute; left: 0; right: 0; top: 2px; text-align: center; font-size: 10px; color: #cfeee7; pointer-events: none; white-space: nowrap; }
 
 /* entree vedette d'un menu (le montage) */
 .menu button.star { background: #e2603a; color: #fff; font-weight: 600; border-radius: 6px; margin: 2px 0 4px; }
