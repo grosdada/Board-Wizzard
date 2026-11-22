@@ -12,9 +12,9 @@ import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put, del } from "./api.js";
 import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
-import { groundSvg, groundPattern, estimateHorizon, PATS, GROUND0 } from "./ground.js";
+import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth } from "./model.js";
-import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
+import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 
@@ -105,6 +105,17 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     c.fx = fx && fx.on ? (fx.anim ? valueAt(keysOf("fx"), { fx: fx.force ?? 1 }, t, 0).fx : (fx.force ?? 1)) : 0;
     return c;
   };
+  /** Camera a l'epaule (anim.shake = { on, a : amplitude en % de la largeur, v : vitesse, r : roulis en degres }) : le cadre
+   *  tangue en douceur (somme de sinus de periodes sans rapport simple : jamais deux fois le meme mouvement), avec un leger
+   *  zoom pour que les bords du decor ne se voient pas. Ajoute a l'image seulement : les cles de la camera n'en gardent rien. */
+  const shaken = (c, t) => {
+    const k = anim.shake;
+    if (!k || !k.on) return c;
+    const a = (k.a ?? 1) / 100, v = k.v ?? 1, r = k.r ?? 1, T = t * v;
+    const n = (s) => 0.55 * Math.sin(T * 1.13 * s + s * 3.1) + 0.3 * Math.sin(T * 2.71 * s + s * 1.7) + 0.15 * Math.sin(T * 6.07 * s + s * 5.3);
+    const z = c.z * (1 + 2.2 * a);
+    return Object.assign({}, c, { z, cx: c.cx + a * n(1) / z, cy: c.cy + a * n(1.37) * W / H / z, rot: (c.rot || 0) + r * n(1.91) });
+  };
   // formes dessinees sur le decor : dans le montage chacune a sa profondeur (forme.d, 1 = collee au decor), pour la
   // parallaxe. Elles ne bougent qu'en profondeur ; leur dessin se regle dans « Dessiner le fond ».
   const shapesOf = () => (pan.draw && pan.draw.shapes) || [];
@@ -113,7 +124,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   /** Balisage SVG de la case a l'instant t. sel : calque a encadrer. again : rappele quand des traces finissent de charger.
    *  px : pixels d'ecran par unite de l'image (taille des poignees). */
   function markup(t, sel, again, px) {
-    const c = camAt(t), dofOn = !!(pan.dof && pan.dof.on), blurs = {};
+    const c = shaken(camAt(t), t), dofOn = !!(pan.dof && pan.dof.on), blurs = {};
     // profondeur de champ : plus un plan est loin de la mise au point, plus il est flou
     const dofBlur = (depth) => (dofOn ? c.bl / 1000 * H * Math.abs(depth - c.fo) : 0);
     const blur = (depth, more = 0) => {
@@ -316,11 +327,11 @@ export function openMontage(app, pid) {
   const mat = (o, a, b, sa = 1, sb = 1) => `matrix(${((a[0] - o[0]) / sa).toFixed(4)} ${((a[1] - o[1]) / sa).toFixed(4)} ${((b[0] - o[0]) / sb).toFixed(4)} ${((b[1] - o[1]) / sb).toFixed(4)} ${f1(o[0])} ${f1(o[1])})`;
   function isoMarkup() {
     const P = isoProj(), c = camAt(), hw = H / W, pa = iso.pitch * Math.PI / 180;
-    let o = `<defs>${groundPattern(pan.ground, "mt-isopat")}<clipPath id="mt-isowall"><rect width="${W}" height="${f1(H)}"/></clipPath></defs><rect width="${W}" height="${f1(H)}" fill="#26292d"/>`;
+    let o = `<defs><clipPath id="mt-isowall"><rect width="${W}" height="${f1(H)}"/></clipPath></defs><rect width="${W}" height="${f1(H)}" fill="#26292d"/>`;
     // sol : un parallelogramme (vue sans perspective), en unites du sol
     const gm = mat(P(0, 0, 0), P(1, 0, 0), P(0, 0, 1)), X0 = -0.2, X1 = 1.2, Z0 = -0.45, Z1 = 1.08;
     o += `<g transform="${gm}"><rect x="${X0}" y="${Z0}" width="${X1 - X0}" height="${Z1 - Z0}" fill="#d8d4cb" data-ground="1" style="cursor:pointer"/>` +
-      (pan.ground && pan.ground.on ? `<rect x="${X0}" y="${Z0}" width="${X1 - X0}" height="${Z1 - Z0}" fill="url(#mt-isopat)" data-ground="1" style="cursor:pointer"/>` : "") +
+      (pan.ground && pan.ground.on ? `<g data-ground="1" style="cursor:pointer">${groundTile(pan.ground, { x0: X0, y0: Z0, w: X1 - X0, hh: Z1 - Z0, camY: rebuild3().camY, zs: ZD, ratio: H / W, id: "mt-isopat", px: 320 })}</g>` : "") +
       `<rect x="0" y="0" width="1" height="1" fill="none" stroke="#5fc4a8" stroke-width="1.2" stroke-dasharray="5 4" vector-effect="non-scaling-stroke" pointer-events="none"/></g>`;
     // le decor de la case, en mur au fond
     const bgI = background(pan, app.bank, app.project.id);
@@ -375,7 +386,17 @@ export function openMontage(app, pid) {
     }
     const eyes = cards.map((c) => (c.yf - hz) * hw * c.zc / D0).filter((v) => v > 0.01).sort((a, b) => a - b);
     const camY = eyes.length ? eyes[Math.floor(eyes.length / 2)] : 0.3 * hw;
-    for (const c of cards) c.Y = camY - (c.yf - hz) * hw * c.zc / D0;       // les pieds : la ou la case les montre
+    // avec une carte de sol, les pieds sont poses sur le sol : la profondeur se deduit de leur hauteur dans la case (la case
+    // reste la meme vue de sa camera). Sauf les elements qui volent (l.fly) ou dont les pieds sont au-dessus de l'horizon.
+    const glue = !!(pan.ground && pan.ground.on);
+    for (const c of cards) {
+      const below = (c.yf - hz) * hw;
+      if (glue && !c.l.fly && below > 0.004) {
+        const zc = camY * D0 / below;
+        c.X = 0.5 + (c.s.x - 0.5) * zc / D0; c.Hc = (c.s.s || 0.5) * hw * zc / D0; c.Wc = c.Hc * (c.sp.w || 1) / (c.sp.h || 1);
+        c.zc = zc; c.z = zc - D0; c.Y = 0; c.glued = true;
+      } else c.Y = camY - below * c.zc / D0;               // les pieds : la ou la case les montre
+    }
     const zMid = cards.length ? cards.reduce((a, c) => a + c.z, 0) / cards.length : ZD / 2;
     return { hw, hz, camY, zMid, cards };
   }
@@ -405,27 +426,39 @@ export function openMontage(app, pid) {
         if (camOf(cm, q)[2] < 0.03) return null;
       const L = (e) => [dot(cm.r, e) * Wp, -dot(cm.u, e) * Wp, -dot(cm.fw, e) * Wp], k = camOf(cm, p0);
       const a = L(ex), b = L(ey);
-      return `matrix3d(${[a[0], a[1], a[2], 0, b[0], b[1], b[2], 0, 0, 0, 1, 0, k[0] * Wp, -k[1] * Wp, P - k[2] * Wp, 1].map((v) => +v.toFixed(5)).join(",")})`;
+      // troisieme colonne : la normale du plan (avec 0, 0, 1 un sol vu de face donne une matrice non inversible, que le
+      // navigateur ne dessine pas)
+      const nx = a[1] * b[2] - a[2] * b[1], ny = a[2] * b[0] - a[0] * b[2], nz = a[0] * b[1] - a[1] * b[0], nn = Math.hypot(nx, ny, nz) || 1;
+      return `matrix3d(${[a[0], a[1], a[2], 0, b[0], b[1], b[2], 0, nx / nn, ny / nn, nz / nn, 0, k[0] * Wp, -k[1] * Wp, P - k[2] * Wp, 1].map((v) => +v.toFixed(5)).join(",")})`;
     };
     const put = (el, tr, w, hh) => { if (!tr) return; Object.assign(el.style, { width: w + "px", height: hh + "px", transform: tr }); el.classList.add("w3"); stage.append(el); };
     // le decor de la case : un mur au fond, a la taille qui redonne l'image depuis la camera de la case
     const bgI = background(pan, app.bank, app.project.id);
+    // le mur passe derriere l'element le plus loin (colles au sol, certains peuvent etre plus loin que la profondeur 1)
+    const zW = Math.max(ZD * 1.05, ...rb.cards.map((c) => c.z + 0.15));
+    // le sol va jusqu'au mur ; sans decor, presque jusqu'a l'horizon
+    const zEnd = bgI ? zW : 40;
     if (bgI) {
-      const zW = ZD * 1.05, zc = zW + D0, ww = zc / D0, hh = rb.hw * zc / D0, top = rb.camY + rb.hz * rb.hw * zc / D0;
+      const zc = zW + D0, ww = zc / D0, hh = rb.hw * zc / D0, top = rb.camY + rb.hz * rb.hw * zc / D0;
       const pl = placement(bb, bgI.w || 16, bgI.h || 9, pan.view), el = h("div");
       el.innerHTML = `<svg viewBox="0 0 ${W} ${f1(H)}" width="400" height="${f1(400 * H / W)}" preserveAspectRatio="none" style="display:block"><rect width="${W}" height="${f1(H)}" fill="#fff"/><image href="${bgI.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/></svg>`;
       put(el, plane([0.5 - ww / 2, top, zW], [ww / 400, 0, 0], [0, -hh / (400 * H / W), 0], 400, 400 * H / W), 400, 400 * H / W);
     }
     // sol (devant le mur) : des dalles (celles qui passent derriere la camera sont omises), motif de la carte de sol s'il y en a une
-    const TS = 0.25, TP = 60, gr = pan.ground && pan.ground.on ? pan.ground : null;
-    for (let gx = -1.5; gx < 2.5; gx += TS) for (let gz = -1.5; gz + TS < ZD * 1.05 + 1e-6; gz += TS) {
-      const tr = plane([gx, 0, gz], [TS / TP, 0, 0], [0, 0, TS / TP], TP, TP);
-      if (!tr) continue;
-      const id = `mt3g${Math.round(gx * 10)}_${Math.round(gz * 10)}`.replace(/-/g, "m");
-      const el = h("div");
-      el.innerHTML = `<svg viewBox="${gx} ${gz} ${TS} ${TS}" width="${TP}" height="${TP}" preserveAspectRatio="none" style="display:block"><defs>${gr ? groundPattern(gr, id) : ""}</defs><rect x="${gx}" y="${gz}" width="${TS}" height="${TS}" fill="#d8d4cb"/>${gr ? `<rect x="${gx}" y="${gz}" width="${TS}" height="${TS}" fill="url(#${id})"/>` : ""}` +
-        (gx >= 0 && gx < 1 && gz >= 0 && gz < ZD ? `<rect x="${gx}" y="${gz}" width="${TS}" height="${TS}" fill="none" stroke="#5fc4a8" stroke-opacity=".35" stroke-width=".004"/>` : "") + "</svg>";
-      put(el, tr, TP, TP);
+    // dalles de plus en plus grandes vers le fond, sur une largeur qui suit le champ de la camera
+    const TP = 60, gr = pan.ground && pan.ground.on ? pan.ground : null;
+    for (let gz = -1.5, TS = 0.25; gz < zEnd - 1e-6; gz += TS) {
+      TS = 0.25 * Math.max(1, Math.round((gz + D0) / 1.5));
+      const TZ = Math.min(TS, zEnd - gz), half = Math.max(2.5, 1.5 * (gz + TS + D0)), n = Math.ceil(half / TS);
+      for (let q = -n; q < n; q++) {
+        const gx = 0.5 + q * TS, tr = plane([gx, 0, gz], [TS / TP, 0, 0], [0, 0, TZ / TP], TP, TP);
+        if (!tr) continue;
+        const id = `mt3g${Math.round(gx * 100)}_${Math.round(gz * 100)}`.replace(/-/g, "m");
+        const el = h("div");
+        el.innerHTML = `<svg viewBox="${gx} ${gz} ${TS} ${TZ}" width="${TP}" height="${TP}" preserveAspectRatio="none" style="display:block"><rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="#d8d4cb"/>${gr ? groundTile(gr, { x0: gx, y0: gz, w: TS, hh: TZ, camY: rb.camY, ratio: H / W, id, px: 40 }) : ""}` +
+          (gx >= 0 && gx < 1 && gz >= 0 && gz < ZD ? `<rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="none" stroke="#5fc4a8" stroke-opacity=".35" stroke-width=".004"/>` : "") + "</svg>";
+        put(el, tr, TP, TP);
+      }
     }
     // les cartes, de la plus loin a la plus proche
     const order = rb.cards.map((c) => ({ c, d: camOf(cm, [c.X, c.Y + c.Hc / 2, c.z])[2] })).sort((a, b) => b.d - a.d);
@@ -446,6 +479,8 @@ export function openMontage(app, pid) {
       h("button.mini" + (moved ? ".star" : ""), { title: tt("Chaque carte prend la place, la taille et la profondeur vues par cette caméra, et l'image de sa tournette qui correspond à ce nouvel angle"), on: { click: recalc3 } }, tt("↻ Recalculer la perspective")),
       h("button.mini", { title: tt("Revenir à la caméra de la case (double-clic dans la vue)"), on: { click: () => { Object.assign(cam3, CAM3); paint(); } } }, tt("⟲ Caméra de la case")),
       h("label.mt-3d-fov", tt("Focale"), fov, h("span", Math.round(cam3.fov) + "°")),
+      pan.ground && pan.ground.on && layerOf(sel) ? h("button.mini" + (layerOf(sel).fly ? ".on" : ""), { title: tt("Avec une carte de sol, les éléments ont les pieds sur le sol. Coché : celui-ci vole, il garde sa profondeur."),
+        on: { click: () => { const l = layerOf(sel); if (l.fly) delete l.fly; else l.fly = true; hist.snap(); paint(); } } }, layerOf(sel).fly ? tt("🕊 Vole (pas collé au sol)") : tt("🕊 Laisser voler")) : "",
       h("span.mt-3d-info", tt`Orbite ${Math.round(cam3.yaw)}° · plongée ${Math.round(cam3.pitch)}°`));
   }
   function recalc3() {
@@ -469,10 +504,22 @@ export function openMontage(app, pid) {
       setDepth(c.l, clamp((feet.zc - D0) / ZD, 0, 1));
       n++;
     }
-    if (pan.ground && cam3.pitch) pan.ground.hz = f3(clamp(rb.hz - cm.f * Math.tan(cam3.pitch * Math.PI / 180) / rb.hw, 0.02, 0.95));
+    if (pan.ground) groundRecalc(rb, cm);
     Object.assign(cam3, CAM3);                               // la case montre maintenant ce que voyait la camera : elle redevient la reference
     hist.snap(); paint(); lanes(); props();
     toast(tt`Perspective recalculée : ${n} élément(s), place, taille, profondeur et image de tournette.`);
+  }
+  /** La carte de sol vue par la nouvelle camera. Le motif est pose sur le sol (Y = 0) ; gr.m le relie aux coordonnees du sol
+   *  vues de la camera de la case, divisees par sa hauteur (ground.js) : on y compose le passage a la nouvelle camera
+   *  (orbite, hauteur, distance, focale). La plongee deplace l'horizon. */
+  function groundRecalc(rb, cm) {
+    const gr = pan.ground, m0 = groundMap(gr, H / W), ya = cam3.yaw * Math.PI / 180, cy = Math.cos(ya), sy = Math.sin(ya);
+    const hc = Math.max(0.02, cm.C[1]), f = cm.f / D0, k = hc / rb.camY;
+    // sol de la nouvelle camera (u', v') -> sol de l'ancienne (u, v) : u = a*u' + b*v' + e, v = c*u' + d*v' + g
+    const a = k * cy, b = -k * sy * f, c = k * sy, d = k * cy * f, e = (cm.C[0] - 0.5) / rb.camY, g = (cm.C[2] + D0) / rb.camY;
+    const [A, B, C, Dd, E, G] = m0;                         // motif = (A*u + B*v + E, C*u + Dd*v + G)
+    gr.m = [A * a + B * c, A * b + B * d, C * a + Dd * c, C * b + Dd * d, A * e + B * g + E, C * e + Dd * g + G].map((x) => +x.toFixed(5));
+    gr.hz = f3(clamp(rb.hz - (cam3.pitch ? cm.f * Math.tan(cam3.pitch * Math.PI / 180) / rb.hw : 0), 0.02, 0.95));
   }
   box3.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
@@ -491,6 +538,14 @@ export function openMontage(app, pid) {
   box3.addEventListener("pointerup", () => { v3drag = null; box3.style.cursor = ""; });
   box3.addEventListener("dblclick", () => { Object.assign(cam3, CAM3); paint(); });
   box3.addEventListener("wheel", (e) => { e.preventDefault(); cam3.dolly = clamp(cam3.dolly * Math.exp(e.deltaY * 0.0012), 0.35, 2.5); paint(); }, { passive: false });
+  // l'atelier de dessin du fond (le meme que dans la planche) ; enregistre dans la copie de travail du montage
+  function drawDecor() {
+    stop();
+    const bgI = background(pan, app.bank, app.project.id);
+    const ghosts = pan.layers.map((l) => { const s = stateOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f); return sp && { url: sp.url, x: s.x, y: s.y, s: s.s, ar: sp.w / sp.h, flip: l.flip }; }).filter(Boolean);
+    openDrawEditor({ draw: pan.draw, ratio: H / W, backdrop: bgI ? bgI.url : null, ghosts, title: tt("Dessiner le fond de la case"),
+      onSave: (d) => { if (d.shapes.length || (d.fx && d.fx.on)) pan.draw = d; else delete pan.draw; hist.snap(); paint(); lanes(); props(); } });
+  }
   // carte de sol : un motif sur le sol, vu en perspective dans l'image jusqu'a l'horizon
   function groundDialog() {
     if (!pan.ground) pan.ground = Object.assign({}, GROUND0, { hz: estimateHorizon(pan) });
@@ -498,22 +553,23 @@ export function openMontage(app, pid) {
     const range = (label, k, min, max, step, title) => { const out = h("output", (+gr[k]).toFixed(2));
       return h("label.row.range", title ? { title } : {}, label, h("input", { type: "range", min, max, step, value: gr[k], on: { input: (e) => { gr[k] = +e.target.value; out.textContent = (+gr[k]).toFixed(2); upd(); } } }), out); };
     if (gr.hz == null) gr.hz = estimateHorizon(pan);
-    // taches (sol sali) : leurs reglages, montres seulement pour ce motif
-    for (const [k, v] of [["dn", 0.35], ["ts", 1], ["sf", 0.5], ["seed", 1]]) if (gr[k] == null) gr[k] = v;
-    const stainBox = h("div", { style: { display: gr.pat === "taches" ? "" : "none" } },
-      range(tt("Densité des taches"), "dn", 0.03, 1, 0.01, tt("Part du sol couverte de taches")),
-      range(tt("Taille des taches"), "ts", 0.2, 3, 0.01),
-      range(tt("Flou des bords"), "sf", 0, 2, 0.01),
-      h("button.mini", { title: tt("Un autre tirage des taches, mêmes réglages"), on: { click: () => { gr.seed = Math.floor(Math.random() * 9999) + 1; upd(); } } }, tt("🎲 Autres taches")));
+    // lavis (aquarelle) : ses reglages, montres seulement pour ce motif
+    if (gr.pat === "taches") gr.pat = "lavis";
+    for (const [k, v] of [["dn", 0.45], ["ts", 1], ["sf", 0.5], ["seed", 1]]) if (gr[k] == null) gr[k] = v;
+    const stainBox = h("div", { style: { display: gr.pat === "lavis" ? "" : "none" } },
+      range(tt("Couverture"), "dn", 0.03, 1, 0.01, tt("Part du sol couverte par le lavis")),
+      range(tt("Taille des taches"), "ts", 0.2, 4, 0.01),
+      range(tt("Douceur des bords"), "sf", 0, 2, 0.01, tt("0 : bords nets, auréole foncée comme une aquarelle qui a séché ; 2 : bords fondus")),
+      h("button.mini", { title: tt("Un autre tirage du lavis, mêmes réglages"), on: { click: () => { gr.seed = Math.floor(Math.random() * 9999) + 1; upd(); } } }, tt("🎲 Autre tirage")));
     const hzRow = range(tt("Horizon ⓘ"), "hz", 0.02, 0.95, 0.005, tt("Hauteur de la ligne d'horizon dans la case (0 en haut, 1 en bas) : le sol s'arrête là. Estimée d'après les personnages : à hauteur de leurs yeux, comme une caméra à hauteur d'homme."));
     modal(tt("Carte de sol"), h("div.form",
       h("p.muted", tt("Un motif posé sur le sol de la case, vu en perspective dans l'image, sous les personnages. Il se voit dans la case, au montage et dans les images exportées.")),
       h("label.row.check", h("input", { type: "checkbox", checked: !!gr.on, on: { change: (e) => { gr.on = e.target.checked; upd(); } } }), tt("Sol dans l'image")),
-      h("label.row", tt("Motif"), h("select", { on: { change: (e) => { gr.pat = e.target.value; stainBox.style.display = gr.pat === "taches" ? "" : "none"; upd(); } } }, Object.entries(PATS).map(([k, n]) => h("option", { value: k, selected: (gr.pat || "damier") === k }, n)))),
+      h("label.row", tt("Motif"), h("select", { on: { change: (e) => { gr.pat = e.target.value; stainBox.style.display = gr.pat === "lavis" ? "" : "none"; upd(); } } }, Object.entries(PATS).map(([k, n]) => h("option", { value: k, selected: (gr.pat || "damier") === k }, n)))),
       stainBox,
       hzRow,
       h("button.mini", { title: tt("Replace l'horizon à hauteur des yeux des personnages"), on: { click: () => { gr.hz = estimateHorizon(pan); hzRow.querySelector("input").value = gr.hz; hzRow.querySelector("output").textContent = gr.hz.toFixed(2); upd(); } } }, tt("◎ Estimer l'horizon")),
-      range(tt("Taille du motif"), "sc", 0.12, 2, 0.01, tt("Taille des carreaux, des points ou de l'espacement des taches")),
+      range(tt("Taille du motif"), "sc", 0.12, 2, 0.01, tt("Taille des carreaux, des points ou des taches de lavis")),
       range(tt("Opacité"), "a", 0.03, 1, 0.01),
       h("label.row", tt("Couleur"), h("input", { type: "color", value: gr.col || "#000000", on: { input: (e) => { gr.col = e.target.value; upd(); } } }))), [
       { label: tt("Retirer la carte de sol"), click: () => { delete pan.ground; paint(); hist.snap(); } },
@@ -599,7 +655,13 @@ export function openMontage(app, pid) {
         fxAnim() ? range(tt("Force"), "fx", 0, 2.5, 0.01, undefined, "fx") : "",
         h("h4", { title: tt("Quand la caméra se déplace, le premier plan glisse plus vite que le fond, selon la profondeur des éléments : le bouton « Profondeur » sous l'image les montre vus de dessus pour les placer.") }, tt("Parallaxe ⓘ")),
         h("label.row.check", h("input", { type: "checkbox", checked: !!anim.parallax, on: { change: (e) => { anim.parallax = e.target.checked; paint(); props(); } } }), tt("Parallaxe automatique")),
-        anim.parallax ? h("label.row.range", tt("Force"), h("input", { type: "range", min: 0, max: 3, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "");
+        anim.parallax ? h("label.row.range", tt("Force"), h("input", { type: "range", min: 0, max: 3, step: 0.01, value: anim.pstr ?? 0.4, on: { input: (e) => { anim.pstr = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (anim.pstr ?? 0.4).toFixed(2))) : "",
+        h("h4", { title: tt("Le cadre tangue doucement, comme une caméra tenue à l'épaule. S'ajoute aux mouvements de la caméra sans toucher à ses clés.") }, tt("Caméra à l'épaule ⓘ")),
+        h("label.row.check", h("input", { type: "checkbox", checked: !!(anim.shake && anim.shake.on), on: { change: (e) => { anim.shake = Object.assign({ a: 1, v: 1, r: 1 }, anim.shake, { on: e.target.checked }); paint(); props(); } } }), tt("Tremblé de caméra")),
+        ...(anim.shake && anim.shake.on ? [[tt("Amplitude"), "a", 0, 5, 0.05, tt("Ampleur du tremblé, en % de la largeur de l'image")], [tt("Vitesse"), "v", 0.1, 4, 0.05, tt("Lent : on respire ; rapide : on court")], [tt("Roulis"), "r", 0, 4, 0.05, tt("Inclinaison qui oscille, en degrés")]].map(([lab, k, min, max, step, title]) =>
+          h("label.row.range", { title }, lab, h("input", { type: "range", min, max, step, value: anim.shake[k] ?? 1, on: { input: (e) => { anim.shake[k] = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (+(anim.shake[k] ?? 1)).toFixed(2)))) : []),
+        h("h4", tt("Décor")),
+        h("button.mini", { title: tt("Ouvre l'atelier de dessin du fond de cette case : formes simples, tracés, gris en trame, lignes d'effet"), on: { click: drawDecor } }, pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond")));
     } else {
       const it = itemOf(l), n = nOf(l, cur().v);
       side.append(range(tt("Position ↔"), "x", -1, 2, 0.005), range(tt("Position ↕"), "y", -1, 3, 0.005), range(tt("Taille"), "s", 0.05, 6, 0.01),
@@ -743,6 +805,8 @@ export function openMontage(app, pid) {
     items.push({ head: tt("Plan") },
       { label: tt("Flou de profondeur"), checked: !!dof.on, click: () => { dof.on = !dof.on; paint(); lanes(); props(); } },
       { label: tt("Parallaxe automatique"), checked: !!anim.parallax, click: () => { anim.parallax = !anim.parallax; paint(); props(); } },
+      { label: tt("Tremblé de caméra (à l'épaule)"), checked: !!(anim.shake && anim.shake.on), click: () => { anim.shake = Object.assign({ a: 1, v: 1, r: 1 }, anim.shake, { on: !(anim.shake && anim.shake.on) }); sel = "cam"; paint(); props(); } },
+      { label: pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond"), click: drawDecor },
       { label: depthView || isoView ? tt("🖼 Voir l'image") : tt("⬒ Vue de dessus (profondeur)"), click: () => setView(depthView || isoView ? "image" : "depth") });
     ctxMenu(e, items);
   }
@@ -1675,7 +1739,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     const real = pg.panels[pid] || (pg.panels[pid] = {});
     real.layers = pan.layers;
     real.dof = dof;
-    if (pan.draw) real.draw = pan.draw;                   // profondeur des formes du decor
+    if (pan.draw) { if (JSON.stringify(real.draw) !== JSON.stringify(pan.draw)) real.show = "layers"; real.draw = pan.draw; } else delete real.draw;   // fond dessine (atelier ou profondeur des formes)
     if (pan.ground) real.ground = pan.ground; else delete real.ground;   // carte de sol : gardee dans la case
     for (const id of Object.keys(anim.tracks)) if (!anim.tracks[id].length) delete anim.tracks[id];
     real.anim = anim;
