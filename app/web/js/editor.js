@@ -14,6 +14,7 @@ import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, ba
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
 import { voiceTime } from "./lipsync.js";
+import { groundSvg } from "./ground.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const s = (tag, attrs = {}) => {
@@ -226,6 +227,11 @@ export class Editor {
           } else
           grp.append(this.image("b:" + g.id, bg.url, { x: pl.x, y: pl.y, width: pl.w, height: pl.h, "data-bg": g.id,
                                                         preserveAspectRatio: "none", filter: this.blur(defs, blur) }));
+        }
+        if (pan.ground && pan.ground.on) {                   // carte de sol, en perspective (ground.js)
+          const gg = s("g", { "pointer-events": "none" });
+          gg.innerHTML = groundSvg(pan.ground, { x: bb.x0, y: bb.y0, w: bb.w, h: bb.h }, "gr-" + g.id);
+          grp.append(gg);
         }
         if (drawn) {                                         // fond dessine a la main : formes, traces, trames
           const key = g.id + "|" + bb.w + "x" + bb.h + "|" + JSON.stringify(pan.draw);

@@ -605,3 +605,9 @@ svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http:
 .folder-pick:hover { border-color: var(--accent); }
 .folder-pick.on { background: var(--accent); color: #0e1b19; }
 .folder-pick.new { margin-top: 6px; border-style: dashed; }
+
+/* montage : les trois vues, a cote du titre */
+.mt-views { display: flex; margin-left: 18px; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.mt-views button { border: 0; border-radius: 0; background: transparent; color: inherit; padding: 4px 12px; cursor: pointer; font-size: 12.5px; }
+.mt-views button + button { border-left: 1px solid var(--line); }
+.mt-views button.on { background: var(--accent); color: #0e1b19; font-weight: 600; }

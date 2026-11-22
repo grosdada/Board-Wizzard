@@ -12,6 +12,7 @@ import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put, del } from "./api.js";
 import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, hasPerso, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
+import { groundSvg, groundPattern, estimateHorizon, PATS, GROUND0 } from "./ground.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
@@ -136,6 +137,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       if (vf) { const st = inkStroke(pan.bglw), bw = wiggleFilter(`${pre}wgb`, pan.bghand, pan.bgwave, vf.w, vf.h, 11); o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})">${bw}<path d="${vf.body}" fill="#fff"/><path d="${vf.ink}"${bw ? ` filter="url(#${pre}wgb)"` : ""} fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/></g>`; }
       else o += `<image href="${bgInfo.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/>`;
     }
+    o += groundSvg(pan.ground, { x: 0, y: 0, w: W, h: H }, pre + "gr");          // carte de sol, en perspective (ground.js)
     bgIn = o; o = o0 + plane(1, bgIn); }
     const drawLayer = (l, li) => {
       const s = stateOf(l, t), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
@@ -230,7 +232,7 @@ export function openMontage(app, pid) {
   // ------------------------------------------------------------------------------------------ visionneuse
   function paint() {
     recSync();
-    svg.innerHTML = depthView ? topView() : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
+    svg.innerHTML = isoView ? isoMarkup() : depthView ? topView() : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
     if (showMask && !playing) svg.querySelectorAll('[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
   }
 
@@ -283,6 +285,80 @@ export function openMontage(app, pid) {
       `<polygon points="${f1(-fs * 0.5)},${f1(-fs * 0.5)} ${f1(fs * 0.5)},${f1(-fs * 0.5)} ${f1(fs * 0.8)},${f1(-fs * 1.1)} ${f1(-fs * 0.8)},${f1(-fs * 1.1)}" fill="${sel === "cam" ? "#3b82f6" : "#5b6472"}"/>` +
       tt`<text y="${f1(fs * 1.75)}" font-size="${f1(fs * 0.8)}" fill="#5b6472" text-anchor="middle">CAMÉRA</text></g>`;
     return o + `<rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
+  }
+
+  // ------------------------------------------------------------------------------------------ vue isometrique
+  // La scene posee sur son sol : X = place dans la case (0 a gauche, 1 a droite), Z = profondeur (0 devant, 1 au fond).
+  // Vue par defaut : d'en haut, decalee vers la droite. Glisser dans la vue : changer un peu de point de vue (sans faire
+  // le tour), molette : zoom, double-clic : vue par defaut. Les elements sont des decoupes plates, debout a leur place.
+  // Clic sur le sol : la carte de sol (un motif vu en perspective dans l'image).
+  let isoView = false, isoDrag = null;
+  const ISO0 = { yaw: 34, pitch: 36, zoom: 1 }, ZD = 1.2;  // ZD : la profondeur 1 vaut 1,2 largeur de case
+  const iso = Object.assign({}, ISO0, (() => { try { return JSON.parse(localStorage.getItem("bw.iso") || "{}"); } catch (e) { return {}; } })());
+  function isoProj() {
+    const ya = iso.yaw * Math.PI / 180, pa = iso.pitch * Math.PI / 180, S = W * 0.6 * iso.zoom;
+    return (X, Y, Z) => {
+      const x = X - 0.5, z = (Z - 0.5) * ZD, xr = x * Math.cos(ya) - z * Math.sin(ya), zr = x * Math.sin(ya) + z * Math.cos(ya);
+      return [W / 2 + xr * S, H * 0.6 - (Y * Math.cos(pa) + zr * Math.sin(pa)) * S, zr * Math.cos(pa) - Y * Math.sin(pa)];
+    };
+  }
+  const mat = (o, a, b, sa = 1, sb = 1) => `matrix(${((a[0] - o[0]) / sa).toFixed(4)} ${((a[1] - o[1]) / sa).toFixed(4)} ${((b[0] - o[0]) / sb).toFixed(4)} ${((b[1] - o[1]) / sb).toFixed(4)} ${f1(o[0])} ${f1(o[1])})`;
+  function isoMarkup() {
+    const P = isoProj(), c = camAt(), hw = H / W, pa = iso.pitch * Math.PI / 180;
+    let o = `<defs>${groundPattern(pan.ground, "mt-isopat")}<clipPath id="mt-isowall"><rect width="${W}" height="${f1(H)}"/></clipPath></defs><rect width="${W}" height="${f1(H)}" fill="#26292d"/>`;
+    // sol : un parallelogramme (vue sans perspective), en unites du sol
+    const gm = mat(P(0, 0, 0), P(1, 0, 0), P(0, 0, 1)), X0 = -0.2, X1 = 1.2, Z0 = -0.45, Z1 = 1.08;
+    o += `<g transform="${gm}"><rect x="${X0}" y="${Z0}" width="${X1 - X0}" height="${Z1 - Z0}" fill="#d8d4cb" data-ground="1" style="cursor:pointer"/>` +
+      (pan.ground && pan.ground.on ? `<rect x="${X0}" y="${Z0}" width="${X1 - X0}" height="${Z1 - Z0}" fill="url(#mt-isopat)" data-ground="1" style="cursor:pointer"/>` : "") +
+      `<rect x="0" y="0" width="1" height="1" fill="none" stroke="#5fc4a8" stroke-width="1.2" stroke-dasharray="5 4" vector-effect="non-scaling-stroke" pointer-events="none"/></g>`;
+    // le decor de la case, en mur au fond
+    const bgI = background(pan, app.bank, app.project.id);
+    if (bgI) {
+      const pl = placement(bb, bgI.w || 16, bgI.h || 9, pan.view);
+      o += `<g transform="${mat(P(0, hw, 1.02), P(1, hw, 1.02), P(0, 0, 1.02), W, H)}" opacity="0.9"><g clip-path="url(#mt-isowall)"><rect width="${W}" height="${f1(H)}" fill="#fff"/>` +
+        `<image href="${bgI.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/></g></g>`;
+    }
+    // elements et camera, du plus loin au plus pres
+    const items = [];
+    for (const l of pan.layers) {
+      const s = stateOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
+      if (!sp) continue;
+      const g = P(s.x, 0, depthNow(l)), top = P(s.x, (s.s || 0.5) * hw, depthNow(l)), hp = Math.max(4, g[1] - top[1]), wp = hp * (sp.w || 1) / (sp.h || 1);
+      const fl = l.flip ? ` transform="translate(${f1(2 * g[0])} 0) scale(-1 1)"` : "";
+      items.push([g[2], `<ellipse cx="${f1(g[0])}" cy="${f1(g[1])}" rx="${f1(wp * 0.35)}" ry="${f1(wp * 0.35 * Math.sin(pa))}" fill="#000" opacity="0.18"/>` +
+        `<image href="${sp.url}" x="${f1(g[0] - wp / 2)}" y="${f1(g[1] - hp)}" width="${f1(wp)}" height="${f1(hp)}" preserveAspectRatio="xMidYMax meet"${fl}/>` +
+        (sel === l.id ? `<rect x="${f1(g[0] - wp / 2)}" y="${f1(g[1] - hp)}" width="${f1(wp)}" height="${f1(hp)}" class="mt-sel"/>` : "")]);
+    }
+    const cz = camD(c.dz || 0) - 0.15, cp = P(c.cx, 0.12, cz), half = 0.5 / (c.z || 1), fa = P(c.cx - half, 0, 0), fb = P(c.cx + half, 0, 0);
+    items.push([cp[2], `<path d="M${f1(cp[0])} ${f1(cp[1])}L${f1(fa[0])} ${f1(fa[1])}L${f1(fb[0])} ${f1(fb[1])}Z" fill="#5fc4a8" opacity="0.18"/>` +
+      `<g transform="translate(${f1(cp[0])} ${f1(cp[1])})"><rect x="-14" y="-9" width="22" height="18" rx="3" fill="#5fc4a8"/><path d="M8 -5L16 -9V9L8 5Z" fill="#5fc4a8"/></g>`]);
+    items.sort((a, b) => b[0] - a[0]);
+    o += items.map((x) => x[1]).join("");
+    const fs = Math.max(9, Math.min(H * 0.026, W * 0.019));
+    o += `<text x="${f1(W / 2)}" y="${f1(H - fs * 0.8)}" font-size="${f1(fs)}" fill="#9aa3ad" text-anchor="middle" style="pointer-events:none">${tt("Clic sur le sol : carte de sol · glisser : changer de point de vue · molette : zoom · double-clic : vue par défaut")}</text>`;
+    return o;
+  }
+  function isoSave() { localStorage.setItem("bw.iso", JSON.stringify(iso)); }
+  // carte de sol : un motif sur le sol, vu en perspective dans l'image jusqu'a l'horizon
+  function groundDialog() {
+    if (!pan.ground) pan.ground = Object.assign({}, GROUND0, { hz: estimateHorizon(pan) });
+    const gr = pan.ground, upd = () => { paint(); };
+    const range = (label, k, min, max, step, title) => { const out = h("output", (+gr[k]).toFixed(2));
+      return h("label.row.range", title ? { title } : {}, label, h("input", { type: "range", min, max, step, value: gr[k], on: { input: (e) => { gr[k] = +e.target.value; out.textContent = (+gr[k]).toFixed(2); upd(); } } }), out); };
+    if (gr.hz == null) gr.hz = estimateHorizon(pan);
+    const hzRow = range(tt("Horizon ⓘ"), "hz", 0.02, 0.95, 0.005, tt("Hauteur de la ligne d'horizon dans la case (0 en haut, 1 en bas) : le sol s'arrête là. Estimée d'après les personnages : à hauteur de leurs yeux, comme une caméra à hauteur d'homme."));
+    modal(tt("Carte de sol"), h("div.form",
+      h("p.muted", tt("Un motif posé sur le sol de la case, vu en perspective dans l'image, sous les personnages. Il se voit dans la case, au montage et dans les images exportées.")),
+      h("label.row.check", h("input", { type: "checkbox", checked: !!gr.on, on: { change: (e) => { gr.on = e.target.checked; upd(); } } }), tt("Sol dans l'image")),
+      h("label.row", tt("Motif"), h("select", { on: { change: (e) => { gr.pat = e.target.value; upd(); } } }, Object.entries(PATS).map(([k, n]) => h("option", { value: k, selected: (gr.pat || "damier") === k }, n)))),
+      hzRow,
+      h("button.mini", { title: tt("Replace l'horizon à hauteur des yeux des personnages"), on: { click: () => { gr.hz = estimateHorizon(pan); hzRow.querySelector("input").value = gr.hz; hzRow.querySelector("output").textContent = gr.hz.toFixed(2); upd(); } } }, tt("◎ Estimer l'horizon")),
+      range(tt("Taille des carreaux"), "sc", 0.12, 2, 0.01),
+      range(tt("Opacité"), "a", 0.03, 1, 0.01),
+      h("label.row", tt("Couleur"), h("input", { type: "color", value: gr.col || "#000000", on: { input: (e) => { gr.col = e.target.value; upd(); } } }))), [
+      { label: tt("Retirer la carte de sol"), click: () => { delete pan.ground; paint(); hist.snap(); } },
+      { label: tt("Voir dans l'image"), click: () => { hist.snap(); setView("image"); } },
+      { label: tt("OK"), primary: true, click: () => { hist.snap(); } }]);
   }
 
   // ------------------------------------------------------------------------------------------ cles
@@ -507,7 +583,7 @@ export function openMontage(app, pid) {
     items.push({ head: tt("Plan") },
       { label: tt("Flou de profondeur"), checked: !!dof.on, click: () => { dof.on = !dof.on; paint(); lanes(); props(); } },
       { label: tt("Parallaxe automatique"), checked: !!anim.parallax, click: () => { anim.parallax = !anim.parallax; paint(); props(); } },
-      { label: depthView ? tt("🖼 Voir l'image") : tt("⬒ Vue de dessus (profondeur)"), click: () => depthBtn.click() });
+      { label: depthView || isoView ? tt("🖼 Voir l'image") : tt("⬒ Vue de dessus (profondeur)"), click: () => setView(depthView || isoView ? "image" : "depth") });
     ctxMenu(e, items);
   }
   const chanOn = (k, c) => k[c] != null && !(k.skip || []).includes(c);
@@ -1122,7 +1198,18 @@ export function openMontage(app, pid) {
     return [q.x / W, q.y / H];
   };
   let vdrag = null;
+  // vue isometrique : glisser = point de vue, clic sur le sol = carte de sol, molette = zoom
+  svg.addEventListener("pointerdown", (e) => { if (!isoView) return; stop(); try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ } isoDrag = { x: e.clientX, y: e.clientY, yaw: iso.yaw, pitch: iso.pitch, ground: !!e.target.closest("[data-ground]"), moved: false }; svg.style.cursor = "grabbing"; });
+  svg.addEventListener("pointermove", (e) => {
+    if (!isoView || !isoDrag) return;
+    const dx = e.clientX - isoDrag.x, dy = e.clientY - isoDrag.y;
+    if (!isoDrag.moved && Math.hypot(dx, dy) < 4) return;
+    isoDrag.moved = true; iso.yaw = clamp(isoDrag.yaw + dx * 0.35, -80, 80); iso.pitch = clamp(isoDrag.pitch + dy * 0.3, 6, 88); paint();
+  });
+  svg.addEventListener("pointerup", () => { if (!isoView || !isoDrag) return; const d = isoDrag; isoDrag = null; svg.style.cursor = "grab"; if (d.moved) isoSave(); else if (d.ground) groundDialog(); });
+  svg.addEventListener("dblclick", () => { if (!isoView) return; Object.assign(iso, ISO0); isoSave(); paint(); });
   svg.addEventListener("pointerdown", (e) => {
+    if (isoView) return;
     stop();
     if (placing) { placeMouth(e); return; }
     if (tracing && e.button === 0) { traceDown(e); return; }
@@ -1151,6 +1238,7 @@ export function openMontage(app, pid) {
     } else if (vdrag && (vdrag.rot || vdrag.corner != null)) vdrag = null;
   });
   svg.addEventListener("pointermove", (e) => {
+    if (isoView) return;
     if (tdraw) { traceMove(e); return; }
     if (!vdrag) return;
     const p = ptOf(e), dx = p[0] - vdrag.p[0], dy = p[1] - vdrag.p[1];
@@ -1180,11 +1268,13 @@ export function openMontage(app, pid) {
   svg.addEventListener("lostpointercapture", () => { if (recAct) { vdrag = null; recStop(); } });
   svg.addEventListener("contextmenu", (e) => {                           // clic droit : le menu de l'element, ou celui de la camera
     e.preventDefault();
+    if (isoView) return;
     const l = layerOf(sel);
     if (l) layerMenu(e, l); else camMenu(e);
   });
   svg.addEventListener("wheel", (e) => {
     e.preventDefault();
+    if (isoView) { iso.zoom = clamp(iso.zoom * Math.exp(-e.deltaY * 0.0015), 0.4, 4); isoSave(); paint(); return; }
     const k = Math.exp(-e.deltaY * 0.0015);
     if (e.altKey || (depthView && CAMS[sel])) change("cam", { dz: f3(clamp((camAt().dz || 0) - e.deltaY * 0.0012, -2, 1.95)) });   // Alt + molette : la camera avance ou recule
     else if (sel === "cam") change("cam", { z: f3(clamp(camAt().z * k, 0.4, 5)) });
@@ -1275,8 +1365,17 @@ export function openMontage(app, pid) {
   const dur = h("input", { type: "number", min: 0.5, max: 60, step: 0.5, value: anim.dur, title: tt("Durée du plan, en secondes"),
     on: { change: (e) => { const d = clamp(+e.target.value || 4, 0.5, 60), k = d / anim.dur; if (confirm(tt("Étirer aussi les clés sur la nouvelle durée ?\nAnnuler : les clés gardent leur instant."))) for (const ks of Object.values(anim.tracks)) for (const x of ks) x.t = f3(x.t * k); anim.dur = d; t = Math.min(t, d); paint(); lanes(); props(); } } });
   const fullBtn = h("button.mini", { title: tt("La fenêtre de montage prend tout l'écran"), on: { click: () => { const on = m.box.classList.toggle("modal-full"); fullBtn.textContent = on ? tt("🗗 Fenêtre") : tt("⛶ Plein écran"); } } }, tt("⛶ Plein écran"));
-  const depthBtn = h("button.mini", { title: tt("Schéma vu de dessus : chaque élément est une carte, à glisser vers le fond ou vers la caméra"),
-    on: { click: () => { depthView = !depthView; depthBtn.textContent = depthView ? tt("🖼 Image") : tt("⬒ Profondeur"); depthBtn.classList.toggle("on", depthView); paint(); } } }, tt("⬒ Profondeur"));
+  // trois vues : l'image, la profondeur (schema vu de dessus), l'isometrique
+  const VIEWS = [["image", tt("🖼 Image"), tt("L'image de la case, comme elle sera montrée")], ["depth", tt("⬒ Profondeur"), tt("Schéma vu de dessus : chaque élément est une carte, à glisser vers le fond ou vers la caméra")],
+    ["iso", tt("◇ Isométrique"), tt("La scène sur son sol, vue d'en haut et de côté : glisser pour changer de point de vue, clic sur le sol pour la carte de sol")]];
+  const viewSeg = h("div.mt-views");
+  function setView(v) {
+    depthView = v === "depth"; isoView = v === "iso"; isoDrag = null;
+    viewSeg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
+    svg.style.cursor = isoView ? "grab" : "";
+    paint();
+  }
+  viewSeg.append(...VIEWS.map(([k, n, title]) => h("button" + (k === "image" ? ".on" : ""), { "data-view": k, title, on: { click: () => setView(k) } }, n)));
   const save = () => {
     done();
     const real = pg.panels[pid] || (pg.panels[pid] = {});
@@ -1314,13 +1413,14 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
       hist.snap(); paint(); props();
       toast(n ? tt`Première image reportée sur ${n} élément(s) : la case la montrera une fois le montage enregistré.` : tt("Aucun élément animé : la case montre déjà la première image."));
     } } }, tt("⤓ 1re image → case")),
-    depthBtn, h("label.row", tt("Durée (s)"), dur));
+    h("label.row", tt("Durée (s)"), dur));
   paint(); lanes(); props();
   const m = modal(tt`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg), side), bar, keyBox, tl),
     [{ label: tt("Annuler"), click: done },
      { label: tt("Enregistrer le montage"), click: () => { save(); toast(tt("Montage enregistré.")); } },
      { label: tt("Enregistrer et envoyer dans le deck ▸"), primary: true, click: () => { save(); app.sendToDeck(pid); } }]);
   m.box.classList.add("modal-wide", "modal-montage");
+  { const hd = m.box.querySelector("header"); hd.insertBefore(viewSeg, hd.querySelector("h2").nextSibling); }   // les trois vues : a cote du titre
   { const hd = m.box.querySelector("header"); fullBtn.classList.add("head-full"); hd.insertBefore(fullBtn, hd.querySelector("button.icon")); }   // plein ecran : en haut a droite, a cote de la croix
   hist.watch(m.box);
   return m;
