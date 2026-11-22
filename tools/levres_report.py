@@ -58,6 +58,8 @@ def main():
                      "from": "%s/%s" % (si, sv)})
         if gom:
             keys[-1]["gom"] = gom
+        if k.get("dos"):
+            keys[-1]["dos"] = 1                          # carte de dos : reste servie aux images de dos de la pose
     data = {"w": lips["w"], "h": lips["h"], "model": lips.get("model", ""), "keys": sorted(keys, key=lambda e: e["f"])}
     (df / "lips.json").write_text(json.dumps(data), encoding="utf-8")
     store.mutate_item(di, lambda x: x["variants"][dv]["orbit"].update(lips=int(time.time() * 1000)))
