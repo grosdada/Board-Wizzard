@@ -1,5 +1,10 @@
 {
  "ui": {
+  "Muette : figée à {0} s. Clic : remettre son animation": "Muted: frozen at {0} s. Click: bring its animation back",
+  "Mute : figer cette piste à l'instant de la tête de lecture (son animation ne joue plus)": "Mute: freeze this track at the playhead time (its animation no longer plays)",
+  "Verrouillé : dans l'image, tout geste déplace le cadre de la caméra, même sur un personnage (touche C). Déverrouiller pour reprendre les personnages.": "Locked: in the image, every drag moves the camera frame, even over a character (C key). Unlock to move the characters again.",
+  "🎥 Bouger la caméra": "🎥 Move camera",
+  "🔒 Caméra verrouillée": "🔒 Camera locked",
   "Une barre apparaît au-dessus des pistes, de la première à la dernière clé prise : tirer une poignée élargit ou rétrécit leur durée, en gardant leurs proportions ; glisser la barre les déplace toutes": "A bar appears above the tracks, from the first to the last selected key: drag a handle to widen or shrink their duration, keeping their proportions; drag the bar to move them all",
   "⟷ Resize (durée des clés)": "⟷ Resize (key duration)",
   "{0} clés · {1} s · tirer un bout pour élargir ou rétrécir, glisser pour déplacer": "{0} keys · {1} s · drag an end to widen or shrink, drag to move",

@@ -96,13 +96,15 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   // orientation du personnage a cette image de l'orbite, en radians (0 = de face) : la bouche tourne avec lui
   const angleOf = (l, v, f) => { const it = itemOf(l), vv = it && variantOf(it, v || l.v); return vv && vv.orbit && vv.orbit.n ? frameToAngle(vv.orbit, f || 0) * Math.PI / 180 : 0; };
   const baseOf = (l) => { const sh = l.sh || {}; return { x: l.x, y: l.y, s: l.s, rz: l.rz || 0, f: l.f || 0, v: l.v, lw: l.lw || 0, shg: sh.g ?? 0.72, shw: sh.w ?? 5, sha: sh.a ?? 135 }; };
-  const stateOf = (l, t) => { const k = keysOf(l.id), b = baseOf(l), v0 = valueAt(k, b, t, 0); return valueAt(k, b, t, nOf(l, v0.v)); };
+  // piste muette (anim.mute = { id: instant }) : son animation est figee a l'instant ou on l'a coupee
+  const tm = (id, t) => { const q = anim.mute && anim.mute[id]; return q != null ? q : t; };
+  const stateOf = (l, t) => { t = tm(l.id, t); const k = keysOf(l.id), b = baseOf(l), v0 = valueAt(k, b, t, 0); return valueAt(k, b, t, nOf(l, v0.v)); };
   const camAt = (t) => {
-    const d = pan.dof || {}, c = valueAt(keysOf("cam"), CAM0, t, 0);
-    c.fo = valueAt(keysOf("fo"), { fo: c.fo ?? d.focus ?? 0.3 }, t, 0).fo;
-    c.bl = valueAt(keysOf("bl"), { bl: c.bl ?? d.amount ?? 12 }, t, 0).bl;
+    const d = pan.dof || {}, c = valueAt(keysOf("cam"), CAM0, tm("cam", t), 0);
+    c.fo = valueAt(keysOf("fo"), { fo: c.fo ?? d.focus ?? 0.3 }, tm("fo", t), 0).fo;
+    c.bl = valueAt(keysOf("bl"), { bl: c.bl ?? d.amount ?? 12 }, tm("bl", t), 0).bl;
     const fx = pan.draw && pan.draw.fx;                      // lignes d'effet du fond : leur force, animable
-    c.fx = fx && fx.on ? (fx.anim ? valueAt(keysOf("fx"), { fx: fx.force ?? 1 }, t, 0).fx : (fx.force ?? 1)) : 0;
+    c.fx = fx && fx.on ? (fx.anim ? valueAt(keysOf("fx"), { fx: fx.force ?? 1 }, tm("fx", t), 0).fx : (fx.force ?? 1)) : 0;
     return c;
   };
   /** Camera a l'epaule (anim.shake = { on, a : amplitude en % de la largeur, v : vitesse, r : roulis en degres }) : le cadre
@@ -249,6 +251,13 @@ export function openMontage(app, pid) {
   const stateOf = (l) => scene.stateOf(l, t);
   const KEYED = ["x", "y", "s", "rz", "f", "v", "lw", "shg", "shw", "sha"];
   const camAt = () => scene.camAt(t);
+  let camLock = false;                                       // « Bouger la camera » verrouille : tout geste dans l'image deplace le cadre
+  const muteOf = (id) => { const q = anim.mute && anim.mute[id]; return q != null ? q : null; };
+  function toggleMute(id) {                                  // couper une piste : elle reste figee a l'instant de la tete de lecture
+    if (muteOf(id) != null) { delete anim.mute[id]; if (!Object.keys(anim.mute).length) delete anim.mute; }
+    else (anim.mute = anim.mute || {})[id] = f3(t);
+    hist.snap(); paint(); lanes(); props();
+  }
   let stretchOn = false;                                     // « Resize » : une barre a deux poignees etire ou resserre les cles prises
   let chanOpen = localStorage.getItem("bw.camChannels") === "1";      // canaux de la camera deployes dans la timeline
   const CAMS = { cam: tt("Caméra"), fo: tt("Mise au point"), bl: tt("Flou"), fx: tt("Lignes d'effet") };      // pistes de la camera ; fo et bl : profondeur de champ
@@ -582,7 +591,13 @@ export function openMontage(app, pid) {
 
   // ------------------------------------------------------------------------------------------ cles
   const near = (id) => keysOf(id).find((k) => Math.abs(k.t - t) < 0.04);
-  function setKey(id, patch) {                             // pose ou met a jour la cle de la piste a l'instant courant
+  function setKey(id, patch) {                             // piste muette : on regle ce qu'on voit, la cle de l'instant fige
+    const mt = muteOf(id);
+    if (mt == null) return setKey0(id, patch);
+    const t0 = t; t = mt;
+    try { setKey0(id, patch); } finally { t = t0; }
+  }
+  function setKey0(id, patch) {                            // pose ou met a jour la cle de la piste a l'instant courant
     const keys = anim.tracks[id] || (anim.tracks[id] = []);
     let k = near(id);
     if (!k) {
@@ -1516,9 +1531,10 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
         h("span.dk-h.l", { "data-edge": "l" }), h("span.dk-h.r", { "data-edge": "r" }), h("span.len", (b - a).toFixed(2) + " s"));
       tl.append(h("div.mt-row.voice.stretch", h("div.mt-name", { title: tt("Clic sur la croix ou Échap : fermer la barre") }, "⟷ ", tt("Resize"), " ", h("button.mini", { on: { click: () => { stretchOn = false; lanes(); } } }, "✕")), h("div.mt-lane", { "data-lane": "stretch" }, bar)));
     }
+    const muteBtn = (id) => { const on = muteOf(id) != null; return h("button.mt-mute" + (on ? ".on" : ""), { title: on ? tt`Muette : figée à ${muteOf(id).toFixed(2)} s. Clic : remettre son animation` : tt("Mute : figer cette piste à l'instant de la tête de lecture (son animation ne joue plus)"), on: { click: (e) => { e.stopPropagation(); toggleMute(id); } } }, "M"); };
     const row = (id, name, ico) => {
-      const lane = h("div.mt-lane", { "data-lane": id }, keysOf(id).map((k) => { const d = h("span.key" + (k === selKey || picked.has(k) ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: tt`${k.t.toFixed(2)} s · ${EASES[k.e || "doux"]} (clic droit pour changer)` }); d.__key = k; d.dataset.key = id; return d; }));
-      tl.append(h("div.mt-row" + (sel === id ? ".on" : ""), h("div.mt-name", { on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, ico, " ", name, keysOf(id).length ? h("span.count", String(keysOf(id).length)) : ""), lane));
+      const lane = h("div.mt-lane" + (muteOf(id) != null ? ".muted" : ""), { "data-lane": id }, keysOf(id).map((k) => { const d = h("span.key" + (k === selKey || picked.has(k) ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: tt`${k.t.toFixed(2)} s · ${EASES[k.e || "doux"]} (clic droit pour changer)` }); d.__key = k; d.dataset.key = id; return d; }));
+      tl.append(h("div.mt-row" + (sel === id ? ".on" : ""), h("div.mt-name", { on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, muteBtn(id), ico, " ", name, keysOf(id).length ? h("span.count", String(keysOf(id).length)) : ""), lane));
     };
     row("cam", tt("Caméra"), "🎥");
     if (chanOpen) for (const [c, name] of CHANNELS) {           // canaux deployes : une piste par reglage de la camera
@@ -1676,8 +1692,9 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     stop();
     if (placing) { placeMouth(e); return; }
     if (tracing && e.button === 0) { traceDown(e); return; }
-    const id = e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
-    const shId = id ? null : (e.target.closest("[data-shape]") || {}).dataset?.shape, shp = shId ? shapeOf("s:" + shId) : null;
+    const lockCam = camLock && !depthView;                 // camera verrouillee : on ne prend ni personnage ni forme
+    const id = lockCam ? null : e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
+    const shId = id || lockCam ? null : (e.target.closest("[data-shape]") || {}).dataset?.shape, shp = shId ? shapeOf("s:" + shId) : null;
     sel = id || (shp ? "s:" + shId : "cam"); selKey = null;
     const p = ptOf(e), c = camAt();
     if (e.button === 2) { vdrag = null; paint(); lanes(); props(); return; }       // clic droit : on choisit, le menu s'ouvre (contextmenu)
@@ -1815,6 +1832,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === " ") { e.preventDefault(); e.stopPropagation(); return playing ? stop() : play(); }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "c" || e.key === "C") && !isoView && !v3) { e.preventDefault(); e.stopPropagation(); setCamLock(!camLock); return; }
     if (e.key === "Escape" && stretchOn) { e.preventDefault(); e.stopPropagation(); stretchOn = false; lanes(); return; }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "c" && keysSel().length && !String(getSelection())) { e.preventDefault(); e.stopPropagation(); copyKeys(); return; }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "v" && keyClip) { e.preventDefault(); e.stopPropagation(); stop(); pasteKeys(t); return; }
@@ -1838,6 +1856,12 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     ["iso", tt("◇ Isométrique"), tt("La scène sur son sol, vue d'en haut et de côté : glisser pour changer de point de vue, clic sur le sol pour la carte de sol")],
     ["3d", tt("🧊 3D"), tt("La scène en vraie perspective, avec des cartes plates : glisser pour tourner autour (120°), molette pour avancer, puis « Recalculer la perspective »")]];
   const viewSeg = h("div.mt-views");
+  const camLockBtn = h("button.mini.mt-camlock", { title: tt("Verrouillé : dans l'image, tout geste déplace le cadre de la caméra, même sur un personnage (touche C). Déverrouiller pour reprendre les personnages."),
+    on: { click: () => setCamLock(!camLock) } }, tt("🎥 Bouger la caméra"));
+  function setCamLock(on) {
+    camLock = on; camLockBtn.classList.toggle("on", on); camLockBtn.textContent = on ? tt("🔒 Caméra verrouillée") : tt("🎥 Bouger la caméra");
+    if (on) { sel = "cam"; selKey = null; paint(); lanes(); props(); }
+  }
   function setView(v) {
     depthView = v === "depth"; isoView = v === "iso"; isoDrag = null; v3 = v === "3d"; v3drag = null;
     viewSeg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
@@ -1890,7 +1914,7 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
      { label: tt("Enregistrer le montage"), click: () => { save(); toast(tt("Montage enregistré.")); } },
      { label: tt("Enregistrer et envoyer dans le deck ▸"), primary: true, click: () => { save(); app.sendToDeck(pid); } }]);
   m.box.classList.add("modal-wide", "modal-montage");
-  { const hd = m.box.querySelector("header"); hd.insertBefore(viewSeg, hd.querySelector("h2").nextSibling); }   // les trois vues : a cote du titre
+  { const hd = m.box.querySelector("header"); hd.insertBefore(viewSeg, hd.querySelector("h2").nextSibling); viewSeg.after(camLockBtn); }   // les trois vues : a cote du titre
   { const hd = m.box.querySelector("header"); fullBtn.classList.add("head-full"); hd.insertBefore(fullBtn, hd.querySelector("button.icon")); }   // plein ecran : en haut a droite, a cote de la croix
   hist.watch(m.box);
   return m;

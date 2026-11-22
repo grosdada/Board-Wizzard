@@ -357,6 +357,13 @@ details.fold > summary:hover { opacity: 1; }
 .mt-clip { position: absolute; top: 3px; bottom: 3px; min-width: 20px; background: #4a3f24; border: 1px solid #a88a45; border-radius: 5px; cursor: grab; overflow: hidden; touch-action: none; }
 .mt-clip svg { position: absolute; left: 9px; right: 9px; top: 0; height: 100%; width: calc(100% - 18px); fill: #ffd27a; pointer-events: none; }
 .mt-clip .dk-h { background: #ffd27a; }
+/* mute des pistes du montage, verrou de la camera */
+.mt-mute { font: 600 9px/1 sans-serif; width: 15px; height: 15px; padding: 0; margin-right: 4px; border: 1px solid var(--line); border-radius: 3px; background: transparent; color: inherit; opacity: 0.45; cursor: pointer; vertical-align: 1px; }
+.mt-mute:hover { opacity: 0.9; }
+.mt-mute.on { background: #e2603a; border-color: #e2603a; color: #fff; opacity: 1; }
+.mt-lane.muted { opacity: 0.4; background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(226, 96, 58, 0.12) 6px 8px); }
+.mt-camlock { margin-left: 10px; }
+.mt-camlock.on { background: #e2603a; border-color: #e2603a; color: #fff; }
 /* barre « Resize » des cles prises */
 .mt-row.stretch { background: rgba(125, 211, 192, 0.07); }
 .mt-row.stretch .mt-name .mini { padding: 0 5px; margin-left: 4px; }
