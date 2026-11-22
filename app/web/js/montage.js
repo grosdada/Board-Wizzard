@@ -973,7 +973,7 @@ export function openMontage(app, pid) {
       const sh = shape, name = sh === "E" ? "É" : sh;
       if (!confirm(tt`Régénérer la bouche « ${name} » de cette image-clé ?
 
-Payant : 1 image Nano Banana Pro sur fal, environ 0,15 $. La tâche passe en tête de la file.`)) return;
+Payant : 1 image Nano Banana 2 sur fal, environ 0,08 $. La tâche passe en tête de la file.`)) return;
       if (touched() && !confirm(tt("Les retouches non enregistrées de cette image-clé seront perdues quand la nouvelle bouche arrivera. Continuer ?"))) return;
       try {
         const r = await post(`bank/${encodeURIComponent(it.id)}/lips-regen`, { variant: vid, f: K.f, shape: sh });
@@ -1051,7 +1051,7 @@ Payant : 1 image Nano Banana Pro sur fal, environ 0,15 $. La tâche passe en tê
         tb("crayon", tt("✏ Crayon"), tt("Dessine sur la bouche choisie, à la taille du pinceau et dans la couleur choisie. Alt + clic : prendre une couleur dans la vue.")), inkIn,
         h("label.row", { style: { gap: "4px", margin: 0 }, title: tt("Taille du pinceau : crayon, gomme et « Pousser » (touches [ et ])") }, h("span.muted", tt("Taille")), radIn, radVal),
         h("button.mini", { title: tt("Annule la dernière retouche (Ctrl+Z)"), on: { click: doUndo } }, tt("↶ Annuler (Ctrl+Z)")),
-        h("button.mini", { disabled: !!regen, title: tt("Redessine la bouche choisie de cette image-clé (Nano Banana Pro sur fal, environ 0,15 $) ; la tâche passe en tête de la file"), on: { click: regenerate } },
+        h("button.mini", { disabled: !!regen, title: tt("Redessine la bouche choisie de cette image-clé (Nano Banana 2 sur fal, environ 0,08 $) ; la tâche passe en tête de la file"), on: { click: regenerate } },
           regen ? tt`⏳ Bouche « ${regen.shape === "E" ? "É" : regen.shape} » en calcul…` : tt`🔄 Régénérer la bouche « ${shape === "E" ? "É" : shape} »`),
         h("select", { title: tt("Fond de la vue, pour bien voir le détourage"), on: { change: (e) => { bg = e.target.value; draw(); } } }, [["#7fd47f", tt("Fond vert")], ["#ff6fd0", tt("Fond rose")], ["#222222", tt("Fond noir")], ["#ffffff", tt("Fond blanc")]].map(([c, nm]) => h("option", { value: c, selected: bg === c }, nm))));
     }

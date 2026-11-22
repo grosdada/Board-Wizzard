@@ -102,8 +102,8 @@ def estimate_job(kind, params, target="auto"):
         return 2 * img
     if kind == "item_views":
         return 3 * img
-    if kind == "item_lips":                                   # une bouche redessinee : 1 image Nano Banana Pro
-        return fal_price("fal-ai/nano-banana-pro/edit", {})
+    if kind == "item_lips":                                   # une bouche redessinee : 1 image (jobs.LIPS_MODEL)
+        return fal_price(jobs.LIPS_MODEL, {})
     if kind == "item_sheet":
         return 3 * img
     if kind == "item_pose":

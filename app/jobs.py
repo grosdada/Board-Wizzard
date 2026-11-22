@@ -795,9 +795,12 @@ def _lips_copy(folder, card_rel, dest_rel):
     return None
 
 
+LIPS_MODEL = "fal-ai/nano-banana-2/edit"                  # bouche regeneree : Nano Banana 2 (0,08 $), fidele comme le Pro (0,15 $)
+
+
 def run_item_lips(job, prov):
     """Montage, editeur des bouches calculees : « Regenerer la bouche ». Redessine une forme (A, O, E ou D) d'une image-cle
-    par tools/levres.py (Nano Banana Pro sur fal, 1 image), qui garde les autres formes et les autres images-cles.
+    par tools/levres.py (LIPS_MODEL sur fal, 1 image), qui garde les autres formes et les autres images-cles.
     Les versions sont gardees : lips/ver/kFFF_X_vN.webp (+ _g, la gomme), et dans la cle de lips.json
     vers = {X: [chemins des versions]}, cur = {X: version montree}. La carte kFFF_X.webp reste la version montree.
     L'original garde par les retouches (lips/orig/) de cette forme est retire : la nouvelle carte devient l'original."""
@@ -816,7 +819,9 @@ def run_item_lips(job, prov):
             cur[sh] = 0
         _lips_copy(folder, card, vers[sh][cur.get(sh, 0)])    # la version montree, avec ses retouches enregistrees
     root = Path(__file__).resolve().parent.parent
-    r = subprocess.run([sys.executable, str(root / "tools" / "levres.py"), iid, vid, "--images", str(f), "--formes", sh],
+    run = ("import sys; sys.path.insert(0, %r); sys.argv = ['levres.py'] + %r; import levres; levres.MODEL = %r; levres.main()"
+           % (str(root / "tools"), [iid, vid, "--images", str(f), "--formes", sh], LIPS_MODEL))
+    r = subprocess.run([sys.executable, "-c", run],
                        cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
     out = (r.stdout or "") + (r.stderr or "")
     if r.returncode or "ERREUR" in out or ("ok %d %s" % (f, sh)) not in out:
