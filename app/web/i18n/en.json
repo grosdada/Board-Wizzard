@@ -1,5 +1,19 @@
 {
  "ui": {
+  "Versions de la bouche « {0} »": "Versions of the « {0} » mouth",
+  "Les retouches non enregistrées de cette bouche seront perdues. Continuer ?": "The unsaved touch-ups of this mouth will be lost. Continue?",
+  "Version {0}": "Version {0}",
+  " (d'origine)": " (original)",
+  " (la plus récente)": " (latest)",
+  " · rester appuyé : choisir une autre version": " · hold down: choose another version",
+  "Régénérer la bouche « {0} » de cette image-clé ?\n\nPayant : 1 image Nano Banana Pro sur fal, environ 0,15 $. La tâche passe en tête de la file.": "Regenerate the « {0} » mouth of this keyframe?\n\nPaid: 1 Nano Banana Pro image on fal, about $0.15. The task goes to the front of the queue.",
+  "Les retouches non enregistrées de cette image-clé seront perdues quand la nouvelle bouche arrivera. Continuer ?": "The unsaved touch-ups of this keyframe will be lost when the new mouth arrives. Continue?",
+  "Bouche « {0} » en régénération, en tête de la file.": "Mouth « {0} » being regenerated, at the front of the queue.",
+  "Bouche non régénérée : ": "Mouth not regenerated: ",
+  "Nouvelle bouche « {0} » arrivée.": "New mouth « {0} » arrived.",
+  "Redessine la bouche choisie de cette image-clé (Nano Banana Pro sur fal, environ 0,15 $) ; la tâche passe en tête de la file": "Redraws the chosen mouth of this keyframe (Nano Banana Pro on fal, about $0.15); the task goes to the front of the queue",
+  "⏳ Bouche « {0} » en calcul…": "⏳ Mouth « {0} » computing…",
+  "🔄 Régénérer la bouche « {0} »": "🔄 Regenerate the « {0} » mouth",
   "Taille du pinceau : crayon, gomme et « Pousser » (touches [ et ])": "Brush size: pencil, eraser and « Push » ([ and ] keys)",
   "Annule la dernière retouche (Ctrl+Z)": "Undo the last touch-up (Ctrl+Z)",
   "↶ Annuler (Ctrl+Z)": "↶ Undo (Ctrl+Z)",
@@ -1558,6 +1572,13 @@
   "Supprimer la banque « {0} » ? Elle est mise de côté (data/parts/_retires), pas détruite ; les portraits et corps déjà enregistrés gardent leurs éléments.": "Delete the bank “{0}”? It is set aside (data/parts/_retires), not destroyed; portraits and bodies already saved keep their elements."
  },
  "server": {
+  "version de bouche inconnue": "unknown mouth version",
+  "bouche %s, image %d": "mouth %s, frame %d",
+  "bouche non régénérée : %s": "mouth not regenerated: %s",
+  "régénérer une bouche passe par la clé fal du poste : réservé à l'administrateur et aux invités VIP": "regenerating a mouth uses this computer's fal key: reserved for the administrator and VIP guests",
+  "pas de clé fal dans les réglages": "no fal key in the settings",
+  "forme de bouche inconnue": "unknown mouth shape",
+  "cette bouche est déjà en cours de régénération": "this mouth is already being regenerated",
   "cette pose n'a pas de bouches calculées": "this pose has no computed mouths",
   "image-clé introuvable": "key frame not found",
   "silhouette introuvable": "silhouette not found",

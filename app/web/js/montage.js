@@ -922,6 +922,77 @@ export function openMontage(app, pid) {
     const radVal = h("span.muted", { style: { minWidth: "3.2em", display: "inline-block" } }, rad.toFixed(1));
     const radIn = h("input", { type: "range", min: 0.3, max: 30, step: 0.1, value: rad, style: { width: "110px" }, title: tt("Taille du pinceau : crayon, gomme et « Pousser » (touches [ et ])"), on: { input: (e) => { setRad(+e.target.value); } } });
     const setRad = (r) => { rad = Math.max(0.3, Math.min(30, Math.round(r * 10) / 10)); radIn.value = rad; radVal.textContent = rad.toFixed(1); draw(); };
+    // « Regenerer la bouche » : la forme choisie de cette image-cle, redessinee par fal (tools/levres.py), en tete de file
+    let regen = null;                                        // { shape, f, job } pendant le calcul
+    async function refetch(f) {                              // la cle f relue dans lips.json (nouvelle bouche, autre version)
+      try {
+        const nd = await (await fetch(`${L.base}/lips.json?t=${Date.now()}`)).json();
+        const nk = nd.keys.find((k) => k.f === f), ok = keys.find((k) => k.f === f);
+        if (nk && ok) { for (const q of Object.keys(ok)) delete ok[q]; Object.assign(ok, nk); }
+        L.v = String(Date.now());
+      } catch (e) { /* la vue garde l'ancienne bouche */ }
+    }
+    // appui long (ou clic droit) sur une lettre : les versions de cette bouche, quand elle a ete regeneree
+    const versOf = (k) => ((K && K.vers) || {})[k] || [];
+    function versMenu(btn, k) {
+      const vs = versOf(k);
+      if (vs.length < 2) return;
+      document.querySelector(".lips-vers")?.remove();
+      const cur = ((K.cur || {})[k]) ?? vs.length - 1, name = k === "E" ? "É" : k;
+      const box = h("div.menu.mt-menu.lips-vers", h("div.mhead", tt`Versions de la bouche « ${name} »`),
+        ...vs.map((f, i) => h("button" + (i === cur ? ".on" : ""), { on: { click: async () => {
+          box.remove();
+          if (i === cur) return;
+          if (dirty.has(k) && !confirm(tt("Les retouches non enregistrées de cette bouche seront perdues. Continuer ?"))) return;
+          try {
+            const r = await post(`bank/${encodeURIComponent(it.id)}/lips-version`, { variant: vid, f: K.f, shape: k, i });
+            if (r.item) app.bank.set(it.id, r.item);
+            await refetch(K.f); shape = k; await openKey(); paint(); props();
+          } catch (err) { toast(err.message, "error"); }
+        } } }, h("img", { src: `${L.base}/${f}?v=${L.v}`, style: { width: "44px", height: "44px", objectFit: "contain", background: bg, borderRadius: "4px", verticalAlign: "middle", marginRight: "8px" } }),
+          (i === cur ? "✓ " : "") + tt`Version ${i + 1}` + (i === 0 ? tt(" (d'origine)") : i === vs.length - 1 ? tt(" (la plus récente)") : ""))));
+      document.body.append(box);
+      const r = btn.getBoundingClientRect(), b = box.getBoundingClientRect();
+      box.style.left = Math.max(4, Math.min(r.left, innerWidth - b.width - 6)) + "px";
+      box.style.top = Math.max(4, Math.min(r.bottom + 4, innerHeight - b.height - 6)) + "px";
+      const close = (ev) => { if (!box.contains(ev.target)) { box.remove(); document.removeEventListener("pointerdown", close, true); } };
+      setTimeout(() => document.addEventListener("pointerdown", close, true), 0);
+    }
+    function shapeBtn(k) {
+      const many = versOf(k).length > 1;
+      let timer = 0, long = false;
+      const b = h("button.mini" + (k === shape ? ".on" : ""), { title: (MOUTHS[k] || k) + (many ? tt(" · rester appuyé : choisir une autre version") : ""), on: {
+        pointerdown: () => { long = false; if (many) timer = setTimeout(() => { long = true; versMenu(b, k); }, 420); },
+        pointerup: () => clearTimeout(timer), pointerleave: () => clearTimeout(timer),
+        contextmenu: (e) => { e.preventDefault(); versMenu(b, k); },
+        click: () => { if (long) return; shape = k; bar(); draw(); } } }, (k === "E" ? "É" : k) + (many ? " ▾" : ""));
+      return b;
+    }
+    async function regenerate() {
+      if (regen) return;
+      const sh = shape, name = sh === "E" ? "É" : sh;
+      if (!confirm(tt`Régénérer la bouche « ${name} » de cette image-clé ?
+
+Payant : 1 image Nano Banana Pro sur fal, environ 0,15 $. La tâche passe en tête de la file.`)) return;
+      if (touched() && !confirm(tt("Les retouches non enregistrées de cette image-clé seront perdues quand la nouvelle bouche arrivera. Continuer ?"))) return;
+      try {
+        const r = await post(`bank/${encodeURIComponent(it.id)}/lips-regen`, { variant: vid, f: K.f, shape: sh });
+        regen = { shape: sh, f: K.f, job: r.job }; bar(); app.pollSoon();
+        toast(tt`Bouche « ${name} » en régénération, en tête de la file.`);
+      } catch (err) { toast(tt("Bouche non régénérée : ") + err.message, "error"); return; }
+      const wait = async () => {
+        if (!cv.isConnected) return;
+        const j = (app.jobs || []).find((x) => x.id === regen.job);
+        if (!j || j.status === "queued" || j.status === "running") { if (!j || !app.jobs.some((x) => x.status === "queued" || x.status === "running")) app.pollSoon(); setTimeout(wait, 2500); return; }
+        const done = regen; regen = null;
+        if (j.status !== "done") { bar(); return toast(tt("Bouche non régénérée : ") + (j.error || j.status), "error"); }
+        await refetch(done.f);
+        if (K.f === done.f) { shape = done.shape; await openKey(); } else bar();
+        paint(); props();
+        toast(tt`Nouvelle bouche « ${done.shape === "E" ? "É" : done.shape} » arrivée.`);
+      };
+      setTimeout(wait, 2500);
+    }
     const doUndo = () => { const u = undo.pop(); if (!u) return toast(tt("Rien à annuler")); cards[u.shape].getContext("2d").putImageData(u.data, 0, 0); box = u.box; sizeIn.value = box.s / K.s; draw(); };
     const panning = (e) => space || e.button === 1 || e.button === 2;
     cv.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -967,7 +1038,7 @@ export function openMontage(app, pid) {
     const curOf = (k) => (k === "move" ? "move" : k === "gomme" || k === "pousser" || k === "crayon" ? "none" : "crosshair");
     function bar() {
       shapes.textContent = "";
-      shapes.append(h("span.muted", tt("Bouche : ")), ...Object.keys(cards).map((k) => h("button.mini" + (k === shape ? ".on" : ""), { title: MOUTHS[k] || k, on: { click: () => { shape = k; bar(); draw(); } } }, k === "E" ? "É" : k)),
+      shapes.append(h("span.muted", tt("Bouche : ")), ...Object.keys(cards).sort((a, b) => "AOED".indexOf(a) - "AOED".indexOf(b)).map(shapeBtn),
         h("button.mini", { title: tt("Image-clé précédente"), on: { click: () => change(-1) } }, "◀"), h("button.mini", { title: tt("Image-clé suivante"), on: { click: () => change(1) } }, "▶"),
         h("button.mini" + (shown ? ".on" : ""), { title: tt("Montre ou cache la bouche ajoutée, pour comparer avec le dessin et voir les défauts de détourage"), on: { click: () => { shown = !shown; bar(); draw(); } } }, shown ? tt("👁 Bouche visible") : tt("👁 Bouche cachée")));
       tools.textContent = "";
@@ -980,6 +1051,8 @@ export function openMontage(app, pid) {
         tb("crayon", tt("✏ Crayon"), tt("Dessine sur la bouche choisie, à la taille du pinceau et dans la couleur choisie. Alt + clic : prendre une couleur dans la vue.")), inkIn,
         h("label.row", { style: { gap: "4px", margin: 0 }, title: tt("Taille du pinceau : crayon, gomme et « Pousser » (touches [ et ])") }, h("span.muted", tt("Taille")), radIn, radVal),
         h("button.mini", { title: tt("Annule la dernière retouche (Ctrl+Z)"), on: { click: doUndo } }, tt("↶ Annuler (Ctrl+Z)")),
+        h("button.mini", { disabled: !!regen, title: tt("Redessine la bouche choisie de cette image-clé (Nano Banana Pro sur fal, environ 0,15 $) ; la tâche passe en tête de la file"), on: { click: regenerate } },
+          regen ? tt`⏳ Bouche « ${regen.shape === "E" ? "É" : regen.shape} » en calcul…` : tt`🔄 Régénérer la bouche « ${shape === "E" ? "É" : shape} »`),
         h("select", { title: tt("Fond de la vue, pour bien voir le détourage"), on: { change: (e) => { bg = e.target.value; draw(); } } }, [["#7fd47f", tt("Fond vert")], ["#ff6fd0", tt("Fond rose")], ["#222222", tt("Fond noir")], ["#ffffff", tt("Fond blanc")]].map(([c, nm]) => h("option", { value: c, selected: bg === c }, nm))));
     }
     const touched = () => dirty.size || box.x !== K.x || box.y !== K.y || box.s !== K.s;

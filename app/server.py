@@ -609,6 +609,23 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(self._mouth(iid, it, method, d if method == "POST" else {"variant": q.get("variant") or q.get("v") or "base"}))
         if act == "lips" and method == "POST":                      # bouches calculees : corriger la place ou le detourage d'une image-cle
             return self.send_json(self._lips(iid, it, d))
+        if act == "lips-regen" and method == "POST":                # bouches calculees : redessiner une forme d'une image-cle (fal, prioritaire)
+            if self.own_key():
+                raise ValueError("régénérer une bouche passe par la clé fal du poste : réservé à l'administrateur et aux invités VIP")
+            if not settings.load()["fal"].get("key"):
+                raise ValueError("pas de clé fal dans les réglages")
+            vid, sh = d.get("variant") or "base", str(d.get("shape") or "").upper()
+            if sh not in ("A", "O", "E", "D"):
+                raise ValueError("forme de bouche inconnue")
+            f = int(d.get("f", 0))
+            if jobs.SCHEDULER.pending("item_lips", item=iid, variant=vid, f=f, shape=sh):
+                raise ValueError("cette bouche est déjà en cours de régénération")
+            jid = jobs.SCHEDULER.add("item_lips", {"item": iid, "variant": vid, "f": f, "shape": sh},
+                                     "Bouche %s · image %d · %s" % (sh, f, it.get("name") or iid), target="fal", prio=0)
+            return self.send_json({"job": jid})
+        if act == "lips-version" and method == "POST":              # bouches calculees : montrer une autre version d'une bouche regeneree
+            sh = str(d.get("shape") or "").upper()
+            return self.send_json({"item": jobs.lips_use_version(iid, d.get("variant") or "base", int(d.get("f", 0)), sh, int(d.get("i", 0)))})
         if act == "restore" and method == "POST":                   # remettre les images d'avant les retouches
             return self.send_json(retouch.restore(iid, d.get("variant", "base")))
         if act == "undo" and method == "POST":                      # Ctrl+Z / Ctrl+Y d'une retouche (15 pas par orbite)

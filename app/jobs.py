@@ -19,11 +19,11 @@ from pathlib import Path
 from . import brain, comfy, cost, falapi, poses, proportions, settings, sprites, store, vector, headtrack
 
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i", "item_sheet": "edit",
-        "item_apose": "edit", "item_views": "edit",
+        "item_apose": "edit", "item_views": "edit", "item_lips": "edit",
         "panel_integrate": "edit", "panel_orbit": "orbit"}
 POLL = 3.0
 # priorite : 0 = case en cours de travail (Integrate, orbite de case), 1 = banque a la main, 2 = remplissage en lot
-PRIO = {"panel_integrate": 0, "panel_orbit": 0}
+PRIO = {"panel_integrate": 0, "panel_orbit": 0, "item_lips": 0}
 
 
 class Cancelled(Exception):
@@ -773,7 +773,98 @@ def run_panel_orbit(job, prov):
     store.mutate_project(p["project"], apply)
 
 
-RUNNERS = {"item_cut": run_item_cut, "item_orbit": run_item_orbit, "item_pose": run_item_pose, "item_sheet": run_item_sheet,
+def _lips_folder(iid, vid):
+    it = store.load_item(iid)
+    o = it["variants"][vid]["orbit"]
+    return store.item_dir(iid) / o["dir"]
+
+
+def _lips_read(folder):
+    return json.loads((folder / "lips.json").read_text(encoding="utf-8"))
+
+
+def _lips_copy(folder, card_rel, dest_rel):
+    """Copie une carte et sa gomme (kFFF_X_g.webp) ; rend la gomme copiee (chemin relatif) ou None."""
+    (folder / dest_rel).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(folder / card_rel, folder / dest_rel)
+    g, dg = folder / (card_rel[:-5] + "_g.webp"), folder / (dest_rel[:-5] + "_g.webp")
+    if g.exists():
+        shutil.copyfile(g, dg)
+        return dest_rel[:-5] + "_g.webp"
+    dg.unlink(missing_ok=True)
+    return None
+
+
+def run_item_lips(job, prov):
+    """Montage, editeur des bouches calculees : « Regenerer la bouche ». Redessine une forme (A, O, E ou D) d'une image-cle
+    par tools/levres.py (Nano Banana Pro sur fal, 1 image), qui garde les autres formes et les autres images-cles.
+    Les versions sont gardees : lips/ver/kFFF_X_vN.webp (+ _g, la gomme), et dans la cle de lips.json
+    vers = {X: [chemins des versions]}, cur = {X: version montree}. La carte kFFF_X.webp reste la version montree.
+    L'original garde par les retouches (lips/orig/) de cette forme est retire : la nouvelle carte devient l'original."""
+    import subprocess
+    import sys
+    p = job["params"]
+    iid, vid, f, sh = p["item"], p["variant"], int(p["f"]), str(p["shape"]).upper()
+    job["progress"] = "bouche %s, image %d" % (sh, f)
+    folder = _lips_folder(iid, vid)
+    old = next((k for k in _lips_read(folder).get("keys", []) if k["f"] == f), None) or {}
+    vers, cur = dict(old.get("vers") or {}), dict(old.get("cur") or {})
+    card = (old.get("cards") or {}).get(sh)
+    if card and (folder / card).exists():
+        if not vers.get(sh):                                   # premiere regeneration : la bouche d'avant devient la version 1
+            vers[sh] = ["lips/ver/k%03d_%s_v1.webp" % (f, sh)]
+            cur[sh] = 0
+        _lips_copy(folder, card, vers[sh][cur.get(sh, 0)])    # la version montree, avec ses retouches enregistrees
+    root = Path(__file__).resolve().parent.parent
+    r = subprocess.run([sys.executable, str(root / "tools" / "levres.py"), iid, vid, "--images", str(f), "--formes", sh],
+                       cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    out = (r.stdout or "") + (r.stderr or "")
+    if r.returncode or "ERREUR" in out or ("ok %d %s" % (f, sh)) not in out:
+        raise RuntimeError("bouche non régénérée : " + (out.strip().splitlines() or ["?"])[-1][:400])
+    data = _lips_read(folder)
+    key = next((k for k in data["keys"] if k["f"] == f), None)
+    if key and key.get("cards", {}).get(sh):
+        n = len(vers.get(sh, [])) + 1
+        rel = "lips/ver/k%03d_%s_v%d.webp" % (f, sh, n)
+        _lips_copy(folder, key["cards"][sh], rel)
+        vers[sh] = vers.get(sh, []) + [rel]
+        cur[sh] = n - 1
+        key["vers"] = {a: b for a, b in vers.items() if a in key["cards"]}
+        key["cur"] = {a: b for a, b in cur.items() if a in key["vers"]}
+        (folder / "lips.json").write_text(json.dumps(data), encoding="utf-8")
+    (folder / "lips" / "orig" / ("k%03d_%s.webp" % (f, sh))).unlink(missing_ok=True)
+    store.mutate_item(iid, lambda x: x["variants"][vid]["orbit"].update(lips=int(time.time() * 1000)))
+
+
+def lips_use_version(iid, vid, f, sh, i):
+    """Montrer une autre version d'une bouche regeneree : la version montree garde ses retouches (copiee dans son fichier),
+    puis la version i devient la carte kFFF_X.webp (et sa gomme). Rend l'element."""
+    folder = _lips_folder(iid, vid)
+    data = _lips_read(folder)
+    key = next((k for k in data["keys"] if k["f"] == int(f)), None)
+    vers = (key or {}).get("vers", {}).get(sh) or []
+    if not key or not 0 <= int(i) < len(vers):
+        raise ValueError("version de bouche inconnue")
+    card = key["cards"][sh]
+    c = key.setdefault("cur", {}).get(sh, len(vers) - 1)
+    bk = settings.DATA / "backup" / ("lips_%s_%s_%s.json" % (iid, vid, time.strftime("%Y%m%d_%H%M%S")))
+    bk.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(folder / "lips.json", bk)
+    _lips_copy(folder, card, vers[c])
+    g = _lips_copy(folder, vers[int(i)], card)
+    if g:
+        key.setdefault("gom", {})[sh] = card[:-5] + "_g.webp"
+    elif key.get("gom"):
+        key["gom"].pop(sh, None)
+        if not key["gom"]:
+            key.pop("gom")
+    key["cur"][sh] = int(i)
+    (folder / "lips" / "orig" / ("k%03d_%s.webp" % (int(f), sh))).unlink(missing_ok=True)
+    (folder / "lips.json").write_text(json.dumps(data), encoding="utf-8")
+    return store.mutate_item(iid, lambda x: x["variants"][vid]["orbit"].update(lips=int(time.time() * 1000)))
+
+
+RUNNERS = {"item_cut": run_item_cut, "item_lips": run_item_lips, "item_orbit": run_item_orbit, "item_pose": run_item_pose, "item_sheet": run_item_sheet,
            "item_apose": run_item_apose, "item_views": run_item_views,
            "item_new": run_item_new, "panel_integrate": run_panel_integrate, "panel_orbit": run_panel_orbit}
 
