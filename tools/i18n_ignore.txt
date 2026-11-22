@@ -41,3 +41,4 @@ OpenAI (GPT)
 A
 É
 OU
+Space

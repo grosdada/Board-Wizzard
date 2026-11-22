@@ -665,8 +665,9 @@ export function openMontage(app, pid) {
     paint(); props();
   }
   // Retouche des bouches calculees (tools/levres.py) : l'image-cle la plus proche de l'image affichee. Deplacer et
-  // agrandir la carte (les quatre bouches ensemble), corriger son detourage (lasso vider / remettre, gomme). Enregistre
-  // dans le personnage (POST bank/<id>/lips) : vaut pour tous les storyboards.
+  // agrandir la carte (les quatre bouches ensemble), corriger son detourage (lasso vider / remettre, gomme), la
+  // deformer (Pousser, facon Fluidite). Vue : molette ou curseur pour zoomer, Espace ou clic droit + glisser pour se
+  // deplacer, oeil pour cacher la bouche. Enregistre dans le personnage (POST bank/<id>/lips) : vaut pour tous les storyboards.
   async function editLips(l) {
     const it = itemOf(l), sp = spriteNow(l), st = stateOf(l), vid = st.v && (it.variants || {})[st.v] ? st.v : "base";
     const mf = sp && mouthFrame(sp), L = mf && mf.lips;
@@ -674,33 +675,38 @@ export function openMontage(app, pid) {
     const n = sp.n || 72, dist = (k) => { const d = Math.abs(k.f - sp.i); return Math.min(d, n - d); };
     const keys = L.keys.filter((k) => !k.up0).sort((a, b) => a.f - b.f);
     if (!keys.length) return toast(tt("Ces bouches viennent d'une autre pose : retouche-les sur cette pose-là."), "error");
-    let ki = keys.indexOf(keys.reduce((a, b) => (dist(b) < dist(a) ? b : a))), shape = "A", tool = "move", bg = "#7fd47f";
+    let ki = keys.indexOf(keys.reduce((a, b) => (dist(b) < dist(a) ? b : a))), shape = "A", tool = "move", bg = "#7fd47f", shown = true;
     const SZ = 440, cv = h("canvas", { width: SZ, height: SZ, style: { border: "1px solid #555", touchAction: "none", cursor: "move", maxWidth: "100%" } });
     const ctx = cv.getContext("2d"), info = h("div.muted"), shapes = h("div.row.wrap"), tools = h("div.row.wrap");
-    let K, box, frame, cards, orig, undo, dirty;
+    let K, box, frame, cards, orig, undo, dirty, vz = 1, vc = [0, 0], hover = null, space = false;
     const load = (u) => new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = u; });
     const toCanvas = (im) => { const c = document.createElement("canvas"); c.width = im ? im.naturalWidth : 256; c.height = im ? im.naturalHeight : 256; if (im) c.getContext("2d").drawImage(im, 0, 0); return c; };
+    const zoomIn = h("input", { type: "range", min: 0.5, max: 8, step: 0.05, value: 1, on: { input: (e) => { vz = +e.target.value; draw(); } } });
+    const sizeIn = h("input", { type: "range", min: 0.4, max: 2.5, step: 0.01, value: 1, on: { pointerdown: () => snap(), input: (e) => { const cx = box.x + box.s / 2, cy = box.y + box.s / 2; box.s = K.s * +e.target.value; box.x = cx - box.s / 2; box.y = cy - box.s / 2; draw(); } } });
     async function openKey() {
       K = keys[ki]; box = { x: K.x, y: K.y, s: K.s }; cards = {}; orig = {}; undo = []; dirty = new Set();
+      vz = 1; vc = [K.x + K.s / 2, K.y + K.s / 2]; zoomIn.value = 1; sizeIn.value = 1;
       frame = await load(`${sp.dir}/${String(K.f).padStart(3, "0")}.webp`);
       await Promise.all(Object.entries(K.cards).map(async ([k, f]) => { const im = await load(`${L.base}/${f}?v=${L.v}`); cards[k] = toCanvas(im); orig[k] = toCanvas(im); }));
       if (!cards[shape]) shape = Object.keys(cards)[0];
       bar(); draw();
     }
-    // vue : un carre de 2 x s autour de la carte d'origine, en pixels de l'orbite
-    const view = () => { const s0 = K.s * 2, cx = K.x + K.s / 2, cy = K.y + K.s / 2; return { x: cx - s0 / 2, y: cy - s0 / 2, k: SZ / s0 }; };
+    // vue : un carre de 2 x s (divise par le zoom) centre sur vc, en pixels de l'orbite
+    const view = () => { const s0 = K.s * 2 / vz; return { x: vc[0] - s0 / 2, y: vc[1] - s0 / 2, k: SZ / s0 }; };
     const toOrbit = (e) => { const r = cv.getBoundingClientRect(), v = view(); return [v.x + (e.clientX - r.left) * (SZ / r.width) / v.k, v.y + (e.clientY - r.top) * (SZ / r.height) / v.k]; };
     const toCard = (p) => { const c = cards[shape]; return [(p[0] - box.x) / box.s * c.width, (p[1] - box.y) / box.s * c.height]; };
     let lasso = null;
     function draw() {
       const v = view();
+      ctx.imageSmoothingEnabled = vz < 3;                  // de pres : les pixels nets, pour bien voir le detourage
       ctx.fillStyle = bg; ctx.fillRect(0, 0, SZ, SZ);
       if (frame) ctx.drawImage(frame, -v.x * v.k, -v.y * v.k, frame.naturalWidth * v.k, frame.naturalHeight * v.k);
       const c = cards[shape];
-      if (c) ctx.drawImage(c, (box.x - v.x) * v.k, (box.y - v.y) * v.k, box.s * v.k, box.s * v.k);
+      if (c && shown) ctx.drawImage(c, (box.x - v.x) * v.k, (box.y - v.y) * v.k, box.s * v.k, box.s * v.k);
       ctx.strokeStyle = "rgba(95,196,168,.9)"; ctx.setLineDash([5, 4]); ctx.lineWidth = 1;
       ctx.strokeRect((box.x - v.x) * v.k, (box.y - v.y) * v.k, box.s * v.k, box.s * v.k); ctx.setLineDash([]);
       if (lasso && lasso.length > 1) { ctx.strokeStyle = "#ff3b8d"; ctx.lineWidth = 1.5; ctx.beginPath(); lasso.forEach((p, i) => { const q = [(p[0] - v.x) * v.k, (p[1] - v.y) * v.k]; if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }); ctx.stroke(); }
+      if (hover && (tool === "gomme" || tool === "pousser")) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc((hover[0] - v.x) * v.k, (hover[1] - v.y) * v.k, rad * v.k, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = "#000"; ctx.beginPath(); ctx.arc((hover[0] - v.x) * v.k, (hover[1] - v.y) * v.k, rad * v.k + 1, 0, Math.PI * 2); ctx.stroke(); }
       info.textContent = tt`Image-clé ${ki + 1} sur ${keys.length} (image ${K.f} de l'orbite) · taille ${Math.round(box.s)} px`;
     }
     const snap = () => { const c = cards[shape]; undo.push({ shape, data: c.getContext("2d").getImageData(0, 0, c.width, c.height), box: { ...box } }); if (undo.length > 30) undo.shift(); };
@@ -715,37 +721,80 @@ export function openMontage(app, pid) {
       const c = cards[shape], g = c.getContext("2d"), q = toCard(p), rr = r / box.s * c.width;
       g.save(); g.globalCompositeOperation = "destination-out"; g.beginPath(); g.arc(q[0], q[1], rr, 0, Math.PI * 2); g.fill(); g.restore(); dirty.add(shape);
     }
-    let drag = null, rad = 4;
+    // Pousser (facon Fluidite) : les pixels sous le pinceau suivent la souris, fort au centre, nul au bord
+    function push(a, b) {
+      const c = cards[shape], g = c.getContext("2d"), W0 = c.width, H0 = c.height;
+      const p0 = toCard(a), p1 = toCard(b), R = rad / box.s * W0, steps = Math.max(1, Math.ceil(Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / (R / 4)));
+      for (let s = 1; s <= steps; s++) {
+        const qa = [p0[0] + (p1[0] - p0[0]) * (s - 1) / steps, p0[1] + (p1[1] - p0[1]) * (s - 1) / steps], dx = (p1[0] - p0[0]) / steps * force, dy = (p1[1] - p0[1]) / steps * force;
+        const x0 = Math.max(0, Math.floor(qa[0] - R - 2)), y0 = Math.max(0, Math.floor(qa[1] - R - 2)), x1 = Math.min(W0, Math.ceil(qa[0] + R + 2)), y1 = Math.min(H0, Math.ceil(qa[1] + R + 2));
+        if (x1 <= x0 || y1 <= y0) continue;
+        const src = g.getImageData(0, 0, W0, H0), out = g.getImageData(x0, y0, x1 - x0, y1 - y0), S = src.data, O = out.data;
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+          const dd = Math.hypot(x + 0.5 - qa[0] - dx, y + 0.5 - qa[1] - dy) / R;
+          if (dd >= 1) continue;
+          const w = (1 - dd * dd) * (1 - dd * dd), sx = Math.min(W0 - 1.001, Math.max(0, x - dx * w)), sy = Math.min(H0 - 1.001, Math.max(0, y - dy * w));
+          const ix = Math.floor(sx), iy = Math.floor(sy), fx = sx - ix, fy = sy - iy, o = ((y - y0) * (x1 - x0) + (x - x0)) * 4;
+          for (let ch = 0; ch < 4; ch++) {
+            const i00 = (iy * W0 + ix) * 4 + ch, i10 = i00 + 4, i01 = i00 + W0 * 4, i11 = i01 + 4;
+            O[o + ch] = (S[i00] * (1 - fx) + S[i10] * fx) * (1 - fy) + (S[i01] * (1 - fx) + S[i11] * fx) * fy;
+          }
+        }
+        g.putImageData(out, x0, y0);
+      }
+      dirty.add(shape);
+    }
+    let drag = null, rad = 4, force = 0.7;
+    const panning = (e) => space || e.button === 1 || e.button === 2;
+    cv.addEventListener("contextmenu", (e) => e.preventDefault());
     cv.addEventListener("pointerdown", (e) => {
       cv.setPointerCapture(e.pointerId); const p = toOrbit(e);
+      if (panning(e)) { drag = { pan: true, x: e.clientX, y: e.clientY, c: [...vc] }; return; }
       if (tool === "move") { snap(); drag = { p, x: box.x, y: box.y }; }
       else if (tool === "gomme") { snap(); drag = { p }; brush(p, rad); draw(); }
+      else if (tool === "pousser") { snap(); drag = { p, last: p }; }
       else { lasso = [p]; drag = { p }; }
     });
     cv.addEventListener("pointermove", (e) => {
-      if (!drag) return; const p = toOrbit(e);
-      if (tool === "move") { box.x = drag.x + p[0] - drag.p[0]; box.y = drag.y + p[1] - drag.p[1]; }
+      const p = toOrbit(e); hover = p;
+      if (!drag) { if (tool === "gomme" || tool === "pousser") draw(); return; }
+      if (drag.pan) { const r = cv.getBoundingClientRect(), v = view(); vc = [drag.c[0] - (e.clientX - drag.x) * (SZ / r.width) / v.k, drag.c[1] - (e.clientY - drag.y) * (SZ / r.height) / v.k]; }
+      else if (tool === "move") { box.x = drag.x + p[0] - drag.p[0]; box.y = drag.y + p[1] - drag.p[1]; }
       else if (tool === "gomme") brush(p, rad);
+      else if (tool === "pousser") { push(drag.last, p); drag.last = p; }
       else lasso.push(p);
       draw();
     });
+    cv.addEventListener("pointerleave", () => { hover = null; if (!drag) draw(); });
     cv.addEventListener("pointerup", () => {
       if (!drag) return; drag = null;
       if (lasso) { if (lasso.length > 2) applyLasso(lasso, tool); lasso = null; }
       draw();
     });
-    cv.addEventListener("wheel", (e) => { e.preventDefault(); snap(); const f = e.deltaY < 0 ? 1.03 : 1 / 1.03, cx = box.x + box.s / 2, cy = box.y + box.s / 2; box.s *= f; box.x = cx - box.s / 2; box.y = cy - box.s / 2; draw(); }, { passive: false });
+    // molette : zoom de la vue, vers le pointeur
+    cv.addEventListener("wheel", (e) => {
+      e.preventDefault(); const p = toOrbit(e), z = Math.max(0.5, Math.min(8, vz * (e.deltaY < 0 ? 1.15 : 1 / 1.15))), f = vz / z;
+      vc = [p[0] + (vc[0] - p[0]) * f, p[1] + (vc[1] - p[1]) * f]; vz = z; zoomIn.value = z; draw();
+    }, { passive: false });
+    const keyFn = (e) => {
+      if (!cv.isConnected) { window.removeEventListener("keydown", keyFn); window.removeEventListener("keyup", keyFn); return; }
+      if (e.code === "Space" && !(e.target instanceof HTMLInputElement && e.target.type === "text")) { space = e.type === "keydown"; cv.style.cursor = space ? "grab" : curOf(tool); e.preventDefault(); }
+    };
+    window.addEventListener("keydown", keyFn); window.addEventListener("keyup", keyFn);
+    const curOf = (k) => (k === "move" ? "move" : k === "gomme" || k === "pousser" ? "none" : "crosshair");
     function bar() {
       shapes.textContent = "";
       shapes.append(h("span.muted", tt("Bouche : ")), ...Object.keys(cards).map((k) => h("button.mini" + (k === shape ? ".on" : ""), { title: MOUTHS[k] || k, on: { click: () => { shape = k; bar(); draw(); } } }, k === "E" ? "É" : k)),
-        h("button.mini", { title: tt("Image-clé précédente"), on: { click: () => change(-1) } }, "◀"), h("button.mini", { title: tt("Image-clé suivante"), on: { click: () => change(1) } }, "▶"));
+        h("button.mini", { title: tt("Image-clé précédente"), on: { click: () => change(-1) } }, "◀"), h("button.mini", { title: tt("Image-clé suivante"), on: { click: () => change(1) } }, "▶"),
+        h("button.mini" + (shown ? ".on" : ""), { title: tt("Montre ou cache la bouche ajoutée, pour comparer avec le dessin et voir les défauts de détourage"), on: { click: () => { shown = !shown; bar(); draw(); } } }, shown ? tt("👁 Bouche visible") : tt("👁 Bouche cachée")));
       tools.textContent = "";
-      const tb = (k, label, title) => h("button.mini" + (tool === k ? ".on" : ""), { title, on: { click: () => { tool = k; cv.style.cursor = k === "move" ? "move" : "crosshair"; bar(); } } }, label);
-      tools.append(tb("move", tt("✥ Déplacer"), tt("Glisser : déplace la bouche (les quatre bouches de cette image-clé ensemble). Molette : agrandir ou réduire.")),
+      const tb = (k, label, title) => h("button.mini" + (tool === k ? ".on" : ""), { title, on: { click: () => { tool = k; cv.style.cursor = curOf(k); bar(); } } }, label);
+      tools.append(tb("move", tt("✥ Déplacer"), tt("Glisser : déplace la bouche (les quatre bouches de cette image-clé ensemble). Sa taille : le curseur « Taille de la bouche ».")),
+        tb("pousser", tt("👆 Pousser"), tt("Comme l'outil Fluidité : les pixels sous le pinceau suivent la souris. Pour ajuster la forme de la bouche au visage, par petites touches.")),
         tb("vider", tt("✂ Lasso : vider"), tt("Entoure à la souris ce qui dépasse de la bouche : cela devient transparent, sur la bouche choisie.")),
         tb("remettre", tt("🩹 Lasso : remettre"), tt("Entoure une zone vidée à tort : la bouche d'origine y revient.")),
         tb("gomme", tt("◌ Gomme"), tt("Efface au pinceau, sur la bouche choisie")),
-        h("button.mini", { title: tt("Annule la dernière retouche"), on: { click: () => { const u = undo.pop(); if (!u) return; cards[u.shape].getContext("2d").putImageData(u.data, 0, 0); box = u.box; draw(); } } }, tt("↶ Annuler")),
+        h("button.mini", { title: tt("Annule la dernière retouche"), on: { click: () => { const u = undo.pop(); if (!u) return; cards[u.shape].getContext("2d").putImageData(u.data, 0, 0); box = u.box; sizeIn.value = box.s / K.s; draw(); } } }, tt("↶ Annuler")),
         h("select", { title: tt("Fond de la vue, pour bien voir le détourage"), on: { change: (e) => { bg = e.target.value; draw(); } } }, [["#7fd47f", tt("Fond vert")], ["#ff6fd0", tt("Fond rose")], ["#222222", tt("Fond noir")], ["#ffffff", tt("Fond blanc")]].map(([c, nm]) => h("option", { value: c, selected: bg === c }, nm))));
     }
     const touched = () => dirty.size || box.x !== K.x || box.y !== K.y || box.s !== K.s;
@@ -758,10 +807,14 @@ export function openMontage(app, pid) {
       if (r.item) app.bank.set(it.id, r.item);
       paint(); props();
     };
+    const range = (label, inp, title) => h("label.row.range", title ? { title } : {}, label, inp);
     modal(tt("Retoucher les bouches calculées"), h("div.form",
-      h("p.muted", tt("Chaque image-clé porte quatre bouches (A, O, É, D) dessinées pour ce personnage. Corrige leur place, leur taille ou leur détourage ; « Enregistrer » les garde dans le personnage, pour tous les storyboards.")),
+      h("p.muted", tt("Chaque image-clé porte quatre bouches (A, O, É, D) dessinées pour ce personnage. Corrige leur place, leur taille, leur forme ou leur détourage ; « Enregistrer » les garde dans le personnage, pour tous les storyboards.")),
       shapes, tools, cv, info,
-      h("label.row.range", tt("Taille de la gomme"), h("input", { type: "range", min: 1, max: 20, step: 0.5, value: rad, on: { input: (e) => { rad = +e.target.value; } } }))), [
+      range(tt("Zoom ⓘ"), zoomIn, tt("Agrandit la vue (ou molette). Pour se déplacer dans la vue : Espace tenue + glisser, ou clic droit + glisser.")),
+      range(tt("Taille de la bouche"), sizeIn),
+      range(tt("Pinceau (gomme, pousser)"), h("input", { type: "range", min: 1, max: 30, step: 0.5, value: rad, on: { input: (e) => { rad = +e.target.value; draw(); } } })),
+      range(tt("Force de « Pousser »"), h("input", { type: "range", min: 0.1, max: 1, step: 0.05, value: force, on: { input: (e) => { force = +e.target.value; } } }))), [
       { label: tt("Revenir à l'original"), click: async () => { if (!confirm(tt("Remettre les bouches d'origine de cette image-clé (place, taille et détourage) ?"))) return false; try { await send({ original: true }); toast(tt("Bouches d'origine remises.")); } catch (err) { toast(err.message, "error"); return false; } } },
       { label: tt("Annuler") },
       { label: tt("Enregistrer dans le personnage"), primary: true, click: async () => {
