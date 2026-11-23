@@ -339,8 +339,11 @@ def extend_back(folder, n, snaps, reach=BACK_REACH):
     real = [i for i, m in enumerate(frames) if m and not m.get("ext")]
     if not real:
         return 0
-    old = sum(1 for m in frames if m and m.get("ext"))
+    old = sum(1 for m in frames if m and (m.get("ext") or m.get("back")))
     frames = [m if m and not m.get("ext") else None for m in frames]   # repartir de zero : les reperes ont pu changer
+    for m in frames:
+        if m:
+            m.pop("back", None)
     wface = float(np.median([frames[i]["w"] for i in real]))
     stroke = float(np.median([frames[i].get("stroke") or 2 for i in real]))
     added = 0
@@ -358,6 +361,9 @@ def extend_back(folder, n, snaps, reach=BACK_REACH):
         if frames[(p + step * k0) % n] is None:
             k0 = 0
         start = (p + step * k0) % n
+        for k in range(1, k0 + 1):                     # suivies, mais deja de dos : elles prennent les cartes de dos
+            frames[(p + step * k) % n]["back"] = 1
+            added += 1
         near = start if frames[start] is not None else min(real, key=lambda i: min(abs(i - p), n - abs(i - p)))
         cy = float(frames[near]["cy"])
         w0 = float(frames[near]["w"]) if near == start and k0 else (float(frames[p]["w"]) if frames[p] else wface * 0.5)

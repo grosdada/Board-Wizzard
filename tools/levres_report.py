@@ -100,7 +100,7 @@ def back_frame(n, snaps, frames, side):
     step = 1 if (b - p) % n <= n // 2 else -1
     for k in (3, 2, 4, 1, 5, 6, 0):
         f = (p + step * k) % n
-        if frames[f] and frames[f].get("ext"):
+        if frames[f] and (frames[f].get("ext") or frames[f].get("back")):
             return f
     return None
 
@@ -138,7 +138,7 @@ def main():
                 continue
         else:                                                   # meme angle, lu sur les reperes des deux orbites
             f = angle_to_frame(dn, ds, frame_to_angle(sn, ss, k["f"]))
-            near = min((min(abs(i - f), dn - abs(i - f)) for i, x in enumerate(dmouth) if x and not x.get("ext")), default=99)
+            near = min((min(abs(i - f), dn - abs(i - f)) for i, x in enumerate(dmouth) if x and not x.get("ext") and not x.get("back")), default=99)
             if near > 4:                                        # aucun angle suivi pres de cette cle dans la cible
                 print("image-cle %d : pas de bouche suivie a cet angle dans la cible, laissee" % k["f"])
                 continue

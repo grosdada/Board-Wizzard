@@ -82,7 +82,7 @@ def dos_frames(iid, vid="base"):
         step = 1 if (b - p) % n <= n // 2 else -1
         for k in (3, 2, 4, 1, 5):                  # profil + 3, sinon le plus pres possible
             f = (p + step * k) % n
-            if fr[f] and fr[f].get("ext"):
+            if fr[f] and (fr[f].get("ext") or fr[f].get("back")):
                 out.append(f)
                 break
     if not out:

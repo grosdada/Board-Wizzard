@@ -239,7 +239,7 @@ function cardPick(lip, lips, frames, i, t) {
   let key = null, far = 1e9;
   // image de dos (mouth.json ext : le bout des levres sur le bord de la silhouette) : seulement les cartes de dos, et
   // inversement, pour ne pas poser une bouche de face sur un dos
-  for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; if (!!m.ext !== !!(k.dos || (frames[k.f] && frames[k.f].ext))) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (d < far) { far = d; key = k; } }
+  for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; if (!!(m.ext || m.back) !== !!(k.dos || (frames[k.f] && (frames[k.f].ext || frames[k.f].back)))) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (d < far) { far = d; key = k; } }
   if (!key || far > LIPS_REACH) return null;
   if (!speakingAt(lip, t)) return { empty: true };
   const shape = cueAt(lip, t);
