@@ -223,6 +223,20 @@ class App {
     pan.dof = Object.assign({ on: false, focus: 0.3, amount: 12 }, pan.dof, { on: true, focus: Math.round(depthOf(pan, i) * 100) / 100 });
     this.commit("dof"); this.sel = { panel: pid }; this.editor.render(); this.refreshInspector();
   }
+  // « Restore case » : la case redevient vide (decor, elements, bulles, indications, dessin, sol, montage, rendus), apres confirmation
+  restorePanel(pid) {
+    const pg = this.page(), pan = pg.panels[pid];
+    if (!pan || !Object.keys(pan).length) return toast(tt("Cette case est déjà vide."));
+    const n = (k) => (pan[k] || []).length, tr = pan.anim && pan.anim.tracks ? Object.values(pan.anim.tracks).reduce((a, k) => a + (k || []).length, 0) : 0;
+    const what = [n("layers") && tt`${n("layers")} élément(s)`, pan.bg && tt("le décor"), n("bubbles") && tt`${n("bubbles")} bulle(s)`, n("marks") && tt`${n("marks")} indication(s)`,
+      pan.draw && tt("le fond dessiné"), pan.ground && tt("la carte de sol"), tr && tt`le montage (${tr} clé(s))`, (pan.integrated || pan.orbit) && tt("les rendus Integrate et l'orbite")].filter(Boolean);
+    const nl = String.fromCharCode(10).repeat(2);
+    if (!confirm(tt("Vider entièrement cette case ?") + nl + tt`Tout ce qu'elle contient part : ${what.join(", ") || tt("ses réglages")}.` + nl + tt("Ctrl+Z permet de revenir en arrière."))) return;
+    delete pg.panels[pid];
+    this.sel = { panel: pid };
+    this.commit("restore"); this.editor.render(); this.refreshInspector();
+    toast(tt("Case vidée. Ctrl+Z pour la retrouver."));
+  }
   select(sel, keepOverlay) {
     const same = sel.panel === this.sel.panel && sel.layer === this.sel.layer && sel.bubble === this.sel.bubble && sel.mark === this.sel.mark;
     this.sel = sel;
@@ -466,7 +480,8 @@ class App {
     items.push({ head: tt("Banque") }, { label: tt("✨ Générer un élément ici…"), click: () => this.generateHere(pid, rel) });
     items.push({ head: tt("Integrate (image unifiée)") },
       ...INTEGRATE_STYLES.map(([k, label, tip]) => ({ label, click: () => this.integrate(k) })),
-      { head: tt("Case") }, { label: tt("⬒ Profondeur (vue de dessus)"), click: () => this.depthDialog(pid) }, { label: tt("Orbite de la case"), click: () => this.panelOrbit() });
+      { head: tt("Case") }, { label: tt("⬒ Profondeur (vue de dessus)"), click: () => this.depthDialog(pid) }, { label: tt("Orbite de la case"), click: () => this.panelOrbit() },
+      { label: tt("🧹 Restore case (tout vider)"), danger: true, click: () => this.restorePanel(pid) });
     if (pan.integrated || pan.orbit) {
       items.push({ head: tt("Afficher") }, { label: tt("Calques d'origine"), checked: (pan.show || "layers") === "layers", click: () => this.setShow("layers") });
       // les images generees de la case (Integrate) : on passe de l'une a l'autre, ou on revient aux calques d'origine
@@ -970,7 +985,8 @@ class App {
           h("span.muted", bg.orbit ? tt("Maj + glisser dans la case : recadrer") : tt("Glisser dans la case : recadrer"))));
       sync();
     } else this.syncPan = null;
-    box.append(h("button", { title: tt("Vue de dessus de la case : la caméra en bas, le décor en haut, chaque élément posé à sa profondeur. Glisser une carte : haut / bas = sa profondeur, gauche / droite = sa place. C'est la même position que dans le montage."), on: { click: () => this.depthDialog(this.sel.panel) } }, tt("⬒ Profondeur (vue de dessus)")));
+    box.append(h("button", { title: tt("Vue de dessus de la case : la caméra en bas, le décor en haut, chaque élément posé à sa profondeur. Glisser une carte : haut / bas = sa profondeur, gauche / droite = sa place. C'est la même position que dans le montage."), on: { click: () => this.depthDialog(this.sel.panel) } }, tt("⬒ Profondeur (vue de dessus)")),
+      h("button.danger", { title: tt("Vide entièrement la case : décor, éléments, bulles, indications, fond dessiné, montage, rendus. Une alerte demande confirmation."), on: { click: () => this.restorePanel(this.sel.panel) } }, tt("🧹 Restore case")));
     if (pan.frame) box.append(h("div.row", h("span.muted", { title: tt("Le cadrage de la caméra à la première image du montage (« 1re image → case »). La case le montre, l'impression et Integrate aussi.") }, tt`Cadrage du montage : zoom ${(+pan.frame.z).toFixed(2)} ⓘ`),
       h("button.mini", { on: { click: () => { delete pan.frame; this.commit("frame"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer le cadrage"))));
     box.append(h("h4", { title: tt("0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre).") }, tt("Profondeur de champ ⓘ")),
