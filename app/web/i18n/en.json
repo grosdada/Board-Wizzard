@@ -1,5 +1,6 @@
 {
  "ui": {
+  "Ouvre l'atelier de dessin du fond de cette case : formes simples, tracés, gris en trame, lignes d'effet (touche Q)": "Opens the background drawing workshop for this panel: simple shapes, strokes, halftone greys, effect lines (Q key)",
   "La case de la planche prend la pose, la place, la taille et l'orientation de chaque élément à la première image du montage, et le cadrage de la caméra. L'animation ne change pas.": "The panel on the page takes the pose, place, size and orientation of each element at the first frame of the edit, and the camera framing. The animation does not change.",
   "Première image reportée sur {0} élément(s)": "First frame applied to {0} element(s)",
   "Aucun élément animé": "No animated element",

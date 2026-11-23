@@ -713,7 +713,7 @@ export function openMontage(app, pid) {
         ...(anim.shake && anim.shake.on ? [[tt("Amplitude"), "a", 0, 5, 0.05, tt("Ampleur du tremblé, en % de la largeur de l'image")], [tt("Vitesse"), "v", 0.1, 4, 0.05, tt("Lent : on respire ; rapide : on court")], [tt("Roulis"), "r", 0, 4, 0.05, tt("Inclinaison qui oscille, en degrés")]].map(([lab, k, min, max, step, title]) =>
           h("label.row.range", { title }, lab, h("input", { type: "range", min, max, step, value: anim.shake[k] ?? 1, on: { input: (e) => { anim.shake[k] = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (+(anim.shake[k] ?? 1)).toFixed(2)))) : []),
         h("h4", tt("Décor")),
-        h("button.mini", { title: tt("Ouvre l'atelier de dessin du fond de cette case : formes simples, tracés, gris en trame, lignes d'effet"), on: { click: drawDecor } }, pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond")));
+        h("button.mini", { title: tt("Ouvre l'atelier de dessin du fond de cette case : formes simples, tracés, gris en trame, lignes d'effet (touche Q)"), on: { click: drawDecor } }, pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond")));
     } else {
       const it = itemOf(l), n = nOf(l, cur().v);
       side.append(range(tt("Position ↔"), "x", -1, 2, 0.005), range(tt("Position ↕"), "y", -1, 3, 0.005), range(tt("Taille"), "s", 0.05, 6, 0.01),
@@ -1876,6 +1876,9 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === " ") { e.preventDefault(); e.stopPropagation(); return playing ? stop() : play(); }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "q" || e.key === "Q") && [...document.querySelectorAll(".modal-back")].pop() === m.box.parentNode) {   // Q : dessiner le fond, comme sur la planche
+      e.preventDefault(); e.stopPropagation(); stop(); drawDecor(); return;
+    }
     if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "c" || e.key === "C") && !isoView && !v3) { e.preventDefault(); e.stopPropagation(); setCamLock(!camLock); return; }
     if (e.key === "Escape" && focusPick) { e.preventDefault(); e.stopPropagation(); setFocusPick(false); return; }
     if (e.key === "Escape" && stretchOn) { e.preventDefault(); e.stopPropagation(); stretchOn = false; lanes(); return; }
