@@ -351,11 +351,18 @@ def extend_back(folder, n, snaps, reach=BACK_REACH):
         p, b = int(p) % n, int(b) % n
         fwd = (b - p) % n                              # images du profil au 3/4 dos, dans le sens croissant ?
         step, span = (1, fwd) if fwd <= n // 2 else (-1, n - fwd)
-        near = min(real, key=lambda i: min(abs(i - p), n - abs(i - p)))
+        # la bouche est parfois suivie au-dela du profil : la fenetre de dos part de la derniere image suivie
+        k0 = 0
+        while k0 < span - 1 and frames[(p + step * (k0 + 1)) % n] is not None:
+            k0 += 1
+        if frames[(p + step * k0) % n] is None:
+            k0 = 0
+        start = (p + step * k0) % n
+        near = start if frames[start] is not None else min(real, key=lambda i: min(abs(i - p), n - abs(i - p)))
         cy = float(frames[near]["cy"])
-        w0 = float(frames[p]["w"]) if frames[p] and not frames[p].get("ext") else wface * 0.5
-        last = min(reach, max(1, span - 1))
-        for k in range(0, last + 1):
+        w0 = float(frames[near]["w"]) if near == start and k0 else (float(frames[p]["w"]) if frames[p] else wface * 0.5)
+        last = min(k0 + reach, max(1, span - 1))
+        for k in range(k0, last + 1):
             i = (p + step * k) % n
             if frames[i] is not None and not frames[i].get("ext"):
                 continue
@@ -366,7 +373,7 @@ def extend_back(folder, n, snaps, reach=BACK_REACH):
                 break
             runs = np.split(xs, np.where(np.diff(xs) > 1)[0] + 1)
             run = max(runs, key=len)                   # la tete : le plus long passage opaque a hauteur de bouche
-            wk = max(6.0, w0 * (1 - 0.45 * k / max(1, last)))
+            wk = max(6.0, w0 * (1 - 0.45 * (k - k0) / max(1, last - k0)))
             edge = float(run[0] if left else run[-1])
             cx = edge + wk * 0.5 if left else edge - wk * 0.5
             frames[i] = dict(up=[[round(cx - wk / 2, 2), round(cy, 2)], [round(cx + wk / 2, 2), round(cy, 2)]], lo=None, w=round(wk, 2),
