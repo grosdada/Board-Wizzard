@@ -6,7 +6,7 @@ Les cartes (tools/levres.py) et leurs gommes sont copiees dans l'orbite cible av
 d'origine (up0). A l'affichage (lipsync.cardMarkup) la carte est recalee sur la bouche suivie de l'orbite cible : place,
 taille, inclinaison. Il faut que la bouche soit suivie dans la cible (montage : « Tracer la bouche »). Une image-cle garde
 son angle : il est lu sur les reperes (snaps) des deux orbites, sens de rotation compris. Une carte de dos va sur l'image
-de dos de la cible du meme cote (profil + 3, sinon l'image de dos la plus proche). Sert a ne dessiner les bouches qu'une
+de dos de la cible du meme cote, a la meme place entre profil et 3/4 dos. Sert a ne dessiner les bouches qu'une
 fois (sur la base) et a garder celles d'une orbite qu'on refait.
 --dos : ne reporte que les cartes de dos, et garde les autres cles de la cible (ses propres bouches de face) ; les
 anciennes cartes de dos de la cible sont remplacees. Sans --dos, tout le lips.json de la cible est remplace.
@@ -94,12 +94,24 @@ def back_side(n, snaps, f):
     return "gauche" if d("profil gauche") <= d("profil droit") else "droit"
 
 
-def back_frame(n, snaps, frames, side):
-    """Image de dos de la cible pour ce cote : profil + 3 vers le dos, sinon l'image ext la plus proche de ce cote."""
+def _side_span(n, snaps, side):
     p, b = snaps["profil " + side] % n, snaps["3/4 dos " + ("gauche" if side == "gauche" else "droite")] % n
     step = 1 if (b - p) % n <= n // 2 else -1
-    for k in (3, 2, 4, 1, 5, 6, 0):
-        f = (p + step * k) % n
+    return p, step, max(1, (b - p) % n if step == 1 else (p - b) % n)
+
+
+def back_frac(n, snaps, f, side):
+    """Place d'une image de dos entre le profil (0) et le 3/4 dos (1)."""
+    p, step, span = _side_span(n, snaps, side)
+    return (((f - p) * step) % n) / span
+
+
+def back_frame(n, snaps, frames, side, frac=0.5):
+    """Image de dos de la cible pour ce cote, a la meme place entre profil et 3/4 dos, sinon l'image de dos la plus proche."""
+    p, step, span = _side_span(n, snaps, side)
+    want = round(frac * span)
+    for d in (0, 1, -1, 2, -2, 3, -3, 4, -4):
+        f = (p + step * (want + d)) % n
         if frames[f] and (frames[f].get("ext") or frames[f].get("back")):
             return f
     return None
@@ -132,7 +144,8 @@ def main():
         if only_back and not dos:
             continue
         if dos:                                                 # carte de dos : meme cote, image de dos de la cible
-            f = back_frame(dn, ds, dmouth, back_side(sn, ss, k["f"]))
+            side = back_side(sn, ss, k["f"])
+            f = back_frame(dn, ds, dmouth, side, back_frac(sn, ss, k["f"], side))
             if f is None:
                 print("image-cle %d (dos) : pas d'image de dos dans la cible (levres_dzine.py dos-suivi), laissee" % k["f"])
                 continue

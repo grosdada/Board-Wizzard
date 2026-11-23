@@ -16,7 +16,7 @@ Ensuite, pour les poses : python tools/levres_report.py <element> base <element>
 
 Bouches de dos (3/4 dos, quand on ne voit plus que le bout des levres sur le bord de la silhouette) :
     python tools/levres_dzine.py dos-suivi [element ...]                    # place la bouche apres chaque profil (mouth.json)
-    python tools/levres_dzine.py prep <element> dos --dos [--out DOSSIER]    # une grille par cote, a profil + 3
+    python tools/levres_dzine.py prep <element> dos --dos [--out DOSSIER]    # deux grilles par cote : mi-chemin et 3/4 dos
     python tools/levres_dzine.py assemble <element> <f> <rendu.png> --dos [--test]
 dos-suivi (gratuit) : sur les orbites dont la bouche est suivie, la bouche est placee sur les 6 images qui suivent chaque
 profil vers le dos (mouthfind.extend_back) ; l'ancien mouth.json est garde dans data/backup/mouth/. Sans element : toutes.
@@ -69,7 +69,7 @@ DOS_ORDER = ["A", "D", None, None]          # haut-gauche, haut-droite ; en bas 
 
 
 def dos_frames(iid, vid="base"):
-    """Images-cles des bouches de dos : profil + 3 vers le dos, de chaque cote, la ou la bouche est placee."""
+    """Images-cles des bouches de dos, de chaque cote : a mi-chemin du profil au 3/4 dos, et au 3/4 dos."""
     from app import sprites
     it = store.load_item(iid)
     o = it["variants"][vid]["orbit"]
@@ -80,11 +80,14 @@ def dos_frames(iid, vid="base"):
     for p, b in (("profil gauche", "3/4 dos gauche"), ("profil droit", "3/4 dos droite")):
         p, b = int(snaps[p]) % n, int(snaps[b]) % n
         step = 1 if (b - p) % n <= n // 2 else -1
-        for k in (3, 2, 4, 1, 5):                  # profil + 3, sinon le plus pres possible
-            f = (p + step * k) % n
-            if fr[f] and (fr[f].get("ext") or fr[f].get("back")):
-                out.append(f)
-                break
+        span = (b - p) % n if step == 1 else (p - b) % n
+        # deux images-cles par cote : a mi-chemin du profil au 3/4 dos, et au 3/4 dos (le bout des levres)
+        for want in (max(1, span // 2), span):
+            for d in (0, -1, 1, -2, 2, -3):
+                f = (p + step * (want + d)) % n
+                if fr[f] and (fr[f].get("ext") or fr[f].get("back")) and f not in out:
+                    out.append(f)
+                    break
     if not out:
         sys.exit("pas de bouche de dos placee sur %s : lancer d'abord dos-suivi" % iid)
     return out

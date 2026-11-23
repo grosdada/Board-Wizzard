@@ -319,7 +319,8 @@ BACK_REACH = 6
 
 def extend_back(folder, n, snaps, reach=BACK_REACH):
     """Bouche de dos : passe le profil, le suivi perd la bouche (il n'en reste que le bout des levres, sur le bord de la
-    silhouette). On la place la, sur les `reach` images qui suivent chaque profil vers le dos (sans depasser le 3/4 dos) :
+    silhouette). On la place la, de la derniere image suivie apres chaque profil jusqu'au 3/4 dos et deux images au-dela
+    (au moins `reach` images, jamais jusqu'au dos) :
     meme hauteur que la bouche suivie la plus proche, collee au bord avant de la silhouette (a gauche pour le profil gauche,
     a droite pour le profil droit : le cote vers lequel le sujet regarde), de plus en plus etroite. Ces images sont marquees
     ext : les bouches dessinees de dos (tools/levres_dzine.py --dos) s'y recalent ; la bouche tracee ne s'y dessine pas.
@@ -367,7 +368,7 @@ def extend_back(folder, n, snaps, reach=BACK_REACH):
         near = start if frames[start] is not None else min(real, key=lambda i: min(abs(i - p), n - abs(i - p)))
         cy = float(frames[near]["cy"])
         w0 = float(frames[near]["w"]) if near == start and k0 else (float(frames[p]["w"]) if frames[p] else wface * 0.5)
-        last = min(k0 + reach, max(1, span - 1))
+        last = min(max(k0 + reach, span + 2), max(1, 2 * span - 3))   # jusqu'au 3/4 dos et un peu au-dela (le bout des levres s'y voit encore)
         for k in range(k0, last + 1):
             i = (p + step * k) % n
             if frames[i] is not None and not frames[i].get("ext"):
