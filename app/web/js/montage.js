@@ -10,7 +10,7 @@
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put, del } from "./api.js";
-import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
+import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime, segsOf } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
 import { markupReady } from "./model.js";
@@ -966,7 +966,7 @@ export function openMontage(app, pid) {
       if (r.audio) { put("audio/" + r.audio, { dur: res.dur }).catch(() => {}); if (app.bankUI) app.bankUI.reload(); libAudio = null; }   // la voix est aussi rangee dans la banque audio
       const first = !l.lip || l.lip.x == null;
       l.lip = Object.assign({ on: true, off: 0, bg: true }, l.lip, { src: r.file, name, dur: res.dur, fps: res.fps, cues: res.cues });
-      delete l.lip.in; delete l.lip.out;
+      delete l.lip.in; delete l.lip.out; delete l.lip.segs;
       if (first || (hasPerso(itemOf(l)) && !l.lip.set)) await autoMouth(l, true);
       if ((l.lip.off || 0) + res.dur > anim.dur) { anim.dur = Math.min(60, Math.ceil(((l.lip.off || 0) + res.dur) * 2) / 2); dur.value = anim.dur; }
       hist.snap(); paint(); lanes(); props();
@@ -1064,6 +1064,7 @@ export function openMontage(app, pid) {
     const lip = l.lip, c = lip.cues || "", fps = lip.fps || 12, first = c.search(/[^X]/);
     if (first < 0) return toast(tt("Cette voix est muette : rien à garder."));
     let last = c.length - 1; while (last > first && c[last] === "X") last--;
+    delete lip.segs;                                       // la voix redevient d'un seul morceau
     lip.in = f3(Math.max(0, first / fps - 0.06)); lip.out = f3(Math.min(lip.dur || 1e9, (last + 1) / fps + 0.12));
     hist.snap(); paint(); lanes(); props();
     toast(tt`Blancs coupés : ${(lip.out - lip.in).toFixed(1)} s gardées sur ${(lip.dur || 0).toFixed(1)}.`);
@@ -1467,15 +1468,16 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     const file = h("input", { type: "file", accept: "audio/*,video/mp4,.webm", style: { display: "none" }, on: { change: (e) => { const f = e.target.files[0]; if (f) setVoice(l, f, f.name); e.target.value = ""; } } });
     const micBtn = h("button.mini", { title: tt("Enregistre ta voix au micro ; clique encore pour arrêter"), on: { click: () => micro(l, micBtn) } }, rec ? tt("■ Arrêter l'enregistrement") : tt("● Micro"));
     const vrows = [h("div.row.wrap", h("button.mini", { title: tt("Fichier son : wav, mp3, m4a, ogg, webm"), on: { click: () => file.click() } }, lip.src ? tt("Changer la voix…") : tt("Importer une voix…")), micBtn, file,
-      lip.src ? h("button.mini.danger", { title: tt("Retire la voix et ses bouches (la place de la bouche est gardée)"), on: { click: () => { const a = players.get(l.id); if (a) a.pause(); players.delete(l.id); delete l.lip.src; delete l.lip.cues; delete l.lip.name; delete l.lip.dur; delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, tt("Retirer")) : "")];
+      lip.src ? h("button.mini.danger", { title: tt("Retire la voix et ses bouches (la place de la bouche est gardée)"), on: { click: () => { const a = players.get(l.id); if (a) a.pause(); players.delete(l.id); delete l.lip.src; delete l.lip.cues; delete l.lip.name; delete l.lip.dur; delete l.lip.in; delete l.lip.out; delete l.lip.segs; paint(); lanes(); props(); } } }, tt("Retirer")) : "")];
     vrows.push(libBox(l), ttsBox(l));
     if (lip.src) {
-      const [va, vb] = voiceSpan(lip);
-      vrows.push(h("div.muted", { title: lip.name || "" }, `🔊 ${(lip.name || "voix").slice(0, 22)} · ${(vb - va).toFixed(1)} s` + (vb - va < (lip.dur || 0) - 0.01 ? tt` sur ${(lip.dur || 0).toFixed(1)}` : "")),
+      const [va, vb] = voiceSpan(lip), sg = segsOf(lip), kept = sg.reduce((n, s) => n + s.b - s.a, 0);
+      vrows.push(h("div.muted", { title: lip.name || "" }, `🔊 ${(lip.name || "voix").slice(0, 22)} · ${kept.toFixed(1)} s` + (kept < (lip.dur || 0) - 0.01 ? tt` sur ${(lip.dur || 0).toFixed(1)}` : "") + (lip.segs ? tt` · ${sg.length} morceaux` : "")),
         h("div.row.wrap",
           h("button.mini", { title: tt("Retire le silence avant le premier son et après le dernier"), on: { click: () => { trimBlanks(l); } } }, tt("✂ Couper les blancs")),
-          h("button.mini", { title: tt("Coupe la voix à la tête de lecture : ce qui vient après n'est plus joué"), on: { click: () => { const v = voiceTime(lip, t); if (v < 0) return toast(tt("Place la tête de lecture dans la voix.")); put("out", f3(v)); lanes(); props(); } } }, tt("✂ Couper ici")),
-          vb - va < (lip.dur || 0) - 0.01 ? h("button.mini", { title: tt("Retrouve la voix entière"), on: { click: () => { delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, tt("Entière")) : ""),
+          lip.segs ? h("button.mini", { title: tt("Remet la voix d'un seul tenant, à sa place d'origine"), on: { click: () => { delete l.lip.segs; hist.snap(); paint(); lanes(); props(); } } }, tt("Recoller les morceaux")) : "",
+          lip.segs ? "" : h("button.mini", { title: tt("Coupe la voix à la tête de lecture : ce qui vient après n'est plus joué"), on: { click: () => { const v = voiceTime(lip, t); if (v < 0) return toast(tt("Place la tête de lecture dans la voix.")); put("out", f3(v)); lanes(); props(); } } }, tt("✂ Couper ici")),
+          !lip.segs && vb - va < (lip.dur || 0) - 0.01 ? h("button.mini", { title: tt("Retrouve la voix entière"), on: { click: () => { delete l.lip.in; delete l.lip.out; paint(); lanes(); props(); } } }, tt("Entière")) : ""),
         h("div", { title: tt("Décale la voix (et la bouche qui la suit) dans le plan") }, plain(tt("Décalage (s)"), "off", 0, Math.max(1, anim.dur), 0.01, 0, (x) => (+x).toFixed(2))));
     }
     // --- bouche : ce qui la fait parler. Bouches generees (dessinees dans le style du personnage, ou ses propres
@@ -1584,13 +1586,18 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       row(l.id, name, "●");
       const lip = l.lip;
       if (lip && lip.src) {                                // la voix du personnage : un bloc a deplacer et a raccourcir par ses deux bouts
-        const [va, vb] = voiceSpan(lip), fps = lip.fps || 12, c = lip.cues || "", i0 = Math.floor(va * fps), i1 = Math.max(i0 + 1, Math.ceil(vb * fps));
-        let bars = "";
-        for (let i = i0; i < i1; i++) if (c[i] && c[i] !== "X") bars += `<rect x="${i - i0}" y="${c[i] === "M" ? 0.35 : "AOL".includes(c[i]) ? 0.05 : 0.2}" width="1.05" height="${c[i] === "M" ? 0.3 : "AOL".includes(c[i]) ? 0.9 : 0.6}"/>`;
-        const clip = h("div.mt-clip", { "data-clip": l.id, title: tt`${lip.name || "voix"} · glisser pour déplacer, tirer un bout pour raccourcir`, style: `left:${pct(lip.off || 0)};width:${pct(vb - va)}` },
-          h("span.dk-h.l", { "data-edge": "in" }), h("span.dk-h.r", { "data-edge": "out" }));
-        clip.insertAdjacentHTML("afterbegin", `<svg viewBox="0 0 ${i1 - i0} 1" preserveAspectRatio="none">${bars}</svg>`);
-        tl.append(h("div.mt-row.voice", h("div.mt-name", { title: tt`Voix de ${name}`, on: { click: () => { sel = l.id; selKey = null; paint(); lanes(); props(); } } }, "🔊 ", name), h("div.mt-lane", { "data-lane": l.id }, clip)));
+        const fps = lip.fps || 12, c = lip.cues || "";
+        // un bloc par morceau de la voix (clic droit : scinder) ; chacun se deplace et se raccourcit par ses deux bouts
+        const clips = segsOf(lip).map((sg) => {
+          const i0 = Math.floor(sg.a * fps), i1 = Math.max(i0 + 1, Math.ceil(sg.b * fps));
+          let bars = "";
+          for (let i = i0; i < i1; i++) if (c[i] && c[i] !== "X") bars += `<rect x="${i - i0}" y="${c[i] === "M" ? 0.35 : "AOL".includes(c[i]) ? 0.05 : 0.2}" width="1.05" height="${c[i] === "M" ? 0.3 : "AOL".includes(c[i]) ? 0.9 : 0.6}"/>`;
+          const clip = h("div.mt-clip", { "data-clip": l.id, "data-seg": sg.j, title: tt`${lip.name || "voix"} · glisser pour déplacer, tirer un bout pour raccourcir, clic droit pour scinder`, style: `left:${pct((lip.off || 0) + sg.o)};width:${pct(sg.b - sg.a)}` },
+            h("span.dk-h.l", { "data-edge": "in" }), h("span.dk-h.r", { "data-edge": "out" }));
+          clip.insertAdjacentHTML("afterbegin", `<svg viewBox="0 0 ${i1 - i0} 1" preserveAspectRatio="none">${bars}</svg>`);
+          return clip;
+        });
+        tl.append(h("div.mt-row.voice", h("div.mt-name", { title: tt`Voix de ${name}`, on: { click: () => { sel = l.id; selKey = null; paint(); lanes(); props(); } } }, "🔊 ", name), h("div.mt-lane", { "data-lane": l.id }, ...clips)));
       }
     }
     tl.append(h("div.mt-head", { style: `left:calc(var(--mt-name) + var(--mt-pad) + (100% - var(--mt-name) - 2 * var(--mt-pad)) * ${t / anim.dur})` }));
@@ -1614,6 +1621,26 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (e.target.__key) { sel = e.target.dataset.key; selKey = e.target.__key; keyMenu(e, sel, selKey, e.target.dataset.ch); lanes(); return; }
     e.preventDefault();
     const row = e.target.closest(".mt-row"), lane = row && row.querySelector(".mt-lane");
+    const clipEl = e.target.closest(".mt-clip");
+    if (clipEl) {                                          // bloc de voix : le scinder la ou on a clique, retirer un morceau, recoller
+      const l = layerOf(clipEl.dataset.clip), lip = l && l.lip;
+      if (!lip) return;
+      const T = timeAt(e, clipEl.parentNode), j = +clipEl.dataset.seg;
+      const split = () => {
+        if (!lip.segs) { const [a, b] = voiceSpan(lip); lip.segs = [{ in: f3(a), out: f3(b), o: 0 }]; delete lip.in; delete lip.out; }
+        const k = j < 0 ? 0 : j, sg = lip.segs[k], a = Math.max(0, sg.in || 0), u = T - (lip.off || 0) - (sg.o || 0);
+        if (u < 0.05 || u > (sg.out ?? lip.dur) - a - 0.05) return toast(tt("Clique plus loin des bouts du morceau pour le scinder."));
+        lip.segs.splice(k + 1, 0, { in: f3(a + u), out: sg.out, o: f3((sg.o || 0) + u) });
+        sg.out = f3(a + u);
+        hist.snap(); paint(); lanes(); props();
+        toast(tt("Voix scindée : glisse un morceau pour le déplacer."));
+      };
+      const items = [{ head: tt`Voix · ${lip.name || "voix"}` }, { label: tt("✂ Scinder ici"), click: split }];
+      if (lip.segs && lip.segs.length > 1 && j >= 0) items.push({ label: tt("Retirer ce morceau"), click: () => { lip.segs.splice(j, 1); hist.snap(); paint(); lanes(); props(); } });
+      if (lip.segs) items.push({ label: tt("Recoller les morceaux"), click: () => { delete lip.segs; hist.snap(); paint(); lanes(); props(); } });
+      sel = l.id; ctxMenu(e, items);
+      return;
+    }
     if (lane && lane.dataset.lane === "cam")                // piste Camera (ou un de ses canaux) : deployer ou replier les canaux
       ctxMenu(e, [{ head: tt("Caméra") }, { label: chanOpen ? tt("Replier les canaux") : tt("Déployer les canaux (cadre, zoom, inclinaison, avancer)"), click: () => { chanOpen = !chanOpen; localStorage.setItem("bw.camChannels", chanOpen ? "1" : ""); lanes(); } }]);
   });
@@ -1631,9 +1658,10 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     }
     const clipEl = e.target.closest(".mt-clip");
     if (clipEl) {                                          // bloc de voix : le deplacer, ou le raccourcir par un bout
-      const l = layerOf(clipEl.dataset.clip), [va, vb] = voiceSpan(l.lip);
+      const l = layerOf(clipEl.dataset.clip), [va, vb] = voiceSpan(l.lip), j = +clipEl.dataset.seg, sg = j >= 0 && l.lip.segs ? l.lip.segs[j] : null;
       picked.clear(); selKey = null; sel = l.id;
-      drag = { kind: "clip", l, mode: e.target.dataset.edge || "move", x0: e.clientX, w: lane.getBoundingClientRect().width, off: l.lip.off || 0, a: va, b: vb };
+      drag = { kind: "clip", l, mode: e.target.dataset.edge || "move", x0: e.clientX, w: lane.getBoundingClientRect().width, off: l.lip.off || 0, a: va, b: vb,
+               sg, o0: sg ? sg.o || 0 : 0, a0: sg ? Math.max(0, sg.in || 0) : 0, b0: sg ? (sg.out ?? l.lip.dur) : 0 };
       return;
     }
     if (e.target.__key) {
@@ -1665,7 +1693,13 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       return;
     }
     if (drag.kind === "clip") {
-      const lip = drag.l.lip, dt = (e.clientX - drag.x0) / drag.w * anim.dur;
+      const lip = drag.l.lip, dt = (e.clientX - drag.x0) / drag.w * anim.dur, sg = drag.sg;
+      if (sg) {                                            // un morceau de la voix scindee
+        if (drag.mode === "move") sg.o = f3(clamp(drag.o0 + dt, -drag.off, anim.dur - drag.off));
+        else if (drag.mode === "in") { const a = clamp(drag.a0 + dt, Math.max(0, drag.a0 - drag.off - drag.o0), drag.b0 - 0.1); sg.in = f3(a); sg.o = f3(drag.o0 + a - drag.a0); }   // le son garde sa place
+        else sg.out = f3(clamp(drag.b0 + dt, drag.a0 + 0.1, lip.dur || 1e9));
+        paint(); lanes(); return;
+      }
       if (drag.mode === "move") lip.off = f3(clamp(drag.off + dt, 0, anim.dur));
       else if (drag.mode === "in") { const a = clamp(drag.a + dt, Math.max(0, drag.a - drag.off), drag.b - 0.1); lip.in = f3(a); lip.off = f3(drag.off + a - drag.a); }   // le son garde sa place, le debut recule
       else lip.out = f3(clamp(drag.b + dt, drag.a + 0.1, lip.dur || 1e9));

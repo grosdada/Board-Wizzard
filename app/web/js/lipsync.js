@@ -137,8 +137,18 @@ export function simplify(cues, rate = 4, varied = false) {
 }
 /** Partie gardee de la voix : [debut, fin] en secondes dans le fichier (lip.in, lip.out : la decoupe). */
 export function voiceSpan(lip) { const a = Math.max(0, lip.in || 0), b = Math.min(lip.dur || 1e9, lip.out ?? lip.dur ?? 1e9); return [a, Math.max(a, b)]; }
+/** Morceaux de la voix (lip.segs = [{ in, out, o }] : bouts du meme fichier, chacun pose a lip.off + o dans le plan ;
+ *  sans segs, un seul morceau : lip.in .. lip.out a lip.off). Rend [{ a, b, o, j }] (a, b : secondes dans le fichier). */
+export function segsOf(lip) {
+  const dur = lip.dur || 1e9;
+  if (!lip.segs || !lip.segs.length) { const [a, b] = voiceSpan(lip); return [{ a, b, o: 0, j: -1 }]; }
+  return lip.segs.map((s, j) => { const a = Math.max(0, s.in || 0); return { a, b: Math.max(a, Math.min(dur, s.out ?? dur)), o: s.o || 0, j }; });
+}
 /** Instant dans le fichier son qui correspond a l'instant t du plan, ou -1 hors de la voix. */
-export function voiceTime(lip, t) { const [a, b] = voiceSpan(lip), tt = t - (lip.off || 0); return tt < 0 || tt >= b - a ? -1 : tt + a; }
+export function voiceTime(lip, t) {
+  for (const s of segsOf(lip)) { const tt = t - (lip.off || 0) - s.o; if (tt >= 0 && tt < s.b - s.a) return tt + s.a; }
+  return -1;
+}
 /** Numero de l'image de bouche a l'instant t, ou -1. */
 export function cueIndex(lip, t) { const v = voiceTime(lip, t), i = Math.floor(v * (lip.fps || 12)); return v < 0 || !lip.cues || i >= lip.cues.length ? -1 : i; }
 /** Lettre de la bouche a l'instant t. */
@@ -239,14 +249,16 @@ export function cardKey(lips, frames, i) {
   let key = null, far = 1e9;
   // image de dos (mouth.json ext : le bout des levres sur le bord de la silhouette) : seulement les cartes de dos, et
   // inversement, pour ne pas poser une bouche de face sur un dos
-  for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; if (!!(m.ext || m.back) !== !!(k.dos || (frames[k.f] && (frames[k.f].ext || frames[k.f].back)))) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (d < far) { far = d; key = k; } }
+  // cartes « bas du visage » cuites image par image (tools/levres_bake.py, lips.exact) : une carte de face ne sert qu'a
+  // SON image, jamais recalee sur une voisine (la tete a tourne : double contour de joue)
+  for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; if (!!(m.ext || m.back) !== !!(k.dos || (frames[k.f] && (frames[k.f].ext || frames[k.f].back)))) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (lips.exact && !k.dos && d > 0) continue; if (d < far) { far = d; key = k; } }
   return key && far <= LIPS_REACH ? { key, far } : null;
 }
 // choix commun a la carte et a sa gomme : { key, letter, file, tf }, { empty } (silence) ou null (pas de carte pour cet angle)
 function cardPick(lip, lips, frames, i, t) {
   if (!lip || !lip.on || !lips || !frames) return null;
   const m = frames[i], ck = cardKey(lips, frames, i);
-  if (!ck) return null;
+  if (!ck) return lips.exact ? { empty: true } : null;     // bouches cuites : sans carte pour cet angle, le dessin reste intact (pas de bouche tracee)
   const { key, far } = ck;
   if (!speakingAt(lip, t)) return { empty: true };
   const shape = cueAt(lip, t);

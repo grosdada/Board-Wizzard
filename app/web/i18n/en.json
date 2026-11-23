@@ -1,5 +1,14 @@
 {
  "ui": {
+  " · {0} morceaux": " · {0} pieces",
+  "Remet la voix d'un seul tenant, à sa place d'origine": "Puts the voice back in one piece, at its original place",
+  "Recoller les morceaux": "Join the pieces back",
+  "{0} · glisser pour déplacer, tirer un bout pour raccourcir, clic droit pour scinder": "{0} · drag to move, pull an end to shorten, right-click to split",
+  "Clique plus loin des bouts du morceau pour le scinder.": "Click further from the ends of the piece to split it.",
+  "Voix scindée : glisse un morceau pour le déplacer.": "Voice split: drag a piece to move it.",
+  "Voix · {0}": "Voice · {0}",
+  "✂ Scinder ici": "✂ Split here",
+  "Retirer ce morceau": "Remove this piece",
   "Ouvre l'atelier de dessin du fond de cette case : formes simples, tracés, gris en trame, lignes d'effet (touche Q)": "Opens the background drawing workshop for this panel: simple shapes, strokes, halftone greys, effect lines (Q key)",
   "La case de la planche prend la pose, la place, la taille et l'orientation de chaque élément à la première image du montage, et le cadrage de la caméra. L'animation ne change pas.": "The panel on the page takes the pose, place, size and orientation of each element at the first frame of the edit, and the camera framing. The animation does not change.",
   "Première image reportée sur {0} élément(s)": "First frame applied to {0} element(s)",
