@@ -561,9 +561,10 @@ class Handler(BaseHTTPRequestHandler):
             d = data or {}
             if not (d.get("prompt") or "").strip():
                 raise ApiError("décris ce qu'il faut générer")
+            guides = self._save_guides(d)                           # croquis et references de style (images data:)
             jid = S.add("item_new", {"kind": d.get("kind", "asset"), "name": d.get("name", ""), "prompt": d["prompt"],
-                                     "style": d.get("style", "photo"), "orbit": d.get("orbit", True),
-                                     "folder": d.get("folder", ""), "tags": d.get("tags") or None, "raw": bool(d.get("raw")),
+                                     "style": d.get("style", "photo"), "orbit": d.get("orbit", True), "apose": bool(d.get("apose")), "view": d.get("view") or "",
+                                     "folder": d.get("folder", ""), "tags": d.get("tags") or None, "raw": bool(d.get("raw")), **guides,
                                      **({"seed": int(d["seed"])} if d.get("seed") else {})},
                         "Création · %s" % (d.get("name") or d["prompt"][:30]), **self.job_opts(d))
             return self.send_json({"job": jid})
@@ -766,6 +767,33 @@ class Handler(BaseHTTPRequestHandler):
             if oo.get("dir") == o["dir"]:
                 oo["lips"] = stamp
         return {"item": store.resolve(store.mutate_item(iid, fn))}
+
+    def _save_guides(self, d):
+        """Images guides d'une generation (data:image/... en base64) : le croquis et jusqu'a 15 references de style, rangees
+        dans data/refs/. Rend {"sketch": chemin, "refs": [chemins]} (chemins relatifs a data/)."""
+        import base64
+        from PIL import Image
+        out, folder = {}, settings.DATA / "refs"
+
+        def keep(uri, name):
+            if not isinstance(uri, str) or not uri.startswith("data:image/") or "," not in uri:
+                raise ApiError("image guide illisible")
+            raw = base64.b64decode(uri.split(",", 1)[1])
+            try:
+                im = Image.open(io.BytesIO(raw))
+                im.load()
+            except Exception:
+                raise ApiError("image guide illisible")
+            folder.mkdir(parents=True, exist_ok=True)
+            p = folder / ("%d_%s.png" % (int(time.time() * 1000), name))
+            im.convert("RGBA" if im.mode in ("RGBA", "LA", "P") else "RGB").save(p)
+            return "refs/" + p.name
+        if d.get("sketch"):
+            out["sketch"] = keep(d["sketch"], "croquis")
+        refs = [r for r in (d.get("refs") or []) if r][:16 - len(out)]
+        if refs:
+            out["refs"] = [keep(r, "ref%02d" % i) for i, r in enumerate(refs)]
+        return out
 
     def _mouth(self, iid, it, method, d):
         """Bouche du dessin (jeu « trace » du lip sync) : POST {variant, f, line} accroche la bouche au trait trace sur

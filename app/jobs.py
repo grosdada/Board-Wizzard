@@ -699,6 +699,20 @@ def run_item_pose(job, prov):
         SCHEDULER.add("item_orbit", {"item": it["id"], "variant": vid}, "Orbite · %s · %s" % (it["name"], label), **follow)
 
 
+GEN_REF_MODEL = "openai/gpt-image-2.5/flare/edit"         # generation guidee (croquis, references de style) : jusqu'a 16 images
+
+
+def _ref_gen(job, imgs, prompt, w, h, dest_dir):
+    """Image generee par GPT Image 2.5 (fal) a partir d'images guides : croquis et references de style."""
+    fp = falapi.FalProvider(fal_key_for(job), job)
+    p = fp._image_payload(GEN_REF_MODEL, prompt, w, h, _seed(job))
+    job["progress"] = "fal : envoi des %d image(s) guide" % len(imgs)
+    p["image_urls"] = [fp.upload(x) for x in imgs]
+    job["progress"] = "fal : génération (GPT Image 2.5)"
+    out = fp.run(GEN_REF_MODEL, p)
+    return fp.fetch(out["images"][0]["url"], Path(dest_dir) / "gen.png")
+
+
 def run_item_new(job, prov):
     p = job["params"]
     look = {"photo": "photograph, even soft studio lighting", "dessin": "black ink line drawing, storyboard sketch",
@@ -707,22 +721,44 @@ def run_item_new(job, prov):
     if kind == "decor":
         prompt, w, h = "%s. Wide establishing view of the empty place, no people. %s." % (p["prompt"], look), 1344, 768
     else:
-        prompt = ("%s. One single subject, entire subject visible, centred, three-quarter front view, on a plain light "
-                  "grey seamless studio backdrop with a soft ground shadow. %s." % (p["prompt"], look))
+        # un objet : de face par defaut (legerement du dessus ou d'en dessous au choix) ; un personnage : trois-quarts face
+        view = {"dessus": "seen from the front, slightly from above (gentle high angle)", "dessous": "seen from the front, slightly from below (gentle low angle)"}.get(
+            p.get("view"), "seen straight from the front at eye level") if kind == "asset" else "three-quarter front view"
+        prompt = ("%s. One single subject, entire subject visible, centred, %s, on a plain light "
+                  "grey seamless studio backdrop with a soft ground shadow. %s." % (p["prompt"], view, look))
         w, h = (832, 1216) if kind == "character" else (1024, 1024)
     if p.get("raw"):                                             # description complete fournie telle quelle (corps de mannequin, lots)
         prompt = p["prompt"]
+    sketch = [settings.DATA / x for x in ([p["sketch"]] if p.get("sketch") else [])]
+    refs = [settings.DATA / x for x in (p.get("refs") or [])]
+    if sketch or refs:                                           # images guides : croquis d'abord, puis les references de style
+        if refs and look:                                        # le style vient des references, pas d'un mot comme « dessin a l'encre »
+            prompt = prompt.replace(" %s." % look, "")
+        guide = []
+        if sketch:
+            guide.append("The first image is a rough sketch: follow its pose, composition and proportions, but draw the subject "
+                         "properly and completely.")
+        if refs:
+            guide.append(("The other images" if sketch else "The images") + " are style references only: draw in exactly their "
+                         "style (same kind of line, same thickness, same colouring and shading, same rendering), but do not copy "
+                         "their subjects, their characters or their backgrounds.")
+        prompt = prompt + " " + " ".join(guide)
     tmp = _tmp()
     try:
-        png = prov.t2i(prompt, w, h, _seed(job), tmp)
+        png = _ref_gen(job, sketch + refs, prompt, w, h, tmp) if (sketch or refs) else prov.t2i(prompt, w, h, _seed(job), tmp)
         it = add_item(kind, p.get("name") or p["prompt"][:40], png, p.get("style", "photo"), p.get("tags"),
                       folder=p.get("folder", ""))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     job["result"] = {"item": it["id"]}
     job["params"]["item"] = it["id"]
-    prepare(it["id"], orbit=p.get("orbit", True), target=job["target"], fal_key=job.get("_fal_key"), prio=job.get("prio", 1),
-            own_key=bool(job.get("own_key")))
+    follow = {"target": job["target"], "_fal_key": job.get("_fal_key"), "prio": job.get("prio", 1), "own_key": bool(job.get("own_key"))}
+    if p.get("apose") and kind == "character":                  # pose en A sur fond de couleur, a valider dans la fiche avant la tournette
+        SCHEDULER.add("item_apose", {"item": it["id"], "key": "vert"}, "Pose en A · %s" % it["name"], **follow)
+        prepare(it["id"], orbit=False, **{k: v for k, v in follow.items() if k != "_fal_key"}, fal_key=job.get("_fal_key"))
+    else:
+        prepare(it["id"], orbit=p.get("orbit", True), target=job["target"], fal_key=job.get("_fal_key"), prio=job.get("prio", 1),
+                own_key=bool(job.get("own_key")))
 
 
 def run_panel_integrate(job, prov):

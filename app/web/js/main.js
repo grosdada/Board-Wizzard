@@ -79,6 +79,8 @@ class App {
       h("button.icon", { title: tt("Rétablir (Ctrl+Y)"), on: { click: () => this.doRedo() } }, "↷"),
       el.pages,
       h("button.primary.drawasset", { title: tt("Fabriquer un asset sans calcul : le dessiner soi-même (crayons, formes de base), ou partir d'un objet tout fait (table, chaise, étagère…) réglable, qui tourne sur 360°"), on: { click: () => this.assetDialog() } }, tt("✏ Dessiner un asset")),
+      h("button.genasset", { title: tt("Générer un objet ou un véhicule d'après une description, un croquis et des dessins de référence pour le style (GPT Image 2.5)"), on: { click: () => this.genDialog("asset") } }, tt("✨ Générer un asset")),
+      h("button.genasset", { title: tt("Générer un personnage d'après une description, un croquis et des dessins de référence pour le style (GPT Image 2.5)"), on: { click: () => this.genDialog("character") } }, tt("✨ Générer un personnage")),
       h("div.grow"), el.workers, el.target, el.jobsBtn,
       h("button", { title: tt("Decks de montage : les cases animées mises bout à bout"), on: { click: (e) => this.decksMenu(e) } }, tt("🎞 Decks ▾")),
       h("button", { title: tt("Imprimer ou enregistrer la page en PDF"), on: { click: () => window.print() } }, tt("Imprimer")),
@@ -346,6 +348,78 @@ class App {
   }
 
   // generation depuis une case : « genere-moi un marteau » ; l'element entre en banque et se pose ici des qu'il existe
+  // « Generer un asset / un personnage » : une description, un croquis rough (facultatif) qui guide la pose et la composition,
+  // jusqu'a 15 dessins de reference pour le style (GPT Image 2.5 prend 16 images en tout), et des cases a cocher pour ce qu'on
+  // veut obtenir : l'image seule, sa tournette, la pose en A sur fond de couleur (personnage).
+  genDialog(kind) {
+    const MAXREF = 15, refs = [];
+    let sketch = null;
+    const toData = (file) => new Promise((ok, ko) => {              // reduite a 1280 px de cote au plus : assez pour guider
+      const fr = new FileReader();
+      fr.onerror = () => ko(new Error(tt("image illisible")));
+      fr.onload = () => { const im = new Image(); im.onerror = () => ko(new Error(tt("image illisible"))); im.onload = () => {
+        const k = Math.min(1, 1280 / Math.max(im.width, im.height)), c = document.createElement("canvas");
+        c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+        const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+        ok(c.toDataURL("image/png")); }; im.src = fr.result; };
+      fr.readAsDataURL(file);
+    });
+    const prompt = h("textarea", { rows: 3, placeholder: kind === "character" ? tt("Une vieille aviatrice en blouson de cuir, lunettes sur le front, sourire en coin…") : tt("Un vieux tracteur rouge, pneus boueux, cabine ouverte…") });
+    const name = h("input", { type: "text", placeholder: tt("Nom (facultatif : sinon le début de la description)") });
+    const style = h("select", [["dessin", tt("Dessin")], ["photo", tt("Photoréaliste")], ["3d", "3D"]].map(([v, t]) => h("option", { value: v }, t)));
+    const view = h("select", [["", tt("De face")], ["dessus", tt("De face, légèrement du dessus")], ["dessous", tt("De face, légèrement d'en dessous")]].map(([v, t]) => h("option", { value: v }, t)));
+    const sketchBox = h("div.genrefs.one"), refBox = h("div.genrefs"), count = h("span.muted");
+    const pickIn = (multi, onFiles) => { const i = h("input", { type: "file", accept: "image/*", multiple: multi, style: { display: "none" }, on: { change: async (e) => { await onFiles([...e.target.files]); e.target.value = ""; } } }); return i; };
+    const thumb = (src, drop) => { const t = h("div.genthumb", h("img", { src }), h("button.mini", { title: tt("Retirer"), on: { click: drop } }, "✕")); return t; };
+    const draw = () => {
+      sketchBox.textContent = ""; refBox.textContent = "";
+      sketchBox.append(sketch ? thumb(sketch, () => { sketch = null; draw(); }) : h("button.mini", { on: { click: () => sIn.click() } }, tt("＋ Croquis…")));
+      refs.forEach((r, i) => refBox.append(thumb(r, () => { refs.splice(i, 1); draw(); })));
+      if (refs.length < MAXREF) refBox.append(h("button.mini", { on: { click: () => rIn.click() } }, tt("＋ Dessins de référence…")));
+      count.textContent = tt`${refs.length} / ${MAXREF}`;
+      est();
+    };
+    const addRefs = async (files) => { for (const f of files.slice(0, MAXREF - refs.length)) refs.push(await toData(f)); if (files.length > MAXREF - refs.length) toast(tt`${MAXREF} dessins de référence au plus.`); draw(); };
+    const sIn = pickIn(false, async (f) => { if (f[0]) { sketch = await toData(f[0]); draw(); } }), rIn = pickIn(true, addRefs);
+    const dropZone = (el, onFiles) => { el.addEventListener("dragover", (e) => { e.preventDefault(); el.classList.add("over"); }); el.addEventListener("dragleave", () => el.classList.remove("over"));
+      el.addEventListener("drop", async (e) => { e.preventDefault(); el.classList.remove("over"); const f = [...e.dataTransfer.files].filter((x) => x.type.startsWith("image/")); if (f.length) await onFiles(f); }); };
+    dropZone(sketchBox, async (f) => { sketch = await toData(f[0]); draw(); }); dropZone(refBox, addRefs);
+    const orbit = h("input", { type: "checkbox", checked: true }), apose = h("input", { type: "checkbox", checked: false });
+    const note = h("p.muted.genest");
+    function est() {                                       // ce qui va partir, et ce que ca coute
+      const guided = !!sketch || refs.length > 0, parts = [];
+      parts.push(guided ? tt("image : GPT Image 2.5 sur fal, ≈ 0,02 $") : tt("image : générateur habituel"));
+      if (kind === "character" && apose.checked) parts.push(tt("pose en A sur fond de couleur, à valider dans la fiche (la tournette attend la validation)"));
+      else if (orbit.checked) parts.push(tt("détourage et tournette 360° (≈ 0,31 $ si elle part sur fal, gratuite sur tes machines)"));
+      else parts.push(tt("détourage seulement"));
+      note.textContent = parts.join(" · ");
+    }
+    orbit.addEventListener("change", est); apose.addEventListener("change", est);
+    modal(kind === "character" ? tt("Générer un personnage") : tt("Générer un asset"), h("div.form.genform",
+      h("label.col", tt("Description"), prompt),
+      h("div.col", h("span", tt("Croquis (facultatif) : un rough qui guide la pose et la composition")), sketchBox, sIn),
+      h("div.col", h("span", tt("Dessins de référence pour le style (facultatif) "), count), refBox, rIn,
+        h("p.muted", tt("Ils disent le style à obtenir : trait, couleurs, rendu. Leurs sujets ne sont pas recopiés. Glisse des images ici ou clique le bouton."))),
+      h("div.row", h("label.row", tt("Rendu"), style), h("label.row", tt("Nom"), name)),
+      kind === "asset" ? h("label.row", { title: tt("L'objet est vu de face par défaut ; un peu du dessus ou un peu d'en dessous au choix") }, tt("Vue"), view) : "",
+      h("h4", tt("Ce qu'on génère")),
+      h("label.row.check", h("input", { type: "checkbox", checked: true, disabled: true }), tt("L'image, rangée dans la banque")),
+      h("label.row.check", orbit, tt("Sa tournette 360° (pivotable dans les cases)")),
+      kind === "character" ? h("label.row.check", { title: tt("Première étape d'un personnage : sa pose en A sur un fond uni, que tu valides dans la fiche ; ensuite les poses et la tournette sont découpées par la couleur, sans trous.") }, apose, tt("D'abord la pose en A sur fond de couleur (à valider)")) : "",
+      note),
+      [{ label: tt("Annuler") }, { label: tt("Générer"), primary: true, click: async () => {
+        const text = prompt.value.trim();
+        if (!text) { toast(tt("Décris ce qu'il faut générer."), "error"); return false; }
+        const f = this.bankUI.folder;
+        try {
+          await post("bank/generate", { kind, name: (name.value.trim() || text).slice(0, 36), prompt: text, style: style.value, view: kind === "asset" ? view.value : "", orbit: orbit.checked,
+                                        apose: kind === "character" && apose.checked, sketch, refs, folder: f && f !== "·" ? f : "", target: target() });
+        } catch (e) { toast(tt("Refusé : ") + e.message, "error"); return false; }
+        toast(tt("Génération lancée : l'élément arrivera dans la banque.")); this.pollSoon();
+      } }]);
+    draw();
+    setTimeout(() => prompt.focus(), 30);
+  }
   generateHere(pid, rel) {
     const prompt = h("textarea", { rows: 3, placeholder: tt("Un marteau de charpentier usé, manche en bois…") });
     const kind = h("select", [["asset", tt("Objet / véhicule")], ["character", tt("Personnage")], ["decor", tt("Décor (devient le fond)")]].map(([v, t]) => h("option", { value: v }, t)));

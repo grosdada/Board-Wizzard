@@ -367,6 +367,13 @@ details.fold > summary:hover { opacity: 1; }
 /* pastille de la bouche (montage) : verte = bouche calculee a cet angle, rouge = aucune */
 .mdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 8px; vertical-align: 0; background: #777; box-shadow: 0 0 0 2px rgba(0,0,0,.35); }
 .mdot.green { background: #3ecf6a; } .mdot.red { background: #e5484d; }
+/* « Generer un asset / un personnage » : croquis et dessins de reference */
+.genform .genrefs { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; min-height: 62px; border: 1px dashed var(--line); border-radius: 8px; align-items: center; }
+.genform .genrefs.over { border-color: var(--accent); background: rgba(143,208,196,.08); }
+.genform .genthumb { position: relative; width: 64px; height: 64px; border-radius: 6px; overflow: hidden; background: #fff; }
+.genform .genthumb img { width: 100%; height: 100%; object-fit: contain; }
+.genform .genthumb button { position: absolute; top: 2px; right: 2px; padding: 0 4px; line-height: 16px; }
+.genform .genest { margin-top: 6px; }
 /* cible de la mise au point */
 button.mini.target { padding: 1px 5px; font-size: 13px; line-height: 16px; flex: none; }
 button.mini.target.on { background: #e2603a; border-color: #e2603a; color: #fff; }
