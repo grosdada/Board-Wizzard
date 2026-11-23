@@ -496,7 +496,12 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const pick = (label, k, opts) => h("label.row", label, h("select", { on: { change: (e) => { set(k, e.target.value); props(); } } }, Object.entries(opts).map(([v, n]) => h("option", { value: v, selected: val(k) === v }, n))));
     side.append(h("h4", t ? tt("Forme choisie") : tt("Prochaine forme")));
     if (SPECIAL.has(kind)) specialProps(kind, range, pick);
-    else side.append(pick(tt("Trait"), "stroke", { "#111111": tt("Noir"), "#ffffff": tt("Blanc"), none: tt("Aucun") }));
+    else {                                                 // contour : une coche (avec ou sans) et sa couleur, au nuancier
+      const on = val("stroke") !== "none", col = /^#[0-9a-f]{6}$/i.test(val("stroke") || "") ? val("stroke") : (val("sk") || "#111111");
+      side.append(h("div.row.fillrow",
+        h("label.row.check", { title: tt("Décoché : la forme n'a pas de contour") }, h("input", { type: "checkbox", checked: on, on: { change: (e) => { if (!e.target.checked) set("sk", col); set("stroke", e.target.checked ? col : "none"); props(); hist.snap(); } } }), tt("Contour")),
+        on ? swatch(col, (c) => { set("stroke", c); set("sk", c); }, () => hist.snap()) : ""));
+    }
     if (!SPECIAL.has(kind) && val("stroke") !== "none") side.append(range(tt("Épaisseur"), "sw", 0.2, 12, 0.1));
     if (kind !== "img" && kind !== "erase") side.append(h("h4", tt("Trait à la main")), range(tt("Tremblé"), "hand", 0, 10, 0.1), range(tt("Ondulation"), "hw", 0.5, 12, 0.1),
       h("p.muted", tt("Tremblé à 0 : trait net. Ondulation courte = trait nerveux, longue = lignes qui flottent.")));

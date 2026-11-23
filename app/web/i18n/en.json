@@ -1,5 +1,6 @@
 {
  "ui": {
+  "Décoché : la forme n'a pas de contour": "Unchecked: the shape has no outline",
   " · {0} morceaux": " · {0} pieces",
   "Remet la voix d'un seul tenant, à sa place d'origine": "Puts the voice back in one piece, at its original place",
   "Recoller les morceaux": "Join the pieces back",
