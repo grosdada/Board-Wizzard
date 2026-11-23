@@ -64,9 +64,43 @@ function gear(n, ro, ri, hole) {
 const wheel = (cx, cy, r) => circ(cx, cy, r);
 
 // ------------------------------------------------------------------------------------------------- les formes
-const CATS = { nature: tt("Nature"), ville: tt("Ville et bâtiments"), objets: tt("Objets"), vehicules: tt("Véhicules"), etres: tt("Êtres"), signes: tt("Signes"), abstrait: tt("Abstrait") };
+// l'abstrait en tete : ce sont les formes dont on se sert le plus pour un fond
+const CATS = { abstrait: tt("Abstrait"), nature: tt("Nature"), ville: tt("Ville et bâtiments"), objets: tt("Objets"), vehicules: tt("Véhicules"), etres: tt("Êtres"), signes: tt("Signes") };
 const L = [];
 const add = (c, k, n, d) => L.push({ c, k, n, d });
+
+// abstrait anguleux (en tete de l'abstrait) : eclats, cristaux, fractures, zigzags, escaliers, etoiles irregulieres...
+{
+  const r = rng(4242), rr = (a, b) => a + r() * (b - a);
+  const shard = (n, irr, stretch = 1, rot = 0) => poly(Array.from({ length: n }, (_, i) => { const a = rot + i * 2 * Math.PI / n + rr(-0.35, 0.35) * 2 * Math.PI / n, k = 1 - irr + r() * irr; return [50 + 48 * k * Math.cos(a) * stretch, 50 + 48 * k * Math.sin(a)]; }));
+  const spiky = (n, ri, irr) => poly(Array.from({ length: 2 * n }, (_, i) => { const a = i * Math.PI / n + rr(-0.12, 0.12), k = i % 2 ? ri * rr(0.7, 1.2) : rr(1 - irr, 1); return [50 + 50 * k * Math.cos(a), 50 + 50 * k * Math.sin(a)]; }));
+  const crystal = (x, w, top, bot, tilt = 0) => poly([[x, bot], [x - w / 2, bot - w * 0.3], [x - w / 2 + tilt, top + w * 0.5], [x + tilt, top], [x + w / 2 + tilt, top + w * 0.5], [x + w / 2, bot - w * 0.3]]);
+  let k = 0;
+  const A = (name, d) => add("abstrait", "angle-" + (++k), name, d);
+  for (let i = 0; i < 6; i++) A(tt`Éclat anguleux ${i + 1}`, shard(5 + i, 0.55, 1 + (i % 3) * 0.25, i));
+  A(tt("Cristal"), crystal(50, 30, 0, 100));
+  A(tt("Cristaux"), crystal(50, 26, 0, 100) + crystal(26, 20, 30, 100, -6) + crystal(76, 22, 22, 100, 7));
+  A(tt("Amas de cristaux"), [[20, 16, 45, -10], [38, 20, 15, -4], [56, 24, 0, 3], [74, 18, 25, 9], [88, 14, 50, 14]].map(([x, w, top, tl]) => crystal(x, w, top, 100, tl)).join(""));
+  A(tt("Fracture"), poly("50,50 0,8 30,0") + poly("50,50 46,0 92,10") + poly("50,50 100,40 96,80") + poly("50,50 70,100 30,96") + poly("50,50 0,70 4,30"));
+  A(tt("Éventail brisé"), Array.from({ length: 6 }, (_, i) => { const a0 = Math.PI + i * Math.PI / 6 + 0.04, a1 = a0 + Math.PI / 6 - 0.08, l0 = rr(70, 100), l1 = rr(70, 100); return poly([[50, 100], [50 + l0 * 0.5 * Math.cos(a0) * 2, 100 + l0 * Math.sin(a0)], [50 + l1 * 0.5 * Math.cos(a1) * 2, 100 + l1 * Math.sin(a1)]]); }).join(""));
+  A(tt("Triangles éclatés"), Array.from({ length: 9 }, () => { const x = rr(10, 90), y = rr(10, 90), s = rr(6, 18), a = rr(0, 6.28); return poly([0, 1, 2].map((q) => [x + s * Math.cos(a + q * 2.1 + rr(-0.3, 0.3)), y + s * Math.sin(a + q * 2.1 + rr(-0.3, 0.3))])); }).join(""));
+  A(tt("Zigzag plein"), poly("0,40 15,0 30,40 45,0 60,40 75,0 90,40 105,0 120,40 120,60 105,100 90,60 75,100 60,60 45,100 30,60 15,100 0,60"));
+  A(tt("Dents de scie"), poly("0,100 0,50 20,10 20,50 40,10 40,50 60,10 60,50 80,10 80,50 100,10 100,100"));
+  A(tt("Éclair épais"), poly("55,0 18,52 44,52 26,100 84,38 56,38 76,0"));
+  A(tt("Escalier brisé"), poly("0,100 0,78 18,78 18,60 30,60 30,40 52,40 52,26 64,26 64,8 86,8 86,0 100,0 100,100"));
+  A(tt("Créneaux irréguliers"), poly([[0, 100], ...Array.from({ length: 7 }, (_, i) => { const x = i * 16, y = rr(10, 60); return [[x, y], [x + 16, y]]; }).flat(), [112, 100]]));
+  A(tt("Ligne de crêtes"), poly([[0, 100], ...Array.from({ length: 9 }, (_, i) => [i * 20, i % 2 ? rr(40, 70) : rr(5, 30)]), [160, 100]]));
+  for (let i = 0; i < 3; i++) A(tt`Étoile irrégulière ${i + 1}`, spiky(7 + i * 3, 0.42 - i * 0.06, 0.35));
+  A(tt("Épines"), Array.from({ length: 7 }, (_, i) => { const x = 8 + i * 14 + rr(-3, 3), h = rr(45, 100), w = rr(5, 9); return poly([[x - w, 100], [x + rr(-6, 6), 100 - h], [x + w, 100]]); }).join(""));
+  A(tt("Pointes rayonnantes"), Array.from({ length: 12 }, (_, i) => { const a = i * Math.PI / 6 + rr(-0.15, 0.15), l = rr(30, 50), w = 0.12; return poly([[50 + 8 * Math.cos(a - w * 3), 50 + 8 * Math.sin(a - w * 3)], [50 + l * Math.cos(a), 50 + l * Math.sin(a)], [50 + 8 * Math.cos(a + w * 3), 50 + 8 * Math.sin(a + w * 3)]]); }).join("") + poly(ring(50, 50, 10, 10, 12)));
+  A(tt("Origami"), poly("10,30 50,0 62,24 100,20 80,58 96,96 50,80 18,100 26,62"));
+  A(tt("Pliage"), poly("0,20 40,0 40,46 100,30 70,100 28,76 0,90"));
+  A(tt("Flèche brisée"), poly("0,60 40,60 30,38 66,52 62,30 100,50 62,78 66,58 34,70 40,82 0,82"));
+  A(tt("Chevron cassé"), poly("0,0 26,0 52,40 44,48 78,100 52,100 28,60 36,52"));
+  A(tt("Facettes"), poly("50,0 82,18 100,52 78,90 40,100 6,76 0,36 22,10") + poly("50,0 52,48 22,10", true) + poly("52,48 100,52 78,90", true) + poly("52,48 40,100 6,76", true));
+  A(tt("Losange brisé"), poly("50,0 72,30 64,34 100,50 60,62 66,70 50,100 30,64 0,50 34,40"));
+  A(tt("Polygone éclaté"), poly(ring(50, 50, 48, 48, 7, 0.3)) + Array.from({ length: 7 }, (_, i) => { const a = 0.3 + (i + 0.5) * 2 * Math.PI / 7; return poly([[50 + 10 * Math.cos(a - 0.2), 50 + 10 * Math.sin(a - 0.2)], [50 + 50 * Math.cos(a), 50 + 50 * Math.sin(a)], [50 + 10 * Math.cos(a + 0.2), 50 + 10 * Math.sin(a + 0.2)]], true); }).join(""));
+}
 
 // nature
 add("nature", "arbre", tt("Arbre"), smooth(starPts(50, 36, 36, 29, 9)) + poly("44,58 56,58 57,94 63,100 37,100 43,94"));

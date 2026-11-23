@@ -446,7 +446,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const t = target();
     if (t && t !== building) {
       const b = boxOf(t, H), top = b.y - 6;
-      const corners = MANY.has(t.t) ? "" : t.p.map((p, i) => `<circle cx="${f1(p[0] * W)}" cy="${f1(p[1] * H)}" r="9" class="draw-pt" data-pt="${i}"/>`).join("");
+      const corners = MANY.has(t.t) && !(t.t === "poly" || t.t === "polyline" || t.ed) ? "" : t.p.map((p, i) => `<circle cx="${f1(p[0] * W)}" cy="${f1(p[1] * H)}" r="9" class="draw-pt" data-pt="${i}"/>`).join("");
       // poignee de rotation : au-dessus de la forme, elle tourne avec elle
       o += `<g transform="rotate(${f1(t.r || 0)} ${f1(b.cx)} ${f1(b.cy)})"><rect x="${f1(b.x - 6)}" y="${f1(top)}" width="${f1(b.w + 12)}" height="${f1(b.h + 12)}" class="draw-sel"/>` +
         `<line x1="${f1(b.cx)}" y1="${f1(top)}" x2="${f1(b.cx)}" y2="${f1(top - 30)}" class="draw-sel"/>` +
@@ -480,6 +480,36 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     shapes.push(...copies);
     sel = copies.length === 1 ? copies[0].id : null;
     paint(); props(); hist.snap();
+  }
+  // forme de la banque -> formes a points (une par contour plein ; les trous sont laisses) : poly pour les contours droits,
+  // forme libre lissee (blob) pour les courbes. La rotation et le retournement sont appliques aux points.
+  function editPoints(t) {
+    const d = geom(t, H), bx = boxOf(t, H), a = (t.r || 0) * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
+    const subs = [];
+    for (const part of d.split(/(?=M)/)) {
+      const tok = part.match(/[MLCQZ]|-?\d+(?:\.\d+)?/g) || [];
+      const pts = [];
+      let curve = false, cmd = "", nums = [];
+      const flush = () => { if (cmd === "M" || cmd === "L") for (let i = 0; i + 1 < nums.length; i += 2) pts.push([nums[i], nums[i + 1]]); else if (cmd === "C" || cmd === "Q") { const n = cmd === "C" ? 6 : 4; for (let i = 0; i + n - 1 < nums.length; i += n) pts.push([nums[i + n - 2], nums[i + n - 1]]); curve = true; } nums = []; };
+      for (const x of tok) { if (/[MLCQZ]/.test(x)) { flush(); cmd = x; } else nums.push(+x); }
+      flush();
+      if (pts.length > 1 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.5) pts.pop();
+      if (pts.length < 3) continue;
+      let ar = 0; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; ar += p[0] * q[1] - q[0] * p[1]; }
+      subs.push({ pts, curve, ar: ar / 2 });
+    }
+    if (!subs.length) return toast(tt("Cette forme ne se transforme pas en points."), "error");
+    const sign = Math.sign(subs.reduce((m, s) => (Math.abs(s.ar) > Math.abs(m.ar) ? s : m)).ar);
+    const keep = subs.filter((s) => Math.sign(s.ar) === sign);            // les contours pleins ; les trous partent
+    const base = JSON.parse(JSON.stringify(t));
+    for (const k of ["id", "t", "k", "p", "mx", "r"]) delete base[k];
+    const made = keep.map((s) => Object.assign({}, JSON.parse(JSON.stringify(base)), { id: uid(), t: s.curve ? "blob" : "poly", ed: 1,
+      p: s.pts.map(([x, y]) => { const dx = x - bx.cx, dy = y - bx.cy; return [+((bx.cx + dx * cs - dy * sn) / W).toFixed(4), +((bx.cy + dx * sn + dy * cs) / H).toFixed(4)]; }) }));
+    const i = shapes.indexOf(t);
+    shapes.splice(i, 1, ...made);
+    tool = "select"; sel = made[0].id;
+    tools(); props(); paint(); hist.snap();
+    toast(made.length > 1 ? tt`Forme en ${made.length} morceaux : tire les ronds pour déplacer les points.` : tt("Tire les ronds pour déplacer les points."));
   }
   function finish(keep) {                                  // termine la forme point par point
     const b = building; building = null; hover = null;
@@ -526,6 +556,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (t) {
       const out = h("output.rot-out", Math.round(t.r || 0) + "°");
       side.append(h("label.row.range", tt("Rotation"), h("input.rot-in", { type: "range", min: -180, max: 180, step: 1, value: Math.round(t.r || 0), on: { input: (e) => { t.r = +e.target.value; out.textContent = e.target.value + "°"; paint(); } } }), out),
+        t.t === "pre" ? h("button.mini", { title: tt("Transforme la forme en points à tirer un par un (outil Sélection, ronds sur la forme)"), on: { click: () => editPoints(t) } }, tt("✎ Éditer les points")) : "",
         h("h4", tt("Ordre")), h("div.row.wrap",
         h("button.mini", { on: { click: () => { const i = shapes.indexOf(t); if (i < shapes.length - 1) { shapes.splice(i, 1); shapes.splice(i + 1, 0, t); paint(); } } } }, tt("Avancer")),
         h("button.mini", { on: { click: () => { const i = shapes.indexOf(t); if (i > 0) { shapes.splice(i, 1); shapes.splice(i - 1, 0, t); paint(); } } } }, tt("Reculer")),
