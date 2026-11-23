@@ -1949,13 +1949,43 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
     } } }, tt("⤓ 1re image → case")),
     h("label.row", tt("Durée (s)"), dur));
   paint(); lanes(); props();
+  // quitter sans enregistrer : on previent (Annuler, croix, clic a cote, fermeture de l'onglet) si le montage a change
+  const stateNow = () => JSON.stringify({ layers: pan.layers, anim, dof, draw: pan.draw || null, ground: pan.ground || null });
+  const state0 = stateNow();
+  let leaving = false;
+  const dirty = () => !leaving && stateNow() !== state0;
+  const askLeave = () => new Promise((ok) => {
+    let got = "stay";
+    const q = modal(tt("Montage non enregistré"), h("p", tt("Tu as modifié ce montage sans l'enregistrer. Si tu quittes maintenant, l'animation est perdue.")),
+      [{ label: tt("Rester dans le montage"), click: () => { got = "stay"; } },
+       { label: tt("Quitter sans enregistrer"), click: () => { got = "quit"; } },
+       { label: tt("Enregistrer le montage"), primary: true, click: () => { got = "save"; } }]);
+    q.box.classList.add("modal-ask");
+    new MutationObserver((_, ob) => { if (!q.box.isConnected) { ob.disconnect(); ok(got); } }).observe(document.body, { childList: true });
+  });
+  async function leave(how) {                              // how : ce que demande le geste ; rend true si la fenetre se ferme
+    if (dirty()) {
+      stop();
+      const r = await askLeave();
+      if (r === "stay") return false;
+      if (r === "save") { save(); toast(tt("Montage enregistré.")); leaving = true; return true; }
+    }
+    leaving = true; done(); return true;
+  }
+  const beforeUnload = (e) => { if (m.box.isConnected && dirty()) { e.preventDefault(); e.returnValue = ""; } };
+  window.addEventListener("beforeunload", beforeUnload);
   const m = modal(tt`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg, box3), side), bar, keyBox, tl),
-    [{ label: tt("Annuler"), click: done },
+    [{ label: tt("Annuler"), click: async () => (await leave()) ? undefined : false },
      { label: tt("Enregistrer le montage"), click: () => { save(); toast(tt("Montage enregistré.")); } },
      { label: tt("Enregistrer et envoyer dans le deck ▸"), primary: true, click: () => { save(); app.sendToDeck(pid); } }]);
   m.box.classList.add("modal-wide", "modal-montage");
   { const hd = m.box.querySelector("header"); hd.insertBefore(viewSeg, hd.querySelector("h2").nextSibling); viewSeg.after(camLockBtn); }   // les trois vues : a cote du titre
   { const hd = m.box.querySelector("header"); fullBtn.classList.add("head-full"); hd.insertBefore(fullBtn, hd.querySelector("button.icon")); }   // plein ecran : en haut a droite, a cote de la croix
   hist.watch(m.box);
+  // la croix et le clic a cote passent aussi par la question
+  const guard = (e) => { e.stopImmediatePropagation(); e.preventDefault(); leave().then((go) => { if (go) { m.close(); window.removeEventListener("beforeunload", beforeUnload); } }); };
+  m.box.querySelector("header button.icon").addEventListener("click", guard, true);
+  m.box.parentNode.addEventListener("pointerdown", (e) => { if (e.target === m.box.parentNode) guard(e); }, true);
+  new MutationObserver((_, ob) => { if (!m.box.isConnected) { ob.disconnect(); window.removeEventListener("beforeunload", beforeUnload); } }).observe(document.body, { childList: true });
   return m;
 }

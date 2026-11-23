@@ -1,5 +1,9 @@
 {
  "ui": {
+  "Montage non enregistré": "Edit not saved",
+  "Tu as modifié ce montage sans l'enregistrer. Si tu quittes maintenant, l'animation est perdue.": "You changed this edit without saving it. If you leave now, the animation is lost.",
+  "Rester dans le montage": "Stay in the edit",
+  "Quitter sans enregistrer": "Leave without saving",
   "Pas de bouche calculée à cet angle (image {0}).": "No computed mouth at this angle (frame {0}).",
   ", de dos": ", from behind",
   "Pas d'image pour cette pose.": "No image for this pose.",
