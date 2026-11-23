@@ -397,8 +397,10 @@ def run_item_orbit(job, prov):
             job["progress"] = "orbite, essai %d" % (attempt + 1)
             start = d / (v["keyimg"] if keyed else v["ref"])
             if (attempt or p.get("studio")) and not decor and v.get("cut") and not keyed:   # 2e essai : sujet seul sur fond de studio
-                start = sprites.studio(d / v["cut"], tmp / "studio.png")
+                start = sprites.studio(d / v["cut"], tmp / "studio.png", fill=0.5 if it["kind"] == "asset" else 0.78)
                 job["progress"] = "orbite sur fond de studio"
+            if it["kind"] == "asset" and not (attempt or p.get("studio")):   # objet : de la marge, pour qu'il tienne au profil
+                start = sprites.pad_subject(start, tmp / "marge.png") or start
             rgb, mat = prov.orbit(start, length, _seed(job, attempt), poses.orbit_subject(it["kind"], it["name"]),
                                   mp, not decor and not keyed, tmp, refs=refs)
             job["progress"] = "découpe des images"

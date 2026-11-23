@@ -248,14 +248,14 @@ def _bbox(mask, pad=0):
             min(mask.shape[1], int(xs.max()) + 1 + pad), min(mask.shape[0], int(ys.max()) + 1 + pad))
 
 
-def studio(cut, dest):
+def studio(cut, dest, fill=0.78):
     """Pose un sujet detoure sur un fond de studio gris, avec une ombre douce au sol. Sert de depart a l'orbite quand
     l'image d'origine tourne mal (decor trop sombre : le sujet disparait de dos)."""
     sub = Image.open(cut).convert("RGBA")
     ratio = min(1.6, max(0.66, sub.width / sub.height * 1.45))
     h = int(round((1_050_000 / ratio) ** 0.5 / 16) * 16)
     w = int(round(h * ratio / 16) * 16)
-    k = min(0.78 * h / sub.height, 0.78 * w / sub.width)
+    k = min(fill * h / sub.height, fill * w / sub.width)      # un objet a besoin de marge : il s'allonge au profil
     sub = sub.resize((max(1, round(sub.width * k)), max(1, round(sub.height * k))), Image.LANCZOS)
     ys = np.linspace(0, 1, h)[:, None]
     wall = 208 - 14 * ys                                         # mur clair, un peu plus sombre vers le bas
@@ -274,6 +274,29 @@ def studio(cut, dest):
     bg.alpha_composite(sub, (x0, y1 - sub.height))
     Path(dest).parent.mkdir(parents=True, exist_ok=True)
     bg.convert("RGB").save(dest)
+    return dest
+
+
+def pad_subject(src, dest, frac=0.5):
+    """Image de depart d'orbite pour un objet : le sujet ramene a `frac` du cote d'un cadre carre, sur le fond de l'image
+    (couleur mediane des bords). Un vehicule plus long de profil que de face sortait sinon du cadre pendant le tour.
+    Rend None si le sujet a deja assez de marge."""
+    im = Image.open(src).convert("RGB")
+    a = np.asarray(im).astype(np.int16)
+    edge = np.concatenate([a[0], a[-1], a[:, 0], a[:, -1]])
+    bgc = np.median(edge, axis=0)
+    x0, y0, x1, y1 = _bbox(np.abs(a - bgc).max(axis=2) > 32)
+    big = max(x1 - x0, y1 - y0)
+    side = int(round(big / frac / 16) * 16)
+    if big <= 0 or side <= max(im.size):
+        return None
+    out = Image.new("RGB", (side, side), tuple(int(c) for c in bgc))
+    out.paste(im, ((side - im.width) // 2 - ((x0 + x1) // 2 - im.width // 2), (side - im.height) // 2 - ((y0 + y1) // 2 - im.height // 2)))
+    k = min(1.0, 1280 / side)
+    if k < 1:
+        out = out.resize((round(side * k), round(side * k)), Image.LANCZOS)
+    Path(dest).parent.mkdir(parents=True, exist_ok=True)
+    out.save(dest)
     return dest
 
 
