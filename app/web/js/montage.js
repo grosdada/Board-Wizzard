@@ -266,8 +266,7 @@ export function openMontage(app, pid) {
   const CAMS = { cam: tt("Caméra"), fo: tt("Mise au point"), bl: tt("Flou"), fx: tt("Lignes d'effet") };      // pistes de la camera ; fo et bl : profondeur de champ
 
   // ------------------------------------------------------------------------------------------ visionneuse
-  // pastille de la bouche (panneau de droite) : verte = une bouche calculee pour cette orientation, orange = seulement la
-  // bouche tracee du dessin, rouge = rien ne bougera a cet angle. Mise a jour a chaque image (l'orientation peut etre animee).
+  // pastille de la bouche (panneau de droite) : verte = une bouche calculee pour cette orientation, rouge = aucune. Mise a jour a chaque image (l'orientation peut etre animee).
   let mouthDot = null;
   function mouthStatus(l) {
     const lip = l.lip || {}, st = stateOf(l), it = itemOf(l), sp = it && sprite(it, st.v, st.f);
@@ -279,8 +278,7 @@ export function openMontage(app, pid) {
     if (!mf) return ["grey", tt("Chargement…")];
     const ck = cardKey(mf.lips, mf.all, sp.i), m = mf.m;
     if (ck) return ["green", tt`Bouche calculée disponible à cet angle (image ${sp.i}, carte de l'image ${ck.key.f}${ck.key.dos ? tt(", de dos") : ""}).`];
-    if (m && m.up && !m.ext) return ["orange", tt`Pas de bouche calculée à cet angle (image ${sp.i}) : c'est la bouche tracée qui bouge.`];
-    return ["red", tt`Pas de bouche à cet angle (image ${sp.i}) : rien ne bougera.`];
+    return ["red", tt`Pas de bouche calculée à cet angle (image ${sp.i}).`];
   }
   function updMouthDot() {
     if (!mouthDot || !mouthDot.isConnected) { mouthDot = null; return; }

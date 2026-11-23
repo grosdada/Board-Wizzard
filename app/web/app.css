@@ -364,9 +364,9 @@ details.fold > summary:hover { opacity: 1; }
 .mt-clip { position: absolute; top: 3px; bottom: 3px; min-width: 20px; background: #4a3f24; border: 1px solid #a88a45; border-radius: 5px; cursor: grab; overflow: hidden; touch-action: none; }
 .mt-clip svg { position: absolute; left: 9px; right: 9px; top: 0; height: 100%; width: calc(100% - 18px); fill: #ffd27a; pointer-events: none; }
 .mt-clip .dk-h { background: #ffd27a; }
-/* pastille de la bouche (montage) : verte = bouche calculee a cet angle, orange = bouche tracee, rouge = rien */
+/* pastille de la bouche (montage) : verte = bouche calculee a cet angle, rouge = aucune */
 .mdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 8px; vertical-align: 0; background: #777; box-shadow: 0 0 0 2px rgba(0,0,0,.35); }
-.mdot.green { background: #3ecf6a; } .mdot.orange { background: #f0a030; } .mdot.red { background: #e5484d; }
+.mdot.green { background: #3ecf6a; } .mdot.red { background: #e5484d; }
 /* cible de la mise au point */
 button.mini.target { padding: 1px 5px; font-size: 13px; line-height: 16px; flex: none; }
 button.mini.target.on { background: #e2603a; border-color: #e2603a; color: #fff; }

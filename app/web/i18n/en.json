@@ -1,5 +1,6 @@
 {
  "ui": {
+  "Pas de bouche calculée à cet angle (image {0}).": "No computed mouth at this angle (frame {0}).",
   ", de dos": ", from behind",
   "Pas d'image pour cette pose.": "No image for this pose.",
   "Bouches dessinées toutes faites : posées sur le visage, à tous les angles de face.": "Ready-made drawn mouths: placed on the face, at every front angle.",
@@ -7,8 +8,6 @@
   "De dos : ses propres bouches ne se montrent pas à cet angle.": "From behind: its own mouths do not show at this angle.",
   "Pas de bouche tracée pour cette pose (montage : « Tracer la bouche »).": "No traced mouth for this pose (edit: « Trace the mouth »).",
   "Bouche calculée disponible à cet angle (image {0}, carte de l'image {1}{2}).": "Computed mouth available at this angle (frame {0}, card from frame {1}{2}).",
-  "Pas de bouche calculée à cet angle (image {0}) : c'est la bouche tracée qui bouge.": "No computed mouth at this angle (frame {0}): the traced mouth moves instead.",
-  "Pas de bouche à cet angle (image {0}) : rien ne bougera.": "No mouth at this angle (frame {0}): nothing will move.",
   "Banque de formes : ": "Shape bank: ",
   ". Glisser dans le cadre pour la poser (Maj : sans garder ses proportions). Aplat ou trait : réglages de la forme, à droite.": ". Drag in the frame to place it (Shift: without keeping its proportions). Flat fill or outline: shape settings, on the right.",
   "Choisir une forme dans la banque (une centaine : objets, nature, ville, véhicules, êtres, signes, formes abstraites)": "Pick a shape from the bank (about a hundred: objects, nature, town, vehicles, beings, signs, abstract shapes)",
