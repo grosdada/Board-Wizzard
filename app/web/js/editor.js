@@ -9,7 +9,7 @@ import { markShape, thin } from "./marks.js";
 import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
-import { frameToAngle, thinMask, lineWidth, tintOf, tintFilter, frameT } from "./model.js";
+import { frameToAngle, thinMask, lineWidth, tintOf, tintFilter, frameT, markupReady } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
@@ -150,6 +150,7 @@ export class Editor {
         else if (Math.abs(v.a.currentTime - want) > 0.25) v.a.currentTime = want;
       }
     };
+    for (let k = 0; k <= dur * 12; k++) markupReady(scene.markup(k / 12, null, () => {}));   // toutes les images de l'animation se chargent des maintenant
     const t0 = performance.now();
     this.pv = { pid, el, raf: 0, voices };
     sync(0);                                                 // dans le clic : le navigateur laisse partir le son
@@ -159,7 +160,8 @@ export class Editor {
       if (t > dur) return stop();
       sync(t);
       if (!el.isConnected) this.svg.insertBefore(el, this.svg.querySelector(":scope > g.pv-play") || null);   // la planche a ete redessinee
-      inner.innerHTML = scene.markup(t, null, () => {});
+      const mk = scene.markup(t, null, () => {});
+      if (markupReady(mk)) inner.innerHTML = mk;           // une image pas prete : on garde la precedente (plus de case blanche)
       this.pv.raf = requestAnimationFrame(tick);
     };
     this.svg.append(el);

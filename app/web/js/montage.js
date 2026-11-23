@@ -13,6 +13,7 @@ import { h, modal, toast, history, upload, get, post, put, del } from "./api.js"
 import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
+import { markupReady } from "./model.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, tintOf, tintFilter } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
 import { PRESETS } from "./presets.js";
@@ -291,7 +292,8 @@ export function openMontage(app, pid) {
   function paint() {
     recSync();
     updMouthDot();
-    svg.innerHTML = isoView ? isoMarkup() : depthView ? topView() : v3 ? `<rect width="${W}" height="${f1(H)}" fill="#26292d"/>` : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
+    const mk = isoView ? isoMarkup() : depthView ? topView() : v3 ? `<rect width="${W}" height="${f1(H)}" fill="#26292d"/>` : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
+    if (!(playing && !markupReady(mk) && svg.firstChild)) svg.innerHTML = mk;   // en lecture, une image pas prete : on garde la precedente
     if (v3) render3(); else box3.style.display = "none";
     if (showMask && !playing) svg.querySelectorAll('[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
   }
@@ -1810,7 +1812,10 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     paint(); head(); voices(true);
     raf = requestAnimationFrame(tick);
   }
-  function play() { if (t >= anim.dur - 0.01) t = 0; playing = true; playBtn.textContent = tt("⏸ Pause"); last = performance.now(); raf = requestAnimationFrame(tick); }
+  function play() {
+    if (t >= anim.dur - 0.01) t = 0;
+    for (let k = 0; k <= anim.dur * 12; k++) markupReady(scene.markup(k / 12, null, () => {}));   // toutes les images de l'animation se chargent des maintenant
+    playing = true; playBtn.textContent = tt("⏸ Pause"); last = performance.now(); raf = requestAnimationFrame(tick); }
   function stop() { if (!playing) return; playing = false; voices(false); cancelAnimationFrame(raf); playBtn.textContent = tt("▶ Lecture"); paint(); lanes(); props(); }
   // Rec Action : bouton arme, puis un geste sur le personnage choisi (deplacer, tourner, pencher, taille) est enregistre en
   // temps reel : la tete de lecture avance depuis l'instant affiche, une cle tous les 1/12 s (meme souris immobile, pour

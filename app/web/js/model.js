@@ -146,6 +146,31 @@ export function frameUrls(item, vid) {
 }
 
 const keep = new Map();                       // images gardees en memoire : le glisser-tourner ne clignote pas
+// Images pretes pour la lecture : a chaque image d'une animation, tout le dessin est refait ; une image pas encore chargee
+// (ou sortie du cache) laissait une case blanche le temps d'une image. On garde ici les images chargees et decodees, et la
+// lecture ne montre une image de l'animation que quand toutes les siennes sont pretes (sinon la precedente reste).
+const READY = new Map();
+export function imgReady(url) {
+  let e = READY.get(url);
+  if (e) { READY.delete(url); READY.set(url, e); return e.ok; }   // la plus recente en dernier : les vieilles partent d'abord
+  const im = new Image();
+  e = { im, ok: false };
+  im.onload = () => { e.ok = true; if (im.decode) im.decode().catch(() => {}); };   // decode() ne revient pas toujours : on ne l'attend pas
+  im.onerror = () => { e.ok = true; };                     // image introuvable : ne pas bloquer la lecture
+  im.src = url;
+  READY.set(url, e);
+  if (READY.size > 2500) READY.delete(READY.keys().next().value);
+  return false;
+}
+/** Toutes les images d'un balisage SVG sont-elles pretes ? Lance le chargement de celles qui manquent. */
+export function markupReady(markup) {
+  let ok = true;
+  for (const m of markup.matchAll(/href="([^"#][^"]*)"/g)) {
+    if (m[1].startsWith("data:")) continue;
+    if (!imgReady(m[1].replace(/&amp;/g, "&"))) ok = false;
+  }
+  return ok;
+}
 export function preload(item, vid) {
   const key = item.id + "/" + vid + "/" + ((variantOf(item, vid) || {}).orbit || {}).dir;
   if (keep.has(key)) return keep.get(key);
