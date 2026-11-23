@@ -94,6 +94,20 @@ export function wiggleFilter(id, hand, wave, w, h, seed = 5) {
     `<feDisplacementMap in="SourceGraphic" scale="${amp.toFixed(2)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
 }
 /** Couleur unie d'un dessin en traces (l.col) : blanc par defaut. */
+/** Cadrage de la case (pan.frame = { cx, cy, z, rot }, la camera de la 1re image du montage reportee sur la case) :
+ *  { m (transform SVG du contenu), z, rot, fwd (point du contenu -> point de la page), inv (l'inverse) } ou null. */
+export function frameT(pan, bb) {
+  const f = pan && pan.frame;
+  if (!f) return null;
+  const z = f.z || 1, rot = f.rot || 0, cx = f.cx ?? 0.5, cy = f.cy ?? 0.5;
+  if (Math.abs(z - 1) < 1e-3 && Math.abs(rot) < 0.01 && Math.abs(cx - 0.5) < 1e-4 && Math.abs(cy - 0.5) < 1e-4) return null;
+  const a = rot * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
+  const C = [bb.x0 + bb.w / 2, bb.y0 + bb.h / 2], c = [bb.x0 + cx * bb.w, bb.y0 + cy * bb.h];
+  return { z, rot, C, c,
+    m: `translate(${C[0].toFixed(3)} ${C[1].toFixed(3)}) scale(${z.toFixed(5)}) rotate(${(-rot).toFixed(3)}) translate(${(-c[0]).toFixed(3)} ${(-c[1]).toFixed(3)})`,
+    fwd: (p) => { const dx = p.x - c[0], dy = p.y - c[1]; return { x: C[0] + z * (dx * cs + dy * sn), y: C[1] + z * (-dx * sn + dy * cs) }; },
+    inv: (p) => { const dx = (p.x - C[0]) / z, dy = (p.y - C[1]) / z; return { x: c[0] + dx * cs - dy * sn, y: c[1] + dx * sn + dy * cs }; } };
+}
 export function bodyFill(l) { return l && /^#[0-9a-f]{6}$/i.test(l.col || "") ? l.col : "#ffffff"; }
 /** Colorize d'une image (l.tint = { on, c }) : la couleur posee en produit dans la decoupe ; le blanc la prend,
  *  traits et peinture restent visibles. null : pas de colorize. */

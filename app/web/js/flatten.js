@@ -5,7 +5,7 @@ import { loadImage } from "./api.js";
 import { groundSvg } from "./ground.js";
 import { drawImage } from "./draw.js";
 import { faceOps, headReady, opsCanvas } from "./face.js";
-import { frameToAngle, variantOf, lineWidth, tintOf } from "./model.js";
+import { frameToAngle, variantOf, lineWidth, tintOf, frameT } from "./model.js";
 import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
@@ -20,6 +20,8 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   ctx.fillStyle = pg.page.fill || "#ffffff";
   ctx.fillRect(0, 0, cv.width, cv.height);
   ctx.imageSmoothingQuality = "high";
+  const FT = frameT(pan, local);                           // cadrage de la case (1re image du montage) : tout le contenu
+  if (FT) { ctx.translate(FT.C[0] * kx, FT.C[1] * ky); ctx.scale(FT.z, FT.z); ctx.rotate(-FT.rot * Math.PI / 180); ctx.translate(-FT.c[0] * kx, -FT.c[1] * ky); }
   const draw = (im, x, y, w, h, blur, flip, rz) => {
     ctx.save();
     ctx.filter = blur > 0.4 ? `blur(${(blur * kx).toFixed(2)}px)` : "none";

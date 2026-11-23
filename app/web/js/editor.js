@@ -9,7 +9,7 @@ import { markShape, thin } from "./marks.js";
 import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
-import { frameToAngle, thinMask, lineWidth, tintOf, tintFilter } from "./model.js";
+import { frameToAngle, thinMask, lineWidth, tintOf, tintFilter, frameT } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
@@ -95,10 +95,11 @@ export class Editor {
     svg.querySelectorAll(":scope > g.lh").forEach((x) => { if (!x.classList.contains("mh")) x.remove(); });
     const hs = this.hs, l = this.app.layer();
     if (!hs || !l) return;
-    const { box, sp, g } = hs, bb = g.bbox, u = 1 / (this.scale() || 1);      // u : unites de page par pixel d'ecran
+    const { box, sp, g } = hs, bb = g.bbox, FT = frameT(this.panel(g.id), bb), u = 1 / (this.scale() || 1) / (FT ? FT.z : 1);      // u : unites de page par pixel d'ecran
     this.rotCenter = { x: box.cx, y: box.y + box.h / 2 };
     const gh = s("g");
-    gh.innerHTML = handlesSvg({ box, rz: l.rz || 0, u, view: bb, bounds: { x0: 0, y0: 0, x1: this.pg.page.width, y1: this.pg.page.height }, orbit: !!(sp && sp.orbit) });
+    gh.innerHTML = handlesSvg({ box, rz: l.rz || 0, u, view: FT ? { x0: FT.inv({ x: bb.x0, y: bb.y0 }).x, y0: FT.inv({ x: bb.x0, y: bb.y0 }).y, x1: FT.inv({ x: bb.x0 + bb.w, y: bb.y0 + bb.h }).x, y1: FT.inv({ x: bb.x0 + bb.w, y: bb.y0 + bb.h }).y } : bb, bounds: { x0: 0, y0: 0, x1: this.pg.page.width, y1: this.pg.page.height }, orbit: !!(sp && sp.orbit) });
+    if (FT) gh.firstChild.setAttribute("transform", FT.m + " " + (gh.firstChild.getAttribute("transform") || ""));   // cadrage de la case
     svg.append(gh.firstChild);
   }
   /** Case animee (mode montage) : un petit bouton lecture dans la gouttiere, sous le milieu de la case, a taille fixe a
@@ -304,6 +305,12 @@ export class Editor {
           if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };
         });
       }
+      const FT = show === "layers" ? frameT(pan, bb) : null;
+      if (FT) {                                            // cadrage de la case (1re image du montage) : le contenu, pas les indications
+        const inner = s("g", { transform: FT.m });
+        while (grp.childNodes.length > 1) inner.append(grp.childNodes[1]);
+        grp.append(inner);
+      }
       for (const m of pan.marks || []) {                    // indications : fleches, rotation, cadres
         const sh = markShape(m, bb, k), col = m.color || "#111111", halo = col === "#ffffff" ? "#111111" : "#ffffff";
         const gm = s("g", { class: "mark", "data-mark": m.id, "data-panel": g.id });
@@ -467,8 +474,13 @@ export class Editor {
       e.preventDefault();
       return;
     }
+    const inPanel = (pid, g) => {                          // cadrage de la case : le point dans le repere de son contenu
+      const F = g && frameT(this.panel(pid), g.bbox);
+      return F ? [F.inv(pt), F] : [pt, null];
+    };
     if (t.dataset && t.dataset.h) {                        // poignee du calque choisi
-      const g = this.geom.panels.find((x) => x.id === app.sel.panel), l = app.layer();
+      const g0 = this.geom.panels.find((x) => x.id === app.sel.panel), [pt, F] = inPanel(app.sel.panel, g0);
+      const g = g0, l = app.layer();
       const item = l && app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
       if (g && l && t.dataset.h === "rot") { const c = this.rotCenter || { x: pt.x, y: pt.y + 1 }; this.drag = { kind: "lrot", l, c, a0: Math.atan2(pt.y - c.y, pt.x - c.x), rz: l.rz || 0 }; }
       else if (g && l && t.dataset.h === "turn" && sp) { preload(item, l.v); this.drag = { kind: "lturn", l, sx: e.clientX, f: l.f || 0, n: sp.n }; }
@@ -477,11 +489,12 @@ export class Editor {
         this.drag = Object.assign(cornerStart(layerBox(g.bbox, l, sp), l.rz, +t.dataset.c), { kind: "lscale", corner: true, l, bb: g.bbox, start: [pt.x, pt.y], s: l.s });
       }
       else if (g && l) this.drag = { kind: "lmove", l, bb: g.bbox, start: pt, x: l.x, y: l.y, s: l.s };
+      if (this.drag) this.drag.F = F;
       e.preventDefault();
       return;
     }
     if (t.dataset && t.dataset.layer) {
-      const pid = t.dataset.panel, g = this.geom.panels.find((x) => x.id === pid);
+      const pid = t.dataset.panel, g = this.geom.panels.find((x) => x.id === pid), [pt, F] = inPanel(pid, g);
       const l = (this.panel(pid).layers || []).find((x) => x.id === t.dataset.layer);
       if (!l || !g) return;
       if (app.focusPick) { app.focusOn(pid, l); e.preventDefault(); return; }      // cible : la mise au point se fait sur lui
@@ -490,7 +503,7 @@ export class Editor {
       if (item) preload(item, l.v);
       const turn = sp && sp.orbit && e.altKey;             // glisser = deplacer ; Alt + glisser = orbite (comme la poignee du centre)
       this.drag = { kind: turn ? "lturn" : "lmove", l, bb: g.bbox, start: pt, sx: e.clientX, x: l.x, y: l.y, s: l.s, f: l.f || 0,
-                    n: sp ? sp.n : 1 };
+                    n: sp ? sp.n : 1, F };
       e.preventDefault();
       return;
     }
@@ -507,8 +520,8 @@ export class Editor {
         preload(bg.item, pan.bg.v || "base");
         this.drag = { kind: "bturn", bg: pan.bg, sx: e.clientX, f: pan.bg.f || 0, n: bg.n };
       } else {
-        const pl = placement(g.bbox, bg.w, bg.h, pan.view);
-        this.drag = { kind: "pan", pan, bg, bb: g.bbox, start: pt, ox: pl.ox, oy: pl.oy };
+        const pl = placement(g.bbox, bg.w, bg.h, pan.view), [p1, F] = inPanel(g.id, g);
+        this.drag = { kind: "pan", pan, bg, bb: g.bbox, start: p1, ox: pl.ox, oy: pl.oy, F };
       }
     }
     e.preventDefault();
@@ -517,7 +530,7 @@ export class Editor {
   move(e) {
     const d = this.drag;
     if (!d) return;
-    const pt = this.pagePt(e);
+    const pt = d.F ? d.F.inv(this.pagePt(e)) : this.pagePt(e);      // cadrage de la case : repere de son contenu
     d.moved = true;
     if (d.kind === "lturn") { d.l.f = (((d.f + Math.round((e.clientX - d.sx) / PX_PER_FRAME)) % d.n) + d.n) % d.n; return this.render(true); }
     if (d.kind === "bturn") { d.bg.f = (((d.f + Math.round((e.clientX - d.sx) / PX_PER_FRAME)) % d.n) + d.n) % d.n; return this.render(true); }

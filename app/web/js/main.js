@@ -971,6 +971,8 @@ class App {
       sync();
     } else this.syncPan = null;
     box.append(h("button", { title: tt("Vue de dessus de la case : la caméra en bas, le décor en haut, chaque élément posé à sa profondeur. Glisser une carte : haut / bas = sa profondeur, gauche / droite = sa place. C'est la même position que dans le montage."), on: { click: () => this.depthDialog(this.sel.panel) } }, tt("⬒ Profondeur (vue de dessus)")));
+    if (pan.frame) box.append(h("div.row", h("span.muted", { title: tt("Le cadrage de la caméra à la première image du montage (« 1re image → case »). La case le montre, l'impression et Integrate aussi.") }, tt`Cadrage du montage : zoom ${(+pan.frame.z).toFixed(2)} ⓘ`),
+      h("button.mini", { on: { click: () => { delete pan.frame; this.commit("frame"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer le cadrage"))));
     box.append(h("h4", { title: tt("0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre).") }, tt("Profondeur de champ ⓘ")),
       h("label.row.check", h("input", { type: "checkbox", checked: dof.on, on: { change: (e) => { dof.on = e.target.checked; this.commit("dof"); this.editor.render(); } } }), tt("Flouter selon la profondeur")),
       (() => { const r = range(tt("Mise au point"), dof.focus, 0, 1, 0.01, (x) => { dof.focus = x; dof.on = true; }, "dof");

@@ -1,5 +1,13 @@
 {
  "ui": {
+  "La case de la planche prend la pose, la place, la taille et l'orientation de chaque élément à la première image du montage, et le cadrage de la caméra. L'animation ne change pas.": "The panel on the page takes the pose, place, size and orientation of each element at the first frame of the edit, and the camera framing. The animation does not change.",
+  "Première image reportée sur {0} élément(s)": "First frame applied to {0} element(s)",
+  "Aucun élément animé": "No animated element",
+  ", et le cadrage de la caméra": ", and the camera framing",
+  " : la case la montrera une fois le montage enregistré.": ": the panel will show it once the edit is saved.",
+  "Le cadrage de la caméra à la première image du montage (« 1re image → case »). La case le montre, l'impression et Integrate aussi.": "The camera framing at the first frame of the edit (« 1st frame → panel »). The panel shows it, and so do printing and Integrate.",
+  "Cadrage du montage : zoom {0} ⓘ": "Edit framing: zoom {0} ⓘ",
+  "Retirer le cadrage": "Remove the framing",
   "Montage non enregistré": "Edit not saved",
   "Tu as modifié ce montage sans l'enregistrer. Si tu quittes maintenant, l'animation est perdue.": "You changed this edit without saving it. If you leave now, the animation is lost.",
   "Rester dans le montage": "Stay in the edit",

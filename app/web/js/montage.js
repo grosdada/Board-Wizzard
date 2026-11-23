@@ -1916,6 +1916,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     real.dof = dof;
     if (pan.draw) { if (JSON.stringify(real.draw) !== JSON.stringify(pan.draw)) real.show = "layers"; real.draw = pan.draw; } else delete real.draw;   // fond dessine (atelier ou profondeur des formes)
     if (pan.ground) real.ground = pan.ground; else delete real.ground;   // carte de sol : gardee dans la case
+    if (pan.frame) real.frame = pan.frame; else delete real.frame;       // cadrage de la case (« 1re image → case »)
     for (const id of Object.keys(anim.tracks)) if (!anim.tracks[id].length) delete anim.tracks[id];
     real.anim = anim;
     app.commit("montage"); app.editor.render(); app.refreshInspector();
@@ -1934,9 +1935,12 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
       picked.clear(); selKey = null; hist.snap(); paint(); lanes(); props();
       toast(tt("Animation effacée. Ctrl+Z pour la retrouver."));
     } } }, tt("🧹 Effacer l'animation")),
-    h("button.mini", { title: tt("La case de la planche prend la pose, la place, la taille et l'orientation de chaque élément à la première image du montage. L'animation ne change pas. La caméra n'est pas reportée."), on: { click: () => {
+    h("button.mini", { title: tt("La case de la planche prend la pose, la place, la taille et l'orientation de chaque élément à la première image du montage, et le cadrage de la caméra. L'animation ne change pas."), on: { click: () => {
       stop(); hist.snap();
       let n = 0;
+      const c0 = scene.camAt(0);                           // le cadrage de la camera a la 1re image : la case le garde (pan.frame)
+      if (Math.abs(c0.z - 1) > 1e-3 || Math.abs(c0.rot || 0) > 0.01 || Math.abs(c0.cx - 0.5) > 1e-4 || Math.abs(c0.cy - 0.5) > 1e-4) pan.frame = { cx: f3(c0.cx), cy: f3(c0.cy), z: f3(c0.z), rot: f3(c0.rot || 0) };
+      else delete pan.frame;
       for (const l of pan.layers) {
         if (!keysOf(l.id).length) continue;
         const st = scene.stateOf(l, 0);
@@ -1945,7 +1949,7 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
         n++;
       }
       hist.snap(); paint(); props();
-      toast(n ? tt`Première image reportée sur ${n} élément(s) : la case la montrera une fois le montage enregistré.` : tt("Aucun élément animé : la case montre déjà la première image."));
+      toast((n ? tt`Première image reportée sur ${n} élément(s)` : tt("Aucun élément animé")) + (pan.frame ? tt(", et le cadrage de la caméra") : "") + tt(" : la case la montrera une fois le montage enregistré."));
     } } }, tt("⤓ 1re image → case")),
     h("label.row", tt("Durée (s)"), dur));
   paint(); lanes(); props();
