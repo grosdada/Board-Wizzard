@@ -108,8 +108,15 @@ def fichier_voix(dossier, l):
 
 
 # ---------------------------------------------------------------- distribution et decors (data/doublage/<projet>.json)
+def meme_nom(c, key, it):
+    """L'element de banque porte exactement le nom du personnage (sa cle ou son nom affiche), aux accents et a la casse pres."""
+    return norm(it.get("name")) in {norm(key), norm(c.get("n"))}
+
+
 def proposer(projet, bank):
-    """Pour chaque personnage du scenario, l'element de la banque dont le nom lui ressemble le plus (ou rien)."""
+    """Pour chaque personnage du scenario, l'element de la banque qui porte son nom (regle de David : dans un projet,
+    les personnages de la banque sont nommes comme dans In-House-Dubbing) ; a defaut, celui dont le nom lui ressemble
+    le plus, ou rien. Le meme nom passe avant tout le reste."""
     titre = norm(projet.get("title"))
     persos = [it for it in bank if it["kind"] == "character"]
     cast = {}
@@ -121,7 +128,7 @@ def proposer(projet, bank):
             if not mots & nom:
                 continue
             orb = sum(1 for v in it["variants"].values() if v.get("orbit"))
-            note = (titre and titre in norm(it.get("folder")), len(mots & nom), orb, it.get("updated") or 0)
+            note = (meme_nom(c, key, it), titre and titre in norm(it.get("folder")), len(mots & nom), orb, it.get("updated") or 0)
             if not best or note > best[0]:
                 best = (note, it["id"])
         cast[key] = best[1] if best else ""
@@ -455,7 +462,7 @@ def passe_voix(pid, source=None, dit=print):
                     attente.append(ln["id"])
                     continue
                 layer = next((x for x in pan.get("layers") or [] if x["id"] == ln.get("layer")), None)
-                if not layer:
+                if not layer or layer.get("ihd", ln["ch"]) != ln["ch"]:   # jamais la voix d'un personnage sur le calque d'un autre
                     orphelines.append(ln["id"])
                     continue
                 wav = f.read_bytes()
@@ -537,8 +544,12 @@ def cmd_lire(a):
     for k, c in projet["chars"].items():
         iid = cfg["cast"].get(k) or ""
         it = bq.by.get(iid)
-        print("  %-14s %-22s -> %s" % (k, c.get("n") or "", ("%s (%s, %d orbites)" % (it["name"], iid, sum(1 for v in it["variants"].values() if v.get("orbit")))) if it
-                                       else ("INTROUVABLE : " + iid) if iid else "— personne en banque"))
+        jumeaux = [x["id"] for x in bank if x["kind"] == "character" and meme_nom(c, k, x)]
+        lien = "" if not it else "  [même nom]" if meme_nom(c, k, it) else "  [NOM DIFFÉRENT : à confirmer]"
+        if len(jumeaux) > 1:
+            lien += "  [%d éléments portent ce nom : %s]" % (len(jumeaux), ", ".join(jumeaux))
+        print("  %-14s %-22s -> %s%s" % (k, c.get("n") or "", ("%s (%s, %d orbites)" % (it["name"], iid, sum(1 for v in it["variants"].values() if v.get("orbit")))) if it
+                                         else ("INTROUVABLE : " + iid) if iid else "— personne en banque", lien))
 
 
 def main():
