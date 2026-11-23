@@ -78,6 +78,12 @@ souris. Sœur d'Alive-Comics (même découpage, mêmes bulles, même client Comf
   d'application, tout le monde est admin. Tester sur une copie de `app/` hors du dépôt (les réglages sont à la racine).
 - **Paquets** (`app/packs.py`) : un élément entier dans un `.bwpack` ; bibliothèque en ligne = un dossier de paquets
   servi en HTTPS avec identifiant et mot de passe.
+- **Pont In-House-Dubbing** (`tools/doublage.py`, sans rien changer au serveur) : lit le dossier que l'appli de voix
+  maquettes de David remplit par « Transfert audio » (`_projet.js` + `SEQxx_slug/SEQxx_Lyy_PERSO.wav`). `monter` crée le
+  storyboard (pages par séquence, un plan par case, personnages de la banque, un deck par séquence, pas de bulles sauf `--bulles`) ; `voix` pose
+  les prises arrivées sur le calque de celui qui parle (`lip.ihd`, bouches écoutées en numpy comme `lipsync.js`
+  `analyse`) et se relance sans rien écraser. Distribution et décors : `data/doublage/<projet>.json`, à la main.
+  Le scénario est confidentiel : jamais dans le dépôt.
 
 ## Licences
 MiniMax H3 exclut l'UE, le Royaume-Uni, les USA et la Corée (affichage compris) : à David de trancher avant de
