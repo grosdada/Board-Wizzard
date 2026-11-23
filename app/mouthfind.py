@@ -361,13 +361,16 @@ def extend_back(folder, n, snaps, reach=BACK_REACH):
             k0 += 1
         if frames[(p + step * k0) % n] is None:
             k0 = 0
+            # suivi arrete avant le profil : on comble le trou depuis la derniere image suivie (cote face)
+            while k0 > -(n // 8) and frames[(p + step * (k0 - 1)) % n] is None:
+                k0 -= 1
         start = (p + step * k0) % n
         for k in range(1, k0 + 1):                     # suivies, mais deja de dos : elles prennent les cartes de dos
             frames[(p + step * k) % n]["back"] = 1
             added += 1
-        near = start if frames[start] is not None else min(real, key=lambda i: min(abs(i - p), n - abs(i - p)))
+        near = start if frames[start] is not None else min(real, key=lambda i: min(abs(i - start), n - abs(i - start)))
         cy = float(frames[near]["cy"])
-        w0 = float(frames[near]["w"]) if near == start and k0 else (float(frames[p]["w"]) if frames[p] else wface * 0.5)
+        w0 = float(frames[near]["w"]) if (near == start and k0 > 0) or k0 < 0 else (float(frames[p]["w"]) if frames[p] else wface * 0.5)
         last = min(max(k0 + reach, span + 2), max(1, 2 * span - 3))   # jusqu'au 3/4 dos et un peu au-dela (le bout des levres s'y voit encore)
         for k in range(k0, last + 1):
             i = (p + step * k) % n

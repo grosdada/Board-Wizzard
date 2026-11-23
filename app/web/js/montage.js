@@ -10,7 +10,7 @@
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put, del } from "./api.js";
-import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
+import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
 import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, tintOf, tintFilter } from "./model.js";
@@ -266,8 +266,33 @@ export function openMontage(app, pid) {
   const CAMS = { cam: tt("Caméra"), fo: tt("Mise au point"), bl: tt("Flou"), fx: tt("Lignes d'effet") };      // pistes de la camera ; fo et bl : profondeur de champ
 
   // ------------------------------------------------------------------------------------------ visionneuse
+  // pastille de la bouche (panneau de droite) : verte = une bouche calculee pour cette orientation, orange = seulement la
+  // bouche tracee du dessin, rouge = rien ne bougera a cet angle. Mise a jour a chaque image (l'orientation peut etre animee).
+  let mouthDot = null;
+  function mouthStatus(l) {
+    const lip = l.lip || {}, st = stateOf(l), it = itemOf(l), sp = it && sprite(it, st.v, st.f);
+    if (!sp) return ["red", tt("Pas d'image pour cette pose.")];
+    if (lip.set && lip.set !== TRACE && lip.set !== PERSO) return ["green", tt("Bouches dessinées toutes faites : posées sur le visage, à tous les angles de face.")];
+    if (lip.set === PERSO || (!lip.set && !sp.mouth && hasPerso(it))) return Math.cos(scene.angleOf(l, st.v, st.f)) >= -0.12 ? ["green", tt("Les bouches du personnage lui-même.")] : ["red", tt("De dos : ses propres bouches ne se montrent pas à cet angle.")];
+    const mf = sp.mouth ? mouthFrame(sp, () => updMouthDot()) : null;
+    if (!sp.mouth) return ["red", tt("Pas de bouche tracée pour cette pose (montage : « Tracer la bouche »).")];
+    if (!mf) return ["grey", tt("Chargement…")];
+    const ck = cardKey(mf.lips, mf.all, sp.i), m = mf.m;
+    if (ck) return ["green", tt`Bouche calculée disponible à cet angle (image ${sp.i}, carte de l'image ${ck.key.f}${ck.key.dos ? tt(", de dos") : ""}).`];
+    if (m && m.up && !m.ext) return ["orange", tt`Pas de bouche calculée à cet angle (image ${sp.i}) : c'est la bouche tracée qui bouge.`];
+    return ["red", tt`Pas de bouche à cet angle (image ${sp.i}) : rien ne bougera.`];
+  }
+  function updMouthDot() {
+    if (!mouthDot || !mouthDot.isConnected) { mouthDot = null; return; }
+    const l = layerOf(mouthDot.dataset.l);
+    if (!l) return;
+    const [c, why] = mouthStatus(l);
+    if (mouthDot.dataset.c !== c) { mouthDot.dataset.c = c; mouthDot.className = "mdot " + c; }
+    if (mouthDot.title !== why) mouthDot.title = why;
+  }
   function paint() {
     recSync();
+    updMouthDot();
     svg.innerHTML = isoView ? isoMarkup() : depthView ? topView() : v3 ? `<rect width="${W}" height="${f1(H)}" fill="#26292d"/>` : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
     if (v3) render3(); else box3.style.display = "none";
     if (showMask && !playing) svg.querySelectorAll('[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
@@ -1520,9 +1545,10 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
           h("div.row.wrap.mouths", (simple ? SIMPLE : Object.keys(MOUTHS)).map((k) => { const b = h("button.mini" + (cueAt(lip, t) === k ? ".on" : ""), { title: MOUTHS[k], on: { click: () => force(k) } }); if (word) b.textContent = word[k]; else b.innerHTML = mouthIcon(k, lip.set, itemOf(l)); b.style.background = cueAt(lip, t) === k ? "#bfeee0" : "#fff"; b.style.color = "#111"; b.style.padding = word ? "2px 8px" : "1px 3px"; return b; })));
       }
     }
+    setTimeout(updMouthDot, 0);                            // la pastille, une fois le panneau pose
     return h("div.mt-voice",
       fold("voice", tt("🔊 Voix"), h("div.muted", tt("La bande son : une voix de la banque audio, générée, ou enregistrée au micro.")), ...vrows),
-      fold("mouth", tt("👄 Bouche"), lip.src ? "" : h("div.muted", tt("Sans voix, la bouche reste fermée.")), ...rows));
+      fold("mouth", h("span", tt("👄 Bouche"), mouthDot = h("span.mdot", { "data-l": l.id })), lip.src ? "" : h("div.muted", tt("Sans voix, la bouche reste fermée.")), ...rows));
   }
 
   // ------------------------------------------------------------------------------------------ timeline (bas)

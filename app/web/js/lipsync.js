@@ -231,16 +231,23 @@ export function cardGom(lip, lips, frames, i, t) {
   const c = cardPick(lip, lips, frames, i, t), g = c && c.file && c.key.gom && c.key.gom[c.letter];
   return g ? `<image href="${lips.base}/${g}?v=${lips.v}" x="${c.key.x}" y="${c.key.y}" width="${c.key.s}" height="${c.key.s}" preserveAspectRatio="none"${c.tf}/>` : "";
 }
-// choix commun a la carte et a sa gomme : { key, letter, file, tf }, { empty } (silence) ou null (pas de carte pour cet angle)
-function cardPick(lip, lips, frames, i, t) {
-  if (!lip || !lip.on || !lips || !frames) return null;
+/** Image-cle dont la carte sert a l'image i : { key, far } ou null (pas de bouche dessinee pour cet angle). */
+export function cardKey(lips, frames, i) {
+  if (!lips || !frames) return null;
   const m = frames[i], n = frames.length;
   if (!m || !m.up) return null;
   let key = null, far = 1e9;
   // image de dos (mouth.json ext : le bout des levres sur le bord de la silhouette) : seulement les cartes de dos, et
   // inversement, pour ne pas poser une bouche de face sur un dos
   for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; if (!!(m.ext || m.back) !== !!(k.dos || (frames[k.f] && (frames[k.f].ext || frames[k.f].back)))) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (d < far) { far = d; key = k; } }
-  if (!key || far > LIPS_REACH) return null;
+  return key && far <= LIPS_REACH ? { key, far } : null;
+}
+// choix commun a la carte et a sa gomme : { key, letter, file, tf }, { empty } (silence) ou null (pas de carte pour cet angle)
+function cardPick(lip, lips, frames, i, t) {
+  if (!lip || !lip.on || !lips || !frames) return null;
+  const m = frames[i], ck = cardKey(lips, frames, i);
+  if (!ck) return null;
+  const { key, far } = ck;
   if (!speakingAt(lip, t)) return { empty: true };
   const shape = cueAt(lip, t);
   if (shape === "X" || shape === "M" || shape === "F") return { empty: true };
