@@ -68,6 +68,7 @@ function capPolys(l) {
 
 // edit : { item } a rouvrir avec sa composition ; opts.kit : "visage" (portrait-robot) ou "corps" (generateur de corps) ;
 // opts.head : une tete (element de la categorie « tete ») a poser tout de suite sur le corps
+const NANO_TAIL = "Do not apply realistic human anatomy. This is NOT a human, it is a DRAWING DESIGN with intentional non-realistic proportions.";
 const REAL_PROMPT = "Turn this drawing into an ultra-realistic photograph of the same subject, with zero redesign of its shapes. The drawing is a deliberate caricature: every proportion is intentional. Read the drawn lines ONLY as indications of shape, edges and features, never as marks to reproduce: the final image contains NO ink lines, NO outlines, NO contour strokes, NO drawn hatching and NO pen texture anywhere. Each line becomes what it describes: the outline of the head becomes the natural edge of real skin against the background, with soft light and shadow; drawn eyebrows, moustache and beard become real hair; wrinkle lines become real skin folds; hair strokes become real hair strands. Keep the exact silhouette and every internal shape where the lines put them: same skull volume and head size, same face width and height, nose length and shape, hairline, ear shape and position, mouth size, eye size, spacing and position, eyebrows, wrinkles and asymmetries. Do not fix anatomy, do not beautify, do not make the face more symmetrical, younger or more average. Keep the identical composition, scale, perspective, pose and framing, and the same head-to-body ratio. Do not add anything that is not drawn: if only a head is drawn, show only the head and neck, with no added clothing, collar or body. Use the colors of the drawing where it has some; otherwise natural, believable colors (real skin with pores, real hair, real materials). Lighting: professional studio lighting on a plain light-beige seamless background. Lens: 80 mm macro look with tilt-shift shallow depth of field (subject sharp, gentle bokeh). If uncertain, do not invent details: stay subtle and neutral. Shape fidelity over everything else, but rendered as a real photograph, not as a drawing. MANDATORY: no text on the image, no captions, no labels, no watermarks, no overlays, no visible lines. Pure photographic imagery only.";
 export async function openIdentikit(bankUI, edit = null, opts = {}) {
   const comp00 = edit && edit.item && edit.item.identikit;
@@ -859,7 +860,8 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       try {
         const blob = await render(1024, Math.round(1024 * SH / S), true);
         const uri = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(blob); });
-        const r = await post("portrait/realistic", { image: uri, prompt: prompt.value.trim(), model: key });
+        const txt = prompt.value.trim() + (key === "nano" ? " " + NANO_TAIL : "");      // Nano Banana : il redresse l'anatomie, on lui rappelle que c'est un dessin
+        const r = await post("portrait/realistic", { image: uri, prompt: txt, model: key });
         last = r.image;
         out.textContent = "";
         out.append(h("img", { src: r.image, alt: "" }), h("div.row.wrap",
