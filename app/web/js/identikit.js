@@ -860,7 +860,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       try {
         const blob = await render(1024, Math.round(1024 * SH / S), true);
         const uri = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(blob); });
-        const txt = prompt.value.trim() + (key === "nano" ? " " + NANO_TAIL : "");      // Nano Banana : il redresse l'anatomie, on lui rappelle que c'est un dessin
+        const txt = prompt.value.trim() + (key !== "gpt" ? " " + NANO_TAIL : "");      // Nano Banana et Seedream redressent l'anatomie : on leur rappelle que c'est un dessin
         const r = await post("portrait/realistic", { image: uri, prompt: txt, model: key });
         last = r.image;
         out.textContent = "";
