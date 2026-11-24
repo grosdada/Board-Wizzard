@@ -1965,7 +1965,9 @@
   "Expression": "Expression",
   "Pas encore d'expressions pour ce personnage.": "No expressions for this character yet.",
   "Clique une expression : elle est posée à la tête de lecture et tient jusqu'à la suivante. Pendant que le personnage parle, elle s'enlève : la bouche du lip sync prend le dessus, sur la tête de base.": "Click an expression: it is set at the playhead and holds until the next one. While the character speaks it goes away: the lip sync mouth takes over, on the base head.",
-  "Glisser : déplacer la mise au point": "Drag: move the focus"
+  "Glisser : déplacer la mise au point": "Drag: move the focus",
+  "Dossier de la banque où ranger l'élément : un dossier existant (liste) ou un nouveau nom ; « / » pour un sous-dossier. Vide : à la racine.": "Bank folder for the item: an existing folder (list) or a new name; “/” for a sub-folder. Empty: at the root.",
+  "Racine de la banque": "Bank root"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

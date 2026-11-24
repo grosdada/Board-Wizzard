@@ -393,6 +393,10 @@ class App {
     });
     const prompt = h("textarea", { rows: 3, placeholder: kind === "character" ? tt("Une vieille aviatrice en blouson de cuir, lunettes sur le front, sourire en coin…") : tt("Un vieux tracteur rouge, pneus boueux, cabine ouverte…") });
     const name = h("input", { type: "text", placeholder: tt("Nom (facultatif : sinon le début de la description)") });
+    // dossier de destination : celui ouvert dans la banque s'il est du meme onglet ; la liste propose les dossiers existants
+    const B = this.bankUI, here = B.tab === kind && B.folder && B.folder !== "·" ? B.folder : "", lid = "genfolders-" + kind;
+    const folderList = h("datalist", { id: lid }, B.folders(kind).map((x) => h("option", { value: x })));
+    const folderIn = h("input", { type: "text", value: here, list: lid, placeholder: tt("Racine de la banque") });
     const style = h("select", [["dessin", tt("Dessin")], ["photo", tt("Photoréaliste")], ["3d", "3D"]].map(([v, t]) => h("option", { value: v }, t)));
     const view = h("select", [["", tt("De face")], ["dessus", tt("De face, légèrement du dessus")], ["dessous", tt("De face, légèrement d'en dessous")]].map(([v, t]) => h("option", { value: v }, t)));
     const sketchBox = h("div.genrefs.one"), refBox = h("div.genrefs"), count = h("span.muted");
@@ -428,6 +432,7 @@ class App {
       h("div.col", h("span", tt("Dessins de référence pour le style (facultatif) "), count), refBox, rIn,
         h("p.muted", tt("Ils disent le style à obtenir : trait, couleurs, rendu. Leurs sujets ne sont pas recopiés. Glisse des images ici ou clique le bouton."))),
       h("div.row", h("label.row", tt("Rendu"), style), h("label.row", tt("Nom"), name)),
+      h("label.row", { title: tt("Dossier de la banque où ranger l'élément : un dossier existant (liste) ou un nouveau nom ; « / » pour un sous-dossier. Vide : à la racine.") }, tt("Dossier"), folderIn, folderList),
       kind === "asset" ? h("label.row", { title: tt("L'objet est vu de face par défaut ; un peu du dessus ou un peu d'en dessous au choix") }, tt("Vue"), view) : "",
       h("h4", tt("Ce qu'on génère")),
       h("label.row.check", h("input", { type: "checkbox", checked: true, disabled: true }), tt("L'image, rangée dans la banque")),
@@ -437,10 +442,10 @@ class App {
       [{ label: tt("Annuler") }, { label: tt("Générer"), primary: true, click: async () => {
         const text = prompt.value.trim();
         if (!text) { toast(tt("Décris ce qu'il faut générer."), "error"); return false; }
-        const f = this.bankUI.folder;
+        const f = folderIn.value.trim().replace(/\s*\/\s*/g, "/").replace(/^\/+|\/+$/g, "");
         try {
           await post("bank/generate", { kind, name: (name.value.trim() || text).slice(0, 36), prompt: text, style: style.value, view: kind === "asset" ? view.value : "", orbit: orbit.checked,
-                                        apose: kind === "character" && apose.checked, sketch, refs, folder: f && f !== "·" ? f : "", target: target() });
+                                        apose: kind === "character" && apose.checked, sketch, refs, folder: f, target: target() });
         } catch (e) { toast(tt("Refusé : ") + e.message, "error"); return false; }
         toast(tt("Génération lancée : l'élément arrivera dans la banque.")); this.pollSoon();
       } }]);
@@ -452,15 +457,20 @@ class App {
     const kind = h("select", [["asset", tt("Objet / véhicule")], ["character", tt("Personnage")], ["decor", tt("Décor (devient le fond)")]].map(([v, t]) => h("option", { value: v }, t)));
     const style = h("select", [["photo", tt("Photoréaliste")], ["dessin", tt("Dessin")], ["3d", "3D"]].map(([v, t]) => h("option", { value: v, selected: v === this.guessStyle(this.findPanel(pid) || {}) }, t)));
     const orbit = h("input", { type: "checkbox", checked: true });
+    const B = this.bankUI, folderList = h("datalist", { id: "genherefolders" }), folderIn = h("input", { type: "text", list: "genherefolders", placeholder: tt("Racine de la banque"),
+      value: B.tab === "asset" && B.folder && B.folder !== "·" ? B.folder : "" });
+    const fill = () => { folderList.textContent = ""; folderList.append(...B.folders(kind.value).map((x) => h("option", { value: x }))); };
+    kind.addEventListener("change", fill); fill();
     modal(tt("Générer dans cette case"), h("div.form", h("label.col", tt("Quoi ?"), prompt), h("label.row", tt("Type"), kind), h("label.row", tt("Rendu"), style),
+      h("label.row", { title: tt("Dossier de la banque où ranger l'élément : un dossier existant (liste) ou un nouveau nom ; « / » pour un sous-dossier. Vide : à la racine.") }, tt("Dossier"), folderIn, folderList),
       h("label.row.check", orbit, tt("Avec son orbite 360° (pivotable ensuite)")),
       h("p.muted", tt("L'élément est ajouté à la banque : il resservira. Il se pose dans la case dès que son image existe (≈ 1 min), puis devient pivotable."))),
       [{ label: tt("Annuler") }, { label: tt("Générer"), primary: true, click: async () => {
         const text = prompt.value.trim();
         if (!text) { toast(tt("Décris ce qu'il faut générer."), "error"); return false; }
-        const f = this.bankUI.folder;
+        const f = folderIn.value.trim().replace(/\s*\/\s*/g, "/").replace(/^\/+|\/+$/g, "");
         const r = await post("bank/generate", { kind: kind.value, name: text.slice(0, 36), prompt: text, style: style.value, orbit: orbit.checked,
-                                                folder: f && f !== "·" ? f : "", target: target() });
+                                                folder: f, target: target() });
         this.pending[r.job] = { project: this.project.id, pid, rel };
         localStorage.setItem("bw.pending", JSON.stringify(this.pending));
         toast(tt("Génération lancée : l'élément se posera dans la case.")); this.pollSoon();
