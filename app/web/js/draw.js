@@ -27,12 +27,20 @@ export const PATHS = { blob: [tt("Forme libre"), "⬟"], line: [tt("Ligne"), "�
 //   erase : gomme (efface ce qui est dessous dans le meme calque), largeur bw
 //   stamp : pinceau-tampon, l'image href (importee) posee le long du trace, taille ss, ecart gap
 // et l'image importee : { t: "img", href, p: [coin, coin], ink: none | clair (blanc transparent) | encre, iop }
+//   hair : poils ou pointille, semes le long du trace : densite hd, etalement hs, longueur hl (0 = des points), epaisseur hz,
+//          desordre hj (degres), direction ho (degres par rapport au trace : 0 = le long, 90 = en travers)
 export const BRUSHES = { brush: [tt("Pinceau en pointe"), "🖌"], paint: [tt("Pinceau de fond (aplat, lavis)"), "🎨"], erase: [tt("Gomme"), "⌫"],
-                         stamp: [tt("Pinceau-tampon (image importée)"), "✺"] };
-const OPEN = new Set(["line", "free", "polyline", "brush", "paint", "erase", "stamp"]);       // sans remplissage
-const MANY = new Set(["free", "blob", "poly", "polyline", "brush", "paint", "erase", "stamp"]);
-const SPECIAL = new Set(["brush", "paint", "erase", "stamp", "img"]);
-const BRUSH_KEYS = ["bsw", "tp", "sv", "pc", "bw", "op", "soft", "ss", "gap", "ink", "iop", "pw"];
+                         stamp: [tt("Pinceau-tampon (image importée)"), "✺"], hair: [tt("Poils / pointillé (barbe, cheveux)"), "✳"] };
+const OPEN = new Set(["line", "free", "polyline", "brush", "paint", "erase", "stamp", "hair"]);       // sans remplissage
+const MANY = new Set(["free", "blob", "poly", "polyline", "brush", "paint", "erase", "stamp", "hair"]);
+const SPECIAL = new Set(["brush", "paint", "erase", "stamp", "img", "hair"]);
+const BRUSH_KEYS = ["bsw", "tp", "sv", "pc", "bw", "op", "soft", "ss", "gap", "ink", "iop", "pw", "hd", "hs", "hl", "hz", "hj", "ho"];
+// pinceaux enregistres (bw.brushes) : { n : nom, t : type de pinceau, v : ses reglages }
+const BRUSH_SAVE = { brush: ["stroke", "bsw", "tp", "sv"], paint: ["pc", "bw", "op", "soft"], stamp: ["href", "ar", "ss", "gap", "ink", "stroke"],
+                     hair: ["stroke", "hd", "hs", "hl", "hz", "hj", "ho"], erase: ["bw"] };
+const savedBrushes = () => { try { return JSON.parse(localStorage.getItem("bw.brushes") || "[]") || []; } catch (e) { return []; } };
+const storeBrushes = (l) => localStorage.setItem("bw.brushes", JSON.stringify(l.slice(0, 60)));
+let clip = null;                                           // formes copiees (Ctrl+C), gardees d'un atelier a l'autre
 // Remplissage d'une forme : fon (remplie ou non), col (couleur, blanc par defaut), tr (trame posee par-dessus la couleur).
 const TRAMES = { none: tt("Sans trame"), tone: tt("Trame"), grad: tt("Trame en dégradé") };
 /** Remplissage d'une forme, anciennes formes comprises (fill : none | white | black | color | tone | grad). */
@@ -49,7 +57,34 @@ export function fillOf(sh) {
 const FORMS = { points: tt("Points"), lignes: tt("Lignes"), croix: tt("Croisillons"), triple: tt("Hachures en trois sens"), carres: tt("Carrés"),
                 cercles: tt("Cercles concentriques"), vagues: tt("Lignes ondulées"), grain: tt("Grain") };
 const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, col: "#ffffff",   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
-              bsw: 2.5, tp: 0.3, sv: 0.6, pc: "#7d8c99", bw: 12, op: 0.55, soft: 0.3, ss: 25, gap: 0.3, ink: "clair", iop: 1 };   // pinceaux (voir BRUSHES)
+              bsw: 2.5, tp: 0.3, sv: 0.6, pc: "#7d8c99", bw: 12, op: 0.55, soft: 0.3, ss: 25, gap: 0.3, ink: "clair", iop: 1,   // pinceaux (voir BRUSHES)
+              hd: 8, hs: 5, hl: 5, hz: 0.6, hj: 25, ho: 90 };
+// poils ou pointille le long d'un trace : semis au hasard mais toujours le meme pour une forme (graine = son identifiant)
+function hairSvg(sh, H, tag, d) {
+  const P = sh.p.map(([x, y]) => [x * W, y * H]);
+  if (P.length < 2) return "";
+  let seed = [...String(sh.id || "h")].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 2147483647, 11) || 1;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const dens = Math.max(0.2, +sh.hd || 0), spread = Math.max(0, +sh.hs || 0) * 4, len = Math.max(0, +sh.hl || 0) * 4, th = Math.max(0.2, +sh.hz || 0) * 2;
+  const jit = (+sh.hj || 0) * Math.PI / 180, dir = (+sh.ho || 0) * Math.PI / 180;
+  let dots = "", lines = "", carry = 0;
+  for (let k = 1; k < P.length; k++) {
+    const a = P[k - 1], b = P[k], dx = b[0] - a[0], dy = b[1] - a[1], seg = Math.hypot(dx, dy);
+    if (seg < 0.01) continue;
+    const nx = -dy / seg, ny = dx / seg, base = Math.atan2(dy, dx) + dir;
+    let n = seg * dens / 10 + carry;
+    const count = Math.floor(n); carry = n - count;
+    for (let j = 0; j < count; j++) {
+      const t = rnd(), off = (rnd() + rnd() + rnd() - 1.5) / 1.5 * spread;
+      const px = a[0] + dx * t + nx * off, py = a[1] + dy * t + ny * off;
+      if (len <= 0) { const r = th / 2 * (0.6 + 0.8 * rnd()); dots += `M${f1(px - r)} ${f1(py)}a${f1(r)} ${f1(r)} 0 1 0 ${f1(2 * r)} 0a${f1(r)} ${f1(r)} 0 1 0 ${f1(-2 * r)} 0`; }
+      else { const an = base + (rnd() - 0.5) * 2 * jit, L = len * (0.5 + rnd()); lines += `M${f1(px)} ${f1(py)}l${f1(Math.cos(an) * L)} ${f1(Math.sin(an) * L)}`; }
+    }
+  }
+  const col = hex6(sh.stroke, "#111111");
+  return `<g ${tag}>` + (dots ? `<path d="${dots}" fill="${col}"/>` : "") + (lines ? `<path d="${lines}" fill="none" stroke="${col}" stroke-width="${f1(th)}" stroke-linecap="round"/>` : "") +
+    `</g><path ${tag} d="${d}" fill="none" stroke="#000" stroke-opacity="0.001" stroke-width="${f1(Math.max(8, spread * 2))}"/>`;
+}
 // force d'un point du pinceau en pointe : pression d'un stylet, sinon vitesse de la souris (v en unites par ms, vite = fin)
 const force = (e, v, sv) => (e.pointerType === "pen" && e.pressure > 0 ? 0.15 + 1.05 * e.pressure : Math.max(0.3, Math.min(1.2, 1.2 - (sv ?? 0.6) * v / 1.6)));
 const hex6 = (c, def) => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : def);
@@ -200,6 +235,7 @@ function shapesSvg(shapes, H, pre, hrefs) {
     }
     if (SPECIAL.has(sh.t)) {
       if (sh.t === "brush") one = `<path ${tag} d="${brushPath(sh, H)}" fill="${hex6(sh.stroke, "#111111")}"/>`;
+      else if (sh.t === "hair") one = hairSvg(sh, H, tag, d);
       else if (sh.t === "paint") {
         const w = Math.max(1, sh.bw) * 4, soft = Math.max(0, Math.min(1, sh.soft)), pad = w * 2;
         let flt = "";
@@ -338,6 +374,8 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const allShapes = () => (layers ? layers.flatMap((l) => l.shapes) : shapes);
   let tool = "blob", prim = "rect", path = "blob", brushT = "brush", sel = null, drag = null, building = null, hover = null;
   let preK = "arbre";                                      // forme toute faite en cours (banque de formes, presets.js)
+  let sym = false;                                         // symetrie : chaque forme tracee a son jumeau en miroir (tw), qui suit ses retouches
+  let multi = [];                                          // formes choisies ensemble (rectangle de selection, Maj+clic)
   const cur = Object.assign({}, DEF);
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -359,7 +397,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     guide.innerHTML = (big ? `<rect width="${W}" height="${f1(H)}" fill="none" stroke="#e2603a" stroke-width="${f1(2.5 * k)}" stroke-dasharray="${f1(12 * k)} ${f1(8 * k)}"/>` +
       tt`<text x="${f1(6 * k)}" y="${f1(-6 * k)}" font-size="${f1(15 * k)}" fill="#e2603a">la case</text>` : "") +
       // element en paire (yeux, oreilles…) : l'axe du milieu, pour dessiner un cote puis « Miroir » ; il n'est pas enregistre
-      (axis ? `<line x1="${W / 2}" y1="0" x2="${W / 2}" y2="${f1(H)}" stroke="#2bb3a3" stroke-opacity="0.55" stroke-width="${f1(1.5 * k)}" stroke-dasharray="${f1(10 * k)} ${f1(8 * k)}"/>` : "");
+      (axis || sym ? `<line x1="${W / 2}" y1="0" x2="${W / 2}" y2="${f1(H)}" stroke="#2bb3a3" stroke-opacity="0.55" stroke-width="${f1(1.5 * k)}" stroke-dasharray="${f1(10 * k)} ${f1(8 * k)}"/>` : "");
   };
   zone();
   // fantome : les personnages de la case par-dessus le dessin, en transparence, pour dessiner autour d'eux
@@ -437,7 +475,68 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const side = h("div.draw-side"), bar = h("div.draw-tools");
   const target = () => (sel ? shapes.find((s) => s.id === sel) : null);
   const val = (k) => { const t = target(); return t && t[k] !== undefined ? t[k] : cur[k]; };
-  const set = (k, v) => { const t = target(); if (t) t[k] = v; cur[k] = v; paint(); };
+  const chosen = () => { const t = target(), ids = new Set(multi); if (t) ids.add(t.id); return shapes.filter((s) => ids.has(s.id)); };
+  const set = (k, v) => { for (const t of chosen()) { t[k] = v; syncTwin(t); } cur[k] = v; paint(); };
+  // retourne une forme gauche-droite par rapport au milieu du cadre (sur place)
+  const flipShape = (c) => {
+    c.p = c.p.map(([x, y]) => [1 - x, y]);
+    if (c.r) c.r = -c.r;
+    if (PRIMS[c.t] || c.t === "img" || c.t === "pre") c.mx = !c.mx;                          // une primitive se dessine dans sa boite : on la retourne
+    if (c.ga != null) c.ga = (540 - c.ga) % 360;
+    if (c.ha != null) c.ha = (180 - c.ha + 180) % 180;
+    if (c.ho != null) c.ho = -c.ho;
+    return c;
+  };
+  // symetrie : le jumeau (tw) prend la place, la forme et les reglages de la forme, en miroir
+  function syncTwin(t) {
+    if (!t || !t.tw) return;
+    const o = shapes.find((x) => x.id === t.tw);
+    if (!o) { delete t.tw; return; }
+    const c = flipShape(JSON.parse(JSON.stringify(t)));
+    c.id = o.id; c.tw = t.id;
+    for (const k of Object.keys(o)) delete o[k];
+    Object.assign(o, c);
+  }
+  function addTwin(t) {                                    // mode symetrie : le jumeau d'une forme qui vient d'etre tracee
+    if (!sym || !t || t.tw) return;
+    const c = flipShape(JSON.parse(JSON.stringify(t)));
+    c.id = uid(); c.tw = t.id; t.tw = c.id;
+    shapes.splice(shapes.indexOf(t) + 1, 0, c);
+  }
+  function removeShapes(list) {                            // efface des formes, et leur jumeau en mode symetrie (sinon le lien est defait)
+    const gone = new Set(list.map((s) => s.id));
+    for (const s of list) if (s.tw) { if (sym) gone.add(s.tw); else { const o = shapes.find((x) => x.id === s.tw); if (o) delete o.tw; } }
+    for (let i = shapes.length - 1; i >= 0; i--) if (gone.has(shapes[i].id)) shapes.splice(i, 1);
+    sel = null; multi = [];
+    paint(); props(); hist.snap();
+  }
+  function copyShapes() {
+    const list = chosen();
+    if (!list.length) return false;
+    clip = JSON.parse(JSON.stringify(list));
+    toast(list.length > 1 ? tt`${list.length} formes copiées.` : tt("Forme copiée."));
+    return true;
+  }
+  function pasteShapes(src = clip) {                       // a cote de l'original ; les jumeaux colles ensemble restent lies
+    if (!src || !src.length) return false;
+    const ids = new Map(src.map((s) => [s.id, uid()]));
+    const out = src.map((s) => { const c = JSON.parse(JSON.stringify(s)); c.id = ids.get(s.id); c.p = c.p.map(([x, y]) => [x + 0.03, y + 0.03]); if (c.tw) { if (ids.has(c.tw)) c.tw = ids.get(c.tw); else delete c.tw; } return c; });
+    shapes.push(...out);
+    multi = out.map((s) => s.id); sel = out[0].id; tool = "select";
+    tools(); props(); paint(); hist.snap();
+    return true;
+  }
+  function ctxMenu(e, items) {                             // menu du clic droit (meme allure que celui de la page)
+    document.querySelector(".menu")?.remove();
+    const box = h("div.menu");
+    for (const it of items) box.append(h("button" + (it.danger ? ".danger" : ""), { on: { click: () => { box.remove(); it.click(); } } }, it.label));
+    document.body.append(box);
+    const r = box.getBoundingClientRect();
+    box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px";
+    box.style.top = Math.max(4, Math.min(e.clientY, innerHeight - r.height - 6)) + "px";
+    const off = (ev) => { if (!box.contains(ev.target)) { box.remove(); document.removeEventListener("pointerdown", off, true); } };
+    setTimeout(() => document.addEventListener("pointerdown", off, true), 0);
+  }
   const rotPt = (p, c, deg) => { const a = deg * Math.PI / 180, x = p[0] - c[0], y = p[1] - c[1]; return [c[0] + x * Math.cos(a) - y * Math.sin(a), c[1] + x * Math.sin(a) + y * Math.cos(a)]; };
 
   function paint() {
@@ -454,6 +553,15 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
         // carre au coin bas droit : le glisser agrandit ou reduit toute la forme autour de son centre (Maj : en largeur seulement, Alt : en hauteur seulement)
         `<g class="draw-scale" data-scale="1" transform="translate(${f1(b.x + b.w + 20)} ${f1(b.y + b.h + 20)})"><rect x="-11" y="-11" width="22" height="22" rx="4" data-scale="1"/><path d="M-5 -5L5 5M5 5H0M5 5V0M-5 -5H0M-5 -5V0" data-scale="1"/></g></g>`;
     }
+    for (const s of chosen()) {                            // les autres formes choisies ensemble
+      if (t && s.id === t.id) continue;
+      const b = boxOf(s, H);
+      o += `<g transform="rotate(${f1(s.r || 0)} ${f1(b.cx)} ${f1(b.cy)})"><rect x="${f1(b.x - 6)}" y="${f1(b.y - 6)}" width="${f1(b.w + 12)}" height="${f1(b.h + 12)}" class="draw-sel"/></g>`;
+    }
+    if (drag && drag.kind === "band") {                    // rectangle de selection
+      const x0 = Math.min(drag.a[0], drag.b[0]) * W, y0 = Math.min(drag.a[1], drag.b[1]) * H;
+      o += `<rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(Math.abs(drag.b[0] - drag.a[0]) * W)}" height="${f1(Math.abs(drag.b[1] - drag.a[1]) * H)}" class="draw-band"/>`;
+    }
     if (building) {                                        // forme point par point en cours
       const P = building.p.map(([x, y]) => [x * W, y * H]), last = hover ? [hover[0] * W, hover[1] * H] : P[P.length - 1];
       o += `<path d="M${P.map((p) => f1(p[0]) + " " + f1(p[1])).join("L")}L${f1(last[0])} ${f1(last[1])}" class="draw-build"/>` +
@@ -468,15 +576,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     hist.snap();                                           // l'etat d'avant : Ctrl+Z retire le miroir d'un coup, et seulement lui
     const src = tool === "select" && sel ? shapes.filter((x) => x.id === sel) : shapes.slice();   // en dessinant : tout le dessin
     if (!src.length) { toast(tt("Rien à retourner : dessine d'abord une forme.")); return; }
-    const copies = src.map((sh) => {
-      const c = JSON.parse(JSON.stringify(sh));
-      c.id = uid(); c.p = c.p.map(([x, y]) => [1 - x, y]);
-      if (c.r) c.r = -c.r;
-      if (PRIMS[c.t] || c.t === "img" || c.t === "pre") c.mx = !c.mx;                          // une primitive se dessine dans sa boite : on la retourne
-      if (c.ga != null) c.ga = (540 - c.ga) % 360;
-      if (c.ha != null) c.ha = (180 - c.ha + 180) % 180;
-      return c;
-    });
+    const copies = src.map((sh) => { const c = flipShape(JSON.parse(JSON.stringify(sh))); c.id = uid(); delete c.tw; return c; });
     shapes.push(...copies);
     sel = copies.length === 1 ? copies[0].id : null;
     paint(); props(); hist.snap();
@@ -515,7 +615,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const b = building; building = null; hover = null;
     if (!b) return;
     if (!keep || b.p.length < (b.t === "poly" ? 3 : 2)) { shapes.splice(shapes.indexOf(b), 1); sel = null; }
-    else sel = b.id;
+    else { sel = b.id; addTwin(b); }
     props(); paint();
   }
   function props() {
@@ -577,6 +677,18 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (kind === "paint") side.append(col(tt("Couleur"), "pc", "#7d8c99"), range(tt("Largeur"), "bw", 1, 80, 0.5), range(tt("Opacité"), "op", 0.03, 1, 0.01),
       range(tt("Lavis"), "soft", 0, 1, 0.01));
     if (kind === "erase") side.append(range(tt("Largeur"), "bw", 1, 80, 0.5));
+    if (kind === "hair") side.append(col(tt("Couleur"), "stroke", "#111111"), range(tt("Densité"), "hd", 0.5, 60, 0.5), range(tt("Étalement"), "hs", 0, 40, 0.5),
+      range(tt("Longueur (0 = points)"), "hl", 0, 30, 0.5), range(tt("Épaisseur"), "hz", 0.2, 6, 0.1), range(tt("Direction (°)"), "ho", -90, 90, 1), range(tt("Désordre (°)"), "hj", 0, 90, 1));
+    if (BRUSH_SAVE[kind]) {                                // pinceaux enregistres : les reglages d'un pinceau, gardes sous un nom
+      const mine = savedBrushes().filter((b) => b.t === kind);
+      const pickB = h("select", { on: { change: (e) => { const b = e.target.value === "" ? null : mine[+e.target.value]; if (!b) return; for (const [k, v] of Object.entries(b.v)) set(k, v); if (b.v.href) { cur.href = b.v.href; cur.ar = b.v.ar || 1; } props(); } } },
+        h("option", { value: "" }, mine.length ? tt("Mes pinceaux…") : tt("Aucun pinceau enregistré")), mine.map((b, i) => h("option", { value: i }, b.n)));
+      side.append(h("div.row.wrap", { title: tt("Enregistre les réglages de ce pinceau sous un nom, pour les reprendre d'un clic (gardés dans ce navigateur)") }, pickB,
+        h("button.mini", { type: "button", on: { click: () => { const n = (prompt(tt("Nom du pinceau :")) || "").trim(); if (!n) return;
+          const v = Object.fromEntries(BRUSH_SAVE[kind].map((k) => [k, val(k) ?? cur[k]]).filter(([, x]) => x !== undefined));
+          storeBrushes([...savedBrushes().filter((b) => !(b.t === kind && b.n === n)), { n, t: kind, v }]); toast(tt("Pinceau enregistré.")); props(); } } }, tt("＋ Enregistrer ce pinceau")),
+        mine.length ? h("button.mini", { type: "button", title: tt("Retirer le pinceau choisi dans la liste"), on: { click: () => { const b = pickB.value === "" ? null : mine[+pickB.value]; if (!b) return toast(tt("Choisis d'abord un pinceau dans la liste.")); storeBrushes(savedBrushes().filter((x) => x !== b && !(x.t === b.t && x.n === b.n))); props(); } } }, "✕") : ""));
+    }
     if (kind === "img" || kind === "stamp") {
       side.append(inkPick());
       if (val("ink") === "encre") side.append(col(tt("Couleur du trait"), "stroke", "#111111"));
@@ -597,7 +709,8 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     return { brush: tt("Pinceau en pointe : le trait s'affine au début et à la fin ; avec un stylet, il suit la pression, à la souris la vitesse (vite = fin)."),
       paint: tt("Pinceau de fond : pour poser des aplats ou un lavis, sur un calque du dessous, puis repasser le trait sur un calque au-dessus."),
       erase: tt("Gomme : efface ce qui est déjà dessiné dans le calque en cours, pas dans les autres."),
-      stamp: tt("Pinceau-tampon : l'image de la pointe est posée tout le long du tracé (un trait de crayon scanné, une texture).") }[k] || "";
+      stamp: tt("Pinceau-tampon : l'image de la pointe est posée tout le long du tracé (un trait de crayon scanné, une texture)."),
+      hair: tt("Poils / pointillé : des poils ou des points semés le long du tracé, pour une barbe, des cheveux, un grain. Longueur 0 : des points.") }[k] || "";
   }
   // ---- calques : du dessus (en haut de la liste) vers le dessous ; on dessine dans le calque en cours
   const layBox = h("div.draw-layers");
@@ -673,6 +786,8 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       drop(tt("Primitives"), PRIMS, prim), presetDrop(), drop(tt("Tracés"), PATHS, path), kit ? drop(tt("Pinceaux"), BRUSHES, brushT) : "",
       kit ? h("button.mini", { type: "button", title: tt("Importer une image (crayon scanné, forme, texture) : elle se pose au milieu, à déplacer et étirer avec la Sélection ; le blanc du papier devient transparent"), on: { click: () => importImg(false) } }, tt("🖼 Importer une image…")) : "", kit ? fileIn : "",
       h("button.mini", { type: "button", title: tt("Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite"), on: { click: mirror } }, tt("⇋ Miroir")),
+      h("button.mini" + (sym ? ".on" : ""), { type: "button", title: tt("Symétrie : chaque forme tracée a son jumeau en miroir de l'autre côté de l'axe. Déplacer, tourner, agrandir ou régler l'une fait suivre l'autre, en miroir (yeux, oreilles, visage)."),
+        on: { click: () => { sym = !sym; zone(); tools(); paint(); toast(sym ? tt("Symétrie : ce que tu traces a son jumeau en face.") : tt("Symétrie coupée : les jumeaux déjà faits restent liés.")); } } }, sym ? tt("✓ Symétrie") : tt("⫼ Symétrie")),
       layers ? h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes du calque en cours"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout ce calque ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); hist.snap(); } } } }, tt("Effacer le calque"))
         : h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout le dessin de ce fond ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); } } } }, tt("Tout effacer")));
   }
@@ -706,8 +821,13 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       if (e.target.dataset.scale && t0) { const c = centerOf(t0); drag = { kind: "scale", c, pts: t0.p.map((q) => q.slice()), d0: Math.hypot((p[0] - c[0]) * W, (p[1] - c[1]) * H) || 1 }; return; }
       if (e.target.dataset.pt != null && t0) { drag = { kind: "pt", i: +e.target.dataset.pt, c: centerOf(t0) }; return; }
       const id = e.target.dataset.shape || (e.target.closest("[data-shape]") || {}).dataset?.shape;
-      sel = id || null; props(); paint();
-      if (sel) drag = { kind: "move", start: p, pts: target().p.map((q) => q.slice()) };
+      if (!id) { sel = null; multi = []; drag = { kind: "band", a: p, b: p }; props(); paint(); return; }   // dans le vide : rectangle de selection
+      if (e.shiftKey) multi = multi.includes(id) ? multi.filter((x) => x !== id) : [...new Set([...multi, sel, id].filter(Boolean))];
+      else if (!multi.includes(id)) multi = [id];
+      sel = id; props(); paint();
+      const many = chosen(), ids = new Set(many.map((s) => s.id));
+      drag = { kind: "move", start: p, pts: target().p.map((q) => q.slice()), many: many.filter((s) => s.id !== id).map((s) => ({ s, pts: s.p.map((q) => q.slice()), solo: !(s.tw && ids.has(s.tw)) })),
+               solo: !(target().tw && ids.has(target().tw)) };
       return;
     }
     if (tool === "stamp" && !cur.href) { toast(tt("Choisis d'abord l'image de la pointe du tampon (importer, ou « Pointe du tampon » sur une image importée)."), "error"); return; }
@@ -725,6 +845,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (fxAim) { if (fxDrag) { fx.cx = +p[0].toFixed(3); fx.cy = +p[1].toFixed(3); fxPaint(); } return; }
     if (building) { hover = p; return paint(); }
     if (!drag) return;
+    if (drag.kind === "band") { drag.b = p; return paint(); }
     const t = target();
     if (!t) return;
     if (drag.kind === "new") {
@@ -764,12 +885,24 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       const k = Math.max(0.03, Math.hypot((p[0] - drag.c[0]) * W, (p[1] - drag.c[1]) * H) / drag.d0), kx = e.altKey ? 1 : k, ky = e.shiftKey ? 1 : k;
       t.p = drag.pts.map((q) => [drag.c[0] + (q[0] - drag.c[0]) * kx, drag.c[1] + (q[1] - drag.c[1]) * ky]);
     } else if (drag.kind === "pt") t.p[drag.i] = local(t, p, drag.c);
-    else t.p = drag.pts.map((q) => [q[0] + p[0] - drag.start[0], q[1] + p[1] - drag.start[1]]);
+    else {
+      const dx = p[0] - drag.start[0], dy = p[1] - drag.start[1];
+      t.p = drag.pts.map((q) => [q[0] + dx, q[1] + dy]);
+      for (const m of drag.many || []) { m.s.p = m.pts.map((q) => [q[0] + dx, q[1] + dy]); if (m.solo) syncTwin(m.s); }
+      if (drag.solo === false) { paint(); return; }
+    }
+    if (drag.kind !== "new") syncTwin(t);                  // symetrie : le jumeau suit en miroir
     paint();
   });
   svg.addEventListener("pointerup", () => {
     fxDrag = false;
     const d = drag; drag = null;
+    if (d && d.kind === "band") {                          // les formes touchees par le rectangle
+      const x0 = Math.min(d.a[0], d.b[0]) * W, x1 = Math.max(d.a[0], d.b[0]) * W, y0 = Math.min(d.a[1], d.b[1]) * H, y1 = Math.max(d.a[1], d.b[1]) * H;
+      if (x1 - x0 > 3 || y1 - y0 > 3) multi = shapes.filter((s) => { const b = boxOf(s, H); return b.x < x1 && b.x + b.w > x0 && b.y < y1 && b.y + b.h > y0; }).map((s) => s.id);
+      sel = multi[0] || null; props(); paint(); return;
+    }
+    if (d && d.kind !== "new" && layers) { hist.snap(); return; }
     if (!d || d.kind !== "new") return;
     const t = d.sh, a = t.p[0], b = t.p[t.p.length - 1];
     if (t.p.length <= 2 && Math.hypot((b[0] - a[0]) * W, (b[1] - a[1]) * H) < 6) { shapes.splice(shapes.indexOf(t), 1); sel = null; }   // simple clic : rien
@@ -781,10 +914,28 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       if (t.pw) t.pw = keep.map((i) => t.pw[i] ?? 1);
       t.p = keep.map((i) => t.p[i]);
     }
+    if (shapes.includes(t)) addTwin(t);                    // mode symetrie : son jumeau en miroir
     props(); paint();
     if (layers) hist.snap();                               // atelier d'elements : chaque trait est une etape d'annulation
   });
   svg.addEventListener("dblclick", (e) => { if (building) { e.preventDefault(); finish(true); } });
+  svg.addEventListener("contextmenu", (e) => {             // clic droit : dupliquer, copier, coller, ordre, supprimer
+    e.preventDefault();
+    if (building) return;
+    const id = e.target.dataset.shape || (e.target.closest("[data-shape]") || {}).dataset?.shape;
+    if (id && !chosen().some((s) => s.id === id)) { multi = [id]; sel = id; }
+    if (id && tool !== "select") { tool = "select"; tools(); }
+    props(); paint();
+    const n = chosen().length, items = [];
+    if (n) items.push({ label: n > 1 ? tt`Dupliquer les ${n} formes (Ctrl+D)` : tt("Dupliquer la forme (Ctrl+D)"), click: () => pasteShapes(JSON.parse(JSON.stringify(chosen()))) },
+      { label: tt("Copier (Ctrl+C)"), click: copyShapes });
+    if (clip) items.push({ label: tt`Coller (Ctrl+V) · ${clip.length}`, click: () => pasteShapes() });
+    if (n) items.push({ label: tt("Miroir gauche-droite"), click: () => mirror() },
+      { label: tt("Au premier plan"), click: () => { const l = chosen(); for (const s of l) { shapes.splice(shapes.indexOf(s), 1); shapes.push(s); } paint(); hist.snap(); } },
+      { label: tt("À l'arrière-plan"), click: () => { const l = chosen().reverse(); for (const s of l) { shapes.splice(shapes.indexOf(s), 1); shapes.unshift(s); } paint(); hist.snap(); } },
+      { label: n > 1 ? tt`Supprimer les ${n} formes` : tt("Supprimer"), danger: true, click: () => removeShapes(chosen()) });
+    if (items.length) ctxMenu(e, items);
+  });
   // Ctrl+Z / Ctrl+Y : les 5 dernieres actions
   const live = (x) => x !== building && !(drag && drag.kind === "new" && drag.sh === x);   // pas de forme a moitie tracee dans l'historique
   const hist = history(() => (layers ? { layers: layers.map((l) => Object.assign({}, l, { shapes: l.shapes.filter(live) })), cl } : shapes.filter(live)),
@@ -797,7 +948,12 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (building && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); return finish(true); }
     if (building && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return finish(false); }
-    if ((e.key === "Delete" || e.key === "Backspace") && target()) { e.preventDefault(); e.stopPropagation(); shapes.splice(shapes.indexOf(target()), 1); sel = null; paint(); props(); }
+    if ((e.key === "Delete" || e.key === "Backspace") && chosen().length) { e.preventDefault(); e.stopPropagation(); removeShapes(chosen()); return; }
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && k === "c" && chosen().length) { e.preventDefault(); e.stopPropagation(); copyShapes(); return; }
+    if ((e.ctrlKey || e.metaKey) && k === "v" && clip) { e.preventDefault(); e.stopPropagation(); pasteShapes(); return; }
+    if ((e.ctrlKey || e.metaKey) && k === "d" && chosen().length) { e.preventDefault(); e.stopPropagation(); pasteShapes(JSON.parse(JSON.stringify(chosen()))); return; }
+    if ((e.ctrlKey || e.metaKey) && k === "a" && tool === "select") { e.preventDefault(); e.stopPropagation(); multi = shapes.map((s) => s.id); sel = multi[0] || null; props(); paint(); }
   };
   document.addEventListener("keydown", key, true);
   const away = () => bar.querySelectorAll(".draw-drop.open").forEach((x) => x.classList.remove("open"));
