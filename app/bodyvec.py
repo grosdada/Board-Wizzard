@@ -48,13 +48,13 @@ GABARITS = [
                                          c_haut="#c4473a", c_bas="#2f3f5c", peau=2)),
     ("rond", "Rond, pull", dict(ep=1.1, taille=0.86, hanches=0.92, ventre=0.26, bras=0.24, jambe=0.33, cou=0.32, main=1.08, haut="pull",
                                 manches="longues", c_haut="#7a9a55", c_bas="#6b5a48", peau=5)),
-    ("costume", "Costume", dict(ep=1.12, taille=0.66, hanches=0.72, haut="veste", manches="longues", c_haut="#3a3f4a", c_bas="#3a3f4a",
+    ("costume-sombre", "Costume", dict(ep=1.12, taille=0.66, hanches=0.72, haut="veste", manches="longues", c_haut="#3a3f4a", c_bas="#3a3f4a",
                                 c_pieds="#1d1b1a", peau=3)),
     ("grand-mince", "Grand, mince, costume", dict(ep=1.0, taille=0.52, hanches=0.6, bras=0.15, jambe=0.2, cou=0.22, buste=2.0, jambes=2.95,
                                                   haut="veste", manches="longues", c_haut="#6b5d4f", c_bas="#6b5d4f", c_pieds="#2b1f17", peau=0)),
-    ("petit-trapu", "Petit, trapu", dict(ep=1.2, taille=0.8, hanches=0.84, ventre=0.1, bras=0.26, jambe=0.34, cou=0.34, buste=1.72, jambes=2.0,
+    ("trapu", "Petit, trapu", dict(ep=1.2, taille=0.8, hanches=0.84, ventre=0.1, bras=0.26, jambe=0.34, cou=0.34, buste=1.72, jambes=2.0,
                                          main=1.1, haut="chemise", manches="courtes", c_haut="#d9b44a", c_bas="#4c5a3c", peau=6)),
-    ("robe", "Robe", dict(ep=0.86, taille=0.46, hanches=0.7, bras=0.14, jambe=0.2, cou=0.2, main=0.88, haut="robe", manches="sans", bas="robe",
+    ("robe-simple", "Robe", dict(ep=0.86, taille=0.46, hanches=0.7, bras=0.14, jambe=0.2, cou=0.2, main=0.88, haut="robe", manches="sans", bas="robe",
                           pieds="escarpins", c_haut="#b9466b", c_bas="#b9466b", c_pieds="#6e1f33", peau=1)),
     ("jupe-blouse", "Jupe et blouse", dict(ep=0.88, taille=0.48, hanches=0.74, bras=0.15, jambe=0.2, cou=0.2, main=0.88, haut="blouse",
                                            manches="longues", bas="jupe", pieds="escarpins", c_haut="#f0e6d2", c_bas="#2e4a6e",
@@ -94,7 +94,7 @@ GABARITS = [
                                            c_bas="#4a6a8c", c_pieds="#3a2a1d", peau=3)),
 ]
 
-TAGS = {"jupe-blouse": "jupe et blouse", "sportif": "sportif", "athlete": "athlète", "longues-jambes": "longues jambes"}
+TAGS = {"costume-sombre": "costume", "robe-simple": "robe", "trapu": "petit, trapu", "jupe-blouse": "jupe et blouse", "sportif": "sportif", "athlete": "athlète", "longues-jambes": "longues jambes"}
 NOMS_HAUT = {"tshirt": "T-shirt", "chemise": "Chemise", "veste": "Veste de costume", "pull": "Pull", "sweat": "Sweat à capuche",
              "debardeur": "Débardeur", "blouse": "Blouse", "robe": "Haut de robe", "gilet": "Gilet sur chemise", "polo": "Polo",
              "manteau": "Long manteau"}
@@ -378,8 +378,7 @@ def _main1(f, sg, g):
     loc = [(top, -0.15), (0.12, -0.17), (0.34, -0.18), (0.55, -0.14), (0.66, -0.05), (0.66, 0.06), (0.56, 0.13), (0.4, 0.15),
            (0.33, 0.2), (0.3, 0.27), (0.2, 0.28), (0.1, 0.21), (top, 0.15)]
     P = [(Wr[0] + (u * ux + v * vx) * s, Wr[1] + (u * uy + v * vy) * s) for u, v in loc]
-    f.blob(P, g["skin"], stroke="none")
-    f.line(P, sw=SW)                                       # contour sans le haut du poignet : la main sort de la manche
+    f.blob(P, g["skin"])                                   # une seule forme : remplie et cernee, ses points se tirent d'un coup
     q = [(Wr[0] + (u * ux + v * vx) * s, Wr[1] + (u * uy + v * vy) * s) for u, v in [(0.36, 0.14), (0.42, 0.06), (0.47, 0.03)]]
     f.line(q, sw=SWD * 0.8)
 
@@ -599,6 +598,12 @@ def tous():
     return rows
 
 
+def _anciens(cat):
+    """Identifiants des anciens elements (corps encres, decoupes) : les compositions enregistrees les retrouvent par l'id."""
+    d = parts.ROOT / ("_corps" if cat == "silhouette" else "_corps-claude/" + cat)
+    return {f.stem for f in d.glob("*.png")} if d.is_dir() else set()
+
+
 def ecrire(refaire=False, seul=None, log=print):
     from . import partbanks
     n = 0
@@ -606,6 +611,8 @@ def ecrire(refaire=False, seul=None, log=print):
         if seul and pid not in seul:
             continue
         d = ROOT / cat
+        if pid in _anciens(cat):                          # pas l'identifiant d'un corps encre ou d'une de ses decoupes
+            raise ValueError("identifiant deja pris par un ancien element : %s/%s" % (cat, pid))
         if (d / (pid + ".png")).exists() and not refaire:
             continue
         im = rendre(lays)

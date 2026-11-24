@@ -11,7 +11,7 @@ portrait-robot est posee par-dessus (voir bodydraw.personnage).
   python tools/corps.py traces                 la banque du generateur de corps en TRACES PLEINS (app/bodyvec.py) : ~20 corps
                                                entiers et un torse, des bras, des mains, des jambes, des chaussures par gabarit,
                                                plus des accessoires, dans data/parts/_corps-el/ ; ne touche pas aux elements
-                                               deja ecrits (retouches de David) sauf --refaire [ids...] ; copie de securite
+                                               deja ecrits (retouches de David) sauf : traces [ids...] --refaire ; copie de securite
                                                dans data/backup/ avant de refaire ; planches dans data/qa/corps-traces/
 """
 import argparse
