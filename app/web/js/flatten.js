@@ -5,7 +5,8 @@ import { loadImage } from "./api.js";
 import { groundSvg } from "./ground.js";
 import { drawImage } from "./draw.js";
 import { faceOps, headReady, opsCanvas } from "./face.js";
-import { frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, cmPixels } from "./model.js";
+import { frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, cmPixels, mouthFrame } from "./model.js";
+import { exprCard } from "./lipsync.js";
 import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
@@ -72,6 +73,23 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     ctx.scale(kx, ky); ctx.fill(new Path2D(q.d));
     ctx.restore();
   };
+  // expression du visage (l.exk) : sa carte, posee en pixels de l'image d'orbite comme le calque
+  const exprDraw = async (l, sp, box) => {
+    if (!l.exk || !sp || !sp.orbit || !sp.expr) return;
+    let mf = mouthFrame(sp);
+    for (let k = 0; k < 20 && !(mf && mf.expr); k++) { await new Promise((ok) => setTimeout(ok, 50)); mf = mouthFrame(sp); }
+    const c = mf && mf.expr && exprCard(l.exk, mf.expr, mf.all, sp.i);
+    if (!c) return;
+    const card = await loadImage(c.href), sc = Math.min(box.w / mf.w, box.h / mf.h);
+    ctx.save();
+    ctx.scale(kx, ky);
+    if (l.rz) { const cx = box.x + box.w / 2, cy = box.y + box.h / 2; ctx.translate(cx, cy); ctx.rotate(l.rz * Math.PI / 180); ctx.translate(-cx, -cy); }
+    if (l.flip) { ctx.translate(2 * (box.cx ?? box.x + box.w / 2), 0); ctx.scale(-1, 1); }
+    ctx.translate(box.x + (box.w - mf.w * sc) / 2, box.y + box.h - mf.h * sc); ctx.scale(sc, sc);
+    if (c.move) { const q = c.move; ctx.translate(q.c1[0], q.c1[1]); ctx.rotate(q.rot * Math.PI / 180); ctx.scale(q.sx, 1); ctx.translate(-q.c0[0], -q.c0[1]); }
+    ctx.drawImage(card, c.x, c.y, c.s, c.s);
+    ctx.restore();
+  };
   for (let i = 0; i < layers.length; i++) {
     const l = layers[i], item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
     if (!sp) continue;
@@ -110,6 +128,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       if (st.outline > 0) { ctx.strokeStyle = "#111111"; ctx.lineWidth = st.outline; ctx.stroke(body); }
       ctx.restore();
       });
+      await exprDraw(l, sp, box);
       continue;
     }
     let im = await loadImage(sp.url);
@@ -123,6 +142,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     }
     cast(l, box);
     draw(im, box.x, box.y, box.w, box.h, sharp ? 0 : blurOf(pan, depthOf(pan, i), bb), l.flip, l.rz);
+    await exprDraw(l, sp, box);
   }
   return new Promise((ok) => cv.toBlob(ok, "image/png"));
 }

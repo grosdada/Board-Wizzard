@@ -8,6 +8,7 @@ import { Bank, target } from "./bank.js";
 import { flattenPanel } from "./flatten.js";
 import { MARKS, MARK_COLORS, newMark } from "./marks.js";
 import { swatch } from "./colors.js";
+import { exprName } from "./lipsync.js";
 import { openDrawEditor, drawImage } from "./draw.js";
 import { openMontage } from "./montage.js";
 import { openDeck, addClip } from "./deck.js";
@@ -556,6 +557,13 @@ class App {
     items.push({ note: tt("↻ orbite prête · ⏳ en calcul · ▫ image fixe") });
     items.push({ label: tt("📍 Montrer dans la banque"), click: () => this.bankUI.reveal(l.item) });
     items.push({ label: tt("Générer d'autres poses…"), click: () => this.bankUI.openItem(l.item) });
+    {                                                     // expression du visage (cartes de l'orbite, app/exprcards.py) ; la bouche du lip sync passe par-dessus
+      const sp = item && sprite(item, l.v, l.f), ex = (sp && sp.expr && sp.exprs) || [];
+      items.push({ head: tt("Expression") });
+      if (ex.length) for (const k of ["", ...ex]) items.push({ label: exprName(k), checked: (l.exk || "") === k, half: true,
+        click: () => { if (k) l.exk = k; else delete l.exk; this.commit("expr"); this.editor.render(); this.refreshInspector(); } });
+      else items.push({ note: tt("Pas encore d'expressions pour ce personnage.") });
+    }
     if (v && v.orbit) {
       const cur = nearestAxis(v.orbit, l.f || 0);
       items.push({ head: tt("Axe") });

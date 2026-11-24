@@ -1949,7 +1949,9 @@
   "😊 Expressions": "😊 Expressions",
   "Mode édition des cases : les traits entre les cases apparaissent au survol, on les glisse pour changer la taille des cases. Hors de ce mode, ils restent cachés.": "Panel edit mode: the lines between panels show on hover and can be dragged to resize panels. Outside this mode they stay hidden.",
   "✓ Édition des cases": "✓ Editing panels",
-  "✂ Éditer les cases": "✂ Edit panels"
+  "✂ Éditer les cases": "✂ Edit panels",
+  "Expression": "Expression",
+  "Pas encore d'expressions pour ce personnage.": "No expressions for this character yet."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

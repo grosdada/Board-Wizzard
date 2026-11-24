@@ -279,21 +279,27 @@ function cardPick(lip, lips, frames, i, t) {
 
 /** Expression du visage (app/exprcards.py) : la carte « k » de l'image-cle la plus proche, recalee sur la bouche suivie de
  *  l'image i comme les bouches dessinees. Elle passe SOUS la bouche du lip sync, qui l'emporte toujours. "" sans carte. */
-export function exprMarkup(k, ex, frames, i) {
-  if (!k || !ex || !frames) return "";
+export function exprCard(k, ex, frames, i) {
+  if (!k || !ex || !frames) return null;
   const ck = cardKey(Object.assign({}, ex, { exact: false }), frames, i), m = frames[i];
-  if (!ck || !m || !m.up) return "";
+  if (!ck || !m || !m.up) return null;
   const { key, far } = ck, file = key.cards[k];
-  if (!file) return "";
-  let tf = "";
-  if (far && frames[key.f] && frames[key.f].up) {
+  if (!file) return null;
+  const c = { href: `${ex.base}/${file}?v=${ex.v}`, x: key.x, y: key.y, s: key.s, move: null };
+  if (far && frames[key.f] && frames[key.f].up) {          // image voisine : recalee sur les bouts de la bouche suivie
     const ends = (q) => [q.up[0], q.up[q.up.length - 1]], mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     const [a0, b0] = ends(frames[key.f]), [a1, b1] = ends(m), c0 = mid(a0, b0), c1 = mid(a1, b1);
     const w0 = Math.hypot(b0[0] - a0[0], b0[1] - a0[1]) || 1, w1 = Math.hypot(b1[0] - a1[0], b1[1] - a1[1]) || 1, sx = Math.max(0.6, Math.min(1.4, w1 / w0));
     const rot = Math.max(-20, Math.min(20, (Math.atan2(b1[1] - a1[1], b1[0] - a1[0]) - Math.atan2(b0[1] - a0[1], b0[0] - a0[0])) * 180 / Math.PI));
-    tf = ` transform="translate(${c1[0].toFixed(2)} ${c1[1].toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(3)} 1) translate(${(-c0[0]).toFixed(2)} ${(-c0[1]).toFixed(2)})"`;
+    c.move = { c0, c1, rot, sx };
   }
-  return `<image href="${ex.base}/${file}?v=${ex.v}" x="${key.x}" y="${key.y}" width="${key.s}" height="${key.s}" preserveAspectRatio="none"${tf}/>`;
+  return c;
+}
+export function exprMarkup(k, ex, frames, i) {
+  const c = exprCard(k, ex, frames, i);
+  if (!c) return "";
+  const q = c.move, tf = q ? ` transform="translate(${q.c1[0].toFixed(2)} ${q.c1[1].toFixed(2)}) rotate(${q.rot.toFixed(2)}) scale(${q.sx.toFixed(3)} 1) translate(${(-q.c0[0]).toFixed(2)} ${(-q.c0[1]).toFixed(2)})"` : "";
+  return `<image href="${c.href}" x="${c.x}" y="${c.y}" width="${c.s}" height="${c.s}" preserveAspectRatio="none"${tf}/>`;
 }
 /** Expression d'un calque a l'instant t : la derniere cle posee avant t (l.ex.keys = [{ t, k }], k = "" : neutre), sinon
  *  celle de la case (l.exk). */
