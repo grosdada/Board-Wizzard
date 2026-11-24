@@ -725,8 +725,11 @@ class Handler(BaseHTTPRequestHandler):
                     params[k] = d[k]
             return self.send_json({"job": S.add("item_orbit", params, "Orbite · %s · %s" % (
                 it["name"], it["variants"][vid]["label"]), **opts)})
+        if act == "sheet" and d.get("ok"):                          # planche validee a la main : la tournette part
+            store.mutate_item(iid, lambda x: x.update(sheet_wait=False))
+            return self.send_json({"job": S.add("item_orbit", {"item": iid, "variant": "base"}, "Orbite · %s · Base" % it["name"], **opts)})
         if act == "sheet":                                          # planche de vues d'un personnage (dos, profil...)
-            return self.send_json({"job": S.add("item_sheet", {"item": iid, "redo": bool(d.get("redo"))},
+            return self.send_json({"job": S.add("item_sheet", {"item": iid, "redo": bool(d.get("redo")), "gate": bool(d.get("gate"))},
                                                 "Planche de vues · %s" % it["name"], **opts)})
         if act == "apose" and method == "POST":                     # fiche sur fond de couleur : pose en A (+ base), a valider
             a = d.get("action", "make")

@@ -831,6 +831,15 @@ export class Bank {
         };
         show();
         const tick = setInterval(() => { if (!document.body.contains(state)) return clearInterval(tick); show(); }, 1000);
+        if (item.sheet_wait) {                               // portrait-robot : planche a valider avant la tournette
+          const va = item.sheet_audit || {}, bad = Object.entries(va).filter(([, v]) => v && v !== "garder");
+          acts.append(h("div.sheet-wait", h("b", tt("⏸ Planche à valider avant la tournette")),
+            h("span.muted", Object.keys(va).some((k) => va[k]) ? (bad.length ? tt`Refusées au contrôle : ${bad.map(([k]) => names[k] || k).join(", ")}.` : tt("Contrôle passé."))
+              : tt("Pas de contrôle automatique (intelligence non configurée) : regarde chaque vue. Même personnage, mêmes proportions, rien d'ajouté ?")),
+            h("div.row.wrap",
+              h("button.mini.primary", { title: tt("La planche est bonne : la tournette part"), on: { click: async () => { try { await post(`bank/${id}/sheet`, { ok: true, target: target() }); toast(tt("Tournette en file.")); app.pollSoon(); await this.reload(); } catch (err) { toast(err.message, "error"); } } } }, tt("✓ Valider la planche et lancer la tournette")),
+              h("button.mini", { on: { click: async () => { try { await post(`bank/${id}/sheet`, { redo: true, gate: true, target: target() }); toast(tt("Planche relancée.")); app.pollSoon(); } catch (err) { toast(err.message, "error"); } } } }, tt("↻ Refaire la planche")))));
+        }
         acts.append(h("div.sheet", h("div.sheet-head", h("span.muted", Object.keys(sh).length ? tt("Planche de vues (référence des orbites)") : tt("Pas encore de planche de vues : elle se fait avant la prochaine orbite.")), redo),
           state, views));
       }

@@ -224,7 +224,15 @@ def _pose_prov(job, prov):
 _sheet_locks, _sheet_guard = {}, threading.Lock()
 
 
-def ensure_sheet(it, prov, job=None, redo=False):
+SHEET_AUDIT = ("Vue « %s » de la planche de personnage, faite a partir du dessin d'origine (montre a cote). Exige : le MEME "
+               "personnage, vu exactement sous cet angle, en pied, entier, centre ; memes proportions de caricature que le dessin "
+               "(taille de la tete par rapport au corps, longueur des jambes, carrure, embonpoint), memes vetements, memes "
+               "couleurs, meme coiffure, memes accessoires, rien d'ajoute ni d'enleve (pas de bras en trop, pas d'objet invente) ; "
+               "meme style de trait et de remplissage ; une vraie vue de cet angle (pas une vue de face retournee, pas un profil "
+               "plat). Refuse au moindre ecart de proportions ou de design : la tournette partira de cette planche.")
+
+
+def ensure_sheet(it, prov, job=None, redo=False, audit=False):
     """Planche de vues d'un personnage (dos, profil, trois-quarts dos), faite une fois a partir de son image de base.
     Renvoie les chemins des vues. Un verrou par element : deux orbites lancees ensemble ne la calculent qu'une fois."""
     if it["kind"] != "character" or not settings.load()["render"].get("sheet", True):
@@ -244,13 +252,21 @@ def ensure_sheet(it, prov, job=None, redo=False):
                 job["progress"] = "planche de vues : %s" % view
             tmp = _tmp()
             try:
-                png = eprov.edit([base], poses.sheet_prompt(view, it.get("style", "photo"), faithful=bool(model) and it.get("style") != "dessin"), 31 + k, tmp)
                 rel = "sheet/%s.png" % view
                 (d / "sheet").mkdir(parents=True, exist_ok=True)
-                if it.get("style") == "dessin":
-                    sprites.ink(png, d / rel)
-                else:
-                    sprites.normalize(png, d / rel)
+
+                def draw(extra="", n=0, view=view, k=k, rel=rel):
+                    prompt = poses.sheet_prompt(view, it.get("style", "photo"), faithful=bool(model) and it.get("style") != "dessin")
+                    png = eprov.edit([base], prompt + ((" Corrections: " + extra) if extra else ""), 31 + k + 100 * n, tmp)
+                    if it.get("style") == "dessin":
+                        sprites.ink(png, d / rel)
+                    else:
+                        sprites.normalize(png, d / rel)
+                    return d / rel
+                draw()
+                if audit and job is not None:                      # planche controlee : chaque vue jugee contre le dessin, refaite si besoin
+                    _, a = _audit(job, it, "vues", d / rel, SHEET_AUDIT % view, redraw=lambda c, n: draw(c, n))
+                    job.setdefault("_sheet_audit", {})[view] = (a or {}).get("final")
                 have[view] = rel
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
@@ -259,8 +275,20 @@ def ensure_sheet(it, prov, job=None, redo=False):
 
 
 def run_item_sheet(job, prov):
-    it = store.load_item(job["params"]["item"])
-    ensure_sheet(it, prov, job, redo=bool(job["params"].get("redo")))
+    """Planche de vues. gate (personnage du portrait-robot) : planche controlee AVANT la tournette ; la tournette ne part
+    d'elle-meme que si l'intelligence a garde chaque vue, sinon la planche attend d'etre validee dans la fiche."""
+    p = job["params"]
+    it = store.load_item(p["item"])
+    gate = bool(p.get("gate"))
+    ensure_sheet(it, prov, job, redo=bool(p.get("redo")), audit=gate)
+    if not gate:
+        return
+    verdicts = job.get("_sheet_audit") or {}
+    ok = _brain_on() and verdicts and all(v == "garder" for v in verdicts.values())
+    store.mutate_item(it["id"], lambda x: x.update(sheet_wait=not ok, sheet_audit=verdicts))
+    if ok:
+        SCHEDULER.add("item_orbit", {"item": it["id"], "variant": "base"}, "Orbite · %s · Base" % it["name"],
+                      target=job["target"], _fal_key=job.get("_fal_key"), prio=job.get("prio", 1), own_key=bool(job.get("own_key")))
 
 
 def _key_engine(job, prov):

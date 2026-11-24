@@ -880,15 +880,16 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
         } catch (e) { toast(tt("Portrait refusé : ") + e.message, "error", 9000); }
         return false;                               // l'atelier reste ouvert
       }
-      const orbit = confirm(tt("Calculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : il reste une image fixe, tu pourras lancer l'orbite plus tard depuis sa fiche."));
+      const orbit = confirm(tt("Préparer sa tournette 360° ?\nD'abord sa planche de vues (dos, profil, trois-quarts dos), contrôlée contre le dessin ; la tournette ne part qu'une fois la planche validée (dans sa fiche si le contrôle automatique n'est pas là).\nAnnuler : il reste une image fixe."));
       try {
         sel = null; multi.clear(); paint();
         const blob = withBody ? await composeBody() : await render(1024, Math.round(1024 * SH / S), true, "image/png", BODYKIT);
-        const it = await upload("bank?" + new URLSearchParams({ kind: "character", name: nm, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", file: withBody || BODYKIT ? "personnage.png" : "portrait.png", folder: "Portraits-robots" }), blob);
+        const it = await upload("bank?" + new URLSearchParams({ kind: "character", name: nm, style: "dessin", facing: "face", orbit: "0", file: withBody || BODYKIT ? "personnage.png" : "portrait.png", folder: "Portraits-robots" }), blob);
         try { await apiPut("bank/" + it.id, { identikit: composition(withBody) }); }   // pour le rouvrir dans l'atelier
         catch (e) { toast(tt("Composition non gardée : ") + e.message, "error"); }
+        if (orbit) await post(`bank/${it.id}/sheet`, { gate: true, target: "auto" });   // planche controlee d'abord, la tournette apres validation
         bankUI.tab = "character"; await bankUI.reload(); bankUI.reveal(it.id); bankUI.app.pollSoon();
-        toast(tt`« ${nm} » est dans la banque, dossier Portraits-robots.` + (orbit ? tt(" Son orbite est en calcul.") : ""));
+        toast(tt`« ${nm} » est dans la banque, dossier Portraits-robots.` + (orbit ? tt(" Sa planche de vues est en calcul ; la tournette partira une fois la planche validée.") : ""));
       } catch (e) { toast(tt("Portrait refusé : ") + e.message, "error", 9000); return false; }
     } }]);
   m.box.classList.add("wide", "idk-box");
