@@ -116,7 +116,40 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   const baseOf = (l) => { const sh = l.sh || {}; return { x: l.x, y: l.y, s: l.s, rz: l.rz || 0, f: l.f || 0, v: l.v, lw: l.lw || 0, shg: sh.g ?? 0.72, shw: sh.w ?? 5, sha: sh.a ?? 135 }; };
   // piste muette (anim.mute = { id: instant }) : son animation est figee a l'instant ou on l'a coupee
   const tm = (id, t) => { const q = anim.mute && anim.mute[id]; return q != null ? q : t; };
-  const stateOf = (l, t) => { t = tm(l.id, t); const k = keysOf(l.id), b = baseOf(l), v0 = valueAt(k, b, t, 0); return valueAt(k, b, t, nOf(l, v0.v)); };
+  // valeurs propres d'un element (ses cles), sans son parent
+  const localOf = (l, t) => { t = tm(l.id, t); const k = keysOf(l.id), b = baseOf(l), v0 = valueAt(k, b, t, 0); return valueAt(k, b, t, nOf(l, v0.v)); };
+  // nulls (anim.nulls = [{ id, name, x, y, s, rz }]) : des reperes animables, invisibles a l'image, sur lesquels on parente
+  // des elements (anim.par = { idElement: { id: idNull, x, y, s, rz } }, valeurs du null au moment du parentage). L'element
+  // suit ce que le null a fait depuis : deplacement, rotation autour du null, echelle ; a sa pose de parentage, rien ne change.
+  const nullOf = (id) => (anim.nulls || []).find((n) => n.id === id);
+  const nullLocal = (n, t) => valueAt(keysOf(n.id), { x: n.x, y: n.y, s: n.s ?? 1, rz: n.rz || 0 }, tm(n.id, t), 0);
+  const xfOf = (id, t, depth = 0) => {                     // transformation heritee du parent (en pixels de l'image), ou null
+    const par = anim.par && anim.par[id], n = par && nullOf(par.id);
+    if (!n || depth > 8) return null;
+    const P = nullWorld(n, t, depth + 1), dr = P.rz - (par.rz || 0);
+    return { th: dr * Math.PI / 180, dr, k: (P.s || 1) / (par.s || 1), ox: par.x * W, oy: par.y * H, nx: P.x * W, ny: P.y * H };
+  };
+  const movePt = (X, Y, q) => { const dx = X - q.ox, dy = Y - q.oy, c = Math.cos(q.th), s = Math.sin(q.th); return [q.nx + q.k * (c * dx - s * dy), q.ny + q.k * (s * dx + c * dy)]; };
+  function nullWorld(n, t, depth = 0) {
+    const s = nullLocal(n, t), q = xfOf(n.id, t, depth);
+    if (!q) return s;
+    const [X, Y] = movePt(s.x * W, s.y * H, q);
+    return Object.assign({}, s, { x: X / W, y: Y / H, s: s.s * q.k, rz: s.rz + q.dr });
+  }
+  // element a l'image : ses valeurs, emmenees par son null (le centre de l'element tourne autour du null)
+  const stateOf = (l, t) => {
+    const s = localOf(l, t), q = xfOf(l.id, t);
+    if (!q) return s;
+    const [X, Y] = movePt(s.x * W, (s.y - s.s / 2) * H, q), s1 = s.s * q.k;
+    return Object.assign({}, s, { x: X / W, y: Y / H + s1 / 2, s: s1, rz: (s.rz || 0) + q.dr });
+  };
+  // un deplacement a l'image (fractions de la case) ramene dans le repere de l'element parente
+  const unDelta = (id, t, dx, dy) => {
+    const q = xfOf(id, t);
+    if (!q) return [dx, dy];
+    const X = dx * W, Y = dy * H, c = Math.cos(-q.th), s = Math.sin(-q.th);
+    return [(c * X - s * Y) / q.k / W, (s * X + c * Y) / q.k / H];
+  };
   const camAt = (t) => {
     const d = pan.dof || {}, c = valueAt(keysOf("cam"), CAM0, tm("cam", t), 0);
     c.fo = valueAt(keysOf("fo"), { fo: c.fo ?? d.focus ?? 0.3 }, tm("fo", t), 0).fo;
@@ -255,9 +288,16 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const sh = shapesOf()[e.i], b = sel === "s:" + sh.id ? boxOf(sh, H) : null;
       o += plane(e.d, shapeSvg(sh, e.i) + (b ? `<rect x="${f1(b.x - 4)}" y="${f1(b.y - 4)}" width="${f1(b.w + 8)}" height="${f1(b.h + 8)}" class="mt-sel" transform="rotate(${f1(sh.r || 0)} ${f1(b.cx)} ${f1(b.cy)})"/>` : ""));
     }
+    if (pre === "mt") for (const n of anim.nulls || []) {     // les nulls : une croix dans un carre, invisibles au rendu
+      const P = nullWorld(n, t), u = 1 / ((px || 1 / 2.4) * c.z), r = 14 * u, col = sel === n.id ? "#ff8a1f" : "#e0457b";
+      o += `<g data-null="${n.id}" class="mt-null" transform="translate(${f1(P.x * W)} ${f1(P.y * H)})"><g transform="rotate(${f1(P.rz)}) scale(${f3(P.s)})">` +
+        `<rect data-null="${n.id}" x="${f1(-r)}" y="${f1(-r)}" width="${f1(2 * r)}" height="${f1(2 * r)}" fill="rgba(255,255,255,0.06)" stroke="${col}" stroke-width="${f1(2 * u)}" vector-effect="non-scaling-stroke"/>` +
+        `<path data-null="${n.id}" d="M${f1(-2 * r)} 0H${f1(2 * r)}M0 ${f1(-2 * r)}V${f1(2 * r)}" stroke="${col}" stroke-width="${f1(2 * u)}" vector-effect="non-scaling-stroke"/></g>` +
+        `<text data-null="${n.id}" x="${f1(r + 4 * u)}" y="${f1(-r - 4 * u)}" font-size="${f1(12 * u)}" fill="${col}" style="font-family:sans-serif">${String(n.name || "Null").replace(/[<&]/g, "")}</text></g>`;
+    }
     return o + `</g></g><defs>${Object.values(blurs).join("")}</defs><rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
   }
-  return { H, anim, markup, stateOf, camAt, nOf, itemOf, keysOf, angleOf };
+  return { H, anim, markup, stateOf, localOf, camAt, nOf, itemOf, keysOf, angleOf, nullOf, nullLocal, nullWorld, xfOf, unDelta };
 }
 
 export function openMontage(app, pid) {
@@ -280,7 +320,40 @@ export function openMontage(app, pid) {
   const layerOf = (id) => pan.layers.find((l) => l.id === id);
   const itemOf = scene.itemOf, nOf = scene.nOf;
   const keysOf = (id) => anim.tracks[id] || [];
-  const stateOf = (l) => scene.stateOf(l, t);
+  const stateOf = (l) => scene.localOf(l, t);              // valeurs propres (cles, reglages) ; worldOf : a l'image (parent compris)
+  const worldOf = (l) => scene.stateOf(l, t);
+  const nullOf = (id) => scene.nullOf(id);
+  function addNull() {                                     // un null au centre de l'image
+    stop();
+    const ns = anim.nulls = anim.nulls || [], c = camAt();
+    let k = ns.length + 1; while (ns.some((n) => n.name === tt`Null ${k}`)) k++;
+    const n = { id: "n" + Math.random().toString(36).slice(2, 8), name: tt`Null ${k}`, x: f3(c.cx), y: f3(c.cy), s: 1, rz: 0 };
+    ns.push(n); sel = n.id; selKey = null;
+    hist.snap(); paint(); lanes(); props();
+    toast(tt("Null ajouté : parente des éléments dessus (clic droit sur un élément › Parent, ou son panneau)."));
+  }
+  function removeNull(n) {                                 // ses enfants restent, a leur place sans lui
+    anim.nulls = (anim.nulls || []).filter((x) => x !== n);
+    if (!anim.nulls.length) delete anim.nulls;
+    delete anim.tracks[n.id];
+    if (anim.par) { for (const [k, v] of Object.entries(anim.par)) if (v.id === n.id) delete anim.par[k]; if (!Object.keys(anim.par).length) delete anim.par; }
+    if (sel === n.id) sel = "cam";
+    selKey = null; hist.snap(); paint(); lanes(); props();
+  }
+  function parentTo(id, nid) {                             // parenter : le null tel qu'il est maintenant devient la pose de reference
+    const n = nullOf(nid); if (!n) return;
+    const P = scene.nullWorld(n, t);
+    anim.par = anim.par || {};
+    anim.par[id] = { id: nid, x: f3(P.x), y: f3(P.y), s: +(+P.s).toFixed(4), rz: +(+P.rz).toFixed(2) };
+    hist.snap(); paint(); lanes(); props();
+  }
+  function unparent(id) {
+    if (!anim.par || !anim.par[id]) return;
+    delete anim.par[id]; if (!Object.keys(anim.par).length) delete anim.par;
+    hist.snap(); paint(); lanes(); props();
+  }
+  const parentOf = (id) => (anim.par && anim.par[id] ? nullOf(anim.par[id].id) : null);
+  function renameNull(n) { const v = window.prompt(tt("Nom du null :"), n.name || ""); if (v && v.trim()) { n.name = v.trim().slice(0, 40); hist.snap(); paint(); lanes(); props(); } }
   const KEYED = ["x", "y", "s", "rz", "f", "v", "lw", "shg", "shw", "sha"];
   const camAt = () => scene.camAt(t);
   let focusPick = false, focusBtn = null;                  // cible : le prochain clic sur un element fait la mise au point sur lui
@@ -300,7 +373,7 @@ export function openMontage(app, pid) {
     localStorage.setItem("bw.camChannels", chanOpen.has("cam") ? "1" : ""); localStorage.setItem("bw.chanOpen", JSON.stringify([...chanOpen].slice(-60))); lanes(); };
   const LAYER_CHANNELS = [["x", tt("Position ↔")], ["y", tt("Position ↕")], ["s", tt("Taille")], ["rz", tt("Inclinaison")], ["f", tt("Angle (orbite)")], ["v", tt("Pose")],
     ["lw", tt("Trait")], ["shg", tt("Ombre : gris")], ["shw", tt("Ombre : largeur")], ["sha", tt("Ombre : lumière")]];
-  const chansOf = (id) => (id === "cam" ? CHANNELS : layerOf(id) ? LAYER_CHANNELS : []);
+  const chansOf = (id) => (id === "cam" ? CHANNELS : layerOf(id) ? LAYER_CHANNELS : nullOf(id) ? LAYER_CHANNELS.slice(0, 4) : []);
   const CAMS = { cam: tt("Caméra"), fo: tt("Mise au point"), bl: tt("Flou"), fx: tt("Lignes d'effet") };      // pistes de la camera ; fo et bl : profondeur de champ
 
   // ------------------------------------------------------------------------------------------ visionneuse
@@ -373,7 +446,7 @@ export function openMontage(app, pid) {
         (on || (sh.d ?? 1) < 0.999 ? `<text x="${f1(b.cx)}" y="${f1(y - th * 0.45)}" font-size="${f1(fs * 0.7)}" fill="${on ? "#b8431f" : "#7a6325"}" text-anchor="middle" data-shape="${sh.id}">${esc(shapeName(sh, i))} · ${(sh.d ?? 1).toFixed(2)}</text>` : "") + `</g>`;
     });
     pan.layers.forEach((l, li) => {
-      const st = stateOf(l), it = itemOf(l), sp = it && sprite(it, st.v, st.f);
+      const st = worldOf(l), it = itemOf(l), sp = it && sprite(it, st.v, st.f);
       if (!sp) return;
       const box = layerBox(bb, Object.assign({}, l, st), sp), y = yOf(depthOf(pan, li)), on = sel === l.id, ih = H * 0.11, iw = ih * sp.w / sp.h;
       o += `<g data-layer="${l.id}" style="cursor:grab">` +
@@ -421,7 +494,7 @@ export function openMontage(app, pid) {
     // elements et camera, du plus loin au plus pres
     const items = [];
     for (const l of pan.layers) {
-      const s = stateOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
+      const s = worldOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
       if (!sp) continue;
       const g = P(s.x, 0, depthNow(l)), top = P(s.x, (s.s || 0.5) * hw, depthNow(l)), hp = Math.max(4, g[1] - top[1]), wp = hp * (sp.w || 1) / (sp.h || 1);
       const fl = l.flip ? ` transform="translate(${f1(2 * g[0])} 0) scale(-1 1)"` : "";
@@ -457,7 +530,7 @@ export function openMontage(app, pid) {
   function rebuild3() {
     const hw = H / W, hz = hzOf(), cards = [];
     for (const l of pan.layers) {
-      const s = stateOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
+      const s = worldOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
       if (!sp) continue;
       const z = depthNow(l) * ZD, zc = z + D0, Hc = (s.s || 0.5) * hw * zc / D0;
       cards.push({ l, s, sp, z, X: 0.5 + (s.x - 0.5) * zc / D0, Hc, Wc: Hc * (sp.w || 1) / (sp.h || 1), yf: s.y, zc });
@@ -620,7 +693,7 @@ export function openMontage(app, pid) {
   function drawDecor() {
     stop();
     const bgI = background(pan, app.bank, app.project.id);
-    const ghosts = pan.layers.map((l) => { const s = stateOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f); return sp && { url: sp.url, x: s.x, y: s.y, s: s.s, ar: sp.w / sp.h, flip: l.flip }; }).filter(Boolean);
+    const ghosts = pan.layers.map((l) => { const s = worldOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f); return sp && { url: sp.url, x: s.x, y: s.y, s: s.s, ar: sp.w / sp.h, flip: l.flip }; }).filter(Boolean);
     openDrawEditor({ draw: pan.draw, ratio: H / W, backdrop: bgI ? bgI.url : null, ghosts, title: tt("Dessiner le fond de la case"),
       onSave: (d) => { if (d.shapes.length || (d.fx && d.fx.on)) pan.draw = d; else delete pan.draw; hist.snap(); paint(); lanes(); props(); } });
   }
@@ -667,8 +740,8 @@ export function openMontage(app, pid) {
     const keys = anim.tracks[id] || (anim.tracks[id] = []);
     let k = near(id);
     if (!k) {
-      const l = layerOf(id), full = CAMS[id] ? camAt() : stateOf(l);
-      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot, dz: full.dz || 0 } : CAMS[id] ? { [id]: full[id] } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
+      const l = layerOf(id), nl = nullOf(id), full = CAMS[id] ? camAt() : nl ? scene.nullLocal(nl, t) : stateOf(l);
+      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot, dz: full.dz || 0 } : CAMS[id] ? { [id]: full[id] } : nl ? { x: full.x, y: full.y, s: full.s, rz: full.rz } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
       if (!keys.length && t > 0.04) keys.push(Object.assign({ t: 0 }, base));     // premiere cle posee plus loin : on garde le depart
       k = Object.assign({ t: f3(t) }, base);
       if (chanOpen.has(id) && keys.length && chansOf(id).some(([c]) => c in patch)) k.skip = chansOf(id).map(([c]) => c).filter((c) => !(c in patch));   // canaux deployes : la cle ne porte que ce qu'on regle
@@ -690,7 +763,7 @@ export function openMontage(app, pid) {
     else if (id === "fo") dof.focus = patch.fo;
     else if (id === "bl") dof.amount = patch.bl;
     else if (id === "fx") pan.draw.fx.force = patch.fx;
-    else if (id !== "cam") Object.assign(layerOf(id), patch);
+    else if (id !== "cam") Object.assign(layerOf(id) || nullOf(id), patch);
     else setKey(id, patch);
     if (CAMS[id] && CAMS[sel] && sel !== id) { sel = id; keyBar(); }      // camera, mise au point, flou : la piste reglee devient la piste choisie
     paint(); lanes(); syncProps();
@@ -713,6 +786,25 @@ export function openMontage(app, pid) {
           h("button.mini", { title: tt("Toutes les formes reviennent sur le décor"), on: { click: () => { for (const x of shapes()) delete x.d; paint(); props(); } } }, tt("Tout recoller"))),
         h("div.muted", { title: tt("Dans la vue « Profondeur », glisser la carte d'une forme la déplace en profondeur (haut / bas) et en travers (gauche / droite). Sa hauteur, sa taille et son dessin se règlent dans « Dessiner le fond ».") }, tt("Forme du décor : profondeur et place en travers ⓘ")));
       syncProps = () => { if (document.activeElement !== inp) inp.value = shp.d ?? 1; out.textContent = (shp.d ?? 1).toFixed(2); };
+      keyBar();
+      return;
+    }
+    const nl = nullOf(sel);
+    if (nl) {                                              // null : place, echelle, rotation (animables) et ses enfants
+      const cur = () => scene.nullLocal(nl, t), outs = [];
+      const rg = (label, k, min, max, step, fmt = (x) => (+x).toFixed(2)) => {
+        const out = h("output", fmt(cur()[k])), inp = h("input", { type: "range", min, max, step, value: cur()[k], on: { input: (e) => { change(nl.id, { [k]: +e.target.value }); out.textContent = fmt(+e.target.value); }, change: () => hist.snap() } });
+        outs.push(() => { const v = cur()[k]; if (document.activeElement !== inp) inp.value = v; out.textContent = fmt(v); });
+        return h("label.row.range", label, inp, out);
+      };
+      const kids = pan.layers.filter((x) => anim.par && anim.par[x.id] && anim.par[x.id].id === nl.id);
+      side.append(h("h4", "✛ ", nl.name, " ", h("button.mini", { on: { click: () => renameNull(nl) } }, tt("Renommer"))),
+        h("p.muted", tt("Repère invisible à l'image : les éléments parentés le suivent (déplacement, rotation autour de lui, échelle).")),
+        rg(tt("Position ↔"), "x", -1, 2, 0.005), rg(tt("Position ↕"), "y", -1, 3, 0.005), rg(tt("Échelle"), "s", 0.05, 10, 0.01), rg(tt("Rotation"), "rz", -360, 360, 1, (x) => Math.round(x) + "°"),
+        h("h4", tt("Enfants")),
+        kids.length ? h("div.row.wrap", kids.map((x) => h("button.mini", { title: tt("Choisir cet élément"), on: { click: () => { sel = x.id; paint(); lanes(); props(); } } }, (itemOf(x) || {}).name || tt("élément")))) : h("p.muted", tt("Aucun : clic droit sur un élément › Parent, ou « Parent » dans son panneau.")),
+        h("div.row.wrap", h("button.mini.danger", { title: tt("Ses enfants restent, sans parent"), on: { click: () => removeNull(nl) } }, tt("Supprimer le null"))));
+      syncProps = () => outs.forEach((f) => f());
       keyBar();
       return;
     }
@@ -762,6 +854,12 @@ export function openMontage(app, pid) {
       const it = itemOf(l), n = nOf(l, cur().v);
       side.append(range(tt("Position ↔"), "x", -1, 2, 0.005), range(tt("Position ↕"), "y", -1, 3, 0.005), range(tt("Taille"), "s", 0.05, 6, 0.01),
         range(tt("Inclinaison"), "rz", -180, 180, 1, (x) => Math.round(x) + "°"));
+      if ((anim.nulls || []).length) {                     // parent : un null qu'il suit
+        const pp = anim.par && anim.par[l.id];
+        side.append(h("label.row", { title: tt("L'élément suit le null : ses déplacements, sa rotation (autour du null) et son échelle. Ses propres clés restent.") }, tt("Parent"),
+          h("select", { on: { change: (e) => (e.target.value ? parentTo(l.id, e.target.value) : unparent(l.id)) } },
+            h("option", { value: "" }, tt("(aucun)")), (anim.nulls || []).map((n) => h("option", { value: n.id, selected: !!pp && pp.id === n.id }, "✛ " + n.name)))));
+      }
       if (n) side.append(range(tt("Axe (rotation)"), "f", 0, n - 1, 1, (x) => Math.round(x * 360 / n) + "°"));
       {
         const inp = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: depthNow(l), on: { input: (e) => { setDepth(l, +e.target.value); paint(); lanes(); syncProps(); } } }), out = h("output", depthNow(l).toFixed(2));
@@ -829,7 +927,7 @@ export function openMontage(app, pid) {
   function keyBar() {
     keyBox.textContent = "";
     if (shapeOf(sel)) { keyBox.append(h("span.muted", tt("Forme du décor : elle se place en profondeur, sans clés."))); return; }
-    const k = near(sel), name = CAMS[sel] || (itemOf(layerOf(sel)) || {}).name || tt("élément");
+    const k = near(sel), name = CAMS[sel] || (nullOf(sel) || {}).name || (itemOf(layerOf(sel)) || {}).name || tt("élément");
     keyBox.append(
       h("button.mini", { title: tt("Aller à la clé précédente (Alt + ←). Piste choisie ; si elle n'a pas de clé, toutes les pistes."), on: { click: () => jumpKey(-1) } }, "◀◆"),
       h("button.mini", { title: tt("Aller à la clé suivante (Alt + →)"), on: { click: () => jumpKey(1) } }, "◆▶"),
@@ -888,6 +986,11 @@ export function openMontage(app, pid) {
       items.push({ head: tt("Axe") });
       AXES.forEach((ax, i) => items.push({ label: tr(ax), half: true, checked: ax === curAx, click: () => change(l.id, { f: angleToFrame(vv.orbit, i * 45) }) }));
     }
+    if ((anim.nulls || []).length) {
+      const pp = anim.par && anim.par[l.id];
+      items.push({ head: tt("Parent") }, { label: tt("(aucun)"), checked: !pp, click: () => unparent(l.id) });
+      for (const n of anim.nulls) items.push({ label: "✛ " + n.name, checked: !!pp && pp.id === n.id, click: () => parentTo(l.id, n.id) });
+    }
     items.push({ head: tt("Ordre") },
       { label: tt("Avancer"), half: true, click: () => reorder(l, 1) }, { label: tt("Reculer"), half: true, click: () => reorder(l, -1) },
       { label: tt("Premier plan"), half: true, click: () => reorder(l, "top") }, { label: tt("Arrière-plan"), half: true, click: () => reorder(l, "bottom") },
@@ -945,7 +1048,7 @@ export function openMontage(app, pid) {
     const made = [];
     for (const { id, dt, k } of keyClip) {
       const to = one || id;
-      if (!CAMS[to] && !layerOf(to)) continue;               // element retire depuis
+      if (!CAMS[to] && !layerOf(to) && !nullOf(to)) continue;               // element retire depuis
       const nk = Object.assign(JSON.parse(JSON.stringify(k)), { t: f3(clamp(at + dt, 0, anim.dur)) });
       const ks = (anim.tracks[to] = (anim.tracks[to] || []).filter((x) => Math.abs(x.t - nk.t) > 0.02));   // une cle au meme instant est remplacee
       ks.push(nk); ks.sort((a, b) => a.t - b.t);
@@ -1658,11 +1761,13 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     };
     row("cam", tt("Caméra"), "🎥");
     chanRows("cam");
+    for (const n of anim.nulls || []) { row(n.id, n.name, "✛"); chanRows(n.id); }
     if (dof.on) { row("fo", tt("Mise au point"), "◎"); row("bl", tt("Flou"), "◌"); }
     if (fxAnim()) row("fx", tt("Lignes d'effet"), "⚡");
     for (const l of [...pan.layers].reverse()) {
       const name = itemOf(l) ? itemOf(l).name : tt("élément");
-      row(l.id, name, "●");
+      const pn = parentOf(l.id);
+      row(l.id, name + (pn ? " ⤷ " + pn.name : ""), "●");
       chanRows(l.id);
       const lip = l.lip;
       if (lip && lip.src) {                                // la voix du personnage : un bloc a deplacer et a raccourcir par ses deux bouts
@@ -1724,6 +1829,11 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     const lid = lane && !row.classList.contains("voice") ? lane.dataset.lane : null;   // piste Camera ou d'un element (ou un de ses canaux)
     if (lid === "cam")
       ctxMenu(e, [{ head: tt("Caméra") }, { label: chanOpen.has("cam") ? tt("Replier les canaux") : tt("Déployer les canaux (cadre, zoom, inclinaison, avancer)"), click: () => chanToggle("cam") }]);
+    else if (lid && nullOf(lid)) {
+      const n = nullOf(lid);
+      ctxMenu(e, [{ head: "✛ " + n.name }, { label: chanOpen.has(lid) ? tt("Replier les canaux") : tt("Déployer les canaux (position, échelle, rotation)"), click: () => chanToggle(lid) },
+        { label: tt("Renommer"), click: () => renameNull(n) }, { label: tt("Supprimer le null"), click: () => removeNull(n) }]);
+    }
     else if (lid && layerOf(lid))
       ctxMenu(e, [{ head: itemOf(layerOf(lid)) ? itemOf(layerOf(lid)).name : tt("élément") }, { label: chanOpen.has(lid) ? tt("Replier les canaux") : tt("Déployer les canaux (position, taille, inclinaison, angle, pose, trait, ombre)"), click: () => chanToggle(lid) }]);
   });
@@ -1817,7 +1927,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     }
     lanes(); props();
   });
-  tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); const c = lane.dataset.ch; setKey(sel, c ? { [c]: (sel === "cam" ? camAt() : layerOf(sel) ? stateOf(layerOf(sel)) : {})[c] } : {}); paint(); lanes(); props(); } });
+  tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); const c = lane.dataset.ch; setKey(sel, c ? { [c]: (sel === "cam" ? camAt() : layerOf(sel) ? stateOf(layerOf(sel)) : nullOf(sel) ? scene.nullLocal(nullOf(sel), t) : {})[c] } : {}); paint(); lanes(); props(); } });
 
   // ------------------------------------------------------------------------------------------ gestes dans l'image
   // point de la souris en fraction de l'image. On passe par la matrice du SVG : son cadre a l'ecran peut etre plus grand
@@ -1857,6 +1967,15 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       return;
     }
     const lockCam = camLock && !depthView;                 // camera verrouillee : on ne prend ni personnage ni forme
+    const nid = lockCam || depthView ? null : (e.target.closest("[data-null]") || {}).dataset?.null;
+    if (nid && nullOf(nid)) {                              // un null : on le prend et on le deplace
+      sel = nid; selKey = null;
+      if (e.button === 2) { vdrag = null; paint(); lanes(); props(); return; }
+      try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+      vdrag = { id: nid, p: ptOf(e), s: scene.nullLocal(nullOf(nid), t), z: camAt().z };
+      paint(); lanes(); props(); vdrag.p = ptOf(e);
+      return;
+    }
     const id = lockCam ? null : e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
     const shId = id || lockCam ? null : (e.target.closest("[data-shape]") || {}).dataset?.shape, shp = shId ? shapeOf("s:" + shId) : null;
     sel = id || (shp ? "s:" + shId : "cam"); selKey = null;
@@ -1894,7 +2013,8 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     }
     if (vdrag.corner != null) {                             // taille par un coin ; les pieds suivent pour que le coin oppose ne bouge pas
       const s1 = clamp(vdrag.s.s * cornerFactor(vdrag, vdrag.toS(e)), 0.03, 40), F = cornerFeet(vdrag, s1 / vdrag.s.s);
-      change(vdrag.id, { s: f3(s1), x: f3(vdrag.s.x + (F[0] - vdrag.F0[0]) / (vdrag.kp * W)), y: f3(vdrag.s.y + (F[1] - vdrag.F0[1]) / (vdrag.kp * H)) });
+      const [ux, uy] = scene.unDelta(vdrag.id, t, (F[0] - vdrag.F0[0]) / (vdrag.kp * W), (F[1] - vdrag.F0[1]) / (vdrag.kp * H));
+      change(vdrag.id, { s: f3(s1), x: f3(vdrag.s.x + ux), y: f3(vdrag.s.y + uy) });
       return;
     }
     if (vdrag.rot) {                                        // Maj : par crans de 15 degres
@@ -1907,7 +2027,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     else if (depthView && !vdrag.turn) { setDepth(layerOf(vdrag.id), vdrag.d - dy / (DY0 - DY1)); change(vdrag.id, { x: f3(vdrag.s.x + dx) }); }
     else if (vdrag.id === "cam") change("cam", { cx: f3(vdrag.c.cx - dx / vdrag.c.z), cy: f3(vdrag.c.cy - dy / vdrag.c.z) });
     else if (vdrag.turn) { const n = nOf(layerOf(vdrag.id), vdrag.s.v); if (n) change(vdrag.id, { f: (((vdrag.s.f + Math.round((e.clientX - vdrag.sx) / 6)) % n) + n) % n }); }
-    else change(vdrag.id, { x: f3(vdrag.s.x + dx / vdrag.z), y: f3(vdrag.s.y + dy / vdrag.z) });
+    else { const [ux, uy] = scene.unDelta(vdrag.id, t, dx / vdrag.z, dy / vdrag.z); change(vdrag.id, { x: f3(vdrag.s.x + ux), y: f3(vdrag.s.y + uy) }); }   // parente : ramene dans son repere
   });
   svg.addEventListener("pointerup", () => { vdrag = null; if (recAct) recStop(); if (tdraw) traceUp(); });
   svg.addEventListener("lostpointercapture", () => { if (recAct) { vdrag = null; recStop(); } });
@@ -1915,7 +2035,9 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     e.preventDefault();
     if (isoView) return;
     const l = layerOf(sel);
-    if (l) layerMenu(e, l); else camMenu(e);
+    const nl = nullOf(sel);
+    if (nl) ctxMenu(e, [{ head: "✛ " + nl.name }, { label: tt("Renommer"), click: () => renameNull(nl) }, { label: tt("Supprimer le null"), click: () => removeNull(nl) }]);
+    else if (l) layerMenu(e, l); else camMenu(e);
   });
   svg.addEventListener("wheel", (e) => {
     e.preventDefault();
@@ -2021,7 +2143,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   const done = () => { playing = false; voices(false); if (rec) { try { rec.stop(); } catch (e) { /* rien */ } } cancelAnimationFrame(raf); document.removeEventListener("keydown", key, true); };
 
   const dur = h("input", { type: "number", min: 0.5, max: 60, step: 0.5, value: anim.dur, title: tt("Durée du plan, en secondes"),
-    on: { change: (e) => { const d = clamp(+e.target.value || 4, 0.5, 60), k = d / anim.dur; if (confirm(tt("Étirer aussi les clés sur la nouvelle durée ?\nAnnuler : les clés gardent leur instant."))) for (const ks of Object.values(anim.tracks)) for (const x of ks) x.t = f3(x.t * k); anim.dur = d; t = Math.min(t, d); paint(); lanes(); props(); } } });
+    on: { change: (e) => { const d = clamp(+e.target.value || 4, 0.5, 60); anim.dur = d; /* seule la timeline change : les cles gardent leur instant (« Resize » pour les etirer) */ t = Math.min(t, d); paint(); lanes(); props(); } } });
   const fullBtn = h("button.mini", { title: tt("La fenêtre de montage prend tout l'écran"), on: { click: () => { const on = m.box.classList.toggle("modal-full"); fullBtn.textContent = on ? tt("🗗 Fenêtre") : tt("⛶ Plein écran"); } } }, tt("⛶ Plein écran"));
   // quatre vues : l'image, la profondeur (schema vu de dessus), l'isometrique, la 3D
   const VIEWS = [["image", tt("🖼 Image"), tt("L'image de la case, comme elle sera montrée")], ["depth", tt("⬒ Profondeur"), tt("Schéma vu de dessus : chaque élément est une carte, à glisser vers le fond ou vers la caméra")],
@@ -2055,6 +2177,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     app.commit("montage"); app.editor.render(); app.refreshInspector();
   };
   const bar = h("div.mt-bar", h("button.mini", { title: tt("Revenir au début"), on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn, recBtn,
+    h("button.mini", { title: tt("Ajoute un null : un repère animable, invisible à l'image, sur lequel parenter des éléments"), on: { click: addNull } }, tt("✛ Null")),
     h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), tt("En boucle")), clock,
     h("span.muted", { title: tt("Dans une piste : glisser trace un lasso qui prend les clés, Ctrl + clic en ajoute une. Les clés prises se déplacent ensemble et s'effacent avec Suppr. La règle des secondes déplace la tête de lecture.") }, tt("Maj : aimant sur les clés · glisser : lasso ⓘ")),
     h("span.spacer"),
@@ -2076,7 +2199,7 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
       else delete pan.frame;
       for (const l of pan.layers) {
         if (!keysOf(l.id).length) continue;
-        const st = scene.stateOf(l, 0);
+        const st = scene.localOf(l, 0);
         for (const k of ["x", "y", "s", "rz", "f", "v", "lw"]) if (st[k] != null) l[k] = st[k];
         if (l.sh || st.shg !== 0.72 || st.shw !== 5 || st.sha !== 135) l.sh = Object.assign({}, l.sh, { g: st.shg, w: st.shw, a: st.sha });
         n++;
