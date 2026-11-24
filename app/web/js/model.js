@@ -305,7 +305,7 @@ export function groundShadow(l, box) {
     cx += (l.flip ? -1 : 1) * (box.w * 0.3 + rx * 0.5); cy = box.y + box.h - ry;
   }
   const q = { cx: cx + (g.dx || 0) * box.h, cy: cy + (g.dy || 0) * box.h, rx, ry, a: g.a ?? 0.35,
-              blur: Math.min(rx, ry) * 0.4 * (g.b ?? 1), col: g.ink ? inkFill(l) : "#000000" };
+              blur: Math.min(rx, ry) * 0.4 * (g.b ?? 1), col: g.ink ? inkFill(l) : (/^#[0-9a-f]{6}$/i.test(g.c || "") ? g.c : "#000000") };   // cloner le contour l'emporte sur la couleur choisie
   q.d = blobPath(q, g.hand || 0, g.wave ?? 4, g.seed || 0);
   return q;
 }

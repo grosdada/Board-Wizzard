@@ -1902,7 +1902,8 @@
   "Réinitialiser": "Reset",
   "Teinte, saturation, luminosité et contraste de l'élément, comme dans Photoshop (Ctrl+U). Les bouches du lip sync suivent.": "Hue, saturation, lightness and contrast of the element, as in Photoshop (Ctrl+U). Lip sync mouths follow.",
   "Teinte, saturation, luminosité et contraste du décor, comme dans Photoshop (Ctrl+U).": "Hue, saturation, lightness and contrast of the set, as in Photoshop (Ctrl+U).",
-  "Pose une couleur en produit sur tout le décor : le blanc prend la couleur, les traits et la peinture restent visibles.": "Multiplies a colour over the whole set: white takes the colour, lines and paint stay visible."
+  "Pose une couleur en produit sur tout le décor : le blanc prend la couleur, les traits et la peinture restent visibles.": "Multiplies a colour over the whole set: white takes the colour, lines and paint stay visible.",
+  "Couleur de l'ombre portée. « Cloner la couleur de contour », s'il est coché, l'emporte sur elle.": "Colour of the cast shadow. “Clone the outline colour”, when ticked, overrides it."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
