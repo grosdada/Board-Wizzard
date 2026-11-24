@@ -18,8 +18,10 @@ souris. Sœur d'Alive-Comics (même découpage, mêmes bulles, même client Comf
   `python tools/seed_bank.py manifeste.json` (remplissage en lot), `python tools/bump.py "nom"` (passer devant).
 - `python tools/trous.py` (trous et vides du détourage : contrôle, `--reparer`, `--vides`), `python tools/doublons.py`
   (orbites dont chaque image est en double), `python tools/pack.py` (paquets `.bwpack` et bibliothèque en ligne),
-  `python tools/parts.py` (éléments de visage du portrait-robot), `python tools/corps.py decouper` (torses, bras, mains,
-  jambes, chaussures du générateur de corps, découpés dans les 12 corps encrés : `app/bodycut.py`). Les outils qui réécrivent la banque gardent les
+  `python tools/parts.py` (éléments de visage du portrait-robot), `python tools/corps.py traces` (banque du générateur de
+  corps en tracés pleins éditables : 21 gabarits × corps entier, torse, bras, mains, jambes, chaussures, plus des
+  accessoires, `app/bodyvec.py`, dans `data/parts/_corps-el/` ; ne réécrit pas ce qui existe sauf `--refaire [ids]`).
+  Les anciens corps encrés et leurs découpes (`app/bodycut.py`) ne sont plus proposés (`partbanks.ANCIENS_CORPS`). Les outils qui réécrivent la banque gardent les
   originaux dans `data/backup/`.
 
 ## Repères techniques

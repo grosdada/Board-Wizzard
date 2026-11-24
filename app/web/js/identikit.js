@@ -27,7 +27,7 @@ const KITS = {
              jambes: [500, 1520, 340], chaussures: [500, 1790, 460], accessoires: [500, 900, 200] },
     ORDER: ["silhouette", "jambes", "chaussures", "torse", "bras", "mains", "tete", "accessoires"],
     MANY: new Set(["accessoires"]), SPLIT: new Set(["bras", "mains", "jambes", "chaussures"]), PAIRCATS: ["bras", "mains", "jambes", "chaussures"],
-    random: [["tete"], ["torse", "bras", "mains", "jambes", "chaussures"]], whole: "silhouette", follow: { bras: "torse", mains: "torse" } },
+    random: [["tete"], ["torse", "bras", "mains", "jambes", "chaussures"]], whole: "silhouette", follow: { bras: "torse", mains: "torse", chaussures: "jambes" } },   // chaussures : a la hauteur des chevilles de leurs jambes
 };
 const ratios = new Map();                        // fichier -> hauteur / largeur
 const ratioOf = (file, t) => new Promise((ok) => {

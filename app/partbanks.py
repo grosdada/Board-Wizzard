@@ -33,6 +33,10 @@ FRAMES = {"visage": (1000, 1000), "corps": (1000, 2000)}
 BODY = {"silhouette": ("Corps entier", True), "tete": ("Tête", True), "torse": ("Torse et haut", True),
         "bras": ("Bras", True), "mains": ("Mains", True), "jambes": ("Jambes et bas", True),
         "chaussures": ("Chaussures", True), "accessoires": ("Accessoires", False)}
+# Les corps encres (data/parts/_corps) et leurs elements decoupes (_corps-claude, app/bodycut.py) ne sont plus proposes :
+# la Banque Claude du corps est faite de traces pleins (app/bodyvec.py, dans _corps-el). Leurs fichiers restent, pour que
+# les compositions deja enregistrees qui les utilisent s'affichent toujours ; copie dans data/backup/.
+ANCIENS_CORPS = False
 FULL_FACE = {True, "vert", "visage", "petits", "fond"}                      # categories du visage ou le blanc enferme reste opaque
 _ID = re.compile(r"[a-z0-9-]{1,60}")
 
@@ -143,10 +147,10 @@ def _rows(bid, cat):
     """Elements d'une categorie, tous dessines a la main (sauf les corps encres de la Banque Claude)."""
     d, pre = _dir(bid, cat)
     out, dirs = [], [(d, pre, True)]
-    if bid == CLAUDE and cat == "silhouette":                       # les corps encres d'abord (ils restent), puis ceux dessines
+    if ANCIENS_CORPS and bid == CLAUDE and cat == "silhouette":     # les corps encres d'abord (ils restent), puis ceux dessines
         _bodies()
         dirs.insert(0, (ROOT / "_corps", "_corps/", False))
-    elif bid == CLAUDE and cat in BODY:                             # les elements decoupes dans les corps encres (app/bodycut.py)
+    elif ANCIENS_CORPS and bid == CLAUDE and cat in BODY:           # les elements decoupes dans les corps encres (app/bodycut.py)
         dirs.insert(0, (ROOT / "_corps-claude" / cat, "_corps-claude/%s/" % cat, False))
     for d, pre, mine in dirs:
         if not d.is_dir():

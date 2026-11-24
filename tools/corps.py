@@ -7,7 +7,12 @@ portrait-robot est posee par-dessus (voir bodydraw.personnage).
   python tools/corps.py planche                data/qa/corps.jpg : guide | encre, pour controle
   python tools/corps.py decouper               coupe chaque corps encre en torse, bras, mains, jambes, chaussures pour le
                                                generateur de corps (app/bodycut.py), planches dans data/qa/corps-el/ ;
-                                               --refaire : recoupe ceux deja faits
+                                               --refaire : recoupe ceux deja faits (anciens elements, plus proposes)
+  python tools/corps.py traces                 la banque du generateur de corps en TRACES PLEINS (app/bodyvec.py) : ~20 corps
+                                               entiers et un torse, des bras, des mains, des jambes, des chaussures par gabarit,
+                                               plus des accessoires, dans data/parts/_corps-el/ ; ne touche pas aux elements
+                                               deja ecrits (retouches de David) sauf --refaire [ids...] ; copie de securite
+                                               dans data/backup/ avant de refaire ; planches dans data/qa/corps-traces/
 """
 import argparse
 import shutil
@@ -47,12 +52,25 @@ def guide(kw, seed):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("action", choices=["encrer", "planche", "decouper"])
+    ap.add_argument("action", choices=["encrer", "planche", "decouper", "traces"])
     ap.add_argument("noms", nargs="*")
     ap.add_argument("--refaire", action="store_true")
     ap.add_argument("--graine", type=int, default=11)
     ap.add_argument("--machine", type=int, default=1)
     a = ap.parse_args()
+    if a.action == "traces":
+        from app import bodyvec
+        if a.refaire and bodyvec.ROOT.exists():
+            dest = settings.DATA / "backup" / ("corps-traces-" + time.strftime("%Y%m%d-%H%M%S"))
+            shutil.copytree(bodyvec.ROOT, dest)
+            print("copie de securite :", dest)
+        n = bodyvec.ecrire(refaire=a.refaire, seul=set(a.noms) or None)
+        q = settings.DATA / "qa" / "corps-traces"
+        for c in bodyvec.CATS:
+            bodyvec.planche(q / (c + ".jpg"), c)
+        bodyvec.melange(q / "melange.jpg")
+        print(n, "élément(s) écrit(s) ; planches dans", q)
+        return
     var = [(n, kw) for n, kw in bodydraw.CORPS_VARIANTES if not a.noms or n in a.noms]
     if a.action == "decouper":
         from app import bodycut
