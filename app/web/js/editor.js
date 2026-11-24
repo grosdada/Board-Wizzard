@@ -435,6 +435,14 @@ export class Editor {
       if (e.target.isContentEditable) return;
       const n = (this.pg.notes || []).find((x) => x.id === ne.dataset.note);
       if (!n) return;
+      // double-clic fait a la main : la capture du pointeur (pour glisser) envoie le dblclick au calque, pas au cadre
+      const now = performance.now(), last = this.lastNote;
+      this.lastNote = { id: n.id, t: now, x: e.clientX, y: e.clientY };
+      if (last && last.id === n.id && now - last.t < 450 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 6) {
+        this.lastNote = null; e.preventDefault(); e.stopPropagation();
+        setTimeout(() => this.editNote(n.id), 0);
+        return;
+      }
       if (this.app.sel.note !== n.id) { this.app.select({ note: n.id }, true); this.renderOverlay(); }
       const r = this.overlay.getBoundingClientRect();
       this.ndrag = { n, r, px: e.clientX, py: e.clientY, x: n.x, y: n.y, w: n.w, h: n.h, size: !!e.target.dataset.nh, moved: false };
