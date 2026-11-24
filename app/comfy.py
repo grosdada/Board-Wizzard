@@ -39,6 +39,20 @@ ORBIT_PROMPT = (
 )
 
 
+# Orbite d'une case : la camera tourne autour de toute la scene, decor compris ; ce qui etait hors champ est invente
+# dans le meme style. Modifiable a chaque lancement (fenetre « Orbite de la case »).
+SCENE_ORBIT_PROMPT = (
+    "Camera orbit around the whole scene: the camera travels a full continuous 360-degree circle around the centre "
+    "of the set, and the ENTIRE environment turns with the view: floor, walls, furniture, machines, windows and "
+    "background all rotate in perspective together with the characters, exactly like a real 3D set filmed by a "
+    "moving camera. The characters stay frozen in their place on the set; nothing turns on its own, only the camera "
+    "moves. As the camera passes the edges of the original picture, reveal the parts of the place that were "
+    "off-screen and behind the camera: invent coherent new set pieces (walls, doors, consoles, props) that continue "
+    "the same location, in exactly the same drawing style, line work, colours and wash as the original image. "
+    "Same art style throughout, no cuts, no zoom, no morphing."
+)
+
+
 class ComfyError(RuntimeError):
     pass
 

@@ -2139,7 +2139,10 @@
   "(aucun)": "(none)",
   "Déployer les canaux (position, échelle, rotation)": "Expand channels (position, scale, rotation)",
   "Ajoute un null : un repère animable, invisible à l'image, sur lequel parenter des éléments": "Adds a null: an animatable marker, invisible in the image, to parent elements to",
-  "✛ Null": "✛ Null"
+  "✛ Null": "✛ Null",
+  "La caméra fait le tour de la scène : le décor tourne avec les personnages, et ce qui était hors champ est inventé dans le même style. La consigne se modifie ; elle est gardée pour les prochaines orbites.": "The camera circles the scene: the set turns with the characters, and what was off-screen is invented in the same style. You can edit the prompt; it is kept for the next orbits.",
+  "Remettre la consigne d'origine": "Restore the original prompt",
+  "↻ Lancer l'orbite": "↻ Start the orbit"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

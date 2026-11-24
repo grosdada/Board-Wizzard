@@ -25,7 +25,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 REALTIME_APP = "fal-ai/flux-2/klein/realtime"              # croquis -> image en direct (essai)
 REALISTIC_MODEL = "openai/gpt-image-2.6/sunburst/edit"     # portrait-robot -> photo (modele par defaut)
 REALISTIC_MODELS = {"gpt": "openai/gpt-image-2.6/sunburst/edit", "seedream": "bytedance/seedream/v5.5/edit"}
-from . import accounts, archive, brain, cost, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
+from . import comfy, accounts, archive, brain, cost, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"
 VERSION = "0.1"
@@ -399,7 +399,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"version": VERSION, "settings": settings.public(self.me["vip"]), "poses": poses.catalogue(),
                                    "me": {"role": self.me["role"], "name": self.me.get("name") or "", "vip": self.me["vip"],
                                           "password": bool(settings.load()["server"].get("password"))},
-                                   "axes": sprites.AXES})
+                                   "axes": sprites.AXES, "sceneOrbit": comfy.SCENE_ORBIT_PROMPT})
         if head == "password" and method == "POST":
             return self._password(data)
         if head == "generations":                                    # toutes les generations IA (data/generations)
@@ -1264,7 +1264,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"job": jid})
         if act == "orbit" and method == "POST":
             store.safe(pdir, d["flat"])
-            jid = S.add("panel_orbit", {"project": pid, "panel": d["panel"], "flat": d["flat"]},
+            jid = S.add("panel_orbit", {"project": pid, "panel": d["panel"], "flat": d["flat"], "prompt": str(d.get("prompt") or "")[:4000]},
                         "Orbite de la case %s" % d["panel"], **self.job_opts(d))
             return self.send_json({"job": jid})
         raise ApiError("route inconnue", 404)

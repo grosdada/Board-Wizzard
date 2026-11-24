@@ -152,7 +152,7 @@ class FalProvider:
         out = self.run(self.cfg["matte"], {"image_url": self.upload(image), "output_format": "png"})
         return self.fetch(out["image"]["url"], Path(dest_dir) / "cut.png")
 
-    def orbit(self, image, length, seed, prompt, megapixels, matte, dest_dir, refs=None):
+    def orbit(self, image, length, seed, prompt, megapixels, matte, dest_dir, refs=None, bare=False):
         ep = self.cfg["orbit"]
         url = self.upload(image)
         if "camera-controls" in ep or "multi-angle" in ep:        # H3 Max : trajectoire en degres, duree libre
@@ -161,7 +161,7 @@ class FalProvider:
                  "camera_trajectory": [{"time": 0, "azimuth": 0, "elevation": 0, "distance": 1},
                                        {"time": 1, "azimuth": 360, "elevation": 0, "distance": 1}]}
         else:                                                     # H3 + LoRA 360 Orbit : 5 s minimum sur fal
-            p = {"prompt": (comfy.ORBIT_PROMPT + " " + prompt).strip(), "image_url": url, "end_image_url": url,
+            p = {"prompt": (prompt if bare else comfy.ORBIT_PROMPT + " " + prompt).strip(), "image_url": url, "end_image_url": url,
                  "duration": max(5, min(15, -(-int(length) // 24))), "resolution": self.cfg.get("orbit_resolution") or "768P",
                  "prompt_expansion_mode": "disabled", "seed": int(seed) % 2147483647, "enable_safety_checker": True}
             if ep.endswith("/lora"):

@@ -1045,15 +1045,26 @@ class App {
     }
     toast(tt`${n} Integrate lancé(s).`); this.pollSoon();
   }
-  async panelOrbit() {
+  panelOrbit() {                                            // la camera tourne autour de toute la scene ; consigne modifiable
     const pan = this.curPanel(); if (!pan) return toast(tt("Choisis d'abord une case."));
-    try {
-      let flat;
-      if (pan.show === "integrated" && pan.integrated) flat = pan.integrated;        // l'image integree tourne mieux qu'un collage
-      else flat = await this.flat();
-      await post(`projects/${this.project.id}/orbit`, { panel: this.sel.panel, flat, target: target() });
-      toast(tt("Orbite de la case lancée (≈ 3 min).")); this.pollSoon();
-    } catch (e) { toast(tt("Orbite impossible : ") + e.message, "error"); }
+    const base = (this.info && this.info.sceneOrbit) || "";
+    const prompt = h("textarea", { rows: 9 }); prompt.value = localStorage.getItem("bw.sceneOrbit") || base;
+    const go = async () => {
+      const txt = prompt.value.trim();
+      if (txt && txt !== base) localStorage.setItem("bw.sceneOrbit", txt); else localStorage.removeItem("bw.sceneOrbit");
+      try {
+        let flat;
+        if (pan.show === "integrated" && pan.integrated) flat = pan.integrated;        // l'image integree tourne mieux qu'un collage
+        else flat = await this.flat();
+        await post(`projects/${this.project.id}/orbit`, { panel: this.sel.panel, flat, prompt: txt, target: target() });
+        toast(tt("Orbite de la case lancée (≈ 3 min).")); this.pollSoon();
+      } catch (e) { toast(tt("Orbite impossible : ") + e.message, "error"); return false; }
+    };
+    modal(tt("Orbite de la case"), h("div.form",
+      h("p.muted", tt("La caméra fait le tour de la scène : le décor tourne avec les personnages, et ce qui était hors champ est inventé dans le même style. La consigne se modifie ; elle est gardée pour les prochaines orbites.")),
+      h("label.col", tt("Consigne"), prompt),
+      h("button.mini", { type: "button", on: { click: () => { prompt.value = base; } } }, tt("Remettre la consigne d'origine"))),
+      [{ label: tt("Annuler") }, { label: tt("↻ Lancer l'orbite"), primary: true, click: go }]).box.classList.add("wide");
   }
   guessStyle(pan) {
     const it = (pan.layers || []).map((l) => this.bank.get(l.item)).find(Boolean) || this.bank.get(pan.bg?.item);

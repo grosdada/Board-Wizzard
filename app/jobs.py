@@ -74,7 +74,7 @@ class LocalProvider:
         g = comfy.matte_graph(comfy.upload(self.url, image), "bw/cut")
         return self._run(g, ["5"], dest_dir, "cut")["5"]
 
-    def orbit(self, image, length, seed, prompt, megapixels, matte, dest_dir, refs=None):
+    def orbit(self, image, length, seed, prompt, megapixels, matte, dest_dir, refs=None, bare=False):
         r = settings.load()["render"]
         up = {k: [comfy.upload(self.url, p) for p in v] for k, v in (refs or {}).items()}
         g = comfy.orbit_graph(comfy.upload(self.url, image), "bw/orbit", length=length, seed=seed,
@@ -824,8 +824,9 @@ def run_panel_orbit(job, prov):
     r = settings.load()["render"]
     tmp = _tmp()
     try:
+        # consigne de la case (decor compris) : sur fal, elle remplace celle du LoRA, faite pour un sujet seul
         rgb, _ = prov.orbit(d / p["flat"], int(p.get("length") or r["orbit_length"]), _seed(job),
-                            "The camera orbits around the centre of the scene.", 0.8, False, tmp)
+                            (p.get("prompt") or "").strip() or comfy.SCENE_ORBIT_PROMPT, 0.8, False, tmp, bare=True)
         rel = "orbit/%s_%d" % (p["panel"], int(time.time()))
         info = sprites.build_orbit(rgb, None, d / rel)
         info["dir"] = rel
