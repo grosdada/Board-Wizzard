@@ -32,7 +32,11 @@ W, H = 1000, 2000
 U, CX, CHIN = B.U, 500.0, B.CHIN
 ROOT = parts.ROOT / "_corps-el"
 INK = "#1f1a17"
-SW, SWD = 1.3, 0.85                                # epaisseur du contour (x 4 pixels dans l'atelier), des details
+SW, SWD = 1.3, 0.85
+# noir et blanc (demande de David) : trait noir, interieur blanc ; les couleurs des gabarits restent ecrites ci-dessous,
+# NB = False les remet. David colorie lui-meme dans l'atelier.
+NB = True
+PAPER = "#ffffff"                                # epaisseur du contour (x 4 pixels dans l'atelier), des details
 
 PEAUX = ["#f3cfb0", "#e4b08a", "#c98d62", "#9c6642", "#6d4329", "#f7dcc6", "#d9a077", "#b37a52"]
 DEF = dict(ep=1.05, taille=0.62, hanches=0.72, cou=0.26, bras=0.19, jambe=0.27, ventre=0.0, buste=1.9, jambes=2.6,
@@ -125,14 +129,20 @@ class Forms:
 
     def blob(self, pts, col, stroke=INK, sw=SW, px=False):
         """Forme libre fermee, remplie ; le premier et le dernier point sont relies par une droite."""
+        if NB:
+            col, stroke = PAPER, (INK if stroke != "none" else stroke)
         self.shapes.append({"id": self._id(), "t": "blob", "p": self.P(pts, px), "fon": True, "col": col, "tr": "none",
                             "stroke": stroke, "sw": sw if stroke != "none" else 0, "hand": 0, "ed": 1})
 
     def line(self, pts, stroke=INK, sw=SWD, px=False):
         """Trait libre (detail) : lisse, ouvert."""
+        if NB:
+            stroke = INK
         self.shapes.append({"id": self._id(), "t": "free", "p": self.P(pts, px), "fon": False, "stroke": stroke, "sw": sw, "hand": 0, "ed": 1})
 
     def ellipse(self, cx, cy, rx, ry, col, stroke=INK, sw=SWD):
+        if NB:
+            col, stroke = PAPER, INK
         self.shapes.append({"id": self._id(), "t": "ellipse", "p": self.P([(cx - rx, cy - ry), (cx + rx, cy + ry)]), "fon": True,
                             "col": col, "tr": "none", "stroke": stroke, "sw": sw, "hand": 0})
 
@@ -229,7 +239,9 @@ def torse(g):
     if haut == "sweat":
         f.blob([(-cou * 1.25, 0.42), (-cou * 2.3, 0.3), (-cou * 2.3, -0.12), (-cou * 1.2, -0.28), (cou * 1.2, -0.28), (cou * 2.3, -0.12),
                 (cou * 2.3, 0.3), (cou * 1.25, 0.42)], _shade(col, 0.82))
-    f.blob([(-cou, -0.32), (-cou, 0.05), (-cou * 1.1, 0.3), (-cou * 1.1, 0.42), (cou * 1.1, 0.42), (cou * 1.1, 0.3), (cou, 0.05), (cou, -0.32)], g["skin"])
+    low = 0.66 if haut in ("debardeur", "robe") else 0.42    # encolure profonde : la peau descend sous le haut
+    wide = 1.6 if haut in ("debardeur", "robe") else 1.1
+    f.blob([(-cou, -0.32), (-cou, 0.05), (-cou * 1.1, 0.3), (-cou * wide, low), (cou * wide, low), (cou * 1.1, 0.3), (cou, 0.05), (cou, -0.32)], g["skin"])
     hem = {"veste": 0.48, "manteau": 1.75, "robe": 0.1, "gilet": 0.3, "debardeur": 0.14, "sweat": 0.2, "pull": 0.16, "blouse": 0.12}.get(haut, 0.12)
     y_h = y_w + hem
     w_h = (max(hp, t) * 1.02 if hem < 0.6 else max(hp, t) * 1.06 + (hem - 0.6) * 0.18)
