@@ -203,7 +203,7 @@ def server_texts():
     out = []
     from app import poses, procedural, parts                   # noqa: E402
     cat = poses.catalogue()
-    for kind in ("character", "decor"):
+    for kind in ("character", "decor", "expressions"):
         out += [(r["label"], "poses.%s" % kind) for r in cat[kind]]
     out += [(v, "poses.TIERS") for v in cat["tiers"].values()]
     out += [(v[0] if isinstance(v, (tuple, list)) else v, "poses.SHEET_VIEWS") for v in getattr(poses, "SHEET_LABELS", {}).values()]

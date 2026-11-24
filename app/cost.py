@@ -104,6 +104,13 @@ def estimate_job(kind, params, target="auto"):
         return 3 * img
     if kind == "item_lips":                                   # une bouche redessinee : 1 image (jobs.LIPS_MODEL)
         return fal_price(jobs.LIPS_MODEL, {})
+    if kind == "item_expr":                                   # expressions : 1 image par grille de 4 et par image-cle
+        from . import exprcards
+        try:
+            nf = len(exprcards.default_frames(p["item"], p.get("variant") or "base"))
+        except (OSError, ValueError, KeyError):
+            nf = 3
+        return exprcards.estimate(len(p.get("exprs") or []) or 4, nf)
     if kind == "item_sheet":
         return 3 * img
     if kind == "item_pose":

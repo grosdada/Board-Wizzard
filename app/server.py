@@ -624,6 +624,32 @@ class Handler(BaseHTTPRequestHandler):
             jid = jobs.SCHEDULER.add("item_lips", {"item": iid, "variant": vid, "f": f, "shape": sh},
                                      "Bouche %s · image %d · %s" % (sh, f, it.get("name") or iid), target="fal", prio=0)
             return self.send_json({"job": jid})
+        if act == "expr" and method == "POST":                      # expressions du visage : generer (fal) ou retirer des cartes
+            from . import exprcards
+            vids = [v for v in (d.get("variants") or [d.get("variant") or "base"]) if v in it["variants"]]
+            if d.get("action") == "remove":
+                for v in vids:
+                    exprcards.remove(iid, v, d.get("exprs") or None)
+                return self.send_json({"item": store.resolve(store.load_item(iid))})
+            keys = [k for k in d.get("exprs") or [] if poses.expression(k)]
+            if not keys:
+                raise ValueError("coche au moins une expression")
+            if self.own_key():
+                raise ValueError("les expressions passent par la clé fal du poste : réservé à l'administrateur et aux invités VIP")
+            if not settings.load()["fal"].get("key"):
+                raise ValueError("pas de clé fal dans les réglages")
+            made = []
+            for v in vids:
+                if not ((it["variants"][v].get("orbit") or {}).get("mouth")):
+                    continue                                        # sans bouche suivie, pas d'image-cle ou poser l'expression
+                params = {"item": iid, "variant": v, "exprs": keys}
+                if jobs.SCHEDULER.pending("item_expr", item=iid, variant=v):
+                    continue
+                made.append(jobs.SCHEDULER.add("item_expr", params, "Expressions · %s · %s" % (
+                    it.get("name") or iid, it["variants"][v].get("label") or v), target="fal", prio=1))
+            if not made:
+                raise ValueError("aucune pose avec une bouche suivie (montage : « Tracer la bouche »), ou déjà en calcul")
+            return self.send_json({"jobs": made})
         if act == "lips-version" and method == "POST":              # bouches calculees : montrer une autre version d'une bouche regeneree
             sh = str(d.get("shape") or "").upper()
             return self.send_json({"item": jobs.lips_use_version(iid, d.get("variant") or "base", int(d.get("f", 0)), sh, int(d.get("i", 0)))})
@@ -641,7 +667,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(cost.summary(store.load_item(iid)))
         if act == "estimate":                                       # cout estime d'un lancement, avant de lancer
             n = int(d.get("count") or 1)
-            one = cost.estimate_job(d.get("kind") or "item_pose", {"item": iid}, opts["target"])
+            one = cost.estimate_job(d.get("kind") or "item_pose", {"item": iid, "exprs": d.get("exprs") or [], "variant": d.get("variant")},
+                                    opts["target"])
             return self.send_json({"estimate": round(one * n, 4), "each": round(one, 4), "spent": cost.spent(it),
                                    "queued": round(S.queued_cost(iid), 4), "cap": cost.cap_for(it)})
         if act == "prepare":

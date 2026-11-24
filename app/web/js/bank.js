@@ -238,6 +238,58 @@ export class Bank {
     return it.cover && it.variants && it.variants[it.cover] ? it.cover : "base";
   }
 
+  // Fiche : « Expressions à générer » (app/exprcards.py). Une expression = des cartes du visage posées sur l'orbite, sous la
+  // bouche du lip sync ; il faut une bouche suivie (mouth.json) sur la pose. Calcul sur fal, coût annoncé avant.
+  exprBox(item, id) {
+    const app = this.app, cat = app.info.poses.expressions || [];
+    if (!cat.length) return h("div");
+    const tracked = Object.entries(item.variants).filter(([, v]) => v.orbit && v.orbit.mouth);
+    const box = h("div.exprbox");
+    if (!tracked.length) {
+      box.append(h("h4", tt("Expressions à générer")), h("p.muted", tt("Il faut d'abord une bouche suivie sur l'orbite (montage : « Tracer la bouche »).")));
+      return box;
+    }
+    const base = tracked.find(([k]) => k === "base") || tracked[0];
+    const have = new Set(((base[1].orbit || {}).exprs) || []);
+    const boxes = cat.map((p) => ({ p, el: h("input", { type: "checkbox", "data-expr": p.key, checked: have.has(p.key) }) }));
+    const allPoses = h("input", { type: "checkbox" });
+    const est = h("div.muted.pose-est");
+    const picked = () => boxes.filter((b) => b.el.checked && !have.has(b.p.key)).map((b) => b.p.key);
+    const vids = () => (allPoses.checked ? tracked.map(([k]) => k) : [base[0]]);
+    let estT = 0, last = null;
+    const estimate = () => { clearTimeout(estT); estT = setTimeout(async () => {
+      const keys = picked();
+      if (!keys.length) { est.textContent = ""; last = null; return; }
+      try {
+        const r = await post(`bank/${id}/estimate`, { kind: "item_expr", count: vids().length, exprs: keys, target: "fal" });
+        last = r.estimate;
+        est.textContent = tt`Coût estimé : ≈ ${r.estimate.toFixed(2)} $ pour ${keys.length} expression(s) sur ${vids().length} pose(s) · déjà dépensé ${r.spent.toFixed(2)} $ · plafond ${r.cap.toFixed(2)} $`;
+        est.classList.toggle("warn", r.spent + r.queued + r.estimate > r.cap);
+      } catch (err) { est.textContent = ""; last = null; } }, 250); };
+    boxes.forEach((b) => b.el.addEventListener("change", estimate)); allPoses.addEventListener("change", estimate);
+    const launch = async () => {
+      const keys = picked();
+      if (!keys.length) return toast(tt("Coche au moins une expression qui n'est pas encore faite."), "error");
+      if (!confirm(tt`Générer ${keys.length} expression(s) sur ${vids().length} pose(s) ?\nCalcul sur fal (Nano Banana Pro) : environ ${(last ?? 0).toFixed(2)} $, compté sur ce personnage.`)) return;
+      try { const r = await post(`bank/${id}/expr`, { exprs: keys, variants: vids() }); toast(tt`${r.jobs.length} tâche(s) lancée(s).`); app.pollSoon(); }
+      catch (err) { toast(err.message, "error"); }
+    };
+    box.append(h("h4", tt("Expressions à générer")),
+      h("div.tiers", [1, 2, 3].map((t) => h("button.mini", { on: { click: () => { boxes.forEach((b) => { if (!have.has(b.p.key)) b.el.checked = b.p.tier <= t; }); estimate(); } } }, tr(app.info.poses.tiers[t]))),
+        h("button.mini", { on: { click: () => { boxes.forEach((b) => { if (!have.has(b.p.key)) b.el.checked = false; }); estimate(); } } }, tt("Rien"))),
+      h("div.poselist", boxes.map((b) => h("label.check" + (have.has(b.p.key) ? ".done" : ""), b.el, tr(b.p.label)))),
+      h("label.row.check", { title: tt("Chaque pose a sa propre orbite : ses expressions se calculent à part, au même prix que celles de la base.") }, allPoses,
+        tt`Aussi sur les autres poses qui ont une bouche suivie (${tracked.length - 1})`),
+      est,
+      h("div.row.wrap.pose-go",
+        h("button.primary", { title: tt("Sur quelques images de face de l'orbite, la tête est redessinée avec chaque expression ; au clic droit sur le personnage (case ou montage), on choisit l'expression."), on: { click: launch } }, tt("Générer les expressions")),
+        have.size ? h("button.mini.danger", { title: tt("Retire toutes les expressions de cette pose"), on: { click: async () => {
+          if (!confirm(tt("Retirer toutes les expressions de cette pose ?"))) return;
+          try { const r = await post(`bank/${id}/expr`, { action: "remove", variants: [base[0]] }); if (r.item) app.bank.set(id, r.item); this.refreshItem && this.refreshItem(); }
+          catch (err) { toast(err.message, "error"); } } } }, tt("Retirer les expressions")) : null));
+    return box;
+  }
+
   thumb(it, vid = "base") {
     const v = variantOf(it, vid);
     if (!v) return "";
@@ -930,6 +982,7 @@ export class Bank {
           h("div.row.wrap.pose-go",
             h("button.primary", { title: tt("Les poses sont générées et détourées, puis attendent : tu gardes, refais ou jettes chacune ; seules celles que tu gardes partent en orbite."), on: { click: () => launch(true) } }, tt("Générer les poses (à valider avant l'orbite)")),
             h("button.mini", { title: tt("Seul le contrôle automatique trie les poses ; l'orbite de chaque pose retenue part tout de suite, sans que tu la voies. À éviter : une pose qui ne ressemble pas au personnage coûte une orbite pour rien."), on: { click: () => { if (confirm(tt("Lancer les orbites sans voir les poses ?\nUne pose qui ne ressemble pas au personnage donnera une orbite à jeter."))) launch(false); } } }, tt("Sans vérifier"))));
+        if (item.kind === "character") poseBox.append(this.exprBox(item, id));
       }
       body.querySelector(".acts")?.remove();
       left.append(acts);

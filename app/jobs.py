@@ -19,7 +19,7 @@ from pathlib import Path
 from . import brain, comfy, cost, falapi, poses, proportions, settings, sprites, store, vector, headtrack
 
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i", "item_sheet": "edit",
-        "item_apose": "edit", "item_views": "edit", "item_lips": "edit",
+        "item_apose": "edit", "item_views": "edit", "item_lips": "edit", "item_expr": "edit",
         "panel_integrate": "edit", "panel_orbit": "orbit"}
 POLL = 3.0
 # priorite : 0 = case en cours de travail (Integrate, orbite de case), 1 = banque a la main, 2 = remplissage en lot
@@ -925,7 +925,19 @@ def lips_use_version(iid, vid, f, sh, i):
     return store.mutate_item(iid, lambda x: x["variants"][vid]["orbit"].update(lips=int(time.time() * 1000)))
 
 
-RUNNERS = {"item_cut": run_item_cut, "item_lips": run_item_lips, "item_orbit": run_item_orbit, "item_pose": run_item_pose, "item_sheet": run_item_sheet,
+def run_item_expr(job, prov):
+    """Fiche du personnage, « Expressions à générer » : cartes d'expression d'une orbite (app/exprcards.py), une image Nano
+    Banana Pro sur fal par grille de quatre expressions et par image-cle de face. Les expressions deja faites sont gardees."""
+    from . import exprcards
+    p = job["params"]
+    vid = p.get("variant") or "base"
+    keys = [k for k in p.get("exprs") or [] if poses.expression(k)]
+    if not keys:
+        raise ValueError("aucune expression demandée")
+    exprcards.run_fal(job, keys, p.get("frames") or None, vid)
+
+
+RUNNERS = {"item_cut": run_item_cut, "item_lips": run_item_lips, "item_expr": run_item_expr, "item_orbit": run_item_orbit, "item_pose": run_item_pose, "item_sheet": run_item_sheet,
            "item_apose": run_item_apose, "item_views": run_item_views,
            "item_new": run_item_new, "panel_integrate": run_panel_integrate, "panel_orbit": run_panel_orbit}
 

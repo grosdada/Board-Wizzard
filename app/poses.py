@@ -47,6 +47,45 @@ DECOR = [
     ("vide", "Vidé de ses personnages", 3, "the same place with every person removed, empty"),
 ]
 
+# Expressions du visage (tools/expressions.py) : sur quelques images-cles de face de l'orbite, la tete est redessinee avec
+# l'expression, bouche fermee ; on garde la difference autour du visage en cartes transparentes (<orbite>/expr/).
+# (cle, nom affiche, palier, consigne anglaise : sourcils, yeux, bouche fermee, joues)
+EXPRESSIONS = [
+    ("joie", "Joie", 1, "happy: a warm closed-mouth smile, the corners of the lips raised, the cheeks pushed up, the eyes a "
+     "little narrowed by the smile, the eyebrows relaxed and slightly raised"),
+    ("colere", "Colère", 1, "angry: the eyebrows pulled down and together in a deep frown, the eyes glaring, the lips pressed "
+     "tight together, the corners of the mouth turned down"),
+    ("tristesse", "Tristesse", 1, "sad: the inner ends of the eyebrows raised, the upper eyelids drooping, the gaze lowered, "
+     "the closed mouth with its corners turned down"),
+    ("surprise", "Surprise", 1, "surprised: the eyebrows raised high, the eyes wide open showing white around the irises, "
+     "the lips closed but slightly pursed"),
+    ("peur", "Peur", 2, "frightened: the eyebrows raised and drawn together, the eyes wide open and staring, the lips closed "
+     "and stretched tight sideways"),
+    ("degout", "Dégoût", 2, "disgusted: the nose wrinkled, the upper lip raised on one side while the mouth stays closed, the "
+     "eyebrows lowered, the eyes narrowed"),
+    ("mefiance", "Méfiance", 2, "suspicious: one eyebrow lowered and the other raised, the eyes narrowed and looking sideways, "
+     "the lips pressed together"),
+    ("inquiet", "Inquiétude", 2, "worried: the eyebrows raised in the middle and knitted, the forehead creased, the lips pressed "
+     "together, a tense look"),
+    ("amuse", "Amusement", 2, "amused: a lopsided closed-mouth smirk raising one corner of the mouth, one eyebrow slightly "
+     "raised, the eyes bright and a little narrowed"),
+    ("determine", "Détermination", 2, "determined: the eyebrows lowered and straight, the eyes focused straight ahead, the jaw "
+     "set, the lips closed in a firm straight line"),
+    ("ennui", "Ennui", 3, "bored: the upper eyelids half closed, the eyebrows flat, the gaze dull, the closed mouth slack and "
+     "flat"),
+    ("gene", "Gêne", 3, "embarrassed: an awkward closed-mouth smile, the eyebrows raised in the middle, the eyes looking away "
+     "to the side"),
+    ("fierte", "Fierté", 3, "smug and proud: the chin slightly up, the eyelids a little lowered, a satisfied closed-mouth "
+     "smile"),
+    ("pensif", "Pensif", 3, "thoughtful: the eyes looking up and to the side, one eyebrow slightly raised, the lips closed and "
+     "pushed a little to one side"),
+    ("endormi", "Somnolent", 3, "sleepy: the eyelids almost closed, the eyebrows relaxed, the closed mouth relaxed"),
+    ("clin-oeil", "Clin d'œil", 3, "winking: one eye closed in a wink, the other eye open, a small closed-mouth smile"),
+    ("effare", "Effarement", 3, "aghast: the eyebrows shot up very high, the eyes huge and round, the lips pressed tight"),
+    ("hautain", "Dédain", 3, "haughty disdain: the eyelids half lowered, the eyebrows raised, the lips pressed and pushed "
+     "forward, looking down the nose"),
+]
+
 TIERS = {1: "Essentiel", 2: "Complet", 3: "Tout"}
 STYLE_WORDS = {
     "photo": "photorealistic rendering",
@@ -58,7 +97,15 @@ STYLE_WORDS = {
 def catalogue():
     def rows(items):
         return [{"key": k, "label": l, "tier": t} for k, l, t, _ in items]
-    return {"character": rows(CHARACTER), "decor": rows(DECOR), "asset": [], "tiers": TIERS}
+    return {"character": rows(CHARACTER), "decor": rows(DECOR), "asset": [], "tiers": TIERS, "expressions": rows(EXPRESSIONS)}
+
+
+def expression(key):
+    """(nom affiche, consigne anglaise) d'une expression, ou None."""
+    for k, label, _, desc in EXPRESSIONS:
+        if k == key:
+            return label, desc
+    return None
 
 
 def find(kind, key):
