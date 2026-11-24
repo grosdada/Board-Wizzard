@@ -73,6 +73,7 @@ aside.right { border-left: 1px solid var(--line); padding: 0; display: flex; fle
 .cut-mid, .cut-end { fill: var(--accent); stroke: #0e1b19; stroke-width: 2; opacity: 0; cursor: move; }
 .cut-end { cursor: crosshair; }
 .cut:hover .cut-line, .cut:hover .cut-mid, .cut:hover .cut-end { opacity: 1; }
+.page-wrap:not(.editcuts) .cut { display: none; }          /* traits entre les cases : seulement en mode edition des cases */
 .lh-box { fill: none; stroke: var(--accent); stroke-width: 3; stroke-dasharray: 14 9; pointer-events: none; vector-effect: non-scaling-stroke; }
 .lh-foot { fill: var(--accent); stroke: #0e1b19; stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
 .lh-stem { stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }

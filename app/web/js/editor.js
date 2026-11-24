@@ -367,6 +367,7 @@ export class Editor {
       svg.append(gh);
     }
     this.wrap.classList.toggle("drawing", !!app.markTool);
+    this.wrap.classList.toggle("editcuts", !!app.editCuts);
     for (const key of [...this.imgs.keys()]) if (!this.used.has(key)) this.imgs.delete(key);
     this.applyFocus();
     if (!light) this.renderOverlay();

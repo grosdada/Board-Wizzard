@@ -1946,7 +1946,10 @@
   "Clique une expression : elle est posée à la tête de lecture et tient jusqu'à la suivante. La bouche du lip sync passe toujours par-dessus.": "Click an expression: it is set at the playhead and holds until the next one. The lip sync mouth always goes on top.",
   "À cet instant ⓘ : {0}": "At this moment ⓘ: {0}",
   "Aller à cet instant": "Go to this moment",
-  "😊 Expressions": "😊 Expressions"
+  "😊 Expressions": "😊 Expressions",
+  "Mode édition des cases : les traits entre les cases apparaissent au survol, on les glisse pour changer la taille des cases. Hors de ce mode, ils restent cachés.": "Panel edit mode: the lines between panels show on hover and can be dragged to resize panels. Outside this mode they stay hidden.",
+  "✓ Édition des cases": "✓ Editing panels",
+  "✂ Éditer les cases": "✂ Edit panels"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

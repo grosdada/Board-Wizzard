@@ -40,6 +40,7 @@ class App {
     this.undo = []; this.redo = [];
     this.jobs = [];
     this.pageIndex = 0;
+    this.editCuts = localStorage.getItem("bw.editCuts") === "1";   // traits entre les cases : seulement en mode edition des cases
     try { this.pending = JSON.parse(localStorage.getItem("bw.pending") || "{}"); } catch (e) { this.pending = {}; }
   }
 
@@ -276,7 +277,9 @@ class App {
         h("button.mini", { title: tt("Les bandes deviennent des colonnes"), on: { click: () => { pg.layout = transpose(pg.layout); this.commit("layout"); this.refresh(); } } }, tt("⟲ Pivoter"))),
       h("div.row", h("button.mini", { on: { click: () => this.split("h") } }, tt("Couper ━")), h("button.mini", { on: { click: () => this.split("v") } }, tt("Couper ┃")),
         h("button.mini.danger", { on: { click: () => this.removePanel() } }, tt("Supprimer la case"))),
-      h("p.muted", tt("Glisse un trait pour le déplacer, un de ses bouts pour l'incliner (Maj : trait droit).")),
+      h("button.mini.editcuts" + (this.editCuts ? ".on" : ""), { title: tt("Mode édition des cases : les traits entre les cases apparaissent au survol, on les glisse pour changer la taille des cases. Hors de ce mode, ils restent cachés."),
+        on: { click: () => { this.editCuts = !this.editCuts; localStorage.setItem("bw.editCuts", this.editCuts ? "1" : ""); this.editor.render(true); this.renderLeft(); } } }, this.editCuts ? tt("✓ Édition des cases") : tt("✂ Éditer les cases")),
+      this.editCuts ? h("p.muted", tt("Glisse un trait pour le déplacer, un de ses bouts pour l'incliner (Maj : trait droit).")) : "",
       h("h3", tt("Cadres de texte")),
       h("div.row.wrap", h("button.mini", { title: tt("Un cadre de texte posé sur la page, n'importe où : titre de page, annotation, indication. Double-clic pour écrire dedans."), on: { click: () => this.addNote() } }, tt("▭ Cadre de texte")),
         h("button.mini", { title: tt("Un cadre de texte sous chaque case, dans la place libre en dessous (storyboard annoté)"), on: { click: () => this.notesUnder() } }, tt("▤ Annotations sous les cases"))),
