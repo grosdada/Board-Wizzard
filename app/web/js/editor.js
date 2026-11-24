@@ -411,7 +411,7 @@ export class Editor {
       const sel = app.sel.note === n.id;
       const el = h("div.bnote" + (sel ? ".sel" : "") + (n.border !== false ? ".bord" : ""), { "data-note": n.id, style: {
         left: n.x * 100 + "%", top: n.y * 100 + "%", width: n.w * 100 + "%", height: n.h * 100 + "%", fontSize: (n.fs || 14) / 10 + "cqw",
-        textAlign: n.al || "left", fontWeight: n.b ? "700" : "400", background: n.fill || "transparent" } },
+        textAlign: n.al || "left", fontWeight: n.b ? "700" : "400", background: n.fill || "transparent", color: n.color || "#111111" } },
         h("div.bnote-txt", { "data-note": n.id, "data-ph": tt("Double-clic pour écrire") }, n.text || ""));
       if (sel) el.append(h("div.bnote-h", { "data-note": n.id, "data-nh": "1" }));
       el.addEventListener("dblclick", (e) => { e.stopPropagation(); this.editNote(n.id); });

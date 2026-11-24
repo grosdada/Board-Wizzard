@@ -102,11 +102,14 @@ function segmentInPoly(P, Q, poly) {
 export function compute(page, layout) {
   const m = page.margin, W = page.width, H = page.height;
   // gouttiere : page.gutter entre les rangees (traits horizontaux) ; page.gutterV entre les colonnes, si elle est deverrouillee
-  const gOf = (dir) => (dir === "v" ? page.gutterV ?? page.gutter : page.gutter);
+  // page.under : place ajoutee sous CHAQUE rangee (fraction de la hauteur) : entre les rangees et sous la derniere, la meme
+  const under = (page.under || 0) * H;
+  const gOf = (dir) => (dir === "v" ? page.gutterV ?? page.gutter : page.gutter + under);
   const panels = [], cuts = [], mb = page.marginB ?? m;     // marginB : marge du bas (place des annotations sous la derniere rangee)
   // placement de toutes les cases d'un bloc : room = place libre ajoutee en bas (fraction de la hauteur), dx / dy = decalage
   // (fractions de la page) ; le bloc garde sa taille et s'arrete au bord de la page
-  let t = m + (page.dy || 0) * H, b = H - mb - (page.room || 0) * H + (page.dy || 0) * H, l = m + (page.dx || 0) * W, r = W - m + (page.dx || 0) * W;
+  const below = under > 0 ? under + (page.marginB != null ? 0 : page.gutter) : 0, mx = page.mx ?? m;   // mx : marges des cotes (cases gardees en 16/9)
+  let t = m + (page.dy || 0) * H, b = H - mb - below - (page.room || 0) * H + (page.dy || 0) * H, l = mx + (page.dx || 0) * W, r = W - mx + (page.dx || 0) * W;
   if (t < 0) { b -= t; t = 0; } if (b > H) { t -= b - H; b = H; } t = Math.max(0, t); b = Math.max(t + 20, b);
   if (l < 0) { r -= l; l = 0; } if (r > W) { l -= r - W; r = W; } l = Math.max(0, l);
   const root = [[l, t], [r, t], [r, b], [l, b]];
@@ -118,8 +121,11 @@ export function compute(page, layout) {
     }
     const bb = bbox(poly);
     const { P, Q, n } = cutLine(node, bb);
-    const f = (X) => n[0] * (X[0] - P[0]) + n[1] * (X[1] - P[1]);
     const g = gOf(node.dir);
+    // place sous les rangees : un trait en a partage la hauteur hors gouttiere (sinon, avec une grande gouttiere, la premiere
+    // rangee d'une pile 1/3 - 1/2 sort plus haute que les autres)
+    const sh = node.dir === "h" && under > 0 ? g * ((node.a + node.b) / 2 - 0.5) : 0;
+    const f = (X) => n[0] * (X[0] - P[0]) + n[1] * (X[1] - P[1]) - sh * n[1];
     const A = clipHalf(poly, (X) => f(X) + g / 2);
     const B = clipHalf(poly, (X) => -f(X) + g / 2);
     const seg = segmentInPoly(P, Q, poly);
@@ -301,6 +307,19 @@ export function ensureCutIds(layout) {
     walk(x.c[0]); walk(x.c[1]);
   })(layout);
   return layout;
+}
+
+// marges des cotes qui gardent les cases en 16/9 quand la place sous les rangees grandit (rangees et colonnes comptees sur la
+// page) ; null s'il n'y a rien a changer
+export function keep169(page, layout) {
+  const p0 = Object.assign({}, page); delete p0.mx;
+  const g = compute(p0, layout).panels.filter((q) => q.bbox);
+  if (!g.length) return null;
+  const rows = [];
+  for (const q of g) { const r = rows.find((x) => Math.abs(x.y - q.bbox.y0) < 4); if (r) r.n++; else rows.push({ y: q.bbox.y0, n: 1, h: q.bbox.h }); }
+  const cols = Math.max(...rows.map((r) => r.n)), ph = Math.min(...rows.map((r) => r.h)), gv = page.gutterV ?? page.gutter;
+  const w = cols * ph * 16 / 9 + (cols - 1) * gv, mx = (page.width - w) / 2;
+  return mx > page.margin + 1 ? mx : null;
 }
 
 export function clone(x) { return JSON.parse(JSON.stringify(x)); }

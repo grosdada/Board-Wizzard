@@ -1935,7 +1935,12 @@
   "Le bloc de cases colle au haut de la page": "The block of panels sticks to the top of the page",
   "⤒ Tout en haut": "⤒ All the way up",
   "Cases à leur place : sans décalage ni place libre ajoutée": "Panels back in place: no shift, no added free space",
-  "Recentrer": "Recentre"
+  "Recentrer": "Recentre",
+  "Place sous chaque rangée": "Space under each row",
+  "La même place sous chaque rangée de cases, la dernière comprise, pour écrire : les cases remontent et rétrécissent.": "The same space under every row of panels, the last one included, for writing: panels move up and shrink.",
+  "Quand la place sous les rangées grandit, les cases rétrécissent aussi en largeur et restent centrées : elles gardent leur format 16/9.": "When the space under the rows grows, panels also shrink in width and stay centred: they keep their 16/9 shape.",
+  "Garder les cases en 16/9": "Keep panels 16/9",
+  "Couleur du texte": "Text colour"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

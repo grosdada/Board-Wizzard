@@ -2,7 +2,7 @@
 // assets en orbite, bulles, fausse profondeur de champ, « Integrate », orbite de case.
 import { tt, tr, LANG, setLang } from "./i18n.js";
 import { h, get, post, put, del, upload, toast, modal, debounce } from "./api.js";
-import { compute, PRESETS, transpose, splitLeaf, removeLeaf, leaves, randomLayout, clone } from "./geometry.js";
+import { compute, PRESETS, transpose, splitLeaf, removeLeaf, leaves, randomLayout, clone, keep169 } from "./geometry.js";
 import { Editor } from "./editor.js";
 import { Bank, target } from "./bank.js";
 import { flattenPanel } from "./flatten.js";
@@ -286,16 +286,18 @@ class App {
         FORMATS.map((f) => h("option", { value: f.id, selected: f.id === page.format }, f.label)))),
       gutters(), num(tt("Marge"), "margin", 0, 400), num(tt("Trait"), "strokeWidth", 0, 40),
       // placement de toutes les cases d'un bloc : de la place en bas pour ecrire, et le bloc decale vers le haut ou le cote
-      h("details.fold", { open: !!(page.room || page.dx || page.dy) }, h("summary", tt("Placement des cases")),
-        ...[[tt("Place libre en bas"), "room", 0, 0.6, tt("Toutes les cases remontent et rétrécissent : la place libérée en bas sert à écrire.")],
+      h("details.fold", { open: !!(page.under || page.room || page.dx || page.dy) }, h("summary", tt("Placement des cases")),
+        ...[[tt("Place sous chaque rangée"), "under", 0, 0.35, tt("La même place sous chaque rangée de cases, la dernière comprise, pour écrire : les cases remontent et rétrécissent.")],
             [tt("Décaler ↕"), "dy", -0.3, 0.3, tt("Toutes les cases montent (curseur à gauche) ou descendent (curseur à droite), d'un bloc.")],
             [tt("Décaler ↔"), "dx", -0.3, 0.3, tt("Toutes les cases glissent sur le côté, d'un bloc.")]].map(([label, key, min, max, tip]) => {
           const pc = (v) => Math.round(v * 100) + " %", out = h("output", pc(page[key] || 0));
           return h("label.row.range", { title: tip }, label, h("input", { type: "range", min, max, step: 0.005, value: page[key] || 0,
-            on: { input: (e) => { const v = +e.target.value; if (Math.abs(v) < 0.004) delete page[key]; else page[key] = v; out.textContent = pc(v); this.editor.render(); this.commitSoon("page-place"); } } }), out); }),
+            on: { input: (e) => { const v = +e.target.value; if (Math.abs(v) < 0.004) delete page[key]; else page[key] = v; out.textContent = pc(v); if (key === "under") this.fit169(); this.reflowNotes(); this.editor.render(); this.commitSoon("page-place"); } } }), out); }),
+        h("label.row.check", { title: tt("Quand la place sous les rangées grandit, les cases rétrécissent aussi en largeur et restent centrées : elles gardent leur format 16/9.") },
+          h("input", { type: "checkbox", checked: page.keep169 ?? page.gutter0 !== undefined, on: { change: (e) => { page.keep169 = e.target.checked; this.fit169(); this.reflowNotes(); this.editor.render(); this.commit("page-place"); } } }), tt("Garder les cases en 16/9")),
         h("div.row.wrap",
-          h("button.mini", { title: tt("Le bloc de cases colle au haut de la page"), on: { click: () => { page.dy = -Math.max(0, page.margin - page.height * 0.012) / page.height; this.editor.render(); this.commit("page-place"); this.renderLeft(); } } }, tt("⤒ Tout en haut")),
-          h("button.mini", { title: tt("Cases à leur place : sans décalage ni place libre ajoutée"), on: { click: () => { delete page.dx; delete page.dy; delete page.room; this.editor.render(); this.commit("page-place"); this.renderLeft(); } } }, tt("Recentrer")))),
+          h("button.mini", { title: tt("Le bloc de cases colle au haut de la page"), on: { click: () => { page.dy = -Math.max(0, page.margin - page.height * 0.012) / page.height; this.reflowNotes(); this.editor.render(); this.commit("page-place"); this.renderLeft(); } } }, tt("⤒ Tout en haut")),
+          h("button.mini", { title: tt("Cases à leur place : sans décalage ni place libre ajoutée"), on: { click: () => { delete page.dx; delete page.dy; delete page.room; delete page.under; delete page.mx; this.reflowNotes(); this.editor.render(); this.commit("page-place"); this.renderLeft(); } } }, tt("Recentrer")))),
       h("details.fold", { open: !!(page.hand > 0) }, h("summary", tt("Tremblé du contour")), ...[[tt("Tremblé"), "hand", 0, 10, 0], [tt("Ondulation"), "wave", 0.5, 12, 4]].map(([label, key, min, max, def]) => {
         const val = page[key] ?? def, out = h("output", fmt(val));
         return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.1, value: val,
@@ -308,16 +310,22 @@ class App {
         h("button.mini", { on: { click: () => this.showAll("integrated") } }, tt("Voir les intégrées"))));
   }
 
+  fit169() {                                              // cases gardees en 16/9 quand la place sous les rangees change
+    const pg = this.page(), P = pg.page;
+    const mx = P.under && (P.keep169 ?? P.gutter0 !== undefined) ? keep169(P, pg.layout) : null;
+    if (mx) P.mx = Math.round(mx); else delete P.mx;
+  }
   applyLayout(make, pageFix) {
     const pg = this.page();
     const old = compute(pg.page, pg.layout).panels.sort((a, b) => a.order - b.order).map((g) => g.id);
     let i = 0; const used = [];
     const P = pg.page;
     if (P.gutter0 !== undefined) { P.gutter = P.gutter0; delete P.gutterV; delete P.gutter0; }   // on quitte le storyboard : la gouttiere d'avant revient
-    delete P.marginB;                                      // marge du bas propre au storyboard annote
+    delete P.marginB; delete P.mx;                         // marge du bas propre au storyboard annote ; marges des cotes en 16/9
     pg.layout = make(() => { const id = i < old.length ? old[i] : this.newId(); i++; used.push(id); return { t: "leaf", id }; }, pg.page);
     if (pageFix) { const g0 = P.gutter; Object.assign(P, pageFix(P)); P.gutter0 = g0; }   // decoupage qui regle aussi la page (gouttieres du storyboard)
     for (const id of Object.keys(pg.panels)) if (!used.includes(id)) delete pg.panels[id];
+    this.fit169();
     this.sel = {}; this.commit("layout"); this.refresh();
   }
   randomLayout() {
@@ -853,16 +861,27 @@ class App {
     if (!quiet) { this.sel = { note: n.id }; this.commit("note"); this.editor.render(); this.refreshInspector(); setTimeout(() => this.editor.editNote(n.id), 30); }
     return n;
   }
+  // place libre sous une case (jusqu'a la case du dessous, ou le bas de la page) : le rectangle d'un cadre d'annotation, ou null
+  roomUnder(geom, page, g) {
+    const b = g.bbox, bottom = b.y0 + b.h;
+    const next = geom.panels.filter((q) => q.bbox && q !== g && q.bbox.y0 > bottom - 1 && q.bbox.x0 < b.x0 + b.w && q.bbox.x0 + q.bbox.w > b.x0).map((q) => q.bbox.y0);
+    const end = next.length ? Math.min(...next) : page.height - page.margin, room = end - bottom, pad = Math.min(10, room * 0.1);   // sous la derniere rangee : jusqu a la marge, la meme place qu entre les rangees
+    return room < 36 ? null : { x: b.x0 / page.width, y: (bottom + pad) / page.height, w: b.w / page.width, h: (room - 2 * pad) / page.height };
+  }
+  reflowNotes() {                                         // les cadres d'annotation suivent la place sous leur case
+    const pg = this.page(), geom = compute(pg.page, pg.layout);
+    for (const n of pg.notes || []) {
+      const g = n.under && geom.panels.find((q) => q.id === n.under && q.bbox), r = g && this.roomUnder(geom, pg.page, g);
+      if (r) Object.assign(n, r);
+    }
+  }
   notesUnder() {                                         // un cadre dans la place libre sous chaque case (une seule fois par case)
     const pg = this.page(), page = pg.page, geom = compute(page, pg.layout), made = [];
     const have = new Set((pg.notes || []).map((n) => n.under).filter(Boolean));
     for (const g of geom.panels) {
       if (!g.bbox || have.has(g.id)) continue;
-      const b = g.bbox, bottom = b.y0 + b.h;
-      const next = geom.panels.filter((q) => q.bbox && q !== g && q.bbox.y0 > bottom - 1 && q.bbox.x0 < b.x0 + b.w && q.bbox.x0 + q.bbox.w > b.x0).map((q) => q.bbox.y0);
-      const end = next.length ? Math.min(...next) : page.height - page.margin * 0.5, room = end - bottom, pad = Math.min(10, room * 0.1);
-      if (room < 36) continue;
-      made.push(this.addNote({ x: b.x0 / page.width, y: (bottom + pad) / page.height, w: b.w / page.width, h: (room - 2 * pad) / page.height, under: g.id, fs: 13, al: "left", border: false, fill: "" }, true));
+      const r = this.roomUnder(geom, page, g);
+      if (r) made.push(this.addNote(Object.assign(r, { under: g.id, fs: 13, al: "left", border: false, fill: "" }), true));
     }
     if (!made.length) return toast(tt("Pas de place libre sous les cases : prends le découpage « Storyboard annoté » ou agrandis la gouttière."), "error");
     this.sel = {}; this.commit("note"); this.editor.render(); this.refreshInspector();
@@ -1002,6 +1021,7 @@ class App {
         h("div.row", h("span", tt("Alignement")), ...[["left", "⯇"], ["center", "≡"], ["right", "⯈"]].map(([a, lab]) => h("button.mini" + ((nt.al || "left") === a ? ".on" : ""), { on: { click: () => { nt.al = a; redo(); this.refreshInspector(); } } }, lab)),
           h("button.mini" + (nt.b ? ".on" : ""), { title: tt("Gras"), on: { click: () => { nt.b = !nt.b; redo(); this.refreshInspector(); } } }, "B")),
         h("label.row.check", h("input", { type: "checkbox", checked: nt.border !== false, on: { change: (e) => { nt.border = e.target.checked; redo(); } } }), tt("Cadre (contour)")),
+        h("div.row.colrow", h("span", tt("Couleur du texte")), swatch(nt.color || "#111111", (c) => { nt.color = c; this.editor.renderOverlay(); this.commitSoon("note"); })),
         h("div.row.colrow", h("label.row.check", h("input", { type: "checkbox", checked: !!nt.fill, on: { change: (e) => { nt.fill = e.target.checked ? "#ffffff" : ""; redo(); this.refreshInspector(); } } }), tt("Fond")),
           nt.fill ? swatch(nt.fill, (c) => { nt.fill = c; this.editor.renderOverlay(); this.commitSoon("note"); }) : ""),
         h("p.muted", tt("Glisser le cadre : le déplacer ; coin en bas à droite : sa taille ; double-clic : écrire dedans.")),
