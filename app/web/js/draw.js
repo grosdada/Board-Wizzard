@@ -849,7 +849,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       return wrap;
     };
     bar.append(h("button.mini" + (tool === "select" ? ".on" : ""), { type: "button", title: tt("Choisir, déplacer, étirer, tourner"), on: { click: () => pickTool("select") } }, tt("↖ Sélection")),
-      drop(tt("Primitives"), PRIMS, prim), presetDrop(), drop(tt("Tracés"), PATHS, path), kit ? drop(tt("Pinceaux"), BRUSHES, brushT) : "",
+      drop(tt("Primitives"), PRIMS, prim), presetDrop(), drop(tt("Tracés"), PATHS, path), drop(tt("Pinceaux"), BRUSHES, brushT),
       kit ? h("button.mini", { type: "button", title: tt("Importer une image (crayon scanné, forme, texture) : elle se pose au milieu, à déplacer et étirer avec la Sélection ; le blanc du papier devient transparent"), on: { click: () => importImg(false) } }, tt("🖼 Importer une image…")) : "", kit ? fileIn : "",
       h("button.mini", { type: "button", title: tt("Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite"), on: { click: mirror } }, tt("⇋ Miroir")),
       h("button.mini" + (sym ? ".on" : ""), { type: "button", title: tt("Symétrie : chaque forme tracée a son jumeau en miroir de l'autre côté de l'axe. Déplacer, tourner, agrandir ou régler l'une fait suivre l'autre, en miroir (yeux, oreilles, visage)."),

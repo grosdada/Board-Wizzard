@@ -141,7 +141,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       const W = l.w * l.kx, hh = boxH(l), bw = boxW(l);
       if (l.half) defs += `<clipPath id="idkh${l.n}"><rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}"/></clipPath>`;
       if ((l.er || []).length) defs += `<mask id="idker${l.n}" maskUnits="userSpaceOnUse" x="${imgX(l) - 2}" y="${-hh / 2 - 2}" width="${W + 4}" height="${hh + 4}"><rect x="${imgX(l) - 2}" y="${-hh / 2 - 2}" width="${W + 4}" height="${hh + 4}" fill="#fff"/>${eraseSvg(l)}</mask>`;
-      acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${imgX(l)}" y="${-hh / 2}" width="${W}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"${l.half ? ` clip-path="url(#idkh${l.n})"` : ""}${(l.er || []).length ? ` mask="url(#idker${l.n})"` : ""}/>` +
+      acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${imgX(l)}" y="${-hh / 2}" width="${W}" height="${hh}" preserveAspectRatio="none"${l.lock ? ` pointer-events="none"` : ` data-n="${l.n}"`}${l.half ? ` clip-path="url(#idkh${l.n})"` : ""}${(l.er || []).length ? ` mask="url(#idker${l.n})"` : ""}/>` +
         (sel === l.n || multi.has(l.n) ? `<rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
     }
     const ph = !BODYKIT && photo && photo.on ? (() => { const M = photo.M; return `<image href="${photo.url}" width="${photo.w}" height="${photo.h}" preserveAspectRatio="none" opacity="${photo.op}" pointer-events="none" transform="matrix(${M[0][0]} ${M[1][0]} ${M[0][1]} ${M[1][1]} ${M[0][2]} ${M[1][2]})"/>`; })() : "";
@@ -184,7 +184,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   // briques : une par element pose, pour choisir celui qu'un autre recouvre (des sourcils sous une coupe)
   const pickLayer = (l) => { sel = l.n; multi.clear(); pinned = true; userSel = true; const c = cats.find((k) => k.key === l.cat); if (c && c !== cur) { cur = c; showCat(); } paint(); props(); };
   const bricks = () => {
-    const sig = sorted().map((l) => l.n + ":" + l.file + ":" + nameOf(l)).join(",") + "|" + sel + "|" + [...multi].join(",");
+    const sig = sorted().map((l) => l.n + ":" + l.file + ":" + nameOf(l) + (l.lock ? ":L" : "")).join(",") + "|" + sel + "|" + [...multi].join(",");
     if (sig === brickSig) return;
     brickSig = sig; bricksBox.textContent = "";
     if (!layers.length) return;
@@ -194,10 +194,23 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       const label = nameOf(l);
       return h("div.idk-brick" + (l.n === sel || multi.has(l.n) ? ".on" : ""), { title: tt`${label} · ${l.name} : cliquer pour le choisir, même s'il est caché sous un autre ; glisser pour le passer devant ou derrière`,
         "data-n": l.n,
-        on: { click: (e) => { if (brickDrag && brickDrag.moved) return; pickLayer(l); }, pointerdown: (e) => brickDown(e, l) } },
-        h("img", { src: url(l), alt: "", draggable: false }), h("span", label),
+        on: { click: (e) => { if (brickDrag && brickDrag.moved) return; pickLayer(l); }, pointerdown: (e) => brickDown(e, l),
+              contextmenu: (e) => { e.preventDefault(); lockMenu(e, l); } } },
+        h("img", { src: url(l), alt: "", draggable: false }), h("span", (l.lock ? "🔒 " : "") + label),
         h("i", { title: tt("Retirer du visage"), on: { pointerdown: (e) => e.stopPropagation(), click: (e) => { e.stopPropagation(); sel = l.n; removeSel(); } } }, "✕"));
     }), h("span.idk-bricks-cap.muted", tt("◂ derrière")));
+  };
+  // verrou : un element verrouille ne se prend plus sur le portrait (les clics passent au travers) et ne bouge plus ; on le
+  // choisit encore par sa brique, pour le regler ou le deverrouiller
+  const toggleLock = (l) => { if (l.lock) delete l.lock; else l.lock = true; if (l.lock && sel === l.n) { sel = null; props(); } brickSig = ""; paint(); hist.snap(); };
+  const lockMenu = (e, l) => {
+    document.querySelector(".menu")?.remove();
+    const box = h("div.menu", h("button", { on: { click: () => { box.remove(); toggleLock(l); } } }, l.lock ? tt("🔓 Déverrouiller") : tt("🔒 Verrouiller (ne plus le prendre ni le bouger par erreur)")));
+    document.body.append(box);
+    const r = box.getBoundingClientRect();
+    box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px"; box.style.top = Math.max(4, Math.min(e.clientY, innerHeight - r.height - 6)) + "px";
+    const off = (ev) => { if (!box.contains(ev.target)) { box.remove(); document.removeEventListener("pointerdown", off, true); } };
+    setTimeout(() => document.addEventListener("pointerdown", off, true), 0);
   };
   // glisser une brique : au-dela de 5 px on la deplace ; un trait bleu montre ou elle ira
   let brickDrag = null;
@@ -235,7 +248,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   const unit = () => { const r = svg.getBoundingClientRect(); return r.width ? S / r.width : 2; };
   const grips = () => {
     const l = layers.find((x) => x.n === sel);
-    if (!l || multi.size > 1) return "";
+    if (!l || multi.size > 1 || l.lock) return "";
     const u = unit(), w = boxW(l) / 2, hh = boxH(l) / 2, g = 5 * u, top = -hh - 26 * u;
     const sq = (k, x, y, cur) => `<rect class="idk-grip" data-h="${k}" x="${x - g}" y="${y - g}" width="${2 * g}" height="${2 * g}" style="cursor:${cur}" stroke-width="${1.5 * u}"/>`;
     return `<g transform="${tf(l)}">` +
@@ -538,7 +551,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       const x0 = Math.min(band.x0, band.x1), x1 = Math.max(band.x0, band.x1), y0 = Math.min(band.y0, band.y1), y1 = Math.max(band.y0, band.y1);
       band = null; drag = null;
       if (x1 - x0 > 4 || y1 - y0 > 4) {
-        const hit = layers.filter((l) => { const b = aabb(l); return b[0] < x1 && b[2] > x0 && b[1] < y1 && b[3] > y0; });
+        const hit = layers.filter((l) => { const b = aabb(l); return !l.lock && b[0] < x1 && b[2] > x0 && b[1] < y1 && b[3] > y0; });
         if (hit.length === 1) { sel = hit[0].n; userSel = true; } else hit.forEach((l) => multi.add(l.n));
       }
       paint(); props(); return;
@@ -562,6 +575,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       l.half ? [tt("⧉ Réunir"), () => join(l)] : null,
       i < same.length - 1 ? [tt("▲ Monter d'un cran"), () => swap(same[i + 1])] : null,
       i > 0 ? [tt("▼ Descendre d'un cran"), () => swap(same[i - 1])] : null,
+      [l.lock ? tt("🔓 Déverrouiller") : tt("🔒 Verrouiller"), () => toggleLock(l)],
       [tt("✕ Retirer du visage"), removeSel, true]].filter(Boolean);
     document.querySelector(".menu")?.remove();
     // la liste, du devant vers le derriere ; ▲ / ▼ changent l'ordre sans fermer le menu
@@ -607,7 +621,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     if (!l && !group) return;
     if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeSel(); hist.snap(); return; }
     const d = e.shiftKey ? 10 : 1, mv = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[e.key];
-    if (mv) { e.preventDefault(); shiftBy(group || [l], mv[0], mv[1], false); paint(); hist.snap(); }
+    if (mv) { e.preventDefault(); const mov = (group || [l]).filter((x) => !x.lock); if (!mov.length) return; shiftBy(mov, mv[0], mv[1], false); paint(); hist.snap(); }
   };
   document.addEventListener("keydown", onKey);
 
