@@ -285,7 +285,8 @@ export function exprCard(k, ex, frames, i) {
   if (!ck || !m || !m.up) return null;
   const { key, far } = ck, file = key.cards[k];
   if (!file) return null;
-  const c = { href: `${ex.base}/${file}?v=${ex.v}`, x: key.x, y: key.y, s: key.s, move: null };
+  const g = key.gom && key.gom[k];                         // gomme : la part du dessin d'origine a effacer (levre redessinee plus fine)
+  const c = { href: `${ex.base}/${file}?v=${ex.v}`, gom: g ? `${ex.base}/${g}?v=${ex.v}` : null, x: key.x, y: key.y, s: key.s, move: null };
   if (far && frames[key.f] && frames[key.f].up) {          // image voisine : recalee sur les bouts de la bouche suivie
     const ends = (q) => [q.up[0], q.up[q.up.length - 1]], mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     const [a0, b0] = ends(frames[key.f]), [a1, b1] = ends(m), c0 = mid(a0, b0), c1 = mid(a1, b1);
@@ -295,11 +296,15 @@ export function exprCard(k, ex, frames, i) {
   }
   return c;
 }
+function exprTf(c) { const q = c.move; return q ? ` transform="translate(${q.c1[0].toFixed(2)} ${q.c1[1].toFixed(2)}) rotate(${q.rot.toFixed(2)}) scale(${q.sx.toFixed(3)} 1) translate(${(-q.c0[0]).toFixed(2)} ${(-q.c0[1]).toFixed(2)})"` : ""; }
 export function exprMarkup(k, ex, frames, i) {
   const c = exprCard(k, ex, frames, i);
-  if (!c) return "";
-  const q = c.move, tf = q ? ` transform="translate(${q.c1[0].toFixed(2)} ${q.c1[1].toFixed(2)}) rotate(${q.rot.toFixed(2)}) scale(${q.sx.toFixed(3)} 1) translate(${(-q.c0[0]).toFixed(2)} ${(-q.c0[1]).toFixed(2)})"` : "";
-  return `<image href="${c.href}" x="${c.x}" y="${c.y}" width="${c.s}" height="${c.s}" preserveAspectRatio="none"${tf}/>`;
+  return c ? `<image href="${c.href}" x="${c.x}" y="${c.y}" width="${c.s}" height="${c.s}" preserveAspectRatio="none"${exprTf(c)}/>` : "";
+}
+/** Gomme de l'expression montree (noire, alpha = dessin d'origine a effacer) : a poser en noir dans un masque du dessin. */
+export function exprGom(k, ex, frames, i) {
+  const c = exprCard(k, ex, frames, i);
+  return c && c.gom ? `<image href="${c.gom}" x="${c.x}" y="${c.y}" width="${c.s}" height="${c.s}" preserveAspectRatio="none"${exprTf(c)}/>` : "";
 }
 /** Expression d'un calque a l'instant t : la derniere cle posee avant t (l.ex.keys = [{ t, k }], k = "" : neutre), sinon
  *  celle de la case (l.exk). */

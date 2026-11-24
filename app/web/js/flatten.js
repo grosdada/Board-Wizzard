@@ -74,21 +74,37 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     ctx.restore();
   };
   // expression du visage (l.exk) : sa carte, posee en pixels de l'image d'orbite comme le calque
-  const exprDraw = async (l, sp, box) => {
-    if (!l.exk || !sp || !sp.orbit || !sp.expr) return;
+  const exprFind = async (l, sp) => {
+    if (!l.exk || !sp || !sp.orbit || !sp.expr) return null;
     let mf = mouthFrame(sp);
     for (let k = 0; k < 20 && !(mf && mf.expr); k++) { await new Promise((ok) => setTimeout(ok, 50)); mf = mouthFrame(sp); }
     const c = mf && mf.expr && exprCard(l.exk, mf.expr, mf.all, sp.i);
-    if (!c) return;
-    const card = await loadImage(c.href), sc = Math.min(box.w / mf.w, box.h / mf.h);
-    ctx.save();
-    ctx.scale(kx, ky);
-    if (l.rz) { const cx = box.x + box.w / 2, cy = box.y + box.h / 2; ctx.translate(cx, cy); ctx.rotate(l.rz * Math.PI / 180); ctx.translate(-cx, -cy); }
-    if (l.flip) { ctx.translate(2 * (box.cx ?? box.x + box.w / 2), 0); ctx.scale(-1, 1); }
-    ctx.translate(box.x + (box.w - mf.w * sc) / 2, box.y + box.h - mf.h * sc); ctx.scale(sc, sc);
-    if (c.move) { const q = c.move; ctx.translate(q.c1[0], q.c1[1]); ctx.rotate(q.rot * Math.PI / 180); ctx.scale(q.sx, 1); ctx.translate(-q.c0[0], -q.c0[1]); }
-    ctx.drawImage(card, c.x, c.y, c.s, c.s);
-    ctx.restore();
+    return c ? { c, mf } : null;
+  };
+  const exprPut = (g, { c, mf }, l, box, img) => {         // une image (carte ou gomme) a la place de la carte, comme le calque
+    const sc = Math.min(box.w / mf.w, box.h / mf.h);
+    g.save();
+    g.scale(kx, ky);
+    if (l.rz) { const cx = box.x + box.w / 2, cy = box.y + box.h / 2; g.translate(cx, cy); g.rotate(l.rz * Math.PI / 180); g.translate(-cx, -cy); }
+    if (l.flip) { g.translate(2 * (box.cx ?? box.x + box.w / 2), 0); g.scale(-1, 1); }
+    g.translate(box.x + (box.w - mf.w * sc) / 2, box.y + box.h - mf.h * sc); g.scale(sc, sc);
+    if (c.move) { const q = c.move; g.translate(q.c1[0], q.c1[1]); g.rotate(q.rot * Math.PI / 180); g.scale(q.sx, 1); g.translate(-q.c0[0], -q.c0[1]); }
+    g.drawImage(img, c.x, c.y, c.s, c.s);
+    g.restore();
+  };
+  const exprDraw = async (l, sp, box) => { const e = await exprFind(l, sp); if (e) exprPut(ctx, e, l, box, await loadImage(e.c.href)); };
+  // gomme de l'expression : le calque est dessine a part, la gomme l'efface (destination-out), puis il est pose
+  const withGom = async (l, sp, box, fn) => {
+    const e = await exprFind(l, sp);
+    if (!e || !e.c.gom) return fn();
+    const gimg = await loadImage(e.c.gom), main = ctx, oc = document.createElement("canvas");
+    oc.width = cv.width; oc.height = cv.height;
+    ctx = oc.getContext("2d"); ctx.imageSmoothingQuality = "high"; ctx.setTransform(main.getTransform());
+    try { await fn(); } finally { ctx = main; }
+    const og = oc.getContext("2d");
+    og.setTransform(main.getTransform()); og.globalCompositeOperation = "destination-out";
+    exprPut(og, e, l, box, gimg);
+    main.save(); main.setTransform(1, 0, 0, 1, 0, 0); main.drawImage(oc, 0, 0); main.restore();
   };
   for (let i = 0; i < layers.length; i++) {
     const l = layers[i], item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
@@ -99,7 +115,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), inkc = inkFill(l), st = inkStroke(l.lw, col, inkc, vf.sw), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);
       const body = new Path2D(vf.body), ink = new Path2D(vf.ink);
       cast(l, box);
-      await graded(layerCM(l, true), async () => {
+      await withGom(l, sp, box, () => graded(layerCM(l, true), async () => {
       ctx.save();
       ctx.filter = blur > 0.4 ? `blur(${(blur * kx).toFixed(2)}px)` : "none";
       ctx.scale(kx, ky);
@@ -127,7 +143,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       if (fo) opsCanvas(ctx, fo.over);
       if (st.outline > 0) { ctx.strokeStyle = "#111111"; ctx.lineWidth = st.outline; ctx.stroke(body); }
       ctx.restore();
-      });
+      }));
       await exprDraw(l, sp, box);
       continue;
     }
@@ -141,7 +157,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       im = cmPixels(tcv, cm);
     }
     cast(l, box);
-    draw(im, box.x, box.y, box.w, box.h, sharp ? 0 : blurOf(pan, depthOf(pan, i), bb), l.flip, l.rz);
+    await withGom(l, sp, box, async () => draw(im, box.x, box.y, box.w, box.h, sharp ? 0 : blurOf(pan, depthOf(pan, i), bb), l.flip, l.rz));
     await exprDraw(l, sp, box);
   }
   return new Promise((ok) => cv.toBlob(ok, "image/png"));

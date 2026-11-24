@@ -10,7 +10,7 @@
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put, del } from "./api.js";
-import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime, segsOf, exprMarkup, exprAt, exprName } from "./lipsync.js";
+import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime, segsOf, exprMarkup, exprGom, exprAt, exprName } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
 import { markupReady } from "./model.js";
@@ -186,11 +186,20 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
       const o2 = o.length;                                 // fin du dessin : la gomme de la bouche s'y applique
       const exk = sp.orbit && sp.expr ? exprAt(l, t) : "";
+      let egm = "";                                        // gomme de l'expression : <g transform>...</g> a poser dans le masque du dessin
       if (exk) {                                           // expression du visage : sous la bouche du lip sync, qui l'emporte toujours
         const ef = mouthFrame(sp, again);
-        if (ef && ef.expr) { const esc = Math.min(box.w / ef.w, box.h / ef.h);
-          o += `<g${bl}><g data-expr="${l.id}" transform="${flip}translate(${f1(box.x + (box.w - ef.w * esc) / 2)} ${f1(box.y + box.h - ef.h * esc)}) scale(${f3(esc)})" style="pointer-events:none">${exprMarkup(exk, ef.expr, ef.all, sp.i)}</g></g>`; }
+        if (ef && ef.expr) { const esc = Math.min(box.w / ef.w, box.h / ef.h), et = `${flip}translate(${f1(box.x + (box.w - ef.w * esc) / 2)} ${f1(box.y + box.h - ef.h * esc)}) scale(${f3(esc)})`;
+          o += `<g${bl}><g data-expr="${l.id}" transform="${et}" style="pointer-events:none">${exprMarkup(exk, ef.expr, ef.all, sp.i)}</g></g>`;
+          const g0 = exprGom(exk, ef.expr, ef.all, sp.i);
+          if (g0) egm = `<g transform="${et}">${g0}</g>`; }
       }
+      const gomWrap = (inner) => {                         // le dessin (o1..o2) sous un masque : les gommes y sont posees en noir
+        const gid = `${pre}gm-${l.id}`, mg = box.h;
+        o = o.slice(0, o1) + `<mask id="${gid}" maskUnits="userSpaceOnUse" x="${f1(box.x - mg)}" y="${f1(box.y - mg)}" width="${f1(box.w + 2 * mg)}" height="${f1(box.h + 2 * mg)}"><rect x="${f1(box.x - mg)}" y="${f1(box.y - mg)}" width="${f1(box.w + 2 * mg)}" height="${f1(box.h + 2 * mg)}" fill="#fff"/>${inner}</mask>` +
+          `<g mask="url(#${gid})">${o.slice(o1, o2)}</g>` + o.slice(o2);
+      };
+      let gomDone = false;
       if (l.lip && l.lip.on) {                             // lip sync : la bouche qui parle
         const tr = usesTrace(l.lip, sp);
         if (!tr) o += `<g${bl}>${lipMarkup(lipAt, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l), it)}</g>`;
@@ -200,14 +209,11 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
           // gomme de la carte (tools/levres_dzine.py) : efface le dessin d'origine la ou la tete redessinee est plus etroite
           // (menton, joue) ; posee comme la carte, en noir dans un masque du dessin
           const gm = mf && mf.lips ? cardGom(l.lip, mf.lips, mf.all, sp.i, t) : "";
-          if (gm) {
-            const gid = `${pre}gm-${l.id}`, mg = box.h;
-            o = o.slice(0, o1) + `<mask id="${gid}" maskUnits="userSpaceOnUse" x="${f1(box.x - mg)}" y="${f1(box.y - mg)}" width="${f1(box.w + 2 * mg)}" height="${f1(box.h + 2 * mg)}"><rect x="${f1(box.x - mg)}" y="${f1(box.y - mg)}" width="${f1(box.w + 2 * mg)}" height="${f1(box.h + 2 * mg)}" fill="#fff"/><g transform="${mt}">${gm}</g></mask>` +
-              `<g mask="url(#${gid})">${o.slice(o1, o2)}</g>` + o.slice(o2);
-          }
+          if (gm || egm) { gomWrap((gm ? `<g transform="${mt}">${gm}</g>` : "") + egm); gomDone = true; }
           o += `<g${bl}><g data-mouth="${l.id}" transform="${mt}" style="pointer-events:none">${mf ? (cardMarkup(l.lip, mf.lips, mf.all, sp.i, t) ?? traceMarkup(l.lip, mf.m, t, `${pre}lp-${l.id}`, bodyFill(l))) : ""}</g></g>`;
         }
       }
+      if (egm && !gomDone) gomWrap(egm);                   // gomme de l'expression, sans lip sync
       const cm = layerCM(l, !!vf);                         // colorize et colorimetrie : l'image et ses bouches prennent la meme couleur
       if (cm) o = o.slice(0, o1) + cmFilter(`${pre}tn-${l.id}`, cm) + `<g filter="url(#${pre}tn-${l.id})">` + o.slice(o1) + "</g>";
       if (rz) o = o.slice(0, o1) + `<g transform="rotate(${f1(rz)} ${f1(box.cx)} ${f1(box.y + box.h / 2)})">` + o.slice(o1) + "</g>";

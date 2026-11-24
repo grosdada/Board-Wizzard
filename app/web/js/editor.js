@@ -13,7 +13,7 @@ import { frameToAngle, thinMask, lineWidth, frameT, markupReady, cmFilter, layer
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
-import { voiceTime, exprMarkup } from "./lipsync.js";
+import { voiceTime, exprMarkup, exprGom } from "./lipsync.js";
 import { mouthFrame } from "./model.js";
 import { groundSvg } from "./ground.js";
 
@@ -300,7 +300,7 @@ export class Editor {
             const vcm = layerCM(l, true);                    // colorimetrie de l'element (teinte, saturation, luminosite)
             if (vcm) { defs.insertAdjacentHTML("beforeend", cmFilter("cm-" + g.id + "-" + l.id, vcm)); const gc = s("g", { filter: `url(#cm-${g.id}-${l.id})` }); gc.append(gv); grp.append(gc); }
             else grp.append(gv);
-            this.exprLayer(grp, l, sp, box);
+            this.exprLayer(grp, l, sp, box, defs, g.id);
             if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };
             return;
           }
@@ -315,7 +315,7 @@ export class Editor {
             const gt = s("g", { filter: `url(#${tid})` });
             gt.append(im); grp.append(gt);
           } else grp.append(im);
-          this.exprLayer(grp, l, sp, box);
+          this.exprLayer(grp, l, sp, box, defs, g.id);
           if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };
         });
       }
@@ -378,7 +378,7 @@ export class Editor {
 
   /** Expression du visage choisie pour l'element (l.exk) : la carte de l'image-cle la plus proche, posee en pixels de l'image
    *  d'orbite comme le calque (miroir et inclinaison compris). */
-  exprLayer(grp, l, sp, box) {
+  exprLayer(grp, l, sp, box, defs, pid) {
     if (!l.exk || !sp || !sp.orbit || !sp.expr) return;
     const mf = mouthFrame(sp, () => this.render(true));
     if (!mf || !mf.expr) return;
@@ -387,6 +387,13 @@ export class Editor {
     const sc = Math.min(box.w / mf.w, box.h / mf.h);
     const tf = (l.rz ? `rotate(${l.rz} ${box.cx} ${box.y + box.h / 2}) ` : "") + (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1) ` : "") +
       `translate(${box.x + (box.w - mf.w * sc) / 2} ${box.y + box.h - mf.h * sc}) scale(${sc})`;
+    const gom = exprGom(l.exk, mf.expr, mf.all, sp.i), drawn = grp.lastChild;
+    if (gom && drawn) {                                    // gomme : le dessin d'origine efface sous la levre redessinee plus fine
+      const id = "eg-" + pid + "-" + l.id, mg = box.h;
+      defs.insertAdjacentHTML("beforeend", `<mask id="${id}" maskUnits="userSpaceOnUse" x="${box.x - mg}" y="${box.y - mg}" width="${box.w + 2 * mg}" height="${box.h + 2 * mg}"><rect x="${box.x - mg}" y="${box.y - mg}" width="${box.w + 2 * mg}" height="${box.h + 2 * mg}" fill="#fff"/><g transform="${tf}">${gom}</g></mask>`);
+      const wrap = s("g", { mask: `url(#${id})` });
+      grp.insertBefore(wrap, drawn); wrap.append(drawn);
+    }
     const g = s("g", { transform: tf, "pointer-events": "none" });
     g.innerHTML = mk;
     grp.append(g);
