@@ -774,10 +774,31 @@ class App {
       h("button.big", { on: { click: () => { m.close(); this.proceduralDialog(); } } }, h("b", tt("🪑 Objet tout fait")), h("span", tt("Table, chaise, tabouret, banc, caisse, étagère, lit, bureau : on règle les cotes avec des curseurs. L'objet tourne sur 360° tout de suite, sans calcul.")))),
       [{ label: tt("Fermer") }]);
   }
-  drawAsset() {
-    openDrawEditor({ draw: null, ratio: 1, backdrop: null, title: tt("Dessiner un asset"), saveLabel: tt("Ranger dans la banque"),
+  // item : un asset deja dessine (son dessin est garde dans sa fiche, item.drawn) : on le reprend, et a l'enregistrement son
+  // image de base est remplacee (detourage refait ; l'orbite, retiree, se relance au choix)
+  drawAsset(item = null) {
+    openDrawEditor({ draw: item && item.drawn ? JSON.parse(JSON.stringify(item.drawn)) : null, ratio: 1, backdrop: null,
+      title: item ? tt`Reprendre le dessin : ${item.name}` : tt("Dessiner un asset"), saveLabel: item ? tt("Remplacer dans la banque") : tt("Ranger dans la banque"),
       onSave: async (d) => {
         if (!d.shapes.length) return;
+        const drawn = Object.assign({ shapes: d.shapes }, d.ext ? { ext: d.ext } : null, d.fx ? { fx: d.fx } : null);
+        if (item) {
+          const orbit = confirm(tt("Recalculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : l'image est remplacée, l'orbite se relancera depuis sa fiche."));
+          const im = await drawImage(d, 1024, 1024);
+          if (!im) return toast(tt("Le dessin n'a pas pu être converti en image."), "error");
+          const c = document.createElement("canvas"); c.width = c.height = 1024;
+          const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, 1024, 1024); x.drawImage(im, 0, 0, 1024, 1024);
+          const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
+          try {
+            await upload(`bank/${item.id}/rebase`, blob);
+            await put(`bank/${item.id}`, { drawn });
+            await post(`bank/${item.id}/cut`, { variant: "base", target: target() });
+            if (orbit) await post(`bank/${item.id}/orbit`, { variant: "base", target: target() });
+            await this.bankUI.reload(); this.pollSoon();
+            toast(tt`« ${item.name} » remplacé : détourage en cours.` + (orbit ? tt(" Son orbite suivra.") : ""));
+          } catch (e) { toast(tt("Remplacement refusé : ") + e.message, "error"); }
+          return;
+        }
         const name = (prompt(tt("Nom de l'asset :"), tt("Asset dessiné")) || "").trim();
         if (!name) return toast(tt("Dessin abandonné : il faut un nom pour le ranger dans la banque."), "error");
         const orbit = confirm(tt("Calculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : il reste une image fixe, tu pourras lancer l'orbite plus tard depuis sa fiche."));
@@ -788,7 +809,8 @@ class App {
         const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
         const f = this.bankUI.tab === "asset" && this.bankUI.folder && this.bankUI.folder !== "·" ? this.bankUI.folder : "";
         try {
-          await upload("bank?" + new URLSearchParams({ kind: "asset", name, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", target: target(), file: "dessin.png", folder: f }), blob);
+          const it = await upload("bank?" + new URLSearchParams({ kind: "asset", name, style: "dessin", facing: "face", orbit: orbit ? "1" : "0", target: target(), file: "dessin.png", folder: f }), blob);
+          if (it && it.id) await put(`bank/${it.id}`, { drawn }).catch(() => null);   // le dessin, pour le reprendre plus tard
           this.bankUI.tab = "asset"; await this.bankUI.reload(); this.pollSoon();
           toast(tt`« ${name} » est dans la banque, onglet Assets.` + (orbit ? tt(" Son orbite est en calcul.") : ""));
         } catch (e) { toast(tt("Asset refusé : ") + e.message, "error"); }

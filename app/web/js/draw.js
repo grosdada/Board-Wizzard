@@ -8,7 +8,7 @@
 // grossissent donc tout seuls la ou le ton fonce, sans dessiner chaque point.
 import { tt, tr } from "./i18n.js";
 import { swatch, stageFill, stagePattern, stageBgControl } from "./colors.js";
-import { h, modal, toast, history, upload } from "./api.js";
+import { h, modal, toast, history, upload, put } from "./api.js";
 import { PRESETS, PRESET_CATS, presetPath, presetThumb } from "./presets.js";
 import { liveBox } from "./live.js";
 
@@ -622,6 +622,26 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     tools(); props(); paint(); hist.snap();
     toast(made.length > 1 ? tt`Forme en ${made.length} morceaux : tire les ronds pour déplacer les points.` : tt("Tire les ronds pour déplacer les points."));
   }
+  // trace a main levee -> peu de points a tirer (Douglas-Peucker) ; la forme garde son type et ses reglages (pinceau...)
+  function pointsOf(t) {
+    const P = t.p.map(([x, y]) => [x * W, y * H]), n = P.length, keep = new Uint8Array(n);
+    if (n < 3) return;
+    const bx = boxOf(t, H), tol = Math.max(2, Math.max(bx.w, bx.h) * 0.012);
+    keep[0] = keep[n - 1] = 1;
+    const st = [[0, n - 1]];
+    while (st.length) {
+      const [a, b] = st.pop(), A = P[a], B = P[b], dx = B[0] - A[0], dy = B[1] - A[1], L = Math.hypot(dx, dy) || 1;
+      let far = -1, fi = -1;
+      for (let i = a + 1; i < b; i++) { const d = Math.abs(dy * (P[i][0] - A[0]) - dx * (P[i][1] - A[1])) / L; if (d > far) { far = d; fi = i; } }
+      if (far > tol) { keep[fi] = 1; st.push([a, fi], [fi, b]); }
+    }
+    const ix = [...keep.keys()].filter((i) => keep[i]);
+    hist.snap();
+    if (t.pw) t.pw = ix.map((i) => t.pw[i] ?? 1);
+    t.p = ix.map((i) => t.p[i]); t.ed = 1;
+    syncTwin(t); tool = "select"; sel = t.id; tools(); props(); paint(); hist.snap();
+    toast(tt`${ix.length} points : tire les ronds pour retoucher la forme.`);
+  }
   function finish(keep) {                                  // termine la forme point par point
     const b = building; building = null; hover = null;
     if (!b) return;
@@ -667,7 +687,8 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (t) {
       const out = h("output.rot-out", Math.round(t.r || 0) + "°");
       side.append(h("label.row.range", tt("Rotation"), h("input.rot-in", { type: "range", min: -180, max: 180, step: 1, value: Math.round(t.r || 0), on: { input: (e) => { t.r = +e.target.value; out.textContent = e.target.value + "°"; paint(); } } }), out),
-        t.t === "pre" ? h("button.mini", { title: tt("Transforme la forme en points à tirer un par un (outil Sélection, ronds sur la forme)"), on: { click: () => editPoints(t) } }, tt("✎ Éditer les points")) : "",
+        t.t === "pre" || PRIMS[t.t] ? h("button.mini", { title: tt("Transforme la forme en points à tirer un par un (outil Sélection, ronds sur la forme)"), on: { click: () => editPoints(t) } }, tt("✎ Éditer les points"))
+          : MANY.has(t.t) && t.t !== "poly" && t.t !== "polyline" && !t.ed ? h("button.mini", { title: tt("Montre les points du tracé (allégé) : on les tire un par un pour retoucher la forme"), on: { click: () => pointsOf(t) } }, tt("✎ Éditer les points")) : "",
         h("h4", tt("Ordre")), h("div.row.wrap",
         h("button.mini", { on: { click: () => { const i = shapes.indexOf(t); if (i < shapes.length - 1) { shapes.splice(i, 1); shapes.splice(i + 1, 0, t); paint(); } } } }, tt("Avancer")),
         h("button.mini", { on: { click: () => { const i = shapes.indexOf(t); if (i > 0) { shapes.splice(i, 1); shapes.splice(i - 1, 0, t); paint(); } } } }, tt("Reculer")),
@@ -764,9 +785,20 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     tool = "select"; sel = sh.id; tools(); props(); paint(); hist.snap();
     toast(tt("Image en direct posée dans le dessin."));
   }
+  async function liveBank(blob) {                          // l'image en direct devient un asset ; son croquis est garde (drawn)
+    const name = (prompt(tt("Nom de l'asset :"), tt("Dessin en direct")) || "").trim();
+    if (!name) return;
+    try {
+      const it = await upload("bank?" + new URLSearchParams({ kind: "asset", name, style: "dessin", facing: "face", orbit: "0", target: "auto", file: "en-direct.jpg", folder: tt("En direct") }), blob);
+      const all = layers ? layers.filter((l) => !l.hidden).flatMap((l) => l.shapes) : shapes;
+      if (it && it.id) await put(`bank/${it.id}`, { drawn: { shapes: JSON.parse(JSON.stringify(all)) } }).catch(() => null);
+      if (window.app && window.app.bankUI) { window.app.bankUI.tab = "asset"; window.app.bankUI.reload(); }
+      toast(tt`« ${name} » est dans la banque (Assets, dossier « En direct ») ; « Reprendre le dessin » dans sa fiche rouvre le croquis.`);
+    } catch (e) { toast(tt("Asset refusé : ") + e.message, "error"); }
+  }
   function toggleLive() {
     if (liveCtl) { liveCtl.close(); liveCtl = null; liveSlot.textContent = ""; tools(); return; }
-    liveCtl = liveBox({ snap: liveSnap, keep: liveKeep });
+    liveCtl = liveBox({ snap: liveSnap, keep: liveKeep, bank: liveBank });
     liveSlot.append(liveCtl.el); tools();
   }
   fileIn.addEventListener("change", async () => {

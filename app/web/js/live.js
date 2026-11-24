@@ -78,17 +78,17 @@ function unpack(buf) {
 }
 
 /** Panneau « En direct » de l'atelier de dessin. snap() : le dessin en data URI JPEG 704 x 704 ; keep(blob) : garder l'image. */
-export function liveBox({ snap, keep }) {
+export function liveBox({ snap, keep, bank }) {
   let lastImg = null, lastPr = null, ws = null, on = false, t0 = 0, secs = 0, frames = 0, lastChange = 0, timer = null, pending = false, busy = false, lastUrl = null, lastBlob = null, sentAt = 0, lat = 0;
   const out = h("img.draw-live-out", { alt: "" });
   const prompt = h("textarea", { rows: 2, value: "", placeholder: tt("Consigne : ce que doit devenir le croquis") });
   prompt.value = "Turn this rough sketch into a clean finished character drawing in black ink line art on white paper, same pose, same proportions, same composition";
-  const status = h("span.muted.draw-live-status", tt("En pause"));
-  const go = h("button.mini", { type: "button" }, tt("▶ Lancer"));
+  const status = h("span.muted.draw-live-status", tt("Prêt"));
+  const go = h("button.mini", { type: "button", title: tt("Envoie le dessin, reçoit l'image, puis coupe la connexion : relancer à chaque fois") }, tt("▶ Générer"));
   const keepBtn = h("button.mini", { type: "button", title: tt("Pose l'image en direct dans le dessin, comme une image importée") }, tt("⬇ Garder l'image"));
   const tick = () => {
     if (on) secs = (performance.now() - t0) / 1000;
-    status.textContent = (on ? tt("● En direct") : tt("En pause")) + tt` · session ${Math.round(secs)} s · ${frames} images` + (lat ? tt` · ${Math.round(lat)} ms` : "") +
+    status.textContent = (on ? tt("● En cours") : tt("Prêt")) + tt` · session ${Math.round(secs)} s · ${frames} images` + (lat ? tt` · ${Math.round(lat)} ms` : "") +
       tt` · ≤ ${(secs * PRICE).toFixed(3)} $`;
     if (on && performance.now() - lastChange > IDLE * 1000) { stop(); toast(tt("En direct : pause automatique après 30 s sans changement.")); }
   };
@@ -96,7 +96,7 @@ export function liveBox({ snap, keep }) {
     if (on) return;
     let tok;
     try { tok = (await post("fal/realtime-token", { app: LIVE_APP })).token; } catch (e) { return toast(tt("En direct refusé : ") + e.message, "error"); }
-    on = true; t0 = performance.now() - secs * 1000; lastChange = performance.now(); go.textContent = tt("⏸ Pause");
+    on = true; t0 = performance.now() - secs * 1000; lastChange = performance.now(); lastImg = null; go.textContent = tt("⏳ En cours…");
     ws = new WebSocket(`wss://fal.run/${LIVE_APP}?` + new URLSearchParams({ fal_jwt_token: tok, max_buffering: "2" }));
     ws.binaryType = "arraybuffer";
     ws.onopen = () => send();
@@ -113,15 +113,16 @@ export function liveBox({ snap, keep }) {
         : typeof c === "string" && c.startsWith("data:") ? null : typeof c === "string" ? new Blob([Uint8Array.from(atob(c), (x) => x.charCodeAt(0))], { type: im.content_type || "image/jpeg" }) : null;
       if (lastUrl) URL.revokeObjectURL(lastUrl);
       lastUrl = blob ? URL.createObjectURL(blob) : c; lastBlob = blob; out.src = lastUrl;
-      frames++; busy = false; lat = performance.now() - sentAt; tick();
-      if (pending) send();
+      frames++; busy = false; lat = performance.now() - sentAt;
+      stop();                                               // une generation puis on coupe : rien ne tourne entre deux
+      tick();
     };
     ws.onerror = () => toast(tt("En direct : la connexion a échoué."), "error");
     ws.onclose = (ev) => { if (on) { stop(); if (ev.code !== 1000) toast(tt`En direct : connexion fermée (${ev.code}) ${ev.reason || ""}`, "error"); } };
     timer = setInterval(tick, 500);
   }
   function stop() {
-    on = false; go.textContent = tt("▶ Lancer");
+    on = false; go.textContent = tt("▶ Générer");
     if (ws) { try { ws.close(); } catch (e) { /* rien */ } ws = null; }
     clearInterval(timer); timer = null; busy = false; pending = false; tick();
   }
@@ -137,14 +138,17 @@ export function liveBox({ snap, keep }) {
     ws.send(pack({ image_url: img, prompt: pr, image_size: "square", num_inference_steps: 3, seed: 35, output_feedback_strength: 1 }));
     setTimeout(() => { if (busy && performance.now() - sentAt > 8000) { busy = false; if (pending) send(); } }, 8200);   // reponse perdue : on repart
   }
-  go.addEventListener("click", () => (on ? stop() : start()));
+  go.addEventListener("click", () => { if (!on) start(); });
   keepBtn.addEventListener("click", () => { if (!lastBlob) return toast(tt("Pas encore d'image en direct.")); keep(lastBlob); });
-  prompt.addEventListener("input", () => { lastChange = performance.now(); if (on) send(); });
-  const box = h("div.draw-live", h("div.row.wrap", h("b", tt("⚡ En direct")), go, keepBtn, status), out, prompt,
-    h("p.muted", tt("Essai : le croquis part à fal (FLUX.2 klein temps réel, environ 0,002 $ par seconde de calcul) ; pause automatique après 30 s sans changement.")));
+  const bankBtn = h("button.mini", { type: "button", title: tt("Range l'image en direct dans la banque (Assets, dossier « En direct »), avec ce croquis gardé pour le reprendre plus tard") }, tt("⇪ Dans la banque"));
+  bankBtn.addEventListener("click", () => { if (!lastBlob) return toast(tt("Pas encore d'image en direct.")); bank(lastBlob); });
+  prompt.addEventListener("input", () => { lastChange = performance.now(); });
+  prompt.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!on) start(); } });
+  const box = h("div.draw-live", h("div.row.wrap", h("b", tt("⚡ En direct")), go, keepBtn, bankBtn, status), out, prompt,
+    h("p.muted", tt("« Générer » (ou Ctrl+Entrée dans la consigne) envoie le dessin à fal (FLUX.2 klein temps réel, environ 0,002 $ par seconde de calcul), reçoit l'image et coupe la connexion.")));
   return {
     el: box,
-    changed() { lastChange = performance.now(); if (on) send(); },
+    changed() { lastChange = performance.now(); },
     close: stop,
   };
 }
