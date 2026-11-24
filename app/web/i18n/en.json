@@ -2003,7 +2003,10 @@
   "Miroir gauche-droite": "Left-right mirror",
   "Au premier plan": "To front",
   "À l'arrière-plan": "To back",
-  "Supprimer les {0} formes": "Delete the {0} shapes"
+  "Supprimer les {0} formes": "Delete the {0} shapes",
+  "Zoom : molette sur le dessin (autour du pointeur). Se déplacer : bouton du milieu, ou Espace enfoncé et glisser.": "Zoom: mouse wheel on the drawing (around the pointer). Move around: middle button, or hold Space and drag.",
+  "Tout le dessin": "Whole drawing",
+  "⤢ 100 %": "⤢ 100 %"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

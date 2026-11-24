@@ -375,6 +375,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   let tool = "blob", prim = "rect", path = "blob", brushT = "brush", sel = null, drag = null, building = null, hover = null;
   let preK = "arbre";                                      // forme toute faite en cours (banque de formes, presets.js)
   let sym = false;                                         // symetrie : chaque forme tracee a son jumeau en miroir (tw), qui suit ses retouches
+  let vz = 1, vc = null, zoomOut = null, pan = null, spaceDown = false;   // zoom de l'espace de dessin, centre de la vue, deplacement en cours
   let multi = [];                                          // formes choisies ensemble (rectangle de selection, Maj+clic)
   const cur = Object.assign({}, DEF);
   const NS = "http://www.w3.org/2000/svg";
@@ -388,7 +389,13 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const ext = Object.assign({ l: 0, r: 0, t: 0, b: 0 }, draw && draw.ext);
   const zone = () => {
     const x0 = -ext.l * W, y0 = -ext.t * H, ww = W * (1 + ext.l + ext.r), hh = H * (1 + ext.t + ext.b), big = ext.l + ext.r + ext.t + ext.b > 0;
-    svg.setAttribute("viewBox", `${f1(x0)} ${f1(y0)} ${f1(ww)} ${f1(hh)}`);
+    // zoom de l'espace de dessin (molette, boutons) : on montre une partie de la zone, centree sur vc, sans en sortir
+    const vw = ww / vz, vh = hh / vz;
+    if (!vc || vz <= 1) vc = [x0 + ww / 2, y0 + hh / 2];
+    vc = [Math.max(x0 + vw / 2, Math.min(x0 + ww - vw / 2, vc[0])), Math.max(y0 + vh / 2, Math.min(y0 + hh - vh / 2, vc[1]))];
+    svg.setAttribute("viewBox", `${f1(vc[0] - vw / 2)} ${f1(vc[1] - vh / 2)} ${f1(vw)} ${f1(vh)}`);
+    if (zoomOut) zoomOut.textContent = Math.round(vz * 100) + " %";
+    svg.classList.toggle("zoomed", vz > 1);
     back.innerHTML = `<defs>${stagePattern(Math.max(8, W / 60))}</defs><rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(ww)}" height="${f1(hh)}" fill="${big ? "#ebe8e0" : stageFill()}"/><rect width="${W}" height="${f1(H)}" fill="${stageFill()}"/>` +
       (backdrop ? `<image href="${backdrop}" width="${W}" height="${f1(H)}" preserveAspectRatio="xMidYMid slice" opacity="0.35"/>` : "") +
       // retouche d'une image : elle est posee a sa place dans le cadre, pleinement visible, et on dessine par-dessus
@@ -802,7 +809,26 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   // pointeur ramene dans le repere de la forme (avant sa rotation)
   const local = (t, p, c) => { if (!t.r) return p; const q = rotPt([p[0] * W, p[1] * H], [c[0] * W, c[1] * H], -t.r); return [q[0] / W, q[1] / H]; };
 
+  // zoom : molette (autour du pointeur), boutons ; se deplacer : bouton du milieu, ou Espace enfonce + glisser
+  const zoomAt = (k, cx, cy) => {
+    const z1 = Math.max(1, Math.min(16, vz * k));
+    if (z1 === vz) return;
+    const m = svg.getScreenCTM(), q = m && cx != null ? new DOMPoint(cx, cy).matrixTransform(m.inverse()) : null;
+    if (q && vc) vc = [q.x + (vc[0] - q.x) * vz / z1, q.y + (vc[1] - q.y) * vz / z1];
+    vz = z1; zone();
+  };
+  svg.addEventListener("wheel", (e) => { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0016), e.clientX, e.clientY); }, { passive: false });
+  zoomOut = h("output.draw-zoom", "100 %");
+  const zoomBar = h("div.row.draw-zoombar", { title: tt("Zoom : molette sur le dessin (autour du pointeur). Se déplacer : bouton du milieu, ou Espace enfoncé et glisser.") },
+    h("button.mini", { type: "button", on: { click: () => zoomAt(1 / 1.4) } }, "－"), zoomOut, h("button.mini", { type: "button", on: { click: () => zoomAt(1.4) } }, "＋"),
+    h("button.mini", { type: "button", title: tt("Tout le dessin"), on: { click: () => { vz = 1; vc = null; zone(); } } }, tt("⤢ 100 %")));
   svg.addEventListener("pointerdown", (e) => {
+    if (e.button === 1 || (spaceDown && e.button === 0)) {   // deplacer la vue
+      e.preventDefault(); const m = svg.getScreenCTM();
+      pan = { x: e.clientX, y: e.clientY, c: (vc || [0, 0]).slice(), k: m ? m.a : 1 };
+      try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+      return;
+    }
     if (fxAim) { const q = at(e); fx.cx = +q[0].toFixed(3); fx.cy = +q[1].toFixed(3); fxDrag = true; try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ } fxPaint(); return; }
     if (e.button !== 0) return;
     const p = at(e);
@@ -841,6 +867,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     paint();
   });
   svg.addEventListener("pointermove", (e) => {
+    if (pan) { vc = [pan.c[0] - (e.clientX - pan.x) / pan.k, pan.c[1] - (e.clientY - pan.y) / pan.k]; zone(); return; }
     const p = at(e);
     if (fxAim) { if (fxDrag) { fx.cx = +p[0].toFixed(3); fx.cy = +p[1].toFixed(3); fxPaint(); } return; }
     if (building) { hover = p; return paint(); }
@@ -895,6 +922,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     paint();
   });
   svg.addEventListener("pointerup", () => {
+    if (pan) { pan = null; return; }
     fxDrag = false;
     const d = drag; drag = null;
     if (d && d.kind === "band") {                          // les formes touchees par le rectangle
@@ -944,6 +972,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       else shapes.splice(0, shapes.length, ...st);
       if (!target()) sel = null; props(); paint(); });
   const key = (e) => {
+    if (e.key === " " && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) { e.preventDefault(); spaceDown = true; svg.classList.add("panning"); return; }
     if (hist.keydown(e)) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (building && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); return finish(true); }
@@ -956,12 +985,14 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if ((e.ctrlKey || e.metaKey) && k === "a" && tool === "select") { e.preventDefault(); e.stopPropagation(); multi = shapes.map((s) => s.id); sel = multi[0] || null; props(); paint(); }
   };
   document.addEventListener("keydown", key, true);
+  const keyUp = (e) => { if (e.key === " ") { spaceDown = false; svg.classList.remove("panning"); } };
+  document.addEventListener("keyup", keyUp, true);
   const away = () => bar.querySelectorAll(".draw-drop.open").forEach((x) => x.classList.remove("open"));
   document.addEventListener("click", away);
-  const done = () => { document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
+  const done = () => { document.removeEventListener("keyup", keyUp, true); document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
   tools(); props(); paint();
   // un element (kit) n'a ni zone agrandie ni lignes d'effet : son cadre est celui de l'atelier
-  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, h("div.row.wrap", extra || "", stageBgControl(() => zone())), ghostBar, kit ? "" : extBar, h("div.draw-frame", svg), kit ? "" : fxBox), side),
+  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, h("div.row.wrap", extra || "", stageBgControl(() => zone()), zoomBar), ghostBar, kit ? "" : extBar, h("div.draw-frame", svg), kit ? "" : fxBox), side),
     [{ label: tt("Annuler"), click: done },
      { label: saveLabel, primary: true, click: () => { finish(true); done();
        const out = layers ? { shapes: layers.filter((l) => !l.hidden).flatMap((l) => l.shapes), layers } : { shapes };
