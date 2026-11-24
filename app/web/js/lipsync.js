@@ -277,6 +277,35 @@ function cardPick(lip, lips, frames, i, t) {
   return { key, letter, file, tf };
 }
 
+/** Expression du visage (app/exprcards.py) : la carte « k » de l'image-cle la plus proche, recalee sur la bouche suivie de
+ *  l'image i comme les bouches dessinees. Elle passe SOUS la bouche du lip sync, qui l'emporte toujours. "" sans carte. */
+export function exprMarkup(k, ex, frames, i) {
+  if (!k || !ex || !frames) return "";
+  const ck = cardKey(Object.assign({}, ex, { exact: false }), frames, i), m = frames[i];
+  if (!ck || !m || !m.up) return "";
+  const { key, far } = ck, file = key.cards[k];
+  if (!file) return "";
+  let tf = "";
+  if (far && frames[key.f] && frames[key.f].up) {
+    const ends = (q) => [q.up[0], q.up[q.up.length - 1]], mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const [a0, b0] = ends(frames[key.f]), [a1, b1] = ends(m), c0 = mid(a0, b0), c1 = mid(a1, b1);
+    const w0 = Math.hypot(b0[0] - a0[0], b0[1] - a0[1]) || 1, w1 = Math.hypot(b1[0] - a1[0], b1[1] - a1[1]) || 1, sx = Math.max(0.6, Math.min(1.4, w1 / w0));
+    const rot = Math.max(-20, Math.min(20, (Math.atan2(b1[1] - a1[1], b1[0] - a1[0]) - Math.atan2(b0[1] - a0[1], b0[0] - a0[0])) * 180 / Math.PI));
+    tf = ` transform="translate(${c1[0].toFixed(2)} ${c1[1].toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(3)} 1) translate(${(-c0[0]).toFixed(2)} ${(-c0[1]).toFixed(2)})"`;
+  }
+  return `<image href="${ex.base}/${file}?v=${ex.v}" x="${key.x}" y="${key.y}" width="${key.s}" height="${key.s}" preserveAspectRatio="none"${tf}/>`;
+}
+/** Expression d'un calque a l'instant t : la derniere cle posee avant t (l.ex.keys = [{ t, k }], k = "" : neutre), sinon
+ *  celle de la case (l.exk). */
+export function exprAt(l, t) {
+  const ks = (l && l.ex && l.ex.keys) || [];
+  let k = l && l.exk || "";
+  for (const q of ks) if (q.t <= t + 1e-6) k = q.k; else break;
+  return k;
+}
+/** Nom affiche d'une expression (cle de app/exprcards.py). */
+export function exprName(k) { return k ? k.charAt(0).toUpperCase() + k.slice(1).replace(/[-_]/g, " ") : tt("Neutre"); }
+
 /** Balisage SVG de la bouche d'un calque. box : boite du calque ; angle : orientation de l'orbite en radians (0 = de face) ;
  *  item : l'element du calque (ses propres bouches, jeu « perso »). */
 export function lipMarkup(lip, box, flip, t, angle = 0, id = "", mask = "#ffffff", item = null) {

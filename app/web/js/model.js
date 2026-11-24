@@ -22,7 +22,8 @@ export function sprite(item, vid, f) {
              vec: v.orbit.vec && item.style === "dessin" ? `/bank/${id}/${v.orbit.dir}/vec.json?v=${v.orbit.vt || 0}` : null,
              head: v.orbit.head ? `/bank/${id}/${v.orbit.dir}/head.json?v=${v.orbit.vt || 0}` : null,   // tete suivie (corps de mannequin)
              mouth: v.orbit.mouth ? `/bank/${id}/${v.orbit.dir}/mouth.json?v=${v.orbit.mt || 0}` : null,
-             lips: v.orbit.mouth && v.orbit.lips ? `/bank/${id}/${v.orbit.dir}/lips.json?v=${v.orbit.lips}` : null, dir: `/bank/${id}/${v.orbit.dir}` };   // bouches dessinees dans le style du personnage (tools/levres.py)   // bouche du dessin, suivie (lip sync « trace »)
+             lips: v.orbit.mouth && v.orbit.lips ? `/bank/${id}/${v.orbit.dir}/lips.json?v=${v.orbit.lips}` : null,
+             expr: v.orbit.mouth && v.orbit.expr ? `/bank/${id}/${v.orbit.dir}/expr.json?v=${v.orbit.expr}` : null, exprs: v.orbit.exprs || null, dir: `/bank/${id}/${v.orbit.dir}` };   // bouches dessinees dans le style du personnage (tools/levres.py)   // bouche du dessin, suivie (lip sync « trace »)   // expressions : app/exprcards.py
   }
   if (v.cut) return { url: `/bank/${id}/${v.cut}?t=${v.t || 0}`, w: v.cw || item.w, h: v.ch || item.h, n: 1, i: 0 };
   return { url: `/bank/${id}/${v.ref}?t=${v.t || 0}`, w: item.w || 1, h: item.h || 1, n: 1, i: 0, raw: true };
@@ -61,7 +62,24 @@ export function mouthFrame(sp, onReady) {
     if (mouths.size > 40) mouths.delete(mouths.keys().next().value);
   }
   if (e.data === null) { if (onReady && e.wait.length < 4) e.wait.push(onReady); return null; }
-  return e.data ? { w: e.data.w, h: e.data.h, m: e.data.frames[sp.i] || null, all: e.data.frames, lips: lipsOf(sp, onReady) } : null;
+  return e.data ? { w: e.data.w, h: e.data.h, m: e.data.frames[sp.i] || null, all: e.data.frames, lips: lipsOf(sp, onReady), expr: cardsFile(sp.expr, sp.dir, onReady) } : null;
+}
+// ---- expressions : expr.json d'une orbite, meme forme que lips.json (cartes par image-cle : { f, x, y, s, cards: { joie, ... } })
+const cardsFiles = new Map();
+function cardsFile(url, dir, onReady) {
+  if (!url) return null;
+  let e = cardsFiles.get(url);
+  if (!e) {
+    e = { data: null };
+    cardsFiles.set(url, e);
+    fetch(url).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      e.data = d ? Object.assign(d, { base: dir, v: url.split("?v=")[1] || "0" }) : false;
+      if (d) for (const k of d.keys) for (const f of Object.values(k.cards)) new Image().src = `${dir}/${f}?v=${e.data.v}`;
+      if (onReady) onReady();
+    }).catch(() => { e.data = false; });
+    if (cardsFiles.size > 40) cardsFiles.delete(cardsFiles.keys().next().value);
+  }
+  return e.data || null;
 }
 // ---- bouches dessinees : lips.json d'une orbite = { w, h, keys: [{ f, x, y, s, cards: { A, O, E, D }, gom?: { A, ... } }] } (tools/levres.py ; gom : gommes)
 const lipsFiles = new Map();

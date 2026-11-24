@@ -1940,7 +1940,13 @@
   "La même place sous chaque rangée de cases, la dernière comprise, pour écrire : les cases remontent et rétrécissent.": "The same space under every row of panels, the last one included, for writing: panels move up and shrink.",
   "Quand la place sous les rangées grandit, les cases rétrécissent aussi en largeur et restent centrées : elles gardent leur format 16/9.": "When the space under the rows grows, panels also shrink in width and stay centred: they keep their 16/9 shape.",
   "Garder les cases en 16/9": "Keep panels 16/9",
-  "Couleur du texte": "Text colour"
+  "Couleur du texte": "Text colour",
+  "Pas d'orbite pour cette pose : pas d'expressions.": "No orbit for this pose: no expressions.",
+  "Pas encore d'expressions pour ce personnage : elles sont à générer (il faut aussi sa bouche suivie).": "No expressions for this character yet: they need generating (its mouth must be tracked too).",
+  "Clique une expression : elle est posée à la tête de lecture et tient jusqu'à la suivante. La bouche du lip sync passe toujours par-dessus.": "Click an expression: it is set at the playhead and holds until the next one. The lip sync mouth always goes on top.",
+  "À cet instant ⓘ : {0}": "At this moment ⓘ: {0}",
+  "Aller à cet instant": "Go to this moment",
+  "😊 Expressions": "😊 Expressions"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

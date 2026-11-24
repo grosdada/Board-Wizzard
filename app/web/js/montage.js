@@ -10,7 +10,7 @@
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put, del } from "./api.js";
-import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime, segsOf } from "./lipsync.js";
+import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime, segsOf, exprMarkup, exprAt, exprName } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
 import { markupReady } from "./model.js";
@@ -185,6 +185,12 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
           `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="${ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g>${fo ? opsSvg(fo.over, fattr) : ""}</g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
       const o2 = o.length;                                 // fin du dessin : la gomme de la bouche s'y applique
+      const exk = sp.orbit && sp.expr ? exprAt(l, t) : "";
+      if (exk) {                                           // expression du visage : sous la bouche du lip sync, qui l'emporte toujours
+        const ef = mouthFrame(sp, again);
+        if (ef && ef.expr) { const esc = Math.min(box.w / ef.w, box.h / ef.h);
+          o += `<g${bl}><g data-expr="${l.id}" transform="${flip}translate(${f1(box.x + (box.w - ef.w * esc) / 2)} ${f1(box.y + box.h - ef.h * esc)}) scale(${f3(esc)})" style="pointer-events:none">${exprMarkup(exk, ef.expr, ef.all, sp.i)}</g></g>`; }
+      }
       if (l.lip && l.lip.on) {                             // lip sync : la bouche qui parle
         const tr = usesTrace(l.lip, sp);
         if (!tr) o += `<g${bl}>${lipMarkup(lipAt, box, l.flip, t, angleOf(l, s.v, s.f), `${pre}lp-${l.id}`, bodyFill(l), it)}</g>`;
@@ -1553,7 +1559,29 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     setTimeout(updMouthDot, 0);                            // la pastille, une fois le panneau pose
     return h("div.mt-voice",
       fold("voice", tt("🔊 Voix"), h("div.muted", tt("La bande son : une voix de la banque audio, générée, ou enregistrée au micro.")), ...vrows),
-      fold("mouth", h("span", tt("👄 Bouche"), mouthDot = h("span.mdot", { "data-l": l.id })), lip.src ? "" : h("div.muted", tt("Sans voix, la bouche reste fermée.")), ...rows));
+      fold("mouth", h("span", tt("👄 Bouche"), mouthDot = h("span.mdot", { "data-l": l.id })), lip.src ? "" : h("div.muted", tt("Sans voix, la bouche reste fermée.")), ...rows),
+      exprBox(l));
+  }
+  // --- expressions du visage (app/exprcards.py) : posees a la tete de lecture, elles tiennent jusqu'a la suivante ; la
+  // bouche du lip sync passe toujours par-dessus
+  function exprBox(l) {
+    const sp = spriteNow(l), keys = sp && sp.exprs || [], ks = (l.ex && l.ex.keys) || [], cur = exprAt(l, t);
+    const setAt = (k) => {
+      const list = ks.filter((q) => Math.abs(q.t - t) > 0.02);
+      list.push({ t: +t.toFixed(3), k });
+      list.sort((a, b) => a.t - b.t);
+      l.ex = { keys: list }; hist.snap(); paint(); props();
+    };
+    const rows = [];
+    if (!sp || !sp.orbit) rows.push(h("div.muted", tt("Pas d'orbite pour cette pose : pas d'expressions.")));
+    else if (!sp.expr || !keys.length) rows.push(h("div.muted", tt("Pas encore d'expressions pour ce personnage : elles sont à générer (il faut aussi sa bouche suivie).")));
+    else {
+      rows.push(h("div.muted", { title: tt("Clique une expression : elle est posée à la tête de lecture et tient jusqu'à la suivante. La bouche du lip sync passe toujours par-dessus.") }, tt`À cet instant ⓘ : ${exprName(cur)}`),
+        h("div.row.wrap.mouths", ["", ...keys].map((k) => h("button.mini" + (cur === k ? ".on" : ""), { on: { click: () => setAt(k) } }, exprName(k)))));
+      if (ks.length) rows.push(h("div.exkeys", ks.map((q, i) => h("div.row", h("button.mini", { title: tt("Aller à cet instant"), on: { click: () => { t = q.t; paint(); props(); } } }, `${q.t.toFixed(2)} s`),
+        h("span", exprName(q.k)), h("button.mini.danger", { title: tt("Retirer"), on: { click: () => { ks.splice(i, 1); if (!ks.length) delete l.ex; hist.snap(); paint(); props(); } } }, "✕")))));
+    }
+    return fold("expr", h("span", tt("😊 Expressions"), keys.length ? h("span.muted", ` ${keys.length}`) : ""), ...rows);
   }
 
   // ------------------------------------------------------------------------------------------ timeline (bas)
