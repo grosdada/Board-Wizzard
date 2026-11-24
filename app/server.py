@@ -23,7 +23,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 REALTIME_APP = "fal-ai/flux-2/klein/realtime"              # croquis -> image en direct (essai)
-REALISTIC_MODEL = "openai/gpt-image-2.6/sunburst/edit"     # portrait-robot -> photo
+REALISTIC_MODEL = "openai/gpt-image-2.6/sunburst/edit"     # portrait-robot -> photo (modele par defaut)
+REALISTIC_MODELS = {"gpt": "openai/gpt-image-2.6/sunburst/edit", "nano": "fal-ai/nano-banana-2/edit",   # les trois a comparer
+                    "seedream": "bytedance/seedream/v5.5/edit"}
 from . import accounts, brain, cost, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -1025,10 +1027,15 @@ class Handler(BaseHTTPRequestHandler):
         w, h = max(256, int(round(w * k / 16)) * 16), max(256, int(round(h * k / 16)) * 16)
         job = {"progress": "", "params": {}}
         fp = falapi.FalProvider(key, job)
-        payload = fp._image_payload(REALISTIC_MODEL, prompt, w, h, 0)
+        model = REALISTIC_MODELS.get(d.get("model") or "gpt")
+        if not model:
+            raise ApiError("modèle inconnu")
+        payload = fp._image_payload(model, prompt, w, h, 0)
+        if "seedream" in model:                                     # Seedream 5.5 : au moins 921 600 pixels ; taille deduite de l'image
+            payload.update({"image_size": "auto_1.5K", "background": "opaque", "output_format": "png"})
         payload["image_urls"] = [fp.upload(src)]
-        out = fp.run(REALISTIC_MODEL, payload)
-        dest = fp.fetch(out["images"][0]["url"], folder / ("%d_photo.png" % stamp))
+        out = fp.run(model, payload)
+        dest = fp.fetch(out["images"][0]["url"], folder / ("%d_photo_%s.png" % (stamp, d.get("model") or "gpt")))
         raw = Path(dest).read_bytes()
         return {"image": "data:image/png;base64," + base64.b64encode(raw).decode(), "file": "refs/" + Path(dest).name}
 

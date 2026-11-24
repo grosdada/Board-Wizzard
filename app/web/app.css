@@ -58,6 +58,8 @@ aside.right { border-left: 1px solid var(--line); padding: 0; display: flex; fle
 .draw-framerow { display: flex; gap: 10px; align-items: flex-start; } .draw-framerow > .draw-frame { flex: 1 1 0; min-width: 0; } .draw-liveslot:empty { display: none; } .draw-liveslot { flex: 0 0 42%; }
 .draw-live { display: flex; flex-direction: column; gap: 6px; } .draw-live-out { width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 6px; }
 .draw-live textarea { width: 100%; } .draw-live-status { font-size: 12px; }
+.idk-realcols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; } .idk-realcol { display: flex; flex-direction: column; gap: 6px; }
+.idk-realgo { padding: 12px 10px; font-size: 14px; } .idk-real img { width: 100%; border-radius: 6px; background: #fff; }
 .draw-band { fill: rgba(43,179,163,.08); stroke: #2bb3a3; stroke-width: 1.5; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; pointer-events: none; }
 /* cadres de texte de la page : titres, annotations sous les cases */
 .bnote { position: absolute; pointer-events: auto; box-sizing: border-box; padding: .25em .45em; color: #111; cursor: move; overflow: hidden;

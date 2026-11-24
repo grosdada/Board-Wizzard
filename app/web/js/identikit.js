@@ -800,17 +800,21 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     setTimeout(() => document.addEventListener("pointerdown", close, true), 0);
   };
   // rendu photoreliste du portrait affiche (GPT Image 2.6 Sunburst, fal) : la forme du dessin est gardee a l'identique
+  // trois modeles a comparer, chacun son gros bouton et sa colonne de resultat
+  const REAL_MODELS = [["gpt", tt("Généré par GPT Image 2.6"), "≈ 0,06 $"], ["nano", tt("Généré par Nano Banana 2"), "≈ 0,08 $"], ["seedream", tt("Généré par Seedream 5.5"), "≈ 0,04 $"]];
   const realistic = () => {
-    const prompt = h("textarea", { rows: 9 }); prompt.value = REAL_PROMPT;
-    const out = h("div.idk-real"), go = h("button.primary", { type: "button" }, tt("✨ Générer (≈ 0,06 $)"));
-    let last = null;
-    go.addEventListener("click", async () => {
+    const prompt = h("textarea", { rows: 7 }); prompt.value = REAL_PROMPT;
+    const cols = h("div.idk-realcols");
+    const column = ([key, label, cost]) => {
+      const out = h("div.idk-real"), go = h("button.primary.idk-realgo", { type: "button" }, `${label} · ${cost}`);
+      let last = null;
+      go.addEventListener("click", async () => {
       if (!layers.length) return toast(tt("Le portrait est vide."), "error");
       go.disabled = true; go.textContent = tt("⏳ Génération… (environ une minute)");
       try {
         const blob = await render(1024, Math.round(1024 * SH / S), true);
         const uri = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(blob); });
-        const r = await post("portrait/realistic", { image: uri, prompt: prompt.value.trim() });
+        const r = await post("portrait/realistic", { image: uri, prompt: prompt.value.trim(), model: key });
         last = r.image;
         out.textContent = "";
         out.append(h("img", { src: r.image, alt: "" }), h("div.row.wrap",
@@ -822,12 +826,15 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
             try { await upload("bank?" + new URLSearchParams({ kind: "character", name: nm.trim(), style: "photo", facing: "face", orbit: "0", target: "auto", file: "photo.png" }), b);
               bankUI.tab = "character"; await bankUI.reload(); toast(tt`« ${nm.trim()} » est dans la banque (Personnages).`); } catch (e) { toast(tt("Refusé : ") + e.message, "error"); }
           } } }, tt("⇪ Ranger dans la banque"))));
-      } catch (e) { toast(tt("Génération refusée : ") + e.message, "error"); }
-      go.disabled = false; go.textContent = tt("✨ Générer (≈ 0,06 $)");
-    });
-    modal(tt("Portrait en photo (GPT Image 2.6 Sunburst)"), h("div.form.idk-realform",
-      h("p.muted", tt("Le portrait tel qu'il est affiché part à fal avec cette consigne. Environ 0,06 $ par image, une minute environ.")),
-      h("label.col", tt("Consigne"), prompt), go, out), [{ label: tt("Fermer") }]).box.classList.add("wide");
+      } catch (e) { toast(label + " : " + e.message, "error"); }
+      go.disabled = false; go.textContent = `${label} · ${cost}`;
+      });
+      return h("div.idk-realcol", go, out);
+    };
+    REAL_MODELS.forEach((mdl) => cols.append(column(mdl)));
+    modal(tt("Portrait en photo : comparer trois modèles"), h("div.form.idk-realform",
+      h("p.muted", tt("Le portrait tel qu'il est affiché part à fal avec cette consigne. Chaque bouton lance son modèle (payant, une minute environ) ; on peut lancer les trois et comparer.")),
+      h("label.col", tt("Consigne"), prompt), cols), [{ label: tt("Fermer") }]).box.classList.add("wide");
   };
   // composition gardee dans l'element de banque, pour le rouvrir ici
   const composition = (withBody) => Object.assign({ v: 1, layers: JSON.parse(JSON.stringify(layers)), off, body: withBody ? bodyPick : null }, BODYKIT ? { kit: "corps" } : null);
