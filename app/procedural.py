@@ -232,14 +232,36 @@ def _mesh(parts):
     return np.vstack(verts), np.array(tris, int), np.array(gid, int)
 
 
-def _frame(verts, tris, gid, az, size, scale, centre, line):
-    """Une image : (alpha, encre) a la taille demandee, vue sous l'angle az (degres), camera un peu au-dessus."""
-    a, e = math.radians(az), math.radians(ELEV)
+def view_of(params):
+    """Reglages de vue (hors cotes) : _elev = hauteur de la camera en degres (negatif : vue d'en dessous), _persp = force de
+    la perspective, 0 (lignes paralleles) a 100 (camera tout pres : les fuyantes convergent fort)."""
+    p = params or {}
+    try:
+        elev = min(70.0, max(-30.0, float(p.get("_elev", ELEV))))
+    except (TypeError, ValueError):
+        elev = ELEV
+    try:
+        persp = min(100.0, max(0.0, float(p.get("_persp", 0))))
+    except (TypeError, ValueError):
+        persp = 0.0
+    return {"elev": elev, "persp": persp}
+
+
+def _frame(verts, tris, gid, az, size, scale, centre, line, view=None, radius=1.0):
+    """Une image : (alpha, encre) a la taille demandee, vue sous l'angle az (degres). view : hauteur de la camera et force
+    de la perspective (view_of) ; sans view, camera un peu au-dessus, en vue parallele."""
+    view = view or {"elev": ELEV, "persp": 0.0}
+    a, e = math.radians(az), math.radians(view["elev"])
     p = verts - centre
     x = p[:, 0] * math.cos(a) + p[:, 2] * math.sin(a)
     z = -p[:, 0] * math.sin(a) + p[:, 2] * math.cos(a)
     y = p[:, 1] * math.cos(e) - z * math.sin(e)
     depth = p[:, 1] * math.sin(e) + z * math.cos(e)                 # grand = pres de la camera
+    if view["persp"] > 0:                                            # perspective : la camera a une distance finie, plus pres = fuyantes plus fortes
+        k = view["persp"] / 100.0
+        D = radius * (2.2 + 14.0 * (1.0 - k) ** 2)
+        f = (D - radius) / np.maximum(D - depth, 1e-3)              # 1 au plus pres : l'objet garde sa taille dans le cadre
+        x, y = x * f, y * f
     S = size * SS
     px, py = S / 2 + x * scale * SS, S / 2 - y * scale * SS
     zb = np.full((S, S), -1e9)
@@ -289,7 +311,7 @@ def _rgba(alpha, ink):
 def preview(key, params, az=30.0, size=360):
     """Apercu PNG d'un objet sous un angle : pour regler les cotes en direct."""
     verts, tris, gid, centre, radius = _setup(key, params)
-    alpha, ink = _frame(verts, tris, gid, az, size, (size * 0.46) / radius, centre, 2.2 * size / HEIGHT)
+    alpha, ink = _frame(verts, tris, gid, az, size, (size * 0.46) / radius, centre, 2.2 * size / HEIGHT, view_of(params), radius)
     out = Image.new("RGBA", (size, size), (255, 255, 255, 255))
     out.alpha_composite(_rgba(alpha, ink))
     return out.convert("RGB")
@@ -297,11 +319,12 @@ def preview(key, params, az=30.0, size=360):
 
 def create(key, params, name="", folder=""):
     """Range l'objet dans la banque, avec son orbite complete (72 images et leurs traces), sans passer par une machine."""
+    view = view_of(params)
     params = clean(key, params)
     verts, tris, gid, centre, radius = _setup(key, params)
     size = HEIGHT
     scale = (size * 0.47) / radius
-    frames = [_rgba(*_frame(verts, tris, gid, 360.0 * f / FRAMES + 25.0, size, scale, centre, 2.4)) for f in range(FRAMES)]
+    frames = [_rgba(*_frame(verts, tris, gid, 360.0 * f / FRAMES + 25.0, size, scale, centre, 2.4, view, radius)) for f in range(FRAMES)]
     union = np.zeros((size, size), bool)
     for im in frames:
         union |= np.asarray(im)[..., 3] > 20
@@ -333,7 +356,7 @@ def create(key, params, name="", folder=""):
         info["t"] = int(time.time())
 
         def apply(x):
-            x["proc"] = {"key": key, "params": params}
+            x["proc"] = {"key": key, "params": params, "view": view}
             x["variants"]["base"].update({"cut": "v/base/cut.webp", "cw": cw, "ch": ch, "t": int(time.time()), "orbit": info})
         return store.mutate_item(it["id"], apply)
     finally:

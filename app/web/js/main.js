@@ -811,8 +811,15 @@ class App {
       busy = false;
       if (again) { again = false; refresh(); }
     };
+    // vue : hauteur de la camera (l'axe) et force de la perspective (les fuyantes), gardees d'un objet a l'autre
+    let view = { _elev: 14, _persp: 0 };
+    const viewKnob = (label, k, min, max, tip) => { const out = h("output", String(view[k]));
+      return h("label.row.range", { title: tip }, label, h("input", { type: "range", min, max, step: 1, value: view[k], on: { input: (e) => { view[k] = +e.target.value; vals[k] = view[k]; out.textContent = String(view[k]); refresh(); } } }), out); };
+    const viewBox = h("div.knobs",
+      viewKnob(tt("Axe de vue (°)"), "_elev", -30, 70, tt("Hauteur de la caméra : négatif, vu d'en dessous ; 0, à hauteur ; positif, vu du dessus.")),
+      viewKnob(tt("Perspective (fuyantes)"), "_persp", 0, 100, tt("0 : lignes parallèles. Plus haut : la caméra s'approche et les arêtes fuient vers des points de fuite.")));
     const build = () => {
-      vals = Object.fromEntries(cur.params.map((q) => [q.key, q.def]));
+      vals = Object.assign(Object.fromEntries(cur.params.map((q) => [q.key, q.def])), view);
       name.value = tr(cur.label);
       knobs.textContent = "";
       for (const q of cur.params) {
@@ -826,7 +833,7 @@ class App {
     const play = h("button.mini", { title: tt("Faire tourner l'aperçu"), on: { click: () => { if (spin) { clearInterval(spin); spin = null; play.textContent = "▶"; return; } play.textContent = "⏸"; spin = setInterval(() => { if (!document.body.contains(img)) { clearInterval(spin); return; } az = (az + 6) % 360; turn.value = az; refresh(); }, 140); } } }, "▶");
     const m = modal(tt("Objet tout fait"), h("div.procedural",
       h("div.procleft", img, h("div.scrub", play, turn)),
-      h("div.form", h("label.row", tt("Objet"), pick), knobs, h("label.row", tt("Nom"), name),
+      h("div.form", h("label.row", tt("Objet"), pick), knobs, h("h4", tt("Vue")), viewBox, h("label.row", tt("Nom"), name),
         h("p.muted", tt("Cotes en centimètres. L'objet est rangé dans les Assets avec son orbite complète (72 images), sans passer par une machine : compte une demi-minute.")))),
       [{ label: tt("Annuler") }, { label: tt("Ajouter à la banque"), primary: true, click: async () => {
         toast(tt("Fabrication de l'orbite (une demi-minute)…"), "info", 9000);

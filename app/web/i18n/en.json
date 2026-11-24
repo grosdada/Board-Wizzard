@@ -1967,7 +1967,11 @@
   "Clique une expression : elle est posée à la tête de lecture et tient jusqu'à la suivante. Pendant que le personnage parle, elle s'enlève : la bouche du lip sync prend le dessus, sur la tête de base.": "Click an expression: it is set at the playhead and holds until the next one. While the character speaks it goes away: the lip sync mouth takes over, on the base head.",
   "Glisser : déplacer la mise au point": "Drag: move the focus",
   "Dossier de la banque où ranger l'élément : un dossier existant (liste) ou un nouveau nom ; « / » pour un sous-dossier. Vide : à la racine.": "Bank folder for the item: an existing folder (list) or a new name; “/” for a sub-folder. Empty: at the root.",
-  "Racine de la banque": "Bank root"
+  "Racine de la banque": "Bank root",
+  "Axe de vue (°)": "View axis (°)",
+  "Hauteur de la caméra : négatif, vu d'en dessous ; 0, à hauteur ; positif, vu du dessus.": "Camera height: negative, seen from below; 0, at eye level; positive, seen from above.",
+  "Perspective (fuyantes)": "Perspective (vanishing lines)",
+  "0 : lignes parallèles. Plus haut : la caméra s'approche et les arêtes fuient vers des points de fuite.": "0: parallel lines. Higher: the camera gets closer and edges converge towards vanishing points."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
