@@ -2006,7 +2006,27 @@
   "Supprimer les {0} formes": "Delete the {0} shapes",
   "Zoom : molette sur le dessin (autour du pointeur). Se déplacer : bouton du milieu, ou Espace enfoncé et glisser.": "Zoom: mouse wheel on the drawing (around the pointer). Move around: middle button, or hold Space and drag.",
   "Tout le dessin": "Whole drawing",
-  "⤢ 100 %": "⤢ 100 %"
+  "⤢ 100 %": "⤢ 100 %",
+  "En direct": "Live",
+  "Image en direct posée dans le dessin.": "Live image placed in the drawing.",
+  "Croquis -> image en direct (essai, fal, payant) : le dessin part à mesure qu'on trace, l'image revient à côté": "Sketch -> live image (trial, fal, paid): the drawing is sent as you draw, the image comes back alongside",
+  "⚡ En direct": "⚡ Live",
+  "Consigne : ce que doit devenir le croquis": "Prompt: what the sketch should become",
+  "En pause": "Paused",
+  "▶ Lancer": "▶ Start",
+  "Pose l'image en direct dans le dessin, comme une image importée": "Places the live image in the drawing, like an imported image",
+  "⬇ Garder l'image": "⬇ Keep the image",
+  "● En direct": "● Live",
+  " · session {0} s · {1} images": " · session {0} s · {1} images",
+  " · {0} ms": " · {0} ms",
+  " · ≤ {0} $": " · ≤ {0} $",
+  "En direct : pause automatique après 30 s sans changement.": "Live: auto-pause after 30 s without change.",
+  "En direct refusé : ": "Live refused: ",
+  "En direct : ": "Live: ",
+  "En direct : la connexion a échoué.": "Live: the connection failed.",
+  "En direct : connexion fermée ({0}) {1}": "Live: connection closed ({0}) {1}",
+  "Pas encore d'image en direct.": "No live image yet.",
+  "Essai : le croquis part à fal (FLUX.2 klein temps réel, environ 0,002 $ par seconde de calcul) ; pause automatique après 30 s sans changement.": "Trial: the sketch is sent to fal (FLUX.2 klein realtime, about $0.002 per compute second); auto-pause after 30 s without change."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
@@ -2243,7 +2263,11 @@
   "Somnolent": "Sleepy",
   "Clin d'œil": "Wink",
   "Effarement": "Aghast",
-  "Dédain": "Disdain"
+  "Dédain": "Disdain",
+  "aucune clé fal : entre ta clé dans Réglages › fal (cloud)": "no fal key: enter your key in Settings › fal (cloud)",
+  "modèle temps réel non autorisé": "realtime model not allowed",
+  "fal a refusé le jeton : %s": "fal refused the token: %s",
+  "fal n'a pas rendu de jeton : %s": "fal returned no token: %s"
  },
  "parts": {
   "Anguleux": "Angular",

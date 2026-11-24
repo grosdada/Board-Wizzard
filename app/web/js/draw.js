@@ -10,6 +10,7 @@ import { tt, tr } from "./i18n.js";
 import { swatch, stageFill, stagePattern, stageBgControl } from "./colors.js";
 import { h, modal, toast, history, upload } from "./api.js";
 import { PRESETS, PRESET_CATS, presetPath, presetThumb } from "./presets.js";
+import { liveBox } from "./live.js";
 
 export const W = 1000;                                   // largeur de travail ; la hauteur suit le format de la case
 const uid = () => Math.random().toString(36).slice(2, 8);
@@ -375,7 +376,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   let tool = "blob", prim = "rect", path = "blob", brushT = "brush", sel = null, drag = null, building = null, hover = null;
   let preK = "arbre";                                      // forme toute faite en cours (banque de formes, presets.js)
   let sym = false;                                         // symetrie : chaque forme tracee a son jumeau en miroir (tw), qui suit ses retouches
-  let vz = 1, vc = null, zoomOut = null, pan = null, spaceDown = false;   // zoom de l'espace de dessin, centre de la vue, deplacement en cours
+  let vz = 1, vc = null, zoomOut = null, pan = null, spaceDown = false;
+  let liveCtl = null;                                         // croquis -> image en direct (fal, essai)
+  const liveSlot = h("div.draw-liveslot");   // zoom de l'espace de dessin, centre de la vue, deplacement en cours
   let multi = [];                                          // formes choisies ensemble (rectangle de selection, Maj+clic)
   const cur = Object.assign({}, DEF);
   const NS = "http://www.w3.org/2000/svg";
@@ -575,6 +578,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
         P.map((p, i) => `<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${i ? 6 : 11}" class="draw-pt${i ? "" : " first"}" style="pointer-events:none"/>`).join("");
     }
     over.innerHTML = o;
+    if (liveCtl) liveCtl.changed();
   }
   // miroir gauche-droite par rapport a l'axe vertical du milieu de la case : la forme choisie, sinon tout le dessin.
   // Les copies sont des formes ordinaires ; l'original reste.
@@ -742,6 +746,29 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const fileIn = h("input", { type: "file", accept: "image/*", style: { display: "none" } });
   let asTip = false;
   const importImg = (tip) => { asTip = !!tip; fileIn.click(); };
+  // croquis -> image en direct : le dessin en JPEG 704 x 704 sur fond blanc, l'image gardee posee comme une image importee
+  async function liveSnap() {
+    const im = await drawImage(layers ? { layers } : { shapes }, 704, 704 * H / W);
+    const c = document.createElement("canvas"); c.width = 704; c.height = 704;
+    const g = c.getContext("2d"); g.fillStyle = "#ffffff"; g.fillRect(0, 0, 704, 704);
+    if (im) { const k = Math.min(704 / im.width, 704 / im.height), w = im.width * k, hh = im.height * k; g.drawImage(im, (704 - w) / 2, (704 - hh) / 2, w, hh); }
+    return c.toDataURL("image/jpeg", 0.5);
+  }
+  async function liveKeep(blob) {
+    let r;
+    try { r = await upload("parts/assets", new File([blob], "en-direct.jpg", { type: blob.type || "image/jpeg" })); } catch (e) { return toast(tt("Image refusée : ") + e.message, "error"); }
+    finish(true); hist.snap();
+    const ar = r.h / Math.max(1, r.w), bw = Math.min(W, H / ar), bh = bw * ar, cx = W / 2, cy = H / 2;
+    const sh = { id: uid(), t: "img", href: r.url, ar, ink: "none", iop: 1, stroke: "#111111", p: [[(cx - bw / 2) / W, (cy - bh / 2) / H], [(cx + bw / 2) / W, (cy + bh / 2) / H]] };
+    if (layers) { layers.splice(cl + 1, 0, { id: uid(), name: tt("En direct"), shapes: [sh] }); setLayer(cl + 1); } else shapes.push(sh);
+    tool = "select"; sel = sh.id; tools(); props(); paint(); hist.snap();
+    toast(tt("Image en direct posée dans le dessin."));
+  }
+  function toggleLive() {
+    if (liveCtl) { liveCtl.close(); liveCtl = null; liveSlot.textContent = ""; tools(); return; }
+    liveCtl = liveBox({ snap: liveSnap, keep: liveKeep });
+    liveSlot.append(liveCtl.el); tools();
+  }
   fileIn.addEventListener("change", async () => {
     const f = fileIn.files[0]; fileIn.value = "";
     if (!f) return;
@@ -795,6 +822,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       h("button.mini", { type: "button", title: tt("Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite"), on: { click: mirror } }, tt("⇋ Miroir")),
       h("button.mini" + (sym ? ".on" : ""), { type: "button", title: tt("Symétrie : chaque forme tracée a son jumeau en miroir de l'autre côté de l'axe. Déplacer, tourner, agrandir ou régler l'une fait suivre l'autre, en miroir (yeux, oreilles, visage)."),
         on: { click: () => { sym = !sym; zone(); tools(); paint(); toast(sym ? tt("Symétrie : ce que tu traces a son jumeau en face.") : tt("Symétrie coupée : les jumeaux déjà faits restent liés.")); } } }, sym ? tt("✓ Symétrie") : tt("⫼ Symétrie")),
+      h("button.mini" + (liveCtl ? ".on" : ""), { type: "button", title: tt("Croquis -> image en direct (essai, fal, payant) : le dessin part à mesure qu'on trace, l'image revient à côté"), on: { click: toggleLive } }, tt("⚡ En direct")),
       layers ? h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes du calque en cours"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout ce calque ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); hist.snap(); } } } }, tt("Effacer le calque"))
         : h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout le dessin de ce fond ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); } } } }, tt("Tout effacer")));
   }
@@ -989,10 +1017,10 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   document.addEventListener("keyup", keyUp, true);
   const away = () => bar.querySelectorAll(".draw-drop.open").forEach((x) => x.classList.remove("open"));
   document.addEventListener("click", away);
-  const done = () => { document.removeEventListener("keyup", keyUp, true); document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
+  const done = () => { if (liveCtl) { liveCtl.close(); liveCtl = null; } document.removeEventListener("keyup", keyUp, true); document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
   tools(); props(); paint();
   // un element (kit) n'a ni zone agrandie ni lignes d'effet : son cadre est celui de l'atelier
-  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, h("div.row.wrap", extra || "", stageBgControl(() => zone()), zoomBar), ghostBar, kit ? "" : extBar, h("div.draw-frame", svg), kit ? "" : fxBox), side),
+  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, h("div.row.wrap", extra || "", stageBgControl(() => zone()), zoomBar), ghostBar, kit ? "" : extBar, h("div.draw-framerow", h("div.draw-frame", svg), liveSlot), kit ? "" : fxBox), side),
     [{ label: tt("Annuler"), click: done },
      { label: saveLabel, primary: true, click: () => { finish(true); done();
        const out = layers ? { shapes: layers.filter((l) => !l.hidden).flatMap((l) => l.shapes), layers } : { shapes };

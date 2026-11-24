@@ -43,3 +43,5 @@ A
 OU
 Space
 .card, .acard, button, input, select, label, a, .pick-acts
+live.js: Turn this rough sketch into a clean finished character drawing in black ink line art on white paper, same pose, same proportions, same composition
+live.js: a clean drawing

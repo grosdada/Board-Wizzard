@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+REALTIME_APP = "fal-ai/flux-2/klein/realtime"              # croquis -> image en direct (essai)
 from . import accounts, brain, cost, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -477,6 +478,32 @@ class Handler(BaseHTTPRequestHandler):
                 parts.remove(seg[1], seg[2])
                 return self.send_json({"ok": True})
             return self.send_json(parts.catalogue())
+        if head == "fal" and seg[1:] == ["realtime-token"] and method == "POST":   # croquis -> image en direct (essai)
+            # jeton court fal pour le temps reel : la cle reste sur le serveur (ou celle du navigateur d'un invite non VIP)
+            import urllib.request
+            key = self.headers.get("X-Fal-Key") or ("" if self.own_key() else settings.load()["fal"].get("key") or "")
+            if not key:
+                raise ApiError("aucune clé fal : entre ta clé dans Réglages › fal (cloud)")
+            app_id = (data or {}).get("app") or REALTIME_APP
+            if app_id != REALTIME_APP:
+                raise ApiError("modèle temps réel non autorisé")
+            req = urllib.request.Request("https://rest.fal.ai/tokens/realtime", method="POST",
+                                         data=json.dumps({"app": app_id, "duration": 120}).encode(),
+                                         headers={"Content-Type": "application/json", "Authorization": "Key " + key})
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    raw = r.read().decode("utf-8", "replace")
+            except Exception as e:                                  # noqa: BLE001
+                raise ApiError("fal a refusé le jeton : %s" % str(e)[:200], 502)
+            try:
+                tok = json.loads(raw)
+            except ValueError:
+                tok = raw.strip().strip('"')
+            if isinstance(tok, dict):
+                if not tok.get("token"):
+                    raise ApiError("fal n'a pas rendu de jeton : %s" % str(tok)[:200], 502)
+                tok = tok["token"]
+            return self.send_json({"token": tok, "app": app_id, "duration": 120})
         if head == "procedural":                                    # objets tout faits : dessines et tournes sans calcul
             d = data or {}
             if seg[1:] == ["preview"] and method == "POST":
