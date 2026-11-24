@@ -249,9 +249,10 @@ export function cardKey(lips, frames, i) {
   let key = null, far = 1e9;
   // image de dos (mouth.json ext : le bout des levres sur le bord de la silhouette) : seulement les cartes de dos, et
   // inversement, pour ne pas poser une bouche de face sur un dos
+  // carte de remplacement d'une image ratee (k.seul) : elle ne sert qu'a son image, jamais recalee sur une voisine
   // cartes « bas du visage » cuites image par image (tools/levres_bake.py, lips.exact) : une carte de face ne sert qu'a
   // SON image, jamais recalee sur une voisine (la tete a tourne : double contour de joue)
-  for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; if (!!(m.ext || m.back) !== !!(k.dos || (frames[k.f] && (frames[k.f].ext || frames[k.f].back)))) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if (lips.exact && !k.dos && d > 0) continue; if (d < far) { far = d; key = k; } }
+  for (const k of lips.keys) { if (!k.up0 && (!frames[k.f] || !frames[k.f].up)) continue; if (!!(m.ext || m.back) !== !!(k.dos || (frames[k.f] && (frames[k.f].ext || frames[k.f].back)))) continue; let d = Math.abs(k.f - i); d = Math.min(d, n - d); if ((lips.exact || k.seul) && !k.dos && d > 0) continue; if (d < far) { far = d; key = k; } }
   return key && far <= LIPS_REACH ? { key, far } : null;
 }
 // choix commun a la carte et a sa gomme : { key, letter, file, tf }, { empty } (silence) ou null (pas de carte pour cet angle)
