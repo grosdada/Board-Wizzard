@@ -1891,7 +1891,9 @@
   "Tire un corps au hasard dans la banque ouverte": "Draws a random body from the open bank",
   "Ouvre le générateur de corps avec cette tête : torse, bras, jambes, chaussures… à assembler ou à dessiner": "Opens the body generator with this head: torso, arms, legs, shoes… to assemble or draw",
   "🧍 Composer un corps…": "🧍 Build a body…",
-  "Supprimer la banque « {0} » ? Elle est mise de côté (data/parts/_retires), pas détruite ; les portraits et corps déjà enregistrés gardent leurs éléments.": "Delete the bank “{0}”? It is set aside (data/parts/_retires), not destroyed; portraits and bodies already saved keep their elements."
+  "Supprimer la banque « {0} » ? Elle est mise de côté (data/parts/_retires), pas détruite ; les portraits et corps déjà enregistrés gardent leurs éléments.": "Delete the bank “{0}”? It is set aside (data/parts/_retires), not destroyed; portraits and bodies already saved keep their elements.",
+  "Illustration": "Illustration",
+  "Le trait est une version de l'illustration, tracée pour être nette à tout zoom. L'illustration reste toujours là.": "Line art is a version of the illustration, traced to stay sharp at any zoom. The illustration is always kept."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

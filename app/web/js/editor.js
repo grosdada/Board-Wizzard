@@ -252,7 +252,7 @@ export class Editor {
           const gsd = groundShadow(l, box);                  // ombre portee : sous l'element
           if (gsd) grp.append(s("path", { d: gsd.d, fill: gsd.col, opacity: gsd.a, "pointer-events": "none",
                                              filter: this.blur(defs, gsd.blur + blurOf(pan, depthOf(pan, i), bb)) }));
-          const vf = vecFrame(sp, () => this.render(true));
+          const vf = vecFrame(l.ill ? null : sp, () => this.render(true));   // l.ill : l'illustration plutot que le trait
           if (vf) {                                          // dessin en traces : net a tout zoom, trait reglable
             const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc;
             const col = bodyFill(l), ink = inkFill(l), st = inkStroke(l.lw, col, ink, vf.sw), tag = { "data-layer": l.id, "data-panel": g.id };

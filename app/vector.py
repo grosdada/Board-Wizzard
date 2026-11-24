@@ -121,11 +121,28 @@ def _parts(body, ink):
     return out
 
 
+INK_MAX = 0.65        # au-dela, ce n'est pas un dessin au trait mais un dessin en couleur (lavis) : pas de traces
+
+
+def ink_ratio(src):
+    """Part de la silhouette prise pour de l'encre (plus sombre que le papier). Dessin au trait : 0,1 a 0,5 ; dessin
+    colore au lavis : 0,8 et plus (tout le corps devient de l'encre et le trace ne donne qu'une silhouette noire)."""
+    im = np.asarray(Image.open(src).convert("RGBA"))
+    solid = im[..., 3] > 128
+    if im[..., 3].min() > 250 or not solid.any():
+        return 0.0
+    grey = cv2.cvtColor(im[..., :3], cv2.COLOR_RGB2GRAY)
+    return float(((grey < 175) & solid).sum() / solid.sum())
+
+
 def orbit(folder, n, hollow=False):
-    """Trace les n images d'une orbite (000.webp...). Renvoie True si vec.json est ecrit."""
+    """Trace les n images d'une orbite (000.webp...). Renvoie True si vec.json est ecrit, False pour un dessin en
+    couleur (il s'affiche en images : ses traces ne seraient qu'une silhouette noire)."""
     if cv2 is None:
         return False
     folder = Path(folder)
+    if not hollow and np.median([ink_ratio(folder / ("%03d.webp" % i)) for i in range(0, n, 6)]) > INK_MAX:
+        return False
     frames, w, h, sws = [], 0, 0, []
     for i in range(n):
         w, h, body, ink, parts, sw = frame(folder / ("%03d.webp" % i), hollow)

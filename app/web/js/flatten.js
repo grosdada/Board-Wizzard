@@ -65,7 +65,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   for (let i = 0; i < layers.length; i++) {
     const l = layers[i], item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
     if (!sp) continue;
-    const vf = await vecReady(sp);
+    const vf = await vecReady(l.ill ? null : sp);
     if (vf) {                                              // dessin en traces : dessine en vectoriel, a la taille du canvas
       const box = layerBox(local, l, { w: vf.w, h: vf.h }), sc = Math.min(box.w / vf.w, box.h / vf.h);
       const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), inkc = inkFill(l), st = inkStroke(l.lw, col, inkc, vf.sw), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);

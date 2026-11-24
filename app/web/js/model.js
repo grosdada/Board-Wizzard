@@ -19,7 +19,7 @@ export function sprite(item, vid, f) {
   if (v.orbit && v.orbit.n) {
     const n = v.orbit.n, i = ((Math.round(f || 0) % n) + n) % n;
     return { url: `/bank/${id}/${v.orbit.dir}/${pad3(i)}.webp?t=${v.orbit.t || 0}`, w: v.orbit.w, h: v.orbit.h, n, i, orbit: true,
-             vec: v.orbit.vec ? `/bank/${id}/${v.orbit.dir}/vec.json?v=${v.orbit.vt || 0}` : null,
+             vec: v.orbit.vec && item.style === "dessin" ? `/bank/${id}/${v.orbit.dir}/vec.json?v=${v.orbit.vt || 0}` : null,
              head: v.orbit.head ? `/bank/${id}/${v.orbit.dir}/head.json?v=${v.orbit.vt || 0}` : null,   // tete suivie (corps de mannequin)
              mouth: v.orbit.mouth ? `/bank/${id}/${v.orbit.dir}/mouth.json?v=${v.orbit.mt || 0}` : null,
              lips: v.orbit.mouth && v.orbit.lips ? `/bank/${id}/${v.orbit.dir}/lips.json?v=${v.orbit.lips}` : null, dir: `/bank/${id}/${v.orbit.dir}` };   // bouches dessinees dans le style du personnage (tools/levres.py)   // bouche du dessin, suivie (lip sync « trace »)

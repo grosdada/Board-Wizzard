@@ -161,7 +161,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const par = anim.parallax ? (anim.pstr ?? 0.4) * (depthOf(pan, li) - 0.5) : 0, bl = blur(depthOf(pan, li));
       const kp = perspOf(depthOf(pan, li), c.dz);
       if (!kp) return;                                     // la camera l'a depasse
-      const box = layerBox(bb, Object.assign({}, l, s, { x: c.cx + (s.x - c.cx) * kp + (c.cx - 0.5) * par, y: c.cy + (s.y - c.cy) * kp + (c.cy - 0.5) * par, s: s.s * kp }), sp), vf = vecFrame(sp, again);
+      const box = layerBox(bb, Object.assign({}, l, s, { x: c.cx + (s.x - c.cx) * kp + (c.cx - 0.5) * par, y: c.cy + (s.y - c.cy) * kp + (c.cy - 0.5) * par, s: s.s * kp }), sp), vf = vecFrame(l.ill ? null : sp, again);
       const flip = l.flip ? `translate(${f1(2 * box.cx)} 0) scale(-1 1) ` : "";
       const gsd = groundShadow(l, box);                    // ombre portee : sous l'element
       const rz = s.rz || 0;                 // ce qui suit (dessin, bouche, cadre, poignees) tourne autour du centre
