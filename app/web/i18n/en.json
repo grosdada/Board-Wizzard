@@ -2113,7 +2113,17 @@
   "Télécharger": "Download",
   "Générations IA": "AI generations",
   "Chaque image ou vidéo rendue par fal ou par les machines est gardée ici, téléchargée ou non. Dossier sur le poste : {0}": "Every image or video rendered by fal or the machines is kept here, downloaded or not. Folder on the host: {0}",
-  "Rien pour l'instant : les prochaines générations arriveront ici.": "Nothing yet: the next generations will arrive here."
+  "Rien pour l'instant : les prochaines générations arriveront ici.": "Nothing yet: the next generations will arrive here.",
+  "Angle (orbite)": "Angle (orbit)",
+  "Ombre : gris": "Shadow: grey",
+  "Ombre : largeur": "Shadow: width",
+  "Ombre : lumière": "Shadow: light",
+  "Agrandir ou rétrécir le décor de la case (1 : il remplit juste la case ; moins : plus petit que la case)": "Enlarge or shrink the panel's set (1: it just fills the panel; less: smaller than the panel)",
+  "Taille du décor": "Set size",
+  "Taille 1, décor centré": "Size 1, set centred",
+  "Recentrer le décor": "Recentre the set",
+  "Canal : clic droit sur la piste pour replier": "Channel: right-click the track to collapse",
+  "Déployer les canaux (position, taille, inclinaison, angle, pose, trait, ombre)": "Expand channels (position, size, tilt, angle, pose, line, shadow)"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

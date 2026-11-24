@@ -1230,7 +1230,7 @@ class App {
           swatch(tn.c || "#e9b98f", (c) => { pan.bgtint = { on: true, c }; cb.checked = true; this.editor.render(true); this.commitSoon("bgtint"); })),
           hslFold(() => pan.bghsl, (n) => { if (n) pan.bghsl = n; else delete pan.bghsl; }, "bghsl", tt("Teinte, saturation, luminosité et contraste du décor, comme dans Photoshop (Ctrl+U).")));
       }
-      box.append(range(tt("Zoom du fond"), (pan.view || {}).zoom || 1, 1, 6, 0.01, (x) => { const t0 = travel(), kx = t0.mx > 1e-4 ? t0.pl.ox / t0.mx : 0, ky = t0.my > 1e-4 ? t0.pl.oy / t0.my : 0; pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); const t1 = travel(); pan.view.ox = kx * t1.mx; pan.view.oy = ky * t1.my; sync(); }, "pan"),
+      box.append(range(tt("Zoom du fond"), (pan.view || {}).zoom || 1, 0.25, 6, 0.01, (x) => { const t0 = travel(), kx = t0.mx > 1e-4 ? t0.pl.ox / t0.mx : 0, ky = t0.my > 1e-4 ? t0.pl.oy / t0.my : 0; pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); const t1 = travel(); pan.view.ox = kx * t1.mx; pan.view.oy = ky * t1.my; sync(); }, "pan"),
         rx, ry, h("div.row", h("button.mini", { title: tt("Zoom 1, fond centré"), on: { click: () => { pan.view = { zoom: 1, ox: 0, oy: 0 }; this.commit("pan"); this.editor.render(); this.refreshInspector(); } } }, tt("Recentrer le fond")),
           h("span.muted", bg.orbit ? tt("Maj + glisser dans la case : recadrer") : tt("Glisser dans la case : recadrer"))));
       sync();

@@ -65,6 +65,22 @@ export function valueAt(keys, base, t, n) {
       const a = ks[i], b = ks[i + 1], u = ease((t - a.t) / Math.max(1e-6, b.t - a.t), b.e);
       out[p] = a[p] + (b[p] - a[p]) * u;
     }
+    for (const p of ["f", "v"]) {                            // angle de l'orbite (au plus court) et pose (par paliers)
+      const ks = keys.filter((k) => k[p] != null && !(k.skip || []).includes(p));
+      if (!ks.length) { if (keys.some((k) => k[p] != null)) out[p] = base[p]; continue; }
+      if (p === "v") { let v = ks[0].v; for (const k of ks) if (k.t <= t) v = k.v; out.v = v; continue; }
+      if (t <= ks[0].t) { out.f = ks[0].f; continue; }
+      if (t >= ks[ks.length - 1].t) { out.f = ks[ks.length - 1].f; continue; }
+      let i = 0;
+      while (i < ks.length - 2 && ks[i + 1].t <= t) i++;
+      const a = ks[i], b = ks[i + 1];
+      if (b.e === "fixe") { out.f = a.f; continue; }
+      const u = ease((t - a.t) / Math.max(1e-6, b.t - a.t), b.e);
+      let d = b.f - a.f;
+      if (n) { d = ((d % n) + n) % n; if (d > n / 2) d -= n; }
+      out.f = Math.round(a.f + d * u);
+      if (n) out.f = ((out.f % n) + n) % n;
+    }
     return out;
   }
   const ks = keys;
@@ -277,7 +293,14 @@ export function openMontage(app, pid) {
     hist.snap(); paint(); lanes(); props();
   }
   let stretchOn = false;                                     // « Resize » : une barre a deux poignees etire ou resserre les cles prises
-  let chanOpen = localStorage.getItem("bw.camChannels") === "1";      // canaux de la camera deployes dans la timeline
+  // canaux deployes dans la timeline : la camera et chaque element (clic droit sur sa piste) ; une piste par reglage
+  const chanOpen = new Set((() => { try { return JSON.parse(localStorage.getItem("bw.chanOpen") || "[]"); } catch (e) { return []; } })());
+  if (localStorage.getItem("bw.camChannels") === "1") chanOpen.add("cam");
+  const chanToggle = (id) => { if (chanOpen.has(id)) chanOpen.delete(id); else chanOpen.add(id);
+    localStorage.setItem("bw.camChannels", chanOpen.has("cam") ? "1" : ""); localStorage.setItem("bw.chanOpen", JSON.stringify([...chanOpen].slice(-60))); lanes(); };
+  const LAYER_CHANNELS = [["x", tt("Position ↔")], ["y", tt("Position ↕")], ["s", tt("Taille")], ["rz", tt("Inclinaison")], ["f", tt("Angle (orbite)")], ["v", tt("Pose")],
+    ["lw", tt("Trait")], ["shg", tt("Ombre : gris")], ["shw", tt("Ombre : largeur")], ["sha", tt("Ombre : lumière")]];
+  const chansOf = (id) => (id === "cam" ? CHANNELS : layerOf(id) ? LAYER_CHANNELS : []);
   const CAMS = { cam: tt("Caméra"), fo: tt("Mise au point"), bl: tt("Flou"), fx: tt("Lignes d'effet") };      // pistes de la camera ; fo et bl : profondeur de champ
 
   // ------------------------------------------------------------------------------------------ visionneuse
@@ -648,7 +671,7 @@ export function openMontage(app, pid) {
       const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot, dz: full.dz || 0 } : CAMS[id] ? { [id]: full[id] } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
       if (!keys.length && t > 0.04) keys.push(Object.assign({ t: 0 }, base));     // premiere cle posee plus loin : on garde le depart
       k = Object.assign({ t: f3(t) }, base);
-      if (id === "cam" && chanOpen && keys.length && CHANNELS.some(([c]) => c in patch)) k.skip = CHANNELS.map(([c]) => c).filter((c) => !(c in patch));   // canaux deployes : la cle ne porte que ce qu'on regle
+      if (chanOpen.has(id) && keys.length && chansOf(id).some(([c]) => c in patch)) k.skip = chansOf(id).map(([c]) => c).filter((c) => !(c in patch));   // canaux deployes : la cle ne porte que ce qu'on regle
       keys.push(k); keys.sort((a, b) => a.t - b.t);
     }
     Object.assign(k, patch);
@@ -728,6 +751,12 @@ export function openMontage(app, pid) {
         ...(anim.shake && anim.shake.on ? [[tt("Amplitude"), "a", 0, 5, 0.05, tt("Ampleur du tremblé, en % de la largeur de l'image")], [tt("Vitesse"), "v", 0.1, 4, 0.05, tt("Lent : on respire ; rapide : on court")], [tt("Roulis"), "r", 0, 4, 0.05, tt("Inclinaison qui oscille, en degrés")]].map(([lab, k, min, max, step, title]) =>
           h("label.row.range", { title }, lab, h("input", { type: "range", min, max, step, value: anim.shake[k] ?? 1, on: { input: (e) => { anim.shake[k] = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (+(anim.shake[k] ?? 1)).toFixed(2)))) : []),
         h("h4", tt("Décor")),
+        pan.bg ? (() => {                                     // taille du decor : plus grand (on recadre dedans) ou plus petit que la case
+          const z0 = (pan.view || {}).zoom || 1, out = h("output", z0.toFixed(2));
+          return h("div", h("label.row.range", { title: tt("Agrandir ou rétrécir le décor de la case (1 : il remplit juste la case ; moins : plus petit que la case)") }, tt("Taille du décor"),
+            h("input", { type: "range", min: 0.25, max: 6, step: 0.01, value: z0, on: { input: (e) => { pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: +e.target.value }); out.textContent = (+e.target.value).toFixed(2); paint(); }, change: () => hist.snap() } }), out),
+            h("button.mini", { title: tt("Taille 1, décor centré"), on: { click: () => { pan.view = { zoom: 1, ox: 0, oy: 0 }; hist.snap(); paint(); props(); } } }, tt("Recentrer le décor")));
+        })() : "",
         h("button.mini", { title: tt("Ouvre l'atelier de dessin du fond de cette case : formes simples, tracés, gris en trame, lignes d'effet (touche Q)"), on: { click: drawDecor } }, pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond")));
     } else {
       const it = itemOf(l), n = nOf(l, cur().v);
@@ -885,16 +914,16 @@ export function openMontage(app, pid) {
     ctxMenu(e, items);
   }
   const chanOn = (k, c) => k[c] != null && !(k.skip || []).includes(c);
-  function dropChannel(k, c) {                              // la cle ne compte plus pour ce canal ; sans canal, elle disparait
+  function dropChannel(k, c, id = "cam") {                  // la cle ne compte plus pour ce canal ; sans canal, elle disparait
     k.skip = [...new Set([...(k.skip || []), c])];
-    if (CHANNELS.every(([q]) => !chanOn(k, q))) anim.tracks.cam = keysOf("cam").filter((x) => x !== k);
+    if (chansOf(id).every(([q]) => !chanOn(k, q))) anim.tracks[id] = keysOf(id).filter((x) => x !== k);
   }
-  function splitChannel(k, c) {                             // deplacer un seul canal : il part dans sa propre cle, au meme instant
-    if (CHANNELS.every(([q]) => q === c || !chanOn(k, q))) return k;
-    const n = { t: k.t, [c]: k[c], skip: CHANNELS.map(([q]) => q).filter((q) => q !== c) };
+  function splitChannel(k, c, id = "cam") {                 // deplacer un seul canal : il part dans sa propre cle, au meme instant
+    if (chansOf(id).every(([q]) => q === c || !chanOn(k, q))) return k;
+    const n = { t: k.t, [c]: k[c], skip: chansOf(id).map(([q]) => q).filter((q) => q !== c) };
     if (k.e) n.e = k.e;
-    dropChannel(k, c);
-    keysOf("cam").push(n); keysOf("cam").sort((a, b) => a.t - b.t);
+    dropChannel(k, c, id);
+    keysOf(id).push(n); keysOf(id).sort((a, b) => a.t - b.t);
     return n;
   }
   // copier / coller des cles (Ctrl+C, Ctrl+V, « Dupliquer » au clic droit) : elles gardent leurs ecarts ; la premiere se
@@ -933,7 +962,7 @@ export function openMontage(app, pid) {
     const group = picked.has(k) && picked.size > 1 ? [...picked] : [k];   // plusieurs cles selectionnees : elles prennent toutes le choix
     const box = h("div.menu.mt-menu", h("div.mhead", group.length > 1 ? tt`${group.length} clés sélectionnées · arrivée` : tt`Clé à ${k.t.toFixed(2)} s · arrivée`),
       Object.entries(EASES).map(([v, n]) => h("button" + ((k.e || "doux") === v ? ".on" : ""), { on: { click: () => { for (const q of group) q.e = v; box.remove(); paint(); lanes(); props(); } } }, ((k.e || "doux") === v ? "✓ " : "") + n)),
-      ch ? h("button.danger", { on: { click: () => { dropChannel(k, ch); selKey = null; box.remove(); paint(); lanes(); props(); } } }, tt`Retirer cette clé du canal « ${CHANNELS.find(([c]) => c === ch)[1]} »`) : "",
+      ch ? h("button.danger", { on: { click: () => { dropChannel(k, ch, id); selKey = null; box.remove(); paint(); lanes(); props(); } } }, tt`Retirer cette clé du canal « ${(chansOf(id).find(([c]) => c === ch) || [ch, ch])[1]} »`) : "",
       h("button", { title: tt("La copie se pose à la tête de lecture (une demi-seconde plus loin si la tête est sur la clé)"), on: { click: () => {
         box.remove(); if (!picked.has(k)) { picked.clear(); selKey = k; }
         const t0 = Math.min(...group.map((q) => q.t)), at = Math.abs(t - t0) < 0.02 ? t0 + 0.5 : t;
@@ -1611,17 +1640,30 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       const lane = h("div.mt-lane" + (muteOf(id) != null ? ".muted" : ""), { "data-lane": id }, keysOf(id).map((k) => { const d = h("span.key" + (k === selKey || picked.has(k) ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: tt`${k.t.toFixed(2)} s · ${EASES[k.e || "doux"]} (clic droit pour changer)` }); d.__key = k; d.dataset.key = id; return d; }));
       tl.append(h("div.mt-row" + (sel === id ? ".on" : ""), h("div.mt-name", { on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, muteBtn(id), ico, " ", name, keysOf(id).length ? h("span.count", String(keysOf(id).length)) : ""), lane));
     };
+    const chanRows = (id) => {                                // canaux deployes : une piste par reglage (camera ou element)
+      if (!chanOpen.has(id)) return;
+      const l = layerOf(id), it = l && itemOf(l);
+      for (const [c, name] of chansOf(id)) {
+        const ks = keysOf(id).filter((k) => chanOn(k, c));
+        if (l && !ks.length) {                                // element : on ne montre que les reglages qui le concernent
+          if (c === "f" && !(nOf(l, stateOf(l).v) > 0)) continue;
+          if (c === "v" && !(it && Object.keys(it.variants || {}).length > 1)) continue;
+          if (c.startsWith("sh") && !l.sh) continue;
+        }
+        if (l && (c === "lw" || c.startsWith("sh")) && new Set(ks.map((k) => String(k[c]))).size <= 1 && !ks.some((k) => k.skip)) continue;   // trait, ombre : seulement s'ils bougent
+        const fmt = (k) => (typeof k[c] === "number" ? (+k[c]).toFixed(2) : String(k[c]));
+        const lane = h("div.mt-lane", { "data-lane": id, "data-ch": c }, ks.map((k) => { const d = h("span.key" + (k === selKey || picked.has(k) ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: tt`${k.t.toFixed(2)} s · ${name} = ${fmt(k)} (glisser : ce canal seul ; clic droit : retirer)` }); d.__key = k; d.dataset.key = id; d.dataset.ch = c; return d; }));
+        tl.append(h("div.mt-row.chan" + (sel === id ? ".on" : ""), h("div.mt-name", { title: tt("Canal : clic droit sur la piste pour replier") }, "\u00a0\u00a0└ ", name, ks.length ? h("span.count", String(ks.length)) : ""), lane));
+      }
+    };
     row("cam", tt("Caméra"), "🎥");
-    if (chanOpen) for (const [c, name] of CHANNELS) {           // canaux deployes : une piste par reglage de la camera
-      const ks = keysOf("cam").filter((k) => chanOn(k, c));
-      const lane = h("div.mt-lane", { "data-lane": "cam", "data-ch": c }, ks.map((k) => { const d = h("span.key" + (k === selKey || picked.has(k) ? ".on" : "") + "." + (k.e || "doux"), { style: `left:${pct(k.t)}`, title: tt`${k.t.toFixed(2)} s · ${name} = ${(+k[c]).toFixed(2)} (glisser : ce canal seul ; clic droit : retirer)` }); d.__key = k; d.dataset.key = "cam"; d.dataset.ch = c; return d; }));
-      tl.append(h("div.mt-row.chan" + (sel === "cam" ? ".on" : ""), h("div.mt-name", { title: tt("Canal de la caméra : clic droit sur la piste Caméra pour replier") }, "\u00a0\u00a0└ ", name, ks.length ? h("span.count", String(ks.length)) : ""), lane));
-    }
+    chanRows("cam");
     if (dof.on) { row("fo", tt("Mise au point"), "◎"); row("bl", tt("Flou"), "◌"); }
     if (fxAnim()) row("fx", tt("Lignes d'effet"), "⚡");
     for (const l of [...pan.layers].reverse()) {
       const name = itemOf(l) ? itemOf(l).name : tt("élément");
       row(l.id, name, "●");
+      chanRows(l.id);
       const lip = l.lip;
       if (lip && lip.src) {                                // la voix du personnage : un bloc a deplacer et a raccourcir par ses deux bouts
         const fps = lip.fps || 12, c = lip.cues || "";
@@ -1679,8 +1721,11 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       sel = l.id; ctxMenu(e, items);
       return;
     }
-    if (lane && lane.dataset.lane === "cam")                // piste Camera (ou un de ses canaux) : deployer ou replier les canaux
-      ctxMenu(e, [{ head: tt("Caméra") }, { label: chanOpen ? tt("Replier les canaux") : tt("Déployer les canaux (cadre, zoom, inclinaison, avancer)"), click: () => { chanOpen = !chanOpen; localStorage.setItem("bw.camChannels", chanOpen ? "1" : ""); lanes(); } }]);
+    const lid = lane && !row.classList.contains("voice") ? lane.dataset.lane : null;   // piste Camera ou d'un element (ou un de ses canaux)
+    if (lid === "cam")
+      ctxMenu(e, [{ head: tt("Caméra") }, { label: chanOpen.has("cam") ? tt("Replier les canaux") : tt("Déployer les canaux (cadre, zoom, inclinaison, avancer)"), click: () => chanToggle("cam") }]);
+    else if (lid && layerOf(lid))
+      ctxMenu(e, [{ head: itemOf(layerOf(lid)) ? itemOf(layerOf(lid)).name : tt("élément") }, { label: chanOpen.has(lid) ? tt("Replier les canaux") : tt("Déployer les canaux (position, taille, inclinaison, angle, pose, trait, ombre)"), click: () => chanToggle(lid) }]);
   });
   tl.addEventListener("pointerdown", (e) => {
     // les marges a gauche et a droite des pistes comptent aussi : on peut y commencer un lasso pour prendre les cles des bouts
@@ -1713,7 +1758,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
         drag = { kind: "keys", t0: timeAt({ clientX: e.clientX }, lane), start: new Map([...picked].map((q) => [q, q.t])) }; return;
       }
       picked.clear();
-      sel = e.target.dataset.key; selKey = e.target.dataset.ch ? splitChannel(k, e.target.dataset.ch) : k; drag = { kind: "key", key: selKey, lane }; seek(selKey.t, true); return;
+      sel = e.target.dataset.key; selKey = e.target.dataset.ch ? splitChannel(k, e.target.dataset.ch, e.target.dataset.key) : k; drag = { kind: "key", key: selKey, lane }; seek(selKey.t, true); return;
     }
     if (lane.dataset.lane === "ruler") { picked.clear(); selKey = null; drag = { kind: "seek", lane }; seek(timeAt(e, lane), true); return; }
     drag = { kind: "box", lane, x0: e.clientX, y0: e.clientY };  // dans une piste : simple clic = aller a cet instant, glisser = lasso
@@ -1772,7 +1817,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     }
     lanes(); props();
   });
-  tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); const c = lane.dataset.ch; setKey(sel, c ? { [c]: camAt()[c] } : {}); paint(); lanes(); props(); } });
+  tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); const c = lane.dataset.ch; setKey(sel, c ? { [c]: (sel === "cam" ? camAt() : layerOf(sel) ? stateOf(layerOf(sel)) : {})[c] } : {}); paint(); lanes(); props(); } });
 
   // ------------------------------------------------------------------------------------------ gestes dans l'image
   // point de la souris en fraction de l'image. On passe par la matrice du SVG : son cadre a l'ecran peut etre plus grand
@@ -2004,6 +2049,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (pan.draw) { if (JSON.stringify(real.draw) !== JSON.stringify(pan.draw)) real.show = "layers"; real.draw = pan.draw; } else delete real.draw;   // fond dessine (atelier ou profondeur des formes)
     if (pan.ground) real.ground = pan.ground; else delete real.ground;   // carte de sol : gardee dans la case
     if (pan.frame) real.frame = pan.frame; else delete real.frame;       // cadrage de la case (« 1re image → case »)
+    if (pan.view) real.view = pan.view; else delete real.view;           // taille et place du decor
     for (const id of Object.keys(anim.tracks)) if (!anim.tracks[id].length) delete anim.tracks[id];
     real.anim = anim;
     app.commit("montage"); app.editor.render(); app.refreshInspector();
@@ -2051,7 +2097,7 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
     h("label.row", tt("Durée (s)"), dur));
   paint(); lanes(); props();
   // quitter sans enregistrer : on previent (Annuler, croix, clic a cote, fermeture de l'onglet) si le montage a change
-  const stateNow = () => JSON.stringify({ layers: pan.layers, anim, dof, draw: pan.draw || null, ground: pan.ground || null });
+  const stateNow = () => JSON.stringify({ layers: pan.layers, anim, dof, draw: pan.draw || null, ground: pan.ground || null, view: pan.view || null });
   const state0 = stateNow();
   let leaving = false;
   const dirty = () => !leaving && stateNow() !== state0;

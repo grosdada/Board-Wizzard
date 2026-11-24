@@ -299,10 +299,10 @@ export function nearestAxis(orbit, f) {
 // fond : couverture * zoom, decalage (ox, oy) en fraction de la boite
 export function placement(bb, iw, ih, view) {
   const v = view || {};
-  const zoom = Math.max(1, v.zoom || 1);
+  const zoom = Math.max(0.2, v.zoom || 1);                  // < 1 : le decor plus petit que la case
   const s = Math.max(bb.w / iw, bb.h / ih) * zoom;
   const dw = iw * s, dh = ih * s;
-  const mx = (dw - bb.w) / (2 * bb.w), my = (dh - bb.h) / (2 * bb.h);
+  const mx = Math.abs(dw - bb.w) / (2 * bb.w), my = Math.abs(dh - bb.h) / (2 * bb.h);
   const ox = clamp(v.ox || 0, -mx, mx), oy = clamp(v.oy || 0, -my, my);
   return { x: bb.x0 + bb.w / 2 - dw / 2 + ox * bb.w, y: bb.y0 + bb.h / 2 - dh / 2 + oy * bb.h, w: dw, h: dh, ox, oy };
 }
