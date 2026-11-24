@@ -40,6 +40,68 @@ const url = (l) => `/parts/${l.file}?t=${l.t || 0}`;
 const boxW = (l) => l.w * l.kx * (l.half ? 0.5 : 1), boxH = (l) => l.w * l.r * l.ky;
 // ou poser l'image entiere pour que la moitie montree soit centree sur le calque (le reste est coupe)
 const imgX = (l) => { const W = l.w * l.kx; return l.half === "l" ? -W / 4 : l.half === "r" ? -3 * W / 4 : -W / 2; };
+// trait constant : l.tk = epaisseur du trait (unites de la feuille) gardee quelle que soit la taille de l'element. L'image
+// est redessinee a sa taille affichee, puis son encre est epaissie ou amincie (min / max de voisinage, en octogone)
+const imgCache = new Map();
+const loadImg = (src) => { if (!imgCache.has(src)) imgCache.set(src, new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; })); return imgCache.get(src); };
+const inkW = new Map();                          // fichier -> epaisseur du trait de l'image d'origine (pixels de l'image)
+async function nativeInk(l) {
+  const key = url(l);
+  if (inkW.has(key)) return inkW.get(key);
+  const im = await loadImg(key); if (!im) return 2;
+  const w = im.naturalWidth, h = im.naturalHeight, c = document.createElement("canvas"); c.width = w; c.height = h;
+  const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0);
+  const d = x.getImageData(0, 0, w, h).data, ink = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) { const a = d[i * 4 + 3] / 255, lum = (0.3 * d[i * 4] + 0.59 * d[i * 4 + 1] + 0.11 * d[i * 4 + 2]) * a + 255 * (1 - a); ink[i] = lum < 110 ? 1 : 0; }
+  let area = 0, per = 0;                         // epaisseur ~ 2 x surface / perimetre de l'encre
+  for (let y = 1; y < h - 1; y++) for (let xx = 1; xx < w - 1; xx++) { const i = y * w + xx; if (!ink[i]) continue; area++; if (!ink[i - 1] || !ink[i + 1] || !ink[i - w] || !ink[i + w]) per++; }
+  const v = per ? Math.max(1, 2 * area / per) : 2;
+  inkW.set(key, v); return v;
+}
+// passes de rayon 1 (carre puis croix, en alternance) : thick = l'encre s'etale (couleur : min, opacite : max), sinon elle maigrit
+function morph(d, w, h, n, thick) {
+  let src = d, dst = new Uint8ClampedArray(d.length);
+  for (let it = 0; it < n; it++) {
+    const sq = it % 2 === 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const o = (y * w + x) * 4;
+      let r = src[o], g = src[o + 1], b = src[o + 2], a = src[o + 3];
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy; if (yy < 0 || yy >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          if ((!dx && !dy) || (!sq && dx && dy)) continue;
+          const xx = x + dx; if (xx < 0 || xx >= w) continue;
+          const q = (yy * w + xx) * 4;
+          if (thick) { if (src[q] < r) r = src[q]; if (src[q + 1] < g) g = src[q + 1]; if (src[q + 2] < b) b = src[q + 2]; if (src[q + 3] > a) a = src[q + 3]; }
+          else { if (src[q] > r) r = src[q]; if (src[q + 1] > g) g = src[q + 1]; if (src[q + 2] > b) b = src[q + 2]; if (src[q + 3] < a) a = src[q + 3]; }
+        }
+      }
+      dst[o] = r; dst[o + 1] = g; dst[o + 2] = b; dst[o + 3] = a;
+    }
+    [src, dst] = [dst, src];
+  }
+  return src;
+}
+/** Image de l'element au trait constant, pour q pixels par unite de la feuille : { canvas, pad } (pad : marge ajoutee
+ *  autour de l'image, en unites de la feuille, pour que le contour epaissi ne soit pas coupe) ou null (image absente). */
+async function strokeCanvas(l, q) {
+  const im = await loadImg(url(l)); if (!im) return null;
+  const W = l.w * l.kx, hh = boxH(l);
+  q = Math.min(q, 1400 / Math.max(W, hh));
+  const nat = await nativeInk(l), cur = nat * (W * q) / im.naturalWidth, want = l.tk * q;
+  const n = Math.max(-40, Math.min(40, Math.round((want - cur) / 2)));      // rayon : on gagne (ou perd) 2 px de trait par pas
+  const p = Math.max(0, n) + 1, wp = Math.max(1, Math.round(W * q)), hp = Math.max(1, Math.round(hh * q));
+  const c = document.createElement("canvas"); c.width = wp + 2 * p; c.height = hp + 2 * p;
+  const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, p, p, wp, hp);
+  if (n) {
+    const img = x.getImageData(0, 0, c.width, c.height), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { const a = d[i + 3] / 255; d[i] = d[i] * a + 255 * (1 - a); d[i + 1] = d[i + 1] * a + 255 * (1 - a); d[i + 2] = d[i + 2] * a + 255 * (1 - a); }   // transparent = blanc pour la couleur
+    img.data.set(morph(d, c.width, c.height, Math.abs(n), n > 0)); x.putImageData(img, 0, 0);
+  }
+  return { canvas: c, pad: p / q, sx: (wp / q) / W, sy: (hp / q) / hh };
+}
+const tkCache = new Map();                       // cle -> { url, pad } (ecran)
+const tkKey = (l) => `${url(l)}|${(l.w * l.kx).toFixed(1)}|${boxH(l).toFixed(1)}|${l.tk}`;
 // masque au-dessus d'une coupe (ou d'un couvre-chef) : "cap" = hauteur du dessus de la coupe (part de la hauteur de
 // l'image, 0 = haut) a 48 abscisses regulieres. Rend des polygones, dans le repere de l'element, du ciel jusqu'au profil.
 function capPolys(l) {
@@ -128,6 +190,23 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     return q.length === 1 ? `<circle cx="${q[0][0].toFixed(1)}" cy="${q[0][1].toFixed(1)}" r="${(s.w * hh / 2).toFixed(1)}" fill="#000"/>`
       : `<polyline points="${q.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ")}" fill="none" stroke="#000" stroke-width="${(s.w * hh).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`; }).join("");
   let erasing = false, eraseW = 28;                         // gomme allumee, epaisseur (unites de la feuille)
+  const tkLast = new Map(), tkBusy = new Set();               // calque -> derniere image au trait constant ; calculs en cours
+  const tkHref = (l) => {
+    if (!l.tk) return null;
+    const k = tkKey(l), got = tkCache.get(k);
+    if (got) { tkLast.set(l.n, got); return got; }
+    if (!tkBusy.has(k)) {
+      tkBusy.add(k);
+      setTimeout(async () => {
+        if (!layers.includes(l) || tkKey(l) !== k) { tkBusy.delete(k); return; }   // la taille a encore change : le suivant
+        const r = await strokeCanvas(l, 1.5);
+        if (r) { const blob = await new Promise((ok) => r.canvas.toBlob(ok)); tkCache.set(k, { url: URL.createObjectURL(blob), pad: r.pad });
+          if (tkCache.size > 80) { const [k0, v0] = tkCache.entries().next().value; URL.revokeObjectURL(v0.url); tkCache.delete(k0); } }
+        tkBusy.delete(k); paint();
+      }, 120);
+    }
+    return tkLast.get(l.n) || null;
+  };
   const paint = () => {
     // chaque coupe (ou couvre-chef) masque, au-dessus de son profil, tout ce qui est pose dessous : le crane ne depasse pas
     let acc = "", defs = "";
@@ -142,7 +221,8 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       const W = l.w * l.kx, hh = boxH(l), bw = boxW(l);
       if (l.half) defs += `<clipPath id="idkh${l.n}"><rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}"/></clipPath>`;
       if ((l.er || []).length) defs += `<mask id="idker${l.n}" maskUnits="userSpaceOnUse" x="${imgX(l) - 2}" y="${-hh / 2 - 2}" width="${W + 4}" height="${hh + 4}"><rect x="${imgX(l) - 2}" y="${-hh / 2 - 2}" width="${W + 4}" height="${hh + 4}" fill="#fff"/>${eraseSvg(l)}</mask>`;
-      acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${imgX(l)}" y="${-hh / 2}" width="${W}" height="${hh}" preserveAspectRatio="none"${l.lock ? ` pointer-events="none"` : ` data-n="${l.n}"`}${l.half ? ` clip-path="url(#idkh${l.n})"` : ""}${(l.er || []).length ? ` mask="url(#idker${l.n})"` : ""}/>` +
+      const tk = tkHref(l), pd = tk ? tk.pad : 0;
+      acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${tk ? tk.url : url(l)}" x="${imgX(l) - pd}" y="${-hh / 2 - pd}" width="${W + 2 * pd}" height="${hh + 2 * pd}" preserveAspectRatio="none"${l.lock ? ` pointer-events="none"` : ` data-n="${l.n}"`}${l.half ? ` clip-path="url(#idkh${l.n})"` : ""}${(l.er || []).length ? ` mask="url(#idker${l.n})"` : ""}/>` +
         (sel === l.n || multi.has(l.n) ? `<rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
     }
     const ph = !BODYKIT && photo && photo.on ? (() => { const M = photo.M; return `<image href="${photo.url}" width="${photo.w}" height="${photo.h}" preserveAspectRatio="none" opacity="${photo.op}" pointer-events="none" transform="matrix(${M[0][0]} ${M[1][0]} ${M[0][1]} ${M[1][1]} ${M[0][2]} ${M[1][2]})"/>`; })() : "";
@@ -301,6 +381,21 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     const l = layers.find((x) => x.n === sel), out = h("output", (+l[key]).toFixed(step < 1 ? 2 : 0));
     return h("label.row.range", { title: title || "" }, label, h("input", { type: "range", min, max, step, value: l[key], "data-k": key, on: { input: (e) => { l[key] = +e.target.value; out.textContent = (+l[key]).toFixed(step < 1 ? 2 : 0); paint(); } } }), out);
   };
+  // trait constant : coche a cote de la taille ; l'epaisseur de depart est celle que le trait a a ce moment
+  const tkRow = (l) => {
+    const out = h("output", l.tk ? (+l.tk).toFixed(1) : "");
+    const rg = h("input", { type: "range", min: 0.5, max: 30, step: 0.5, value: l.tk || 3, disabled: !l.tk, title: tt("Épaisseur du trait gardée quelle que soit la taille de l'élément (unités de la feuille)"),
+      on: { input: (e) => { l.tk = +e.target.value; out.textContent = l.tk.toFixed(1); paint(); }, change: () => hist.snap() } });
+    const cb = h("input", { type: "checkbox", checked: !!l.tk, on: { change: async (e) => {
+      if (e.target.checked) {
+        const im = await loadImg(url(l)), nat = await nativeInk(l);
+        l.tk = Math.max(0.5, Math.min(30, Math.round(2 * nat * (l.w * l.kx) / ((im && im.naturalWidth) || 1)) / 2));
+        rg.value = l.tk; rg.disabled = false; out.textContent = l.tk.toFixed(1);
+      } else { delete l.tk; rg.disabled = true; out.textContent = ""; }
+      paint(); hist.snap();
+    } } });
+    return h("label.row.range.idk-tk", { title: tt("Trait constant : agrandir ou réduire l'élément ne change plus l'épaisseur de son trait") }, cb, tt("Trait constant"), rg, out);
+  };
   const props = () => {
     knobs.textContent = "";
     if (multi.size > 1) {
@@ -311,7 +406,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     const l = layers.find((x) => x.n === sel);
     if (!l) { knobs.append(h("p.muted", tt("Clique un élément dans la liste pour le poser. Sur le visage : glisser pour le déplacer, molette pour sa taille ; poignées des coins = taille, des côtés = étirer, rond du haut = tourner (Maj : crans de 15°). Flèches : déplacer (Maj : de dix). Suppr : retirer. Clic droit : miroir, empilement. Un seul élément par catégorie (sauf les signes) : en choisir un autre le remplace à la même place. Glisser depuis le vide : choisir plusieurs éléments d'un coup ; ✥ en haut à droite : déplacer tout le visage."))); return; }
     knobs.append(h("b", `${nameOf(l)} · ${l.name}`),
-      range(tt("Taille"), "w", 30, 950, 1), range(tt("Largeur"), "kx", 0.2, 4, 0.01, tt("Étire ou resserre l'élément en largeur")), range(tt("Hauteur"), "ky", 0.2, 4, 0.01, tt("Étire ou tasse l'élément en hauteur")),
+      range(tt("Taille"), "w", 30, 950, 1), tkRow(l), range(tt("Largeur"), "kx", 0.2, 4, 0.01, tt("Étire ou resserre l'élément en largeur")), range(tt("Hauteur"), "ky", 0.2, 4, 0.01, tt("Étire ou tasse l'élément en hauteur")),
       range(tt("Rotation"), "rot", -180, 180, 1),
       h("div.row.wrap", h("button.mini", { on: { click: () => { l.flip = !l.flip; paint(); } } }, tt("⇋ Miroir")),
         h("button.mini", { title: tt("Remet la taille et la place de départ"), on: { click: () => { home(l); paint(); props(); } } }, tt("↺ Place de départ")),
@@ -683,15 +778,16 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
         for (const p of polys) { x.beginPath(); p.forEach((q, i) => (i ? x.lineTo(q[0], q[1]) : x.moveTo(q[0], q[1]))); x.closePath(); x.fill(); }
         x.restore();
       }
-      const im = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = url(l); });
+      const tkc = l.tk ? await strokeCanvas(l, k) : null;
+      const im = tkc ? tkc.canvas : await loadImg(url(l));
       if (!im) continue;
-      const W = l.w * l.kx * k, hh = boxH(l) * k, bw = boxW(l) * k;
+      const W = l.w * l.kx * k, hh = boxH(l) * k, bw = boxW(l) * k, pk = tkc ? tkc.pad * k : 0;
       const er = (l.er || []).length, lc = er ? document.createElement("canvas") : null;
       if (lc) { lc.width = wpx; lc.height = hpx; }
       const y = lc ? lc.getContext("2d") : x;
       y.save(); y.translate(l.x * k, l.y * k); y.rotate(l.rot * Math.PI / 180); y.scale(l.flip ? -1 : 1, 1);
       if (l.half) { y.beginPath(); y.rect(-bw / 2, -hh / 2, bw, hh); y.clip(); }      // une moitie : seulement sa moitie de l'image
-      y.drawImage(im, imgX(l) * k, -hh / 2, W, hh);
+      y.drawImage(im, imgX(l) * k - pk, -hh / 2 - pk, W + 2 * pk, hh + 2 * pk);
       if (lc) {                                     // gomme : les coups effacent l'element seul
         y.globalCompositeOperation = "destination-out"; y.strokeStyle = "#000"; y.fillStyle = "#000"; y.lineCap = "round"; y.lineJoin = "round";
         for (const s of l.er) {
