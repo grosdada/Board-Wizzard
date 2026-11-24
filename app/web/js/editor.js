@@ -9,7 +9,7 @@ import { markShape, thin } from "./marks.js";
 import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
-import { frameToAngle, thinMask, lineWidth, tintOf, tintFilter, frameT, markupReady } from "./model.js";
+import { frameToAngle, thinMask, lineWidth, frameT, markupReady, cmFilter, layerCM, bgCM } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
@@ -204,7 +204,7 @@ export class Editor {
       const cp = s("clipPath", { id: "cp-" + g.id });
       cp.append(s("polygon", { points: pts(g.poly) }));
       defs.append(cp);
-      const grp = s("g", { "clip-path": `url(#cp-${g.id})` });
+      let grp = s("g", { "clip-path": `url(#cp-${g.id})` });
       const drawn = hasDraw(pan.draw);
       const empty = !pan.bg && !drawn && !(pan.layers || []).length && !pan.integrated && !pan.orbit;
       grp.append(s("polygon", { points: pts(g.poly), fill: empty ? "var(--empty)" : (page.fill || "#fff") }));
@@ -220,6 +220,10 @@ export class Editor {
         if (bg) {
           const pl = placement(bb, bg.w || 16, bg.h || 9, pan.view);
           const blur = blurOf(pan, 1, bb);
+          const bcm = bgCM(pan);                             // colorimetrie et colorize du decor
+          if (bcm) defs.insertAdjacentHTML("beforeend", cmFilter("bcm-" + g.id, bcm));
+          const bgrp = grp;
+          if (bcm) { grp = s("g", { filter: `url(#bcm-${g.id})` }); bgrp.append(grp); }
           const bvf = vecFrame(bg, () => this.render(true));
           if (bvf) {                                         // decor dessine, en traces : net au zoom, trait reglable
             const st = inkStroke(pan.bglw), gb = s("g", { transform: `translate(${pl.x} ${pl.y}) scale(${pl.w / bvf.w} ${pl.h / bvf.h})`, filter: this.blur(defs, blur), "data-bg": g.id });
@@ -231,6 +235,7 @@ export class Editor {
           } else
           grp.append(this.image("b:" + g.id, bg.url, { x: pl.x, y: pl.y, width: pl.w, height: pl.h, "data-bg": g.id,
                                                         preserveAspectRatio: "none", filter: this.blur(defs, blur) }));
+          grp = bgrp;
         }
         if (pan.ground && pan.ground.on) {                   // carte de sol, en perspective (ground.js)
           const gg = s("g", { "pointer-events": "none" });
@@ -289,7 +294,9 @@ export class Editor {
             gb.append(gi);
             if (fo) gw.insertAdjacentHTML("beforeend", opsSvg(fo.over, fattr));
             if (st.outline > 0) gv.append(s("path", { d: vf.body, fill: "none", stroke: "#111111", "stroke-width": st.outline, "pointer-events": "none" }));
-            grp.append(gv);
+            const vcm = layerCM(l, true);                    // colorimetrie de l'element (teinte, saturation, luminosite)
+            if (vcm) { defs.insertAdjacentHTML("beforeend", cmFilter("cm-" + g.id + "-" + l.id, vcm)); const gc = s("g", { filter: `url(#cm-${g.id}-${l.id})` }); gc.append(gv); grp.append(gc); }
+            else grp.append(gv);
             if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };
             return;
           }
@@ -297,10 +304,10 @@ export class Editor {
             x: box.x, y: box.y, width: box.w, height: box.h, preserveAspectRatio: "xMidYMax meet", "data-layer": l.id,
             "data-panel": g.id, transform: ((l.rz ? `rotate(${l.rz} ${box.cx} ${box.y + box.h / 2}) ` : "") + (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1)` : "")) || null,
             filter: this.blur(defs, blurOf(pan, depthOf(pan, i), bb)), class: "layer" });
-          const tc = tintOf(l);
-          if (tc) {                                          // colorize : la couleur en produit dans la decoupe
+          const cm = layerCM(l, false);
+          if (cm) {                                          // colorize et colorimetrie : une matrice de couleur sur l'image
             const tid = "tn-" + g.id + "-" + l.id;
-            defs.insertAdjacentHTML("beforeend", tintFilter(tid, tc));
+            defs.insertAdjacentHTML("beforeend", cmFilter(tid, cm));
             const gt = s("g", { filter: `url(#${tid})` });
             gt.append(im); grp.append(gt);
           } else grp.append(im);

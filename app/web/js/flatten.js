@@ -5,7 +5,7 @@ import { loadImage } from "./api.js";
 import { groundSvg } from "./ground.js";
 import { drawImage } from "./draw.js";
 import { faceOps, headReady, opsCanvas } from "./face.js";
-import { frameToAngle, variantOf, lineWidth, tintOf, frameT } from "./model.js";
+import { frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, cmPixels } from "./model.js";
 import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
 export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
@@ -14,7 +14,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
   const cv = document.createElement("canvas");
   cv.width = Math.round(bb.w * k / 16) * 16;
   cv.height = Math.round(bb.h * k / 16) * 16;
-  const ctx = cv.getContext("2d");
+  let ctx = cv.getContext("2d");
   const kx = cv.width / bb.w, ky = cv.height / bb.h;
   const local = { x0: 0, y0: 0, w: bb.w, h: bb.h };
   ctx.fillStyle = pg.page.fill || "#ffffff";
@@ -30,8 +30,18 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
     ctx.drawImage(im, x * kx, y * ky, w * kx, h * ky);
     ctx.restore();
   };
+  // colorimetrie (decor, element) : le dessin part sur un canvas a part, ses pixels prennent la matrice, puis il est pose
+  const graded = async (M, fn) => {
+    if (!M) return fn();
+    const main = ctx, oc = document.createElement("canvas");
+    oc.width = cv.width; oc.height = cv.height;
+    ctx = oc.getContext("2d"); ctx.imageSmoothingQuality = "high"; ctx.setTransform(main.getTransform());
+    try { await fn(); } finally { ctx = main; }
+    cmPixels(oc, M);
+    main.save(); main.setTransform(1, 0, 0, 1, 0, 0); main.drawImage(oc, 0, 0); main.restore();
+  };
   const bg = background(pan, app.bank, app.project.id);
-  if (bg) {
+  if (bg) await graded(bgCM(pan), async () => {
     const pl = placement(local, bg.w || 16, bg.h || 9, pan.view);
     const bvf = await vecReady(bg);
     if (bvf) {                                             // decor en traces
@@ -44,7 +54,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       if (st.width > 0) { ctx.strokeStyle = st.color; ctx.lineWidth = st.width; ctx.lineJoin = "round"; ctx.stroke(ink); }
       ctx.restore();
     } else draw(await loadImage(bg.url), pl.x, pl.y, pl.w, pl.h, sharp ? 0 : blurOf(pan, 1, bb));
-  }
+  });
   if (pan.ground && pan.ground.on) {                     // carte de sol, en perspective (ground.js)
     const gs = `<svg xmlns="http://www.w3.org/2000/svg" width="${cv.width}" height="${cv.height}" viewBox="0 0 ${bb.w} ${bb.h}">${groundSvg(pan.ground, { x: 0, y: 0, w: bb.w, h: bb.h })}</svg>`;
     ctx.drawImage(await loadImage("data:image/svg+xml;charset=utf-8," + encodeURIComponent(gs)), 0, 0, cv.width, cv.height);
@@ -71,6 +81,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), inkc = inkFill(l), st = inkStroke(l.lw, col, inkc, vf.sw), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);
       const body = new Path2D(vf.body), ink = new Path2D(vf.ink);
       cast(l, box);
+      await graded(layerCM(l, true), async () => {
       ctx.save();
       ctx.filter = blur > 0.4 ? `blur(${(blur * kx).toFixed(2)}px)` : "none";
       ctx.scale(kx, ky);
@@ -98,19 +109,17 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
       if (fo) opsCanvas(ctx, fo.over);
       if (st.outline > 0) { ctx.strokeStyle = "#111111"; ctx.lineWidth = st.outline; ctx.stroke(body); }
       ctx.restore();
+      });
       continue;
     }
     let im = await loadImage(sp.url);
     const box = layerBox(local, l, { w: im.naturalWidth, h: im.naturalHeight });
-    const tc = tintOf(l);
-    if (tc) {                                              // colorize : la couleur en produit, gardee dans la decoupe
-      const tcv = document.createElement("canvas"), w = im.naturalWidth, hh = im.naturalHeight;
-      tcv.width = w; tcv.height = hh;
-      const tx = tcv.getContext("2d");
-      tx.drawImage(im, 0, 0);
-      tx.globalCompositeOperation = "multiply"; tx.fillStyle = tc; tx.fillRect(0, 0, w, hh);
-      tx.globalCompositeOperation = "destination-in"; tx.drawImage(im, 0, 0);
-      im = tcv;
+    const cm = layerCM(l, false);
+    if (cm) {                                              // colorize et colorimetrie : la matrice sur les pixels, la decoupe gardee
+      const tcv = document.createElement("canvas");
+      tcv.width = im.naturalWidth; tcv.height = im.naturalHeight;
+      tcv.getContext("2d").drawImage(im, 0, 0);
+      im = cmPixels(tcv, cm);
     }
     cast(l, box);
     draw(im, box.x, box.y, box.w, box.h, sharp ? 0 : blurOf(pan, depthOf(pan, i), bb), l.flip, l.rz);

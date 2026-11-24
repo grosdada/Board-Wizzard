@@ -1893,7 +1893,16 @@
   "🧍 Composer un corps…": "🧍 Build a body…",
   "Supprimer la banque « {0} » ? Elle est mise de côté (data/parts/_retires), pas détruite ; les portraits et corps déjà enregistrés gardent leurs éléments.": "Delete the bank “{0}”? It is set aside (data/parts/_retires), not destroyed; portraits and bodies already saved keep their elements.",
   "Illustration": "Illustration",
-  "Le trait est une version de l'illustration, tracée pour être nette à tout zoom. L'illustration reste toujours là.": "Line art is a version of the illustration, traced to stay sharp at any zoom. The illustration is always kept."
+  "Le trait est une version de l'illustration, tracée pour être nette à tout zoom. L'illustration reste toujours là.": "Line art is a version of the illustration, traced to stay sharp at any zoom. The illustration is always kept.",
+  "Teinte / Saturation": "Hue / Saturation",
+  "Teinte": "Hue",
+  "Saturation": "Saturation",
+  "Luminosité": "Lightness",
+  "Contraste": "Contrast",
+  "Réinitialiser": "Reset",
+  "Teinte, saturation, luminosité et contraste de l'élément, comme dans Photoshop (Ctrl+U). Les bouches du lip sync suivent.": "Hue, saturation, lightness and contrast of the element, as in Photoshop (Ctrl+U). Lip sync mouths follow.",
+  "Teinte, saturation, luminosité et contraste du décor, comme dans Photoshop (Ctrl+U).": "Hue, saturation, lightness and contrast of the set, as in Photoshop (Ctrl+U).",
+  "Pose une couleur en produit sur tout le décor : le blanc prend la couleur, les traits et la peinture restent visibles.": "Multiplies a colour over the whole set: white takes the colour, lines and paint stay visible."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

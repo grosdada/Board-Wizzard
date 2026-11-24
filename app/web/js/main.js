@@ -935,6 +935,19 @@ class App {
     const pan = this.curPanel(), l = this.layer(), b = this.bubble();
     const range = (label, val, min, max, step, fn, kind) => { const out = h("output", fmt(val));
       return h("label.row.range", label, h("input", { type: "range", min, max, step, value: val, on: { input: (e) => { fn(+e.target.value); out.textContent = fmt(+e.target.value); this.editor.render(true); this.commitSoon(kind); } } }), out); };
+    // Teinte / Saturation / Luminosite (comme le Ctrl+U de Photoshop), plus Contraste : depliant, pour un element ou le decor
+    const hslFold = (get, set, kind, what) => {
+      this.folds = this.folds || { sh: true, gs: true, wig: false };
+      const g = get() || {}, put = (k, x) => { const n = Object.assign({}, get(), { [k]: x }); set(Object.values(n).some((v) => +v) ? n : null); };
+      const on = Object.values(g).some((v) => +v);
+      return h("details.fold", { open: !!this.folds.hsl, title: what, on: { toggle: (e) => { this.folds.hsl = e.target.open; } } },
+        h("summary", tt("Teinte / Saturation") + (on ? " ●" : "")),
+        range(tt("Teinte"), g.h || 0, -180, 180, 1, (x) => put("h", x), kind),
+        range(tt("Saturation"), g.s || 0, -100, 100, 1, (x) => put("s", x), kind),
+        range(tt("Luminosité"), g.l || 0, -100, 100, 1, (x) => put("l", x), kind),
+        range(tt("Contraste"), g.c || 0, -100, 100, 1, (x) => put("c", x), kind),
+        on ? h("button.mini", { on: { click: () => { set(null); this.commit(kind); this.editor.render(); this.refreshInspector(); } } }, tt("Réinitialiser")) : "");
+    };
     if (!pan) { box.append(h("h3", tt("Sélection")), h("p.muted", tt("Clique une case pour la régler ; glisse-y un décor puis des personnages depuis la banque."))); return; }
     if (l) {
       const item = this.bank.get(l.item), v = variantOf(item, l.v), sp0 = item && sprite(item, l.v, l.f), ls = pan.layers, i = ls.indexOf(l);
@@ -972,6 +985,7 @@ class App {
           h("label.row.check", cb, tt("Colorize ⓘ")),
           swatch(tn.c || "#e9b98f", (c) => { l.tint = { on: true, c }; cb.checked = true; this.editor.render(true); this.commitSoon("tint"); })));
       }
+      if (sp0) box.append(hslFold(() => l.hsl, (n) => { if (n) l.hsl = n; else delete l.hsl; }, "hsl", tt("Teinte, saturation, luminosité et contraste de l'élément, comme dans Photoshop (Ctrl+U). Les bouches du lip sync suivent.")));
       box.append(range(tt("Inclinaison"), l.rz || 0, -180, 180, 1, (x) => { l.rz = x; }, "rz"));
       box.append(rs, rpx, rpy,
         range(tt("Profondeur"), depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"));
@@ -1058,6 +1072,14 @@ class App {
       this.syncPan = sync;
       if (bg.vec) box.append(range(tt("Trait du fond"), pan.bglw || 0, -2, 6, 0.1, (x) => { pan.bglw = x; }, "bglw"),
         range(tt("Tremblé du fond"), pan.bghand || 0, 0, 10, 0.1, (x) => { pan.bghand = x; }, "bghand"), range(tt("Ondulation du fond"), pan.bgwave ?? 4, 0.5, 12, 0.1, (x) => { pan.bgwave = x; }, "bghand"));
+      {                                                    // colorize et colorimetrie du decor, comme pour un element
+        const tn = pan.bgtint || {};
+        const cb = h("input", { type: "checkbox", checked: !!tn.on, on: { change: (e) => { pan.bgtint = Object.assign({ c: "#e9b98f" }, pan.bgtint, { on: e.target.checked }); this.commit("bgtint"); this.editor.render(); } } });
+        box.append(h("div.row.colrow", { title: tt("Pose une couleur en produit sur tout le décor : le blanc prend la couleur, les traits et la peinture restent visibles.") },
+          h("label.row.check", cb, tt("Colorize ⓘ")),
+          swatch(tn.c || "#e9b98f", (c) => { pan.bgtint = { on: true, c }; cb.checked = true; this.editor.render(true); this.commitSoon("bgtint"); })),
+          hslFold(() => pan.bghsl, (n) => { if (n) pan.bghsl = n; else delete pan.bghsl; }, "bghsl", tt("Teinte, saturation, luminosité et contraste du décor, comme dans Photoshop (Ctrl+U).")));
+      }
       box.append(range(tt("Zoom du fond"), (pan.view || {}).zoom || 1, 1, 6, 0.01, (x) => { const t0 = travel(), kx = t0.mx > 1e-4 ? t0.pl.ox / t0.mx : 0, ky = t0.my > 1e-4 ? t0.pl.oy / t0.my : 0; pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); const t1 = travel(); pan.view.ox = kx * t1.mx; pan.view.oy = ky * t1.my; sync(); }, "pan"),
         rx, ry, h("div.row", h("button.mini", { title: tt("Zoom 1, fond centré"), on: { click: () => { pan.view = { zoom: 1, ox: 0, oy: 0 }; this.commit("pan"); this.editor.render(); this.refreshInspector(); } } }, tt("Recentrer le fond")),
           h("span.muted", bg.orbit ? tt("Maj + glisser dans la case : recadrer") : tt("Glisser dans la case : recadrer"))));

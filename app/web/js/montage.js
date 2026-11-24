@@ -14,7 +14,7 @@ import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, uses
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
 import { markupReady } from "./model.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, tintOf, tintFilter } from "./model.js";
+import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
 import { PRESETS } from "./presets.js";
 import { faceFor, opsSvg } from "./face.js";
@@ -151,6 +151,8 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, pan.view), vf = vecFrame(bgInfo, again);
       if (vf) { const st = inkStroke(pan.bglw), bw = wiggleFilter(`${pre}wgb`, pan.bghand, pan.bgwave, vf.w, vf.h, 11); o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})">${bw}<path d="${vf.body}" fill="#fff"/><path d="${vf.ink}"${bw ? ` filter="url(#${pre}wgb)"` : ""} fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/></g>`; }
       else o += `<image href="${bgInfo.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/>`;
+      const bcm = bgCM(pan);                               // colorimetrie et colorize du decor
+      if (bcm) o = cmFilter(`${pre}bcm`, bcm) + `<g filter="url(#${pre}bcm)">` + o + "</g>";
     }
     o += groundSvg(pan.ground, { x: 0, y: 0, w: W, h: H }, pre + "gr");          // carte de sol, en perspective (ground.js)
     bgIn = o; o = o0 + plane(1, bgIn); }
@@ -200,8 +202,8 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
           o += `<g${bl}><g data-mouth="${l.id}" transform="${mt}" style="pointer-events:none">${mf ? (cardMarkup(l.lip, mf.lips, mf.all, sp.i, t) ?? traceMarkup(l.lip, mf.m, t, `${pre}lp-${l.id}`, bodyFill(l))) : ""}</g></g>`;
         }
       }
-      const tc = !vf && tintOf(l);                         // colorize : l'image et ses bouches prennent la meme couleur, en produit
-      if (tc) o = o.slice(0, o1) + tintFilter(`${pre}tn-${l.id}`, tc) + `<g filter="url(#${pre}tn-${l.id})">` + o.slice(o1) + "</g>";
+      const cm = layerCM(l, !!vf);                         // colorize et colorimetrie : l'image et ses bouches prennent la meme couleur
+      if (cm) o = o.slice(0, o1) + cmFilter(`${pre}tn-${l.id}`, cm) + `<g filter="url(#${pre}tn-${l.id})">` + o.slice(o1) + "</g>";
       if (rz) o = o.slice(0, o1) + `<g transform="rotate(${f1(rz)} ${f1(box.cx)} ${f1(box.y + box.h / 2)})">` + o.slice(o1) + "</g>";
       if (sel === l.id) {                                  // poignees : les memes que dans les cases (handles.js)
         const u = 1 / ((px || 1 / 2.4) * c.z), hx = W / 2 / c.z, hy = H / 2 / c.z;

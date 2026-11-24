@@ -116,6 +116,48 @@ export function tintFilter(id, c) {
   return `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feFlood flood-color="${c}"/>` +
     `<feBlend in2="SourceGraphic" mode="multiply"/><feComposite in2="SourceGraphic" operator="in"/></filter>`;
 }
+/** Colorimetrie a la Photoshop (Teinte / Saturation / Luminosite, plus Contraste) et colorize, en une seule matrice de
+ *  couleur affine : g = {h: -180..180, s, l, c: -100..100}, tint = "#rrggbb" (en produit) ou null. Rend 12 nombres (3 lignes
+ *  r g b + decalage, decalage entre 0 et 1) ou null quand il n'y a rien a faire. La meme matrice sert au SVG (feColorMatrix)
+ *  et aux pixels d'un canvas (aplatissement) : les trois rendus sont identiques. */
+export function colorMatrix(g, tint) {
+  const h = +(g && g.h) || 0, sa = +(g && g.s) || 0, li = +(g && g.l) || 0, co = +(g && g.c) || 0;
+  if (!h && !sa && !li && !co && !tint) return null;
+  const mul = (A, B) => [0, 1, 2].flatMap((r) => [0, 1, 2, 3].map((c) => A[r * 4] * B[c] + A[r * 4 + 1] * B[4 + c] + A[r * 4 + 2] * B[8 + c] + (c === 3 ? A[r * 4 + 3] : 0)));
+  const diag = (k, o) => [k[0], 0, 0, o[0], 0, k[1], 0, o[1], 0, 0, k[2], o[2]];
+  let M = diag([1, 1, 1], [0, 0, 0]);
+  if (h) { const a = h * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    M = mul([0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928, 0,
+             0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.140, 0.072 - c * 0.072 - s * 0.283, 0,
+             0.213 - c * 0.213 - s * 0.787, 0.715 - c * 0.715 + s * 0.715, 0.072 + c * 0.928 + s * 0.072, 0], M); }
+  if (sa) { const s = Math.max(0, 1 + sa / 100);
+    M = mul([0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s, 0, 0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s, 0,
+             0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s, 0], M); }
+  if (co) { const k = Math.max(0, 1 + co / 100); M = mul(diag([k, k, k], [0.5 - 0.5 * k, 0.5 - 0.5 * k, 0.5 - 0.5 * k]), M); }
+  if (li) { const L = clamp(li / 100, -1, 1), k = L > 0 ? 1 - L : 1 + L, o = L > 0 ? L : 0; M = mul(diag([k, k, k], [o, o, o]), M); }   // vers le blanc / vers le noir
+  if (tint) { const t = [1, 3, 5].map((i) => parseInt(tint.slice(i, i + 2), 16) / 255); M = mul(diag(t, [0, 0, 0]), M); }
+  return M;
+}
+export function hslOf(o) { const g = o || {}; return (+g.h || +g.s || +g.l || +g.c) ? g : null; }
+export function cmFilter(id, M) {
+  const v = [0, 1, 2].map((r) => `${M[r * 4].toFixed(4)} ${M[r * 4 + 1].toFixed(4)} ${M[r * 4 + 2].toFixed(4)} 0 ${M[r * 4 + 3].toFixed(4)}`).join(" ") + " 0 0 0 1 0";
+  return `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${v}"/></filter>`;
+}
+/** La meme matrice sur les pixels d'un canvas (sur place). */
+export function cmPixels(cv, M) {
+  const g = cv.getContext("2d"), d = g.getImageData(0, 0, cv.width, cv.height), p = d.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const r = p[i], gg = p[i + 1], b = p[i + 2];
+    p[i] = r * M[0] + gg * M[1] + b * M[2] + 255 * M[3];
+    p[i + 1] = r * M[4] + gg * M[5] + b * M[6] + 255 * M[7];
+    p[i + 2] = r * M[8] + gg * M[9] + b * M[10] + 255 * M[11];
+  }
+  g.putImageData(d, 0, 0);
+  return cv;
+}
+/** Colorimetrie et colorize d'un element (calque) ou du decor d'une case. */
+export function layerCM(l, vec) { return colorMatrix(hslOf(l && l.hsl), vec ? null : tintOf(l)); }
+export function bgCM(pan) { return colorMatrix(hslOf(pan && pan.bghsl), tintOf(pan && { tint: pan.bgtint })); }
 /** Ombre d'un dessin : la couleur du corps assombrie (un gris sur un corps blanc), decalee vers la lumiere. */
 export function shadeOf(sh, h, col = "#ffffff", ink = "#111111") {
   if (!sh || !sh.on) return null;
