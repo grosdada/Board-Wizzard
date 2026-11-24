@@ -113,6 +113,7 @@ export function liveBox({ snap, keep, bank }) {
         : typeof c === "string" && c.startsWith("data:") ? null : typeof c === "string" ? new Blob([Uint8Array.from(atob(c), (x) => x.charCodeAt(0))], { type: im.content_type || "image/jpeg" }) : null;
       if (lastUrl) URL.revokeObjectURL(lastUrl);
       lastUrl = blob ? URL.createObjectURL(blob) : c; lastBlob = blob; out.src = lastUrl;
+      if (blob) fetch("/api/generations?what=temps-reel&name=direct.jpg", { method: "POST", body: blob }).catch(() => {});   // gardee aussi dans « Générations »
       frames++; busy = false; lat = performance.now() - sentAt;
       stop();                                               // une generation puis on coupe : rien ne tourne entre deux
       tick();

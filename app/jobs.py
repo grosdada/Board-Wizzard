@@ -16,7 +16,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from . import brain, comfy, cost, falapi, poses, proportions, settings, sprites, store, vector, headtrack
+from . import archive, brain, comfy, cost, falapi, poses, proportions, settings, sprites, store, vector, headtrack
 
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i", "item_sheet": "edit",
         "item_apose": "edit", "item_views": "edit", "item_lips": "edit", "item_expr": "edit",
@@ -58,6 +58,7 @@ class LocalProvider:
                 raise comfy.ComfyError("le noeud %s n'a rien rendu" % node)
             ext = Path(files[0]["filename"]).suffix
             out[node] = comfy.download(self.url, files[0], Path(dest_dir) / ("%s_%s%s" % (stem, node, ext)))
+            archive.keep(out[node], "machine-" + str(self.job.get("title") or self.job.get("kind") or ""))   # gardee aussi a part (data/generations)
         return out
 
     def t2i(self, prompt, w, h, seed, dest_dir):

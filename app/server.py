@@ -25,7 +25,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 REALTIME_APP = "fal-ai/flux-2/klein/realtime"              # croquis -> image en direct (essai)
 REALISTIC_MODEL = "openai/gpt-image-2.6/sunburst/edit"     # portrait-robot -> photo (modele par defaut)
 REALISTIC_MODELS = {"gpt": "openai/gpt-image-2.6/sunburst/edit", "seedream": "bytedance/seedream/v5.5/edit"}
-from . import accounts, brain, cost, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
+from . import accounts, archive, brain, cost, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"
 VERSION = "0.1"
@@ -366,6 +366,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(store.safe(store._dir("audio"), parts[1]), "max-age=86400")
         if parts[0] == "projects" and len(parts) > 2:
             return self.send_file(store.safe(store.project_dir(parts[1]), "/".join(parts[2:])), "max-age=86400")
+        if parts[0] == "generations" and len(parts) == 3:            # archive des generations IA (administrateur)
+            self._admin()
+            return self.send_file(store.safe(archive.root(), "/".join(parts[1:])), "max-age=86400", download=parts[2] if "dl=1" in self.path else None)
         self.send_json({"error": "introuvable"}, 404)
 
     # ---------------------------------------------------------------- API
@@ -399,6 +402,12 @@ class Handler(BaseHTTPRequestHandler):
                                    "axes": sprites.AXES})
         if head == "password" and method == "POST":
             return self._password(data)
+        if head == "generations":                                    # toutes les generations IA (data/generations)
+            if method == "POST":                                     # une image rendue dans le navigateur (temps reel...)
+                p = archive.keep_bytes(body, q.get("what") or "navigateur", q.get("name") or "image.png")
+                return self.send_json({"ok": bool(p)})
+            self._admin()
+            return self.send_json({"items": archive.listing(int(q.get("limit") or 600)), "dir": str(archive.root())})
         if head == "accounts":
             return self._accounts(method, seg, data)
         if head == "settings":
@@ -1039,7 +1048,14 @@ class Handler(BaseHTTPRequestHandler):
         out = fp.run(model, payload)
         dest = fp.fetch(out["images"][0]["url"], folder / ("%d_photo_%s.png" % (stamp, d.get("model") or "gpt")))
         raw = Path(dest).read_bytes()
-        return {"image": "data:image/png;base64," + base64.b64encode(raw).decode(), "file": "refs/" + Path(dest).name}
+        res = {"image": "data:image/png;base64," + base64.b64encode(raw).decode(), "file": "refs/" + Path(dest).name}
+        if d.get("project") and d.get("panel"):                      # photo d'une case : rangee aussi dans le storyboard
+            pdir = store.project_dir(d["project"])
+            rel = "integ/%s_%d_photo-%s.png" % (re.sub(r"[^\w-]", "", str(d["panel"])), stamp // 1000, re.sub(r"[^\w-]", "", d.get("model") or "gpt"))
+            (pdir / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(dest, pdir / rel)
+            res["rel"] = rel
+        return res
 
     def _rebase(self, iid, raw):
         """Remplace l'image de base d'un personnage (portrait-robot reedite). Rien n'est relance : le detourage et l'orbite

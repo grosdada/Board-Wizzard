@@ -9,8 +9,8 @@ import { frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, cmPixels, mo
 import { exprCard } from "./lipsync.js";
 import { sprite, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
-export async function flattenPanel(app, g, longSide = 1344, sharp = true) {
-  const pg = app.page(), pan = pg.panels[g.id] || {}, bb = g.bbox;
+export async function flattenPanel(app, g, longSide = 1344, sharp = true, over = null) {
+  const pg = app.page(), pan = over || pg.panels[g.id] || {}, bb = g.bbox;     // over : une case modifiee (image du montage)
   const k = longSide / Math.max(bb.w, bb.h);
   const cv = document.createElement("canvas");
   cv.width = Math.round(bb.w * k / 16) * 16;

@@ -58,6 +58,9 @@ aside.right { border-left: 1px solid var(--line); padding: 0; display: flex; fle
 .draw-framerow { display: flex; gap: 10px; align-items: flex-start; } .draw-framerow > .draw-frame { flex: 1 1 0; min-width: 0; } .draw-liveslot:empty { display: none; } .draw-liveslot { flex: 0 0 42%; }
 .draw-live { display: flex; flex-direction: column; gap: 6px; } .draw-live-out { width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 6px; }
 .draw-live textarea { width: 100%; } .draw-live-status { font-size: 12px; }
+.photo-go { background: #2d5f8a; color: #fff; border-color: #3c7bb0; } .photo-go:hover { background: #3a73a6; }
+.gen-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; } .gen-cell { display: flex; flex-direction: column; gap: 3px; background: #0002; padding: 4px; border-radius: 6px; }
+.gen-cell img, .gen-cell video { width: 100%; height: 130px; object-fit: contain; background: #fff; border-radius: 4px; } .gen-name { font-size: 10px; overflow: hidden; white-space: nowrap; flex: 1; } .gen-list { max-height: 70vh; overflow: auto; }
 .idk-realcols { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; } .idk-realcol { display: flex; flex-direction: column; gap: 6px; }
 .idk-realgo { padding: 12px 10px; font-size: 14px; } .idk-real img { width: 100%; border-radius: 6px; background: #fff; }
 .idk-tobody { font-size: 15px; font-weight: 700; padding: 9px 18px; background: #e2603a; color: #fff; border: 0; border-radius: 8px; }

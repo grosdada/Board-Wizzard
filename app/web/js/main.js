@@ -11,6 +11,7 @@ import { swatch } from "./colors.js";
 import { exprName } from "./lipsync.js";
 import { openDrawEditor, drawImage } from "./draw.js";
 import { openMontage } from "./montage.js";
+import { photoDialog, openGenerations } from "./photo.js";
 import { openDeck, addClip } from "./deck.js";
 import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox } from "./model.js";
 
@@ -85,6 +86,7 @@ class App {
       h("button.genasset", { title: tt("Générer un personnage d'après une description, un croquis et des dessins de référence pour le style (GPT Image 2.5)"), on: { click: () => this.genDialog("character") } }, tt("✨ Générer un personnage")),
       h("div.grow"), el.workers, el.target, el.jobsBtn,
       h("button", { title: tt("Decks de montage : les cases animées mises bout à bout"), on: { click: (e) => this.decksMenu(e) } }, tt("🎞 Decks ▾")),
+      this.info && this.info.me && this.info.me.role === "guest" ? "" : h("button", { title: tt("Toutes les images et vidéos générées par l'IA (fal et machines), téléchargées ou non"), on: { click: () => openGenerations() } }, tt("🗂 Générations")),
       h("button", { title: tt("Imprimer ou enregistrer la page en PDF"), on: { click: () => window.print() } }, tt("Imprimer")),
       h("button.lang", { title: tt("Passer l'interface en anglais"), on: { click: (e) => { e.currentTarget.disabled = true; setLang(LANG === "fr" ? "en" : "fr"); } } },
         h("b" + (LANG === "fr" ? ".on" : ""), "FR"), " / ", h("b" + (LANG !== "fr" ? ".on" : ""), "EN")),
@@ -1020,6 +1022,15 @@ class App {
       toast(tt("Integrate lancé : l'image unifiée remplacera les calques (ils restent disponibles).")); this.pollSoon();
     } catch (e) { toast(tt("Integrate impossible : ") + e.message, "error"); }
   }
+  // « Générer photo » : la case aplatie (ou, depuis le montage, l'image a la tete de lecture : over) rendue en photo
+  casePhoto(pid = this.sel.panel, over = null) {
+    const pan = this.page().panels[pid];
+    if (!pan || (!pan.bg && !(pan.layers || []).length && !pan.draw)) return toast(tt("La case est vide."));
+    const g = this.geo(pid);
+    photoDialog({ title: over ? tt("Générer photo (image du montage)") : tt("Générer photo"), project: this.project.id, panel: pid, name: `case-${pid}`,
+      snap: () => flattenPanel(this, g, 1344, true, over),
+      keep: (rel) => { const p = this.page().panels[pid]; if (!p) return; p.integrations = [...(p.integrations || []), rel]; p.integrated = rel; p.show = "integrated"; this.commit("photo"); this.editor.render(); this.refreshInspector(); toast(tt("La case montre la photo (Afficher : Intégrée).")); } });
+  }
   // toute la page d'un coup : chaque case composee part a Integrate (les cases deja integrees sont refaites)
   async integratePage(style) {
     const pg = this.page(), todo = this.editor.geom.panels.filter((g) => { const p = pg.panels[g.id] || {}; return p.bg || (p.layers || []).length; });
@@ -1252,7 +1263,8 @@ class App {
     });
     box.append(h("h4", tt("Image finale")), h("label.row", tt("Rendu"), style), h("label.row", tt("Moteur"), this.noMachines() ? h("span.muted", tt("fal, avec ta clé")) : engine), extra,
       h("div.row", h("button.primary", { title: tt("Une seule image, lumière et ombres unifiées"), on: { click: () => this.integrate(style.value, extra.value.trim()) } }, tt("✦ Integrate")),
-        h("button", { title: tt("Orbite 360° de toute la case"), on: { click: () => this.panelOrbit() } }, tt("↻ Orbite de la case"))));
+        h("button", { title: tt("Orbite 360° de toute la case"), on: { click: () => this.panelOrbit() } }, tt("↻ Orbite de la case"))),
+      h("div.row", h("button.photo-go", { title: tt("La case rendue en photo : GPT Image 2.6 et Seedream 5.5 à comparer (fal, payant)"), on: { click: () => this.casePhoto() } }, tt("📷 Générer photo"))));
     if (pan.integrated || pan.orbit) {
       const modes = [["layers", tt("Calques")]]; if (pan.integrated) modes.push(["integrated", tt("Intégrée")]); if (pan.orbit) modes.push(["orbit", tt("Orbite")]);
       box.append(h("div.row", h("span.muted", tt("Afficher :")), modes.map(([m, t]) => h("button.mini" + ((pan.show || "layers") === m ? ".on" : ""), { on: { click: () => this.setShow(m) } }, t))));

@@ -2038,6 +2038,16 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
       hist.snap(); paint(); props();
       toast((n ? tt`Première image reportée sur ${n} élément(s)` : tt("Aucun élément animé")) + (pan.frame ? tt(", et le cadrage de la caméra") : "") + tt(" : la case la montrera une fois le montage enregistré."));
     } } }, tt("⤓ 1re image → case")),
+    h("button.mini.photo-go", { title: tt("L'image à la tête de lecture (poses, places, cadrage de la caméra) rendue en photo : GPT Image 2.6 et Seedream 5.5 à comparer (fal, payant)"), on: { click: () => {
+      stop();
+      const o = JSON.parse(JSON.stringify(pan)), c = scene.camAt(t);
+      if (Math.abs(c.z - 1) > 1e-3 || Math.abs(c.rot || 0) > 0.01 || Math.abs(c.cx - 0.5) > 1e-4 || Math.abs(c.cy - 0.5) > 1e-4) o.frame = { cx: f3(c.cx), cy: f3(c.cy), z: f3(c.z), rot: f3(c.rot || 0) }; else delete o.frame;
+      pan.layers.forEach((l, i) => { const st = scene.stateOf(l, t), q = o.layers[i];
+        for (const k of ["x", "y", "s", "rz", "f", "v", "lw"]) if (st[k] != null) q[k] = st[k];
+        if (l.sh || st.shg !== 0.72 || st.shw !== 5 || st.sha !== 135) q.sh = Object.assign({}, l.sh, { g: st.shg, w: st.shw, a: st.sha }); });
+      delete o.anim;
+      app.casePhoto(pid, o);
+    } } }, tt("📷 Générer photo")),
     h("label.row", tt("Durée (s)"), dur));
   paint(); lanes(); props();
   // quitter sans enregistrer : on previent (Annuler, croix, clic a cote, fermeture de l'onglet) si le montage a change

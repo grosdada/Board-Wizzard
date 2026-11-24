@@ -105,12 +105,13 @@ class FalProvider:
             raise FalError("fal : %s" % json.dumps(out["detail"])[:500])
         return out
 
-    @staticmethod
-    def fetch(url, dest):
+    def fetch(self, url, dest):
         dest = Path(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         with urllib.request.urlopen(url, timeout=600) as r:
             dest.write_bytes(r.read())
+        from . import archive                                      # toute generation est aussi gardee a part (data/generations)
+        archive.keep(dest, "fal-" + str((self.job or {}).get("title") or (self.job or {}).get("kind") or ""))
         return dest
 
     def _image_payload(self, endpoint, prompt, w, h, seed):
