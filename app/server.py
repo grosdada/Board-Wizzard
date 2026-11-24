@@ -23,6 +23,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 REALTIME_APP = "fal-ai/flux-2/klein/realtime"              # croquis -> image en direct (essai)
+REALISTIC_MODEL = "openai/gpt-image-2.6/sunburst/edit"     # portrait-robot -> photo
 from . import accounts, brain, cost, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -478,6 +479,8 @@ class Handler(BaseHTTPRequestHandler):
                 parts.remove(seg[1], seg[2])
                 return self.send_json({"ok": True})
             return self.send_json(parts.catalogue())
+        if head == "portrait" and seg[1:] == ["realistic"] and method == "POST":   # portrait-robot -> photo (GPT Image 2.6 Sunburst)
+            return self.send_json(self._realistic(data or {}))
         if head == "fal" and seg[1:] == ["realtime-token"] and method == "POST":   # croquis -> image en direct (essai)
             # jeton court fal pour le temps reel : la cle reste sur le serveur (ou celle du navigateur d'un invite non VIP)
             import urllib.request
@@ -994,6 +997,40 @@ class Handler(BaseHTTPRequestHandler):
             if dest.is_file():
                 l["file"] = "_keep-%s/%s" % (iid, dest.name)
         return comp
+
+    def _realistic(self, d):
+        """Le portrait-robot affiche (data:image/png) rendu en photo par GPT Image 2.6 Sunburst sur fal, avec la consigne donnee.
+        Payant (≈ 0,06 $ par image en 1024, qualite haute). Rend {"image": data URI PNG}."""
+        import base64
+        from . import falapi
+        key = self.headers.get("X-Fal-Key") or ("" if self.own_key() else settings.load()["fal"].get("key") or "")
+        if not key:
+            raise ApiError("aucune clé fal : entre ta clé dans Réglages › fal (cloud)")
+        uri, prompt = d.get("image") or "", (d.get("prompt") or "").strip()
+        if not uri.startswith("data:image/") or "," not in uri or not prompt:
+            raise ApiError("image ou consigne manquante")
+        from PIL import Image
+        try:
+            im = Image.open(io.BytesIO(base64.b64decode(uri.split(",", 1)[1])))
+            im.load()
+        except Exception:
+            raise ApiError("image guide illisible")
+        folder = settings.DATA / "refs"
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = int(time.time() * 1000)
+        src = folder / ("%d_portrait.png" % stamp)
+        im.convert("RGB").save(src)
+        w, h = im.size
+        k = 1024 / max(w, h)                                         # taille de sortie : multiples de 16, cote long 1024
+        w, h = max(256, int(round(w * k / 16)) * 16), max(256, int(round(h * k / 16)) * 16)
+        job = {"progress": "", "params": {}}
+        fp = falapi.FalProvider(key, job)
+        payload = fp._image_payload(REALISTIC_MODEL, prompt, w, h, 0)
+        payload["image_urls"] = [fp.upload(src)]
+        out = fp.run(REALISTIC_MODEL, payload)
+        dest = fp.fetch(out["images"][0]["url"], folder / ("%d_photo.png" % stamp))
+        raw = Path(dest).read_bytes()
+        return {"image": "data:image/png;base64," + base64.b64encode(raw).decode(), "file": "refs/" + Path(dest).name}
 
     def _rebase(self, iid, raw):
         """Remplace l'image de base d'un personnage (portrait-robot reedite). Rien n'est relance : le detourage et l'orbite

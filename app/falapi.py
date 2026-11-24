@@ -121,6 +121,9 @@ class FalProvider:
             p["image_size"] = {"width": int(w), "height": int(h)}
         if not any(m in endpoint for m in NO_SEED):
             p["seed"] = int(seed) % 2147483647
+        if "gpt-image-2.6" in endpoint:                          # portrait-robot en photo : qualite haute (≈ 0,06 $ en 1K), fond opaque
+            p["quality"] = "high"
+            p["background"] = "opaque"
         if "gpt-image-2.5" in endpoint:                          # qualite moyenne (≈ 0,02 $ en 1K) au lieu de « high »
             p["quality"] = self.cfg.get("gpt_quality") or "medium"
             p["background"] = "opaque"                             # sinon un PNG transparent : le fond de couleur est perdu

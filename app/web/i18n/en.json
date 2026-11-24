@@ -2046,7 +2046,23 @@
   "Recalculer aussi son orbite 360° (environ 3 minutes sur une machine) ?\nAnnuler : l'image est remplacée, l'orbite se relancera depuis sa fiche.": "Also recompute its 360° orbit (about 3 minutes on a machine)?\nCancel: the image is replaced, the orbit can be restarted from its card.",
   "« {0} » remplacé : détourage en cours.": "“{0}” replaced: cut-out in progress.",
   " Son orbite suivra.": " Its orbit will follow.",
-  "Remplacement refusé : ": "Replacement refused: "
+  "Remplacement refusé : ": "Replacement refused: ",
+  "✨ Générer (≈ 0,06 $)": "✨ Generate (≈ $0.06)",
+  "Le portrait est vide.": "The portrait is empty.",
+  "⏳ Génération… (environ une minute)": "⏳ Generating… (about a minute)",
+  "⬇ Télécharger": "⬇ Download",
+  "Range la photo comme nouveau personnage (rendu photoréaliste) dans la banque": "Stores the photo as a new character (photorealistic) in the bank",
+  "Nom du personnage :": "Character name:",
+  "Portrait": "Portrait",
+  " (photo)": " (photo)",
+  "« {0} » est dans la banque (Personnages).": "“{0}” is in the bank (Characters).",
+  "⇪ Ranger dans la banque": "⇪ Store in the bank",
+  "Génération refusée : ": "Generation refused: ",
+  "Portrait en photo (GPT Image 2.6 Sunburst)": "Portrait as a photo (GPT Image 2.6 Sunburst)",
+  "Le portrait tel qu'il est affiché part à fal avec cette consigne. Environ 0,06 $ par image, une minute environ.": "The portrait as displayed is sent to fal with this prompt. About $0.06 per image, about a minute.",
+  "Consigne": "Prompt",
+  "Rendu photoréaliste du portrait tel qu'il est, en gardant exactement la forme du dessin (GPT Image 2.6 Sunburst sur fal, payant)": "Photorealistic render of the portrait as it is, keeping the drawing's shape exactly (GPT Image 2.6 Sunburst on fal, paid)",
+  "✨ Generate (photo)": "✨ Generate (photo)"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
@@ -2287,7 +2303,8 @@
   "aucune clé fal : entre ta clé dans Réglages › fal (cloud)": "no fal key: enter your key in Settings › fal (cloud)",
   "modèle temps réel non autorisé": "realtime model not allowed",
   "fal a refusé le jeton : %s": "fal refused the token: %s",
-  "fal n'a pas rendu de jeton : %s": "fal returned no token: %s"
+  "fal n'a pas rendu de jeton : %s": "fal returned no token: %s",
+  "image ou consigne manquante": "image or prompt missing"
  },
  "parts": {
   "Anguleux": "Angular",

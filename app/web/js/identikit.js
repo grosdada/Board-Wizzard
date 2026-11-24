@@ -68,6 +68,7 @@ function capPolys(l) {
 
 // edit : { item } a rouvrir avec sa composition ; opts.kit : "visage" (portrait-robot) ou "corps" (generateur de corps) ;
 // opts.head : une tete (element de la categorie « tete ») a poser tout de suite sur le corps
+const REAL_PROMPT = "Convert this drawing into an ultra-realistic photograph with zero redesign. It is a deliberate caricature: every proportion is intentional. Pixel-lock the outer silhouette and all internal shapes: do not alter any line, angle or proportion. HEADS MUST MATCH EXACTLY: same skull volume and head size, same face width, nose length and shape, hairline, ear shape and position, mouth size, eye size, spacing and position, eyebrows, wrinkles and asymmetries. Do not fix anatomy, do not beautify, do not make the face more symmetrical, younger or more average. Keep the identical composition, scale, perspective, pose, spacing and framing, and the same head-to-body ratio. Only map realistic materials (human skin with pores, real hair, fabric, leather, wood, metal) onto the original linework; textures must not cross or smooth the contours. Keep the colors of the drawing where it has some; otherwise use natural, believable colors. No rounding, no smoothing, no reinterpretation of volumes; preserve all distortions and caricature features as drawn. Lighting: professional studio lighting on a plain light-beige seamless background. Lens: 80 mm macro look with tilt-shift shallow depth of field (subject sharp, gentle bokeh). If uncertain, do not invent details: stay subtle and neutral. Structural fidelity over realism: if there is a conflict, preserve the drawing lines. Lock the head silhouette and all facial landmarks (brow, nose, mouth, chin, ears) to the drawing; any deviation is an error. MANDATORY: no text on the image, no captions, no labels, no watermarks, no overlays. Pure photographic imagery only.";
 export async function openIdentikit(bankUI, edit = null, opts = {}) {
   const comp00 = edit && edit.item && edit.item.identikit;
   const kit = opts.kit || (comp00 && comp00.kit) || "visage", K = KITS[kit] || KITS.visage, BODYKIT = kit === "corps";
@@ -757,6 +758,36 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     const close = (ev) => { if (!box.contains(ev.target)) { box.remove(); document.removeEventListener("pointerdown", close, true); } };
     setTimeout(() => document.addEventListener("pointerdown", close, true), 0);
   };
+  // rendu photoreliste du portrait affiche (GPT Image 2.6 Sunburst, fal) : la forme du dessin est gardee a l'identique
+  const realistic = () => {
+    const prompt = h("textarea", { rows: 9 }); prompt.value = REAL_PROMPT;
+    const out = h("div.idk-real"), go = h("button.primary", { type: "button" }, tt("✨ Générer (≈ 0,06 $)"));
+    let last = null;
+    go.addEventListener("click", async () => {
+      if (!layers.length) return toast(tt("Le portrait est vide."), "error");
+      go.disabled = true; go.textContent = tt("⏳ Génération… (environ une minute)");
+      try {
+        const blob = await render(1024, Math.round(1024 * SH / S), true);
+        const uri = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(blob); });
+        const r = await post("portrait/realistic", { image: uri, prompt: prompt.value.trim() });
+        last = r.image;
+        out.textContent = "";
+        out.append(h("img", { src: r.image, alt: "" }), h("div.row.wrap",
+          h("button.mini", { type: "button", on: { click: () => { const a = h("a", { href: last, download: (name.value.trim() || "portrait") + "-photo.png" }); document.body.append(a); a.click(); a.remove(); } } }, tt("⬇ Télécharger")),
+          h("button.mini", { type: "button", title: tt("Range la photo comme nouveau personnage (rendu photoréaliste) dans la banque"), on: { click: async () => {
+            const nm = window.prompt(tt("Nom du personnage :"), (name.value.trim() || tt("Portrait")) + tt(" (photo)"));
+            if (!nm) return;
+            const b = await (await fetch(last)).blob();
+            try { await upload("bank?" + new URLSearchParams({ kind: "character", name: nm.trim(), style: "photo", facing: "face", orbit: "0", target: "auto", file: "photo.png" }), b);
+              bankUI.tab = "character"; await bankUI.reload(); toast(tt`« ${nm.trim()} » est dans la banque (Personnages).`); } catch (e) { toast(tt("Refusé : ") + e.message, "error"); }
+          } } }, tt("⇪ Ranger dans la banque"))));
+      } catch (e) { toast(tt("Génération refusée : ") + e.message, "error"); }
+      go.disabled = false; go.textContent = tt("✨ Générer (≈ 0,06 $)");
+    });
+    modal(tt("Portrait en photo (GPT Image 2.6 Sunburst)"), h("div.form.idk-realform",
+      h("p.muted", tt("Le portrait tel qu'il est affiché part à fal avec cette consigne. Environ 0,06 $ par image, une minute environ.")),
+      h("label.col", tt("Consigne"), prompt), go, out), [{ label: tt("Fermer") }]).box.classList.add("wide");
+  };
   // composition gardee dans l'element de banque, pour le rouvrir ici
   const composition = (withBody) => Object.assign({ v: 1, layers: JSON.parse(JSON.stringify(layers)), off, body: withBody ? bodyPick : null }, BODYKIT ? { kit: "corps" } : null);
   // petit choix a deux reponses (null si on annule)
@@ -769,7 +800,8 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       BODYKIT ? "" : h("button.mini", { title: tt("Reconstruit le visage d'une photo de face avec les éléments du portrait-robot. La photo reste dans ce navigateur : seuls les points du visage partent."), on: { click: () => fileIn.click() } }, tt("📷 Transposer un portrait…")), BODYKIT ? "" : fileIn,
       BODYKIT ? "" : h("button.mini", { title: tt("Ouvre le générateur de corps avec cette tête : torse, bras, jambes, chaussures… à assembler ou à dessiner"), on: { click: toBody } }, tt("🧍 Composer un corps…")),
       h("button.mini", { on: { click: () => { layers = []; sel = null; multi.clear(); paint(); props(); marks(); } } }, tt("Tout retirer")),
-      h("button.mini", { title: tt("Télécharge le portrait tel qu'il est affiché, en pleine définition, sans les poignées"), on: { click: (e) => exportMenu(e) } }, tt("⬇ Exporter le portrait ▾"))), photoBox, knobs),
+      h("button.mini", { title: tt("Télécharge le portrait tel qu'il est affiché, en pleine définition, sans les poignées"), on: { click: (e) => exportMenu(e) } }, tt("⬇ Exporter le portrait ▾")),
+      h("button.mini", { title: tt("Rendu photoréaliste du portrait tel qu'il est, en gardant exactement la forme du dessin (GPT Image 2.6 Sunburst sur fal, payant)"), on: { click: () => realistic() } }, tt("✨ Generate (photo)"))), photoBox, knobs),
     h("div.idk-right", h("label.row", tt("Nom"), name), bankTabs, tabs, grid)),
     [{ label: tt("Fermer") }, { label: edit && edit.item ? tt("Enregistrer…") : tt("Ajouter à la banque"), primary: true, click: async () => {
       if (!layers.length) { toast(tt("Pose au moins un élément."), "error"); return false; }
