@@ -6,6 +6,7 @@
 import { tt, tr } from "./i18n.js";
 import { h, get, post, del, upload, toast, modal, history, put as apiPut } from "./api.js";
 import { openDrawEditor, drawImage } from "./draw.js";
+import { stageFill, stagePattern, stageBgControl } from "./colors.js";
 
 const S = 1000;                                  // largeur de la feuille, en unites (la hauteur depend du kit : SH)
 // Deux kits sur le meme atelier : le visage (portrait-robot, feuille 1000 x 1000) et le corps (generateur de corps,
@@ -137,7 +138,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     }
     const ph = !BODYKIT && photo && photo.on ? (() => { const M = photo.M; return `<image href="${photo.url}" width="${photo.w}" height="${photo.h}" preserveAspectRatio="none" opacity="${photo.op}" pointer-events="none" transform="matrix(${M[0][0]} ${M[1][0]} ${M[0][1]} ${M[1][1]} ${M[0][2]} ${M[1][2]})"/>`; })() : "";
     const bd = band ? `<rect x="${Math.min(band.x0, band.x1)}" y="${Math.min(band.y0, band.y1)}" width="${Math.abs(band.x1 - band.x0)}" height="${Math.abs(band.y1 - band.y0)}" fill="rgba(16,181,224,0.08)" stroke="#10b5e0" stroke-width="${1.5 * unit()}" stroke-dasharray="6 4" pointer-events="none"/>` : "";
-    svg.innerHTML = `<defs>${defs}</defs><rect width="${S}" height="${SH}" fill="#fff"/>` + ph + acc + grips() + bd;
+    svg.innerHTML = `<defs>${defs}${stagePattern(Math.max(8, S / 50))}</defs><rect width="${S}" height="${SH}" fill="${stageFill()}"/>` + ph + acc + grips() + bd;
     svg.style.cursor = moveAll ? "move" : "";
     bricks();
   };
@@ -764,7 +765,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   });
   const head = BODYKIT ? tt("Générateur de corps") : tt("Portrait-robot");
   const m = modal(edit && edit.item ? `${head} : ${edit.item.name}` : head, h("div.idk" + (BODYKIT ? ".idk-corps" : ""),
-    h("div.idk-left", h("div.idk-stagewrap", svg, moveBtn), bricksBox, h("div.row.wrap", h("button.mini", { title: BODYKIT ? tt("Tire un corps au hasard dans la banque ouverte") : tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
+    h("div.idk-left", h("div.idk-stagewrap", svg, moveBtn), stageBgControl(() => paint()), bricksBox, h("div.row.wrap", h("button.mini", { title: BODYKIT ? tt("Tire un corps au hasard dans la banque ouverte") : tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
       BODYKIT ? "" : h("button.mini", { title: tt("Reconstruit le visage d'une photo de face avec les éléments du portrait-robot. La photo reste dans ce navigateur : seuls les points du visage partent."), on: { click: () => fileIn.click() } }, tt("📷 Transposer un portrait…")), BODYKIT ? "" : fileIn,
       BODYKIT ? "" : h("button.mini", { title: tt("Ouvre le générateur de corps avec cette tête : torse, bras, jambes, chaussures… à assembler ou à dessiner"), on: { click: toBody } }, tt("🧍 Composer un corps…")),
       h("button.mini", { on: { click: () => { layers = []; sel = null; multi.clear(); paint(); props(); marks(); } } }, tt("Tout retirer")),

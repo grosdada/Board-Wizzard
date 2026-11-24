@@ -1971,7 +1971,10 @@
   "Axe de vue (°)": "View axis (°)",
   "Hauteur de la caméra : négatif, vu d'en dessous ; 0, à hauteur ; positif, vu du dessus.": "Camera height: negative, seen from below; 0, at eye level; positive, seen from above.",
   "Perspective (fuyantes)": "Perspective (vanishing lines)",
-  "0 : lignes parallèles. Plus haut : la caméra s'approche et les arêtes fuient vers des points de fuite.": "0: parallel lines. Higher: the camera gets closer and edges converge towards vanishing points."
+  "0 : lignes parallèles. Plus haut : la caméra s'approche et les arêtes fuient vers des points de fuite.": "0: parallel lines. Higher: the camera gets closer and edges converge towards vanishing points.",
+  "Fond transparent : un damier montre ce qui est vide": "Transparent background: a checkerboard shows what is empty",
+  "▦ Transparent": "▦ Transparent",
+  "Fond de l'atelier, seulement à l'écran : il n'est pas enregistré avec le dessin.": "Workshop background, on screen only: it is not saved with the drawing."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

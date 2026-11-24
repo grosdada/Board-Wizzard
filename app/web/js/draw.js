@@ -7,7 +7,7 @@
 // La trame est faite par le navigateur : un motif en « cones » de gris + le ton voulu, puis un seuil. Les points
 // grossissent donc tout seuls la ou le ton fonce, sans dessiner chaque point.
 import { tt, tr } from "./i18n.js";
-import { swatch } from "./colors.js";
+import { swatch, stageFill, stagePattern, stageBgControl } from "./colors.js";
 import { h, modal, toast, history, upload } from "./api.js";
 import { PRESETS, PRESET_CATS, presetPath, presetThumb } from "./presets.js";
 
@@ -351,7 +351,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const zone = () => {
     const x0 = -ext.l * W, y0 = -ext.t * H, ww = W * (1 + ext.l + ext.r), hh = H * (1 + ext.t + ext.b), big = ext.l + ext.r + ext.t + ext.b > 0;
     svg.setAttribute("viewBox", `${f1(x0)} ${f1(y0)} ${f1(ww)} ${f1(hh)}`);
-    back.innerHTML = `<rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(ww)}" height="${f1(hh)}" fill="${big ? "#ebe8e0" : "#ffffff"}"/><rect width="${W}" height="${f1(H)}" fill="#ffffff"/>` +
+    back.innerHTML = `<defs>${stagePattern(Math.max(8, W / 60))}</defs><rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(ww)}" height="${f1(hh)}" fill="${big ? "#ebe8e0" : stageFill()}"/><rect width="${W}" height="${f1(H)}" fill="${stageFill()}"/>` +
       (backdrop ? `<image href="${backdrop}" width="${W}" height="${f1(H)}" preserveAspectRatio="xMidYMid slice" opacity="0.35"/>` : "") +
       // retouche d'une image : elle est posee a sa place dans le cadre, pleinement visible, et on dessine par-dessus
       (under ? `<image href="${under.url}" x="${f1(under.x * W)}" y="${f1(under.y * H)}" width="${f1(under.w * W)}" height="${f1(under.h * H)}" preserveAspectRatio="none"/>` : "");
@@ -805,7 +805,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const done = () => { document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
   tools(); props(); paint();
   // un element (kit) n'a ni zone agrandie ni lignes d'effet : son cadre est celui de l'atelier
-  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, extra || "", ghostBar, kit ? "" : extBar, h("div.draw-frame", svg), kit ? "" : fxBox), side),
+  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, h("div.row.wrap", extra || "", stageBgControl(() => zone())), ghostBar, kit ? "" : extBar, h("div.draw-frame", svg), kit ? "" : fxBox), side),
     [{ label: tt("Annuler"), click: done },
      { label: saveLabel, primary: true, click: () => { finish(true); done();
        const out = layers ? { shapes: layers.filter((l) => !l.hidden).flatMap((l) => l.shapes), layers } : { shapes };

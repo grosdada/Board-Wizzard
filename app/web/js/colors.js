@@ -80,6 +80,25 @@ function eyedrop(skip) {
   });
 }
 
+// ---- fond d'affichage des ateliers (dessin, portrait-robot) : damier (voir la transparence) ou une couleur ; seulement a
+// l'ecran, rien n'est enregistre avec le dessin. Retenu par le navigateur (bw.stageBg).
+const STAGE = "bw.stageBg";
+export function stageBg() { return localStorage.getItem(STAGE) || "#ffffff"; }
+/** Remplissage SVG du fond : une couleur, ou le damier (le motif est rendu par stagePattern, a mettre dans les defs). */
+export function stageFill() { const v = stageBg(); return v === "damier" ? "url(#bwstage)" : v; }
+export function stagePattern(cell = 16) {
+  return `<pattern id="bwstage" width="${2 * cell}" height="${2 * cell}" patternUnits="userSpaceOnUse"><rect width="${2 * cell}" height="${2 * cell}" fill="#ffffff"/>` +
+    `<rect width="${cell}" height="${cell}" fill="#d9d9d9"/><rect x="${cell}" y="${cell}" width="${cell}" height="${cell}" fill="#d9d9d9"/></pattern>`;
+}
+/** Reglage « Fond » : un bouton damier et une pastille de couleur. onChange() apres chaque changement. */
+export function stageBgControl(onChange) {
+  const cur = stageBg();
+  const chk = h("button.mini" + (cur === "damier" ? ".on" : ""), { type: "button", title: tt("Fond transparent : un damier montre ce qui est vide") }, tt("▦ Transparent"));
+  const sw = swatch(cur === "damier" ? "#ffffff" : cur, (c) => { localStorage.setItem(STAGE, c); chk.classList.remove("on"); onChange(); });
+  chk.addEventListener("click", () => { const on = stageBg() !== "damier"; localStorage.setItem(STAGE, on ? "damier" : "#ffffff"); chk.classList.toggle("on", on); onChange(); });
+  return h("div.row.stagebg", { title: tt("Fond de l'atelier, seulement à l'écran : il n'est pas enregistré avec le dessin.") }, h("span", tt("Fond")), chk, sw);
+}
+
 let open = null;
 function close() { if (open) { open.box.remove(); document.removeEventListener("pointerdown", open.out, true); document.removeEventListener("keydown", open.esc, true); open = null; } }
 
