@@ -104,7 +104,12 @@ export function compute(page, layout) {
   // gouttiere : page.gutter entre les rangees (traits horizontaux) ; page.gutterV entre les colonnes, si elle est deverrouillee
   const gOf = (dir) => (dir === "v" ? page.gutterV ?? page.gutter : page.gutter);
   const panels = [], cuts = [], mb = page.marginB ?? m;     // marginB : marge du bas (place des annotations sous la derniere rangee)
-  const root = [[m, m], [W - m, m], [W - m, H - mb], [m, H - mb]];
+  // placement de toutes les cases d'un bloc : room = place libre ajoutee en bas (fraction de la hauteur), dx / dy = decalage
+  // (fractions de la page) ; le bloc garde sa taille et s'arrete au bord de la page
+  let t = m + (page.dy || 0) * H, b = H - mb - (page.room || 0) * H + (page.dy || 0) * H, l = m + (page.dx || 0) * W, r = W - m + (page.dx || 0) * W;
+  if (t < 0) { b -= t; t = 0; } if (b > H) { t -= b - H; b = H; } t = Math.max(0, t); b = Math.max(t + 20, b);
+  if (l < 0) { r -= l; l = 0; } if (r > W) { l -= r - W; r = W; } l = Math.max(0, l);
+  const root = [[l, t], [r, t], [r, b], [l, b]];
   (function walk(node, poly, path) {
     if (!node) return;
     if (node.t === "leaf") { panels.push({ id: node.id, poly, bbox: poly.length >= 3 ? bbox(poly) : null, path }); return; }

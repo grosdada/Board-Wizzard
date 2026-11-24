@@ -1924,7 +1924,18 @@
   "Pipette : clique sur la couleur à prendre (Échap pour annuler).": "Eyedropper: click the colour to pick (Esc to cancel).",
   "Pipette : prendre une couleur à l'écran (un personnage, un décor, une case…)": "Eyedropper: pick a colour on screen (a character, a set, a panel…)",
   "Pas de couleur prise.": "No colour picked.",
-  "💧 Pipette": "💧 Eyedropper"
+  "💧 Pipette": "💧 Eyedropper",
+  "Placement des cases": "Panel placement",
+  "Place libre en bas": "Free space at bottom",
+  "Toutes les cases remontent et rétrécissent : la place libérée en bas sert à écrire.": "All panels move up and shrink: the space freed at the bottom is for writing.",
+  "Décaler ↕": "Shift ↕",
+  "Toutes les cases montent (curseur à gauche) ou descendent (curseur à droite), d'un bloc.": "All panels move up (slider left) or down (slider right), as one block.",
+  "Décaler ↔": "Shift ↔",
+  "Toutes les cases glissent sur le côté, d'un bloc.": "All panels slide sideways, as one block.",
+  "Le bloc de cases colle au haut de la page": "The block of panels sticks to the top of the page",
+  "⤒ Tout en haut": "⤒ All the way up",
+  "Cases à leur place : sans décalage ni place libre ajoutée": "Panels back in place: no shift, no added free space",
+  "Recentrer": "Recentre"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

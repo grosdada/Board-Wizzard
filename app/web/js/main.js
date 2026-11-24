@@ -285,6 +285,17 @@ class App {
         Object.assign(page, { format: f.id, width: f.w, height: f.h }); this.commit("format"); this.refresh(); } } },
         FORMATS.map((f) => h("option", { value: f.id, selected: f.id === page.format }, f.label)))),
       gutters(), num(tt("Marge"), "margin", 0, 400), num(tt("Trait"), "strokeWidth", 0, 40),
+      // placement de toutes les cases d'un bloc : de la place en bas pour ecrire, et le bloc decale vers le haut ou le cote
+      h("details.fold", { open: !!(page.room || page.dx || page.dy) }, h("summary", tt("Placement des cases")),
+        ...[[tt("Place libre en bas"), "room", 0, 0.6, tt("Toutes les cases remontent et rétrécissent : la place libérée en bas sert à écrire.")],
+            [tt("Décaler ↕"), "dy", -0.3, 0.3, tt("Toutes les cases montent (curseur à gauche) ou descendent (curseur à droite), d'un bloc.")],
+            [tt("Décaler ↔"), "dx", -0.3, 0.3, tt("Toutes les cases glissent sur le côté, d'un bloc.")]].map(([label, key, min, max, tip]) => {
+          const pc = (v) => Math.round(v * 100) + " %", out = h("output", pc(page[key] || 0));
+          return h("label.row.range", { title: tip }, label, h("input", { type: "range", min, max, step: 0.005, value: page[key] || 0,
+            on: { input: (e) => { const v = +e.target.value; if (Math.abs(v) < 0.004) delete page[key]; else page[key] = v; out.textContent = pc(v); this.editor.render(); this.commitSoon("page-place"); } } }), out); }),
+        h("div.row.wrap",
+          h("button.mini", { title: tt("Le bloc de cases colle au haut de la page"), on: { click: () => { page.dy = -Math.max(0, page.margin - page.height * 0.012) / page.height; this.editor.render(); this.commit("page-place"); this.renderLeft(); } } }, tt("⤒ Tout en haut")),
+          h("button.mini", { title: tt("Cases à leur place : sans décalage ni place libre ajoutée"), on: { click: () => { delete page.dx; delete page.dy; delete page.room; this.editor.render(); this.commit("page-place"); this.renderLeft(); } } }, tt("Recentrer")))),
       h("details.fold", { open: !!(page.hand > 0) }, h("summary", tt("Tremblé du contour")), ...[[tt("Tremblé"), "hand", 0, 10, 0], [tt("Ondulation"), "wave", 0.5, 12, 4]].map(([label, key, min, max, def]) => {
         const val = page[key] ?? def, out = h("output", fmt(val));
         return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.1, value: val,

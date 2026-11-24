@@ -114,7 +114,7 @@ export class Editor {
       if (!this.animated(g.id)) continue;
       const bb = g.bbox, bottom = bb.y0 + bb.h;
       const under = this.geom.panels.filter((q) => q.bbox && q !== g && q.bbox.y0 > bottom - 1 && q.bbox.x0 < bb.x0 + bb.w && q.bbox.x0 + q.bbox.w > bb.x0).map((q) => q.bbox.y0);
-      const below = under.length ? Math.min(...under) - bottom : Math.min(page.height - bottom, Math.max(page.margin, page.marginB || 0));   // place libre sous la case
+      const below = under.length ? Math.min(...under) - bottom : page.height - bottom;   // place libre sous la case
       const roomy = below > 3 * r && this.focusId !== g.id;   // grande place dessous (annotations, texte) : dans le coin bas-droit de la case
       const cx = roomy ? bb.x0 + bb.w - 1.4 * r : bb.x0 + bb.w / 2, cy = roomy ? bottom - 1.4 * r : bottom + (this.focusId === g.id ? 22 * u : Math.max(below / 2, 0));   // case agrandie : juste sous elle
       const on = this.pv && this.pv.pid === g.id;
