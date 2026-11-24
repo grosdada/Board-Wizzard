@@ -281,7 +281,7 @@ function cardPick(lip, lips, frames, i, t) {
  *  l'image i comme les bouches dessinees. Pendant que la voix joue, il n'y en a pas (exprAt) : la bouche l'emporte. */
 export function exprCard(k, ex, frames, i) {
   if (!k || !ex || !frames) return null;
-  const ck = cardKey(Object.assign({}, ex, { exact: false }), frames, i), m = frames[i];
+  const ck = cardKey(ex, frames, i), m = frames[i];      // ex.exact : cartes cuites image par image, seulement sur leur image, sans recalage
   if (!ck || !m || !m.up) return null;
   const { key, far } = ck, file = key.cards[k];
   if (!file) return null;
