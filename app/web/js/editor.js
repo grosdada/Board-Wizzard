@@ -113,8 +113,10 @@ export class Editor {
     for (const g of this.geom.panels) {
       if (!this.animated(g.id)) continue;
       const bb = g.bbox, bottom = bb.y0 + bb.h;
-      const below = bottom >= page.height - page.margin - 1 ? page.margin : (page.gutterV ?? page.gutter);
-      const cx = bb.x0 + bb.w / 2, cy = bottom + (this.focusId === g.id ? 22 * u : Math.max(below / 2, 0));   // case agrandie : juste sous elle
+      const under = this.geom.panels.filter((q) => q.bbox && q !== g && q.bbox.y0 > bottom - 1 && q.bbox.x0 < bb.x0 + bb.w && q.bbox.x0 + q.bbox.w > bb.x0).map((q) => q.bbox.y0);
+      const below = under.length ? Math.min(...under) - bottom : Math.min(page.height - bottom, Math.max(page.margin, page.marginB || 0));   // place libre sous la case
+      const roomy = below > 3 * r && this.focusId !== g.id;   // grande place dessous (annotations, texte) : dans le coin bas-droit de la case
+      const cx = roomy ? bb.x0 + bb.w - 1.4 * r : bb.x0 + bb.w / 2, cy = roomy ? bottom - 1.4 * r : bottom + (this.focusId === g.id ? 22 * u : Math.max(below / 2, 0));   // case agrandie : juste sous elle
       const on = this.pv && this.pv.pid === g.id;
       const gp = s("g", { class: "pv-play" + (on ? " on" : ""), "data-pv": g.id, transform: `translate(${cx.toFixed(2)} ${(cy).toFixed(2)}) scale(${(r / 11).toFixed(5)})` });
       const tip = s("title"); tip.textContent = on ? tt("Arrêter l'animation") : tt("Voir l'animation de cette case (mode montage)");
@@ -405,11 +407,41 @@ export class Editor {
         this.bubs.set(g.id, ctl);
       }
     }
+    for (const n of pg.notes || []) {                       // cadres de texte de la page (titres, annotations)
+      const sel = app.sel.note === n.id;
+      const el = h("div.bnote" + (sel ? ".sel" : "") + (n.border !== false ? ".bord" : ""), { "data-note": n.id, style: {
+        left: n.x * 100 + "%", top: n.y * 100 + "%", width: n.w * 100 + "%", height: n.h * 100 + "%", fontSize: (n.fs || 14) / 10 + "cqw",
+        textAlign: n.al || "left", fontWeight: n.b ? "700" : "400", background: n.fill || "transparent" } },
+        h("div.bnote-txt", { "data-note": n.id, "data-ph": tt("Double-clic pour écrire") }, n.text || ""));
+      if (sel) el.append(h("div.bnote-h", { "data-note": n.id, "data-nh": "1" }));
+      el.addEventListener("dblclick", (e) => { e.stopPropagation(); this.editNote(n.id); });
+      this.overlay.append(el);
+    }
+  }
+  editNote(id) {                                           // ecrire dans un cadre, sur place
+    const t = this.overlay.querySelector(`.bnote-txt[data-note="${id}"]`), n = (this.pg.notes || []).find((x) => x.id === id);
+    if (!t || !n) return;
+    t.contentEditable = "plaintext-only"; t.focus();
+    const r = document.createRange(); r.selectNodeContents(t); r.collapse(false); const s0 = getSelection(); s0.removeAllRanges(); s0.addRange(r);
+    t.addEventListener("blur", () => { t.contentEditable = "false"; const v = t.innerText.replace(/\n$/, ""); if (v !== (n.text || "")) { n.text = v; this.app.commit("note"); } this.app.refreshInspector(); }, { once: true });
+    t.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Escape") t.blur(); });
   }
 
   // ---------------------------------------------------------------- bulles (calque HTML)
   bubDown(e) {
     if (e.button !== 0) return;
+    const ne = e.target.closest && e.target.closest(".bnote");
+    if (ne) {                                              // cadre de texte : le deplacer, ou sa taille par le coin
+      if (e.target.isContentEditable) return;
+      const n = (this.pg.notes || []).find((x) => x.id === ne.dataset.note);
+      if (!n) return;
+      if (this.app.sel.note !== n.id) { this.app.select({ note: n.id }, true); this.renderOverlay(); }
+      const r = this.overlay.getBoundingClientRect();
+      this.ndrag = { n, r, px: e.clientX, py: e.clientY, x: n.x, y: n.y, w: n.w, h: n.h, size: !!e.target.dataset.nh, moved: false };
+      this.overlay.setPointerCapture(e.pointerId);
+      e.preventDefault(); e.stopPropagation();
+      return;
+    }
     const tip = e.target.closest(".ac-btip"), bub = e.target.closest(".ac-bub");
     const id = (tip || bub)?.dataset.id;
     if (!id) return;
@@ -426,6 +458,16 @@ export class Editor {
     e.preventDefault(); e.stopPropagation();
   }
   bubMove(e) {
+    const nd = this.ndrag;
+    if (nd) {
+      const dx = (e.clientX - nd.px) / nd.r.width, dy = (e.clientY - nd.py) / nd.r.height, n = nd.n;
+      if (nd.size) { n.w = clamp(nd.w + dx, 0.02, 1 - n.x); n.h = clamp(nd.h + dy, 0.015, 1 - n.y); }
+      else { n.x = clamp(nd.x + dx, 0, 1 - n.w); n.y = clamp(nd.y + dy, 0, 1 - n.h); }
+      nd.moved = true;
+      const el = this.overlay.querySelector(`.bnote[data-note="${n.id}"]`);
+      if (el) Object.assign(el.style, { left: n.x * 100 + "%", top: n.y * 100 + "%", width: n.w * 100 + "%", height: n.h * 100 + "%" });
+      return;
+    }
     const d = this.bdrag;
     if (!d) return;
     const r = d.root.getBoundingClientRect();
@@ -441,6 +483,9 @@ export class Editor {
     d.ctl.layout();
   }
   bubUp() {
+    const nd = this.ndrag;
+    this.ndrag = null;
+    if (nd && nd.moved) this.app.commit("note");
     const d = this.bdrag;
     this.bdrag = null;
     if (d && d.moved) this.app.commit("bubble");

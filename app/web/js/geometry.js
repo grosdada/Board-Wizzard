@@ -103,8 +103,8 @@ export function compute(page, layout) {
   const m = page.margin, W = page.width, H = page.height;
   // gouttiere : page.gutter entre les rangees (traits horizontaux) ; page.gutterV entre les colonnes, si elle est deverrouillee
   const gOf = (dir) => (dir === "v" ? page.gutterV ?? page.gutter : page.gutter);
-  const panels = [], cuts = [];
-  const root = [[m, m], [W - m, m], [W - m, H - m], [m, H - m]];
+  const panels = [], cuts = [], mb = page.marginB ?? m;     // marginB : marge du bas (place des annotations sous la derniere rangee)
+  const root = [[m, m], [W - m, m], [W - m, H - mb], [m, H - mb]];
   (function walk(node, poly, path) {
     if (!node) return;
     if (node.t === "leaf") { panels.push({ id: node.id, poly, bbox: poly.length >= 3 ? bbox(poly) : null, path }); return; }
@@ -325,7 +325,26 @@ function story(L, page) {
   return S("h", 0.5, 0.5, row(), row());
 }
 
+// Storyboard annote : rangees de 3 cases 16/9, et sous CHAQUE rangee une bande libre pour les annotations (la gouttiere entre
+// les rangees, et la meme hauteur sous la derniere : marginB). Autant de rangees qu'il en tient avec une bande d'au moins
+// 40 % de la hauteur d'une case.
+function notesRows(page) {
+  const gv = page.gutterV ?? page.gutter, pw = (page.width - 2 * page.margin - 2 * gv) / 3, ph = pw * 9 / 16, avail = page.height - 2 * page.margin;
+  return { n: Math.max(1, Math.floor(avail / (ph * 1.4))), ph, avail, gv };
+}
+export function notesGutters(page) {
+  const { n, ph, avail, gv } = notesRows(page), gap = Math.max(gv, Math.round((avail - n * ph) / n));
+  return { gutterV: gv, gutter: gap, marginB: page.margin + gap };
+}
+function storyNotes(L, page) {
+  const n = page ? notesRows(page).n : 2, gv = page ? page.gutterV ?? page.gutter : 0, w = page ? page.width - 2 * page.margin : 1;
+  const a = 1 / 3 - gv / (6 * w), row = () => S("v", a, a, L(), S("v", 0.5, 0.5, L(), L()));
+  const stack = (k) => (k === 1 ? row() : S("h", 1 / k, 1 / k, row(), stack(k - 1)));
+  return stack(n);
+}
+
 export const PRESETS = [
+  { id: "storynotes", label: tt("Storyboard annoté : cases 16/9, place sous chaque rangée pour les annotations"), make: storyNotes, page: notesGutters },
   { id: "story169", label: tt("Storyboard : 2 × 3 cases 16/9, texte entre les rangées"), make: story, page: storyGutters },
   { id: "plein", label: tt("Pleine page"), make: (L) => L() },
   { id: "2b", label: tt("2 bandes"), make: (L) => rows(2, L) },

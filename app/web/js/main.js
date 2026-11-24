@@ -23,7 +23,7 @@ const FORMATS = [
 ];
 const PAGE0 = { format: "story", width: 2400, height: 1500, bg: "#ffffff", fill: "#ffffff", stroke: "#111111", strokeWidth: 5, gutter: 26, margin: 60 };
 const LAYOUTS = [
-  ...PRESETS.filter((p) => ["story169", "plein", "2x2", "3x3", "g3", "col2", "action"].includes(p.id)),
+  ...PRESETS.filter((p) => ["story169", "storynotes", "plein", "2x2", "3x3", "g3", "col2", "action"].includes(p.id)),
   { id: "2x3", label: tt("6 cases (2 rangées)"), make: (L) => transpose(PRESETS.find((p) => p.id === "3x2").make(L)) },
   { id: "1x3", label: tt("3 colonnes"), make: (L) => transpose(PRESETS.find((p) => p.id === "3b").make(L)) },
   { id: "1x2", label: tt("2 colonnes"), make: (L) => transpose(PRESETS.find((p) => p.id === "2b").make(L)) },
@@ -240,7 +240,7 @@ class App {
     toast(tt("Case vidée. Ctrl+Z pour la retrouver."));
   }
   select(sel, keepOverlay) {
-    const same = sel.panel === this.sel.panel && sel.layer === this.sel.layer && sel.bubble === this.sel.bubble && sel.mark === this.sel.mark;
+    const same = sel.panel === this.sel.panel && sel.layer === this.sel.layer && sel.bubble === this.sel.bubble && sel.mark === this.sel.mark && sel.note === this.sel.note;
     this.sel = sel;
     if (same) return;
     this.editor.render(keepOverlay);
@@ -277,6 +277,9 @@ class App {
       h("div.row", h("button.mini", { on: { click: () => this.split("h") } }, tt("Couper ━")), h("button.mini", { on: { click: () => this.split("v") } }, tt("Couper ┃")),
         h("button.mini.danger", { on: { click: () => this.removePanel() } }, tt("Supprimer la case"))),
       h("p.muted", tt("Glisse un trait pour le déplacer, un de ses bouts pour l'incliner (Maj : trait droit).")),
+      h("h3", tt("Cadres de texte")),
+      h("div.row.wrap", h("button.mini", { title: tt("Un cadre de texte posé sur la page, n'importe où : titre de page, annotation, indication. Double-clic pour écrire dedans."), on: { click: () => this.addNote() } }, tt("▭ Cadre de texte")),
+        h("button.mini", { title: tt("Un cadre de texte sous chaque case, dans la place libre en dessous (storyboard annoté)"), on: { click: () => this.notesUnder() } }, tt("▤ Annotations sous les cases"))),
       h("h3", tt("Page")),
       h("label.row", tt("Format"), h("select", { on: { change: (e) => { const f = FORMATS.find((x) => x.id === e.target.value);
         Object.assign(page, { format: f.id, width: f.w, height: f.h }); this.commit("format"); this.refresh(); } } },
@@ -300,6 +303,7 @@ class App {
     let i = 0; const used = [];
     const P = pg.page;
     if (P.gutter0 !== undefined) { P.gutter = P.gutter0; delete P.gutterV; delete P.gutter0; }   // on quitte le storyboard : la gouttiere d'avant revient
+    delete P.marginB;                                      // marge du bas propre au storyboard annote
     pg.layout = make(() => { const id = i < old.length ? old[i] : this.newId(); i++; used.push(id); return { t: "leaf", id }; }, pg.page);
     if (pageFix) { const g0 = P.gutter; Object.assign(P, pageFix(P)); P.gutter0 = g0; }   // decoupage qui regle aussi la page (gouttieres du storyboard)
     for (const id of Object.keys(pg.panels)) if (!used.includes(id)) delete pg.panels[id];
@@ -829,6 +833,35 @@ class App {
     setTimeout(() => this.el.insp.querySelector("textarea")?.select(), 30);
   }
   bubble() { return (this.curPanel()?.bubbles || []).find((b) => b.id === this.sel.bubble); }
+  // ---------------------------------------------------------------- cadres de texte (page) : titres, annotations sous les cases
+  // pg.notes : [{id, x, y, w, h (fractions de la page), text, fs (taille, en milliemes de la largeur de page), al, b, border, fill, under}]
+  note() { return (this.page()?.notes || []).find((n) => n.id === this.sel.note); }
+  addNote(r, quiet) {
+    const pg = this.page(), n = Object.assign({ id: uid(), x: 0.3, y: 0.012, w: 0.4, h: 0.045, text: "", fs: 14, al: "center", border: true, fill: "#ffffff" }, r);
+    (pg.notes = pg.notes || []).push(n);
+    if (!quiet) { this.sel = { note: n.id }; this.commit("note"); this.editor.render(); this.refreshInspector(); setTimeout(() => this.editor.editNote(n.id), 30); }
+    return n;
+  }
+  notesUnder() {                                         // un cadre dans la place libre sous chaque case (une seule fois par case)
+    const pg = this.page(), page = pg.page, geom = compute(page, pg.layout), made = [];
+    const have = new Set((pg.notes || []).map((n) => n.under).filter(Boolean));
+    for (const g of geom.panels) {
+      if (!g.bbox || have.has(g.id)) continue;
+      const b = g.bbox, bottom = b.y0 + b.h;
+      const next = geom.panels.filter((q) => q.bbox && q !== g && q.bbox.y0 > bottom - 1 && q.bbox.x0 < b.x0 + b.w && q.bbox.x0 + q.bbox.w > b.x0).map((q) => q.bbox.y0);
+      const end = next.length ? Math.min(...next) : page.height - page.margin * 0.5, room = end - bottom, pad = Math.min(10, room * 0.1);
+      if (room < 36) continue;
+      made.push(this.addNote({ x: b.x0 / page.width, y: (bottom + pad) / page.height, w: b.w / page.width, h: (room - 2 * pad) / page.height, under: g.id, fs: 13, al: "left", border: false, fill: "" }, true));
+    }
+    if (!made.length) return toast(tt("Pas de place libre sous les cases : prends le découpage « Storyboard annoté » ou agrandis la gouttière."), "error");
+    this.sel = {}; this.commit("note"); this.editor.render(); this.refreshInspector();
+    toast(tt`${made.length} cadre(s) d'annotation : double-clic pour écrire.`);
+  }
+  removeNote() {
+    const pg = this.page(), n = this.note(); if (!n) return;
+    pg.notes = pg.notes.filter((x) => x !== n); this.sel = {};
+    this.commit("note"); this.editor.render(); this.refreshInspector();
+  }
   // ---------------------------------------------------------------- indications (fleches, rotation, cadres)
   mark() { return (this.curPanel()?.marks || []).find((m) => m.id === this.sel.mark); }
   addMark(pid, type, at, quiet) {
@@ -948,6 +981,22 @@ class App {
         range(tt("Contraste"), g.c || 0, -100, 100, 1, (x) => put("c", x), kind),
         on ? h("button.mini", { on: { click: () => { set(null); this.commit(kind); this.editor.render(); this.refreshInspector(); } } }, tt("Réinitialiser")) : "");
     };
+    const nt = this.note();
+    if (nt) {                                              // cadre de texte de la page
+      const redo = () => { this.commit("note"); this.editor.renderOverlay(); };
+      const ta = h("textarea", { rows: 4, placeholder: tt("Texte du cadre…"), on: { input: (e) => { nt.text = e.target.value; this.editor.renderOverlay(); this.commitSoon("note"); } } });
+      ta.value = nt.text || "";
+      box.append(h("h3", tt("Cadre de texte")), ta,
+        range(tt("Taille du texte"), nt.fs || 14, 5, 60, 0.5, (x) => { nt.fs = x; this.editor.renderOverlay(); }, "note"),
+        h("div.row", h("span", tt("Alignement")), ...[["left", "⯇"], ["center", "≡"], ["right", "⯈"]].map(([a, lab]) => h("button.mini" + ((nt.al || "left") === a ? ".on" : ""), { on: { click: () => { nt.al = a; redo(); this.refreshInspector(); } } }, lab)),
+          h("button.mini" + (nt.b ? ".on" : ""), { title: tt("Gras"), on: { click: () => { nt.b = !nt.b; redo(); this.refreshInspector(); } } }, "B")),
+        h("label.row.check", h("input", { type: "checkbox", checked: nt.border !== false, on: { change: (e) => { nt.border = e.target.checked; redo(); } } }), tt("Cadre (contour)")),
+        h("div.row.colrow", h("label.row.check", h("input", { type: "checkbox", checked: !!nt.fill, on: { change: (e) => { nt.fill = e.target.checked ? "#ffffff" : ""; redo(); this.refreshInspector(); } } }), tt("Fond")),
+          nt.fill ? swatch(nt.fill, (c) => { nt.fill = c; this.editor.renderOverlay(); this.commitSoon("note"); }) : ""),
+        h("p.muted", tt("Glisser le cadre : le déplacer ; coin en bas à droite : sa taille ; double-clic : écrire dedans.")),
+        h("button.mini.danger", { on: { click: () => this.removeNote() } }, tt("Supprimer le cadre")));
+      return;
+    }
     if (!pan) { box.append(h("h3", tt("Sélection")), h("p.muted", tt("Clique une case pour la régler ; glisse-y un décor puis des personnages depuis la banque."))); return; }
     if (l) {
       const item = this.bank.get(l.item), v = variantOf(item, l.v), sp0 = item && sprite(item, l.v, l.f), ls = pan.layers, i = ls.indexOf(l);
@@ -1406,6 +1455,7 @@ class App {
         if (l) return this.removeLayer(l);
         if (this.bubble()) return this.removeBubble();
         if (this.mark()) return this.removeMark();
+        if (this.note()) return this.removeNote();
         return;
       }
       if (!ctrl && !e.altKey && (k === "tab" || k === "q")) {   // Tab : montage de la case ; Q : dessiner son fond
