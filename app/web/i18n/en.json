@@ -2088,7 +2088,9 @@
   " Sa planche de vues est en calcul ; la tournette partira une fois la planche validée.": " Its view sheet is being computed; the turnaround will start once the sheet is approved.",
   "🔓 Déverrouiller": "🔓 Unlock",
   "🔒 Verrouiller (ne plus le prendre ni le bouger par erreur)": "🔒 Lock (no more grabbing or moving it by mistake)",
-  "🔒 Verrouiller": "🔒 Lock"
+  "🔒 Verrouiller": "🔒 Lock",
+  "Loupe : Ctrl + molette (ou molette sans élément choisi) autour du pointeur ; se déplacer : bouton du milieu, ou Espace + glisser": "Magnifier: Ctrl + wheel (or wheel with nothing selected) around the pointer; move around: middle button, or Space + drag",
+  "Tout le portrait": "Whole portrait"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

@@ -245,7 +245,23 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
   };
   // poignees autour de l'element choisi : coins = taille, cotes = etirer, rond du haut = tourner ; taille constante a l'ecran
-  const unit = () => { const r = svg.getBoundingClientRect(); return r.width ? S / r.width : 2; };
+  const unit = () => { const r = svg.getBoundingClientRect(); return r.width ? S / vz / r.width : 2; };
+  // loupe : on montre une partie du cadre (zoom vz, centre vc) ; le portrait, l'export et les places ne changent pas
+  let vz = 1, vc = [S / 2, SH / 2], vpan = null, spaceZ = false;
+  const view = () => {
+    const w = S / vz, hh = SH / vz;
+    vc = [Math.max(w / 2, Math.min(S - w / 2, vc[0])), Math.max(hh / 2, Math.min(SH - hh / 2, vc[1]))];
+    svg.setAttribute("viewBox", `${(vc[0] - w / 2).toFixed(1)} ${(vc[1] - hh / 2).toFixed(1)} ${w.toFixed(1)} ${hh.toFixed(1)}`);
+    if (zoomOut) zoomOut.textContent = Math.round(vz * 100) + " %";
+    paint();
+  };
+  let zoomOut = null;
+  const zoomAt = (k, cx, cy) => {
+    const z1 = Math.max(1, Math.min(8, vz * k));
+    if (z1 === vz) return;
+    if (cx != null) { const q = ptAt(cx, cy); vc = [q.x + (vc[0] - q.x) * vz / z1, q.y + (vc[1] - q.y) * vz / z1]; }
+    vz = z1; view();
+  };
   const grips = () => {
     const l = layers.find((x) => x.n === sel);
     if (!l || multi.size > 1 || l.lock) return "";
@@ -465,8 +481,12 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   const editPart = editElement;
   const itemOf = (l) => (ofBank(l) && (cats.find((c) => c.key === l.cat) || { items: [] }).items.find((x) => x.id === l.id)) || { id: l.id, bank: l.bank || "claude", name: l.name, file: l.file, t: l.t, mine: false, place: l.p0 };
   // souris : glisser un element pose, molette pour sa taille
-  const pt = (e) => { const r = svg.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * S, y: (e.clientY - r.top) / r.height * SH }; };
+  const ptAt = (cx, cy) => { const m = svg.getScreenCTM(); if (m) { const q = new DOMPoint(cx, cy).matrixTransform(m.inverse()); return { x: q.x, y: q.y }; } const r = svg.getBoundingClientRect(); return { x: (cx - r.left) / r.width * S, y: (cy - r.top) / r.height * SH }; };
+  const pt = (e) => ptAt(e.clientX, e.clientY);
   svg.addEventListener("pointerdown", (e) => {
+    if (e.button === 1 || (spaceZ && e.button === 0)) {   // loupe : faire glisser la vue
+      e.preventDefault(); const m = svg.getScreenCTM(); vpan = { x: e.clientX, y: e.clientY, c: vc.slice(), k: m ? m.a : 1 }; svg.setPointerCapture(e.pointerId); return;
+    }
     if (e.button === 2) return;                     // clic droit : le menu s'en charge
     if (moveAll) {                                  // « Deplacer tout » : le visage entier suit la souris
       if (!layers.length) return;
@@ -520,6 +540,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     paint(); props(); e.preventDefault();
   });
   svg.addEventListener("pointermove", (e) => {
+    if (vpan) { vc = [vpan.c[0] - (e.clientX - vpan.x) / vpan.k, vpan.c[1] - (e.clientY - vpan.y) / vpan.k]; view(); return; }
     if (!drag) return;
     const p = pt(e), l = drag.l;
     if (drag.erase) {
@@ -547,6 +568,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     paint(); sync();
   });
   svg.addEventListener("pointerup", () => {         // un glisser fini = une etape
+    if (vpan) { vpan = null; return; }
     if (drag && drag.band) {                        // les elements touches par le rectangle
       const x0 = Math.min(band.x0, band.x1), x1 = Math.max(band.x0, band.x1), y0 = Math.min(band.y0, band.y1), y1 = Math.max(band.y0, band.y1);
       band = null; drag = null;
@@ -558,7 +580,9 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     }
     if (drag) { drag = null; hist.snap(); }
   });
-  svg.addEventListener("wheel", (e) => { const l = layers.find((x) => x.n === sel); if (!l || multi.size > 1) return; e.preventDefault(); l.w = Math.round(Math.min(950, Math.max(30, l.w * (e.deltaY < 0 ? 1.05 : 0.95)))); paint(); sync(); }, { passive: false });
+  svg.addEventListener("wheel", (e) => { const l = layers.find((x) => x.n === sel);
+    if (e.ctrlKey || e.metaKey || !l || multi.size > 1) { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0016), e.clientX, e.clientY); return; }   // loupe
+    if (l.lock) return; e.preventDefault(); l.w = Math.round(Math.min(950, Math.max(30, l.w * (e.deltaY < 0 ? 1.05 : 0.95)))); paint(); sync(); }, { passive: false });
   // clic droit dans le portrait : les gestes de l'element sous la souris (s'il y en a un), puis la liste de tous les
   // elements poses, pour en choisir un sans le chercher dans les briques du bas (meme cache sous un autre)
   svg.addEventListener("contextmenu", (e) => {
@@ -793,6 +817,13 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   const eraseClear = h("button.mini", { title: tt("Remet l'élément choisi entier : retire tous ses coups de gomme") , on: { click: () => { const l = layers.find((x) => x.n === sel); if (!l || !(l.er || []).length) return toast(tt("Rien à rétablir sur cet élément.")); delete l.er; paint(); hist.snap(); } } }, tt("↺ Dégommer"));
   const eraseBox = h("span.row.idk-erase", eraseBtn, eraseRange, eraseOut, eraseClear);
   eraseBtn.addEventListener("click", () => { erasing = !erasing; eraseBtn.classList.toggle("on", erasing); svg.style.cursor = erasing ? "crosshair" : ""; if (erasing) toast(tt("Gomme : glisse sur l'élément choisi.")); });
+  zoomOut = h("output.idk-zoomval", "100 %");
+  const zoomBar = h("div.idk-zoom", { title: tt("Loupe : Ctrl + molette (ou molette sans élément choisi) autour du pointeur ; se déplacer : bouton du milieu, ou Espace + glisser") },
+    h("button.mini", { type: "button", on: { click: () => zoomAt(1 / 1.4) } }, "－"), zoomOut, h("button.mini", { type: "button", on: { click: () => zoomAt(1.4) } }, "＋"),
+    h("button.mini", { type: "button", title: tt("Tout le portrait"), on: { click: () => { vz = 1; vc = [S / 2, SH / 2]; view(); } } }, "⤢"));
+  const keyZ = (e) => { if (!document.body.contains(svg)) { document.removeEventListener("keydown", keyZ, true); document.removeEventListener("keyup", keyZ, true); return; }
+    if (e.key !== " " || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return; e.preventDefault(); spaceZ = e.type === "keydown"; svg.style.cursor = spaceZ ? "grab" : ""; };
+  document.addEventListener("keydown", keyZ, true); document.addEventListener("keyup", keyZ, true);
   const moveBtn = h("button.mini.idk-moveall", { title: tt("Déplacer tout : tant que ce bouton est allumé, glisser sur le portrait déplace tous les éléments ensemble (Échap pour arrêter)"),
     on: { click: () => { moveAll = !moveAll; moveBtn.classList.toggle("on", moveAll); if (moveAll) { sel = null; multi.clear(); } paint(); props(); } } }, "✥");
   // exporter le portrait compose : PNG transparent ou JPEG sur blanc, 2 pixels par unite du cadre
@@ -858,7 +889,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   });
   const head = BODYKIT ? tt("Générateur de corps") : tt("Portrait-robot");
   const m = modal(edit && edit.item ? `${head} : ${edit.item.name}` : head, h("div.idk" + (BODYKIT ? ".idk-corps" : ""),
-    h("div.idk-left", h("div.idk-stagewrap", svg, moveBtn), stageBgControl(() => paint()), bricksBox, h("div.row.wrap", h("button.mini", { title: BODYKIT ? tt("Tire un corps au hasard dans la banque ouverte") : tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
+    h("div.idk-left", h("div.idk-stagewrap", svg, moveBtn, zoomBar), stageBgControl(() => paint()), bricksBox, h("div.row.wrap", h("button.mini", { title: BODYKIT ? tt("Tire un corps au hasard dans la banque ouverte") : tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
       BODYKIT ? "" : h("button.mini", { title: tt("Reconstruit le visage d'une photo de face avec les éléments du portrait-robot. La photo reste dans ce navigateur : seuls les points du visage partent."), on: { click: () => fileIn.click() } }, tt("📷 Transposer un portrait…")), BODYKIT ? "" : fileIn,
       h("button.mini", { on: { click: () => { layers = []; sel = null; multi.clear(); paint(); props(); marks(); } } }, tt("Tout retirer")),
       eraseBox,

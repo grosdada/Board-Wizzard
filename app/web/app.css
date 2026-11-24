@@ -62,6 +62,7 @@ aside.right { border-left: 1px solid var(--line); padding: 0; display: flex; fle
 .idk-realgo { padding: 12px 10px; font-size: 14px; } .idk-real img { width: 100%; border-radius: 6px; background: #fff; }
 .idk-tobody { font-size: 15px; font-weight: 700; padding: 9px 18px; background: #e2603a; color: #fff; border: 0; border-radius: 8px; }
 .idk-tobody:hover { background: #f07246; }
+.idk-zoom { position: absolute; top: 6px; left: 6px; display: flex; gap: 3px; align-items: center; opacity: 0.85; } .idk-zoomval { font-size: 11px; min-width: 38px; text-align: center; color: #333; background: #fffc; border-radius: 4px; }
 .draw-band { fill: rgba(43,179,163,.08); stroke: #2bb3a3; stroke-width: 1.5; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; pointer-events: none; }
 /* cadres de texte de la page : titres, annotations sous les cases */
 .bnote { position: absolute; pointer-events: auto; box-sizing: border-box; padding: .25em .45em; color: #111; cursor: move; overflow: hidden;
