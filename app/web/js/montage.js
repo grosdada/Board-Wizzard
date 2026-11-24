@@ -187,7 +187,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const o2 = o.length;                                 // fin du dessin : la gomme de la bouche s'y applique
       const exk = sp.orbit && sp.expr ? exprAt(l, t) : "";
       let egm = "";                                        // gomme de l'expression : <g transform>...</g> a poser dans le masque du dessin
-      if (exk) {                                           // expression du visage : sous la bouche du lip sync, qui l'emporte toujours
+      if (exk) {                                           // expression du visage ; pendant que la voix joue, exprAt n'en donne pas (la bouche l'emporte)
         const ef = mouthFrame(sp, again);
         if (ef && ef.expr) { const esc = Math.min(box.w / ef.w, box.h / ef.h), et = `${flip}translate(${f1(box.x + (box.w - ef.w * esc) / 2)} ${f1(box.y + box.h - ef.h * esc)}) scale(${f3(esc)})`;
           o += `<g${bl}><g data-expr="${l.id}" transform="${et}" style="pointer-events:none">${exprMarkup(exk, ef.expr, ef.all, sp.i)}</g></g>`;
@@ -1582,7 +1582,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (!sp || !sp.orbit) rows.push(h("div.muted", tt("Pas d'orbite pour cette pose : pas d'expressions.")));
     else if (!sp.expr || !keys.length) rows.push(h("div.muted", tt("Pas encore d'expressions pour ce personnage : elles sont à générer (il faut aussi sa bouche suivie).")));
     else {
-      rows.push(h("div.muted", { title: tt("Clique une expression : elle est posée à la tête de lecture et tient jusqu'à la suivante. La bouche du lip sync passe toujours par-dessus.") }, tt`À cet instant ⓘ : ${exprName(cur)}`),
+      rows.push(h("div.muted", { title: tt("Clique une expression : elle est posée à la tête de lecture et tient jusqu'à la suivante. Pendant que le personnage parle, elle s'enlève : la bouche du lip sync prend le dessus, sur la tête de base.") }, tt`À cet instant ⓘ : ${exprName(cur)}`),
         h("div.row.wrap.mouths", ["", ...keys].map((k) => h("button.mini" + (cur === k ? ".on" : ""), { on: { click: () => setAt(k) } }, exprName(k)))));
       if (ks.length) rows.push(h("div.exkeys", ks.map((q, i) => h("div.row", h("button.mini", { title: tt("Aller à cet instant"), on: { click: () => { t = q.t; paint(); props(); } } }, `${q.t.toFixed(2)} s`),
         h("span", exprName(q.k)), h("button.mini.danger", { title: tt("Retirer"), on: { click: () => { ks.splice(i, 1); if (!ks.length) delete l.ex; hist.snap(); paint(); props(); } } }, "✕")))));

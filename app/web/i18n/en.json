@@ -1963,7 +1963,8 @@
   "Retirer toutes les expressions de cette pose ?": "Remove every expression of this pose?",
   "Retirer les expressions": "Remove expressions",
   "Expression": "Expression",
-  "Pas encore d'expressions pour ce personnage.": "No expressions for this character yet."
+  "Pas encore d'expressions pour ce personnage.": "No expressions for this character yet.",
+  "Clique une expression : elle est posée à la tête de lecture et tient jusqu'à la suivante. Pendant que le personnage parle, elle s'enlève : la bouche du lip sync prend le dessus, sur la tête de base.": "Click an expression: it is set at the playhead and holds until the next one. While the character speaks it goes away: the lip sync mouth takes over, on the base head."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

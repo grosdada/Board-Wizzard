@@ -278,7 +278,7 @@ function cardPick(lip, lips, frames, i, t) {
 }
 
 /** Expression du visage (app/exprcards.py) : la carte « k » de l'image-cle la plus proche, recalee sur la bouche suivie de
- *  l'image i comme les bouches dessinees. Elle passe SOUS la bouche du lip sync, qui l'emporte toujours. "" sans carte. */
+ *  l'image i comme les bouches dessinees. Pendant que la voix joue, il n'y en a pas (exprAt) : la bouche l'emporte. */
 export function exprCard(k, ex, frames, i) {
   if (!k || !ex || !frames) return null;
   const ck = cardKey(Object.assign({}, ex, { exact: false }), frames, i), m = frames[i];
@@ -309,6 +309,8 @@ export function exprGom(k, ex, frames, i) {
 /** Expression d'un calque a l'instant t : la derniere cle posee avant t (l.ex.keys = [{ t, k }], k = "" : neutre), sinon
  *  celle de la case (l.exk). */
 export function exprAt(l, t) {
+  // la bouche a la priorite : pendant que la voix joue, pas d'expression, la bouche du lip sync se pose sur la tete de base
+  if (l && l.lip && l.lip.on && l.lip.src && voiceTime(l.lip, t) >= 0) return "";
   const ks = (l && l.ex && l.ex.keys) || [];
   let k = l && l.exk || "";
   for (const q of ks) if (q.t <= t + 1e-6) k = q.k; else break;
