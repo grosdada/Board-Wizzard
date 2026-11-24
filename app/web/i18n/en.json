@@ -1920,7 +1920,11 @@
   "Cadre (contour)": "Frame (outline)",
   "Glisser le cadre : le déplacer ; coin en bas à droite : sa taille ; double-clic : écrire dedans.": "Drag the frame to move it; bottom-right corner: its size; double-click: type in it.",
   "Supprimer le cadre": "Delete the frame",
-  "Double-clic pour écrire": "Double-click to type"
+  "Double-clic pour écrire": "Double-click to type",
+  "Pipette : clique sur la couleur à prendre (Échap pour annuler).": "Eyedropper: click the colour to pick (Esc to cancel).",
+  "Pipette : prendre une couleur à l'écran (un personnage, un décor, une case…)": "Eyedropper: pick a colour on screen (a character, a set, a panel…)",
+  "Pas de couleur prise.": "No colour picked.",
+  "💧 Pipette": "💧 Eyedropper"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
