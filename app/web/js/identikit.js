@@ -846,7 +846,6 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   const m = modal(edit && edit.item ? `${head} : ${edit.item.name}` : head, h("div.idk" + (BODYKIT ? ".idk-corps" : ""),
     h("div.idk-left", h("div.idk-stagewrap", svg, moveBtn), stageBgControl(() => paint()), bricksBox, h("div.row.wrap", h("button.mini", { title: BODYKIT ? tt("Tire un corps au hasard dans la banque ouverte") : tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
       BODYKIT ? "" : h("button.mini", { title: tt("Reconstruit le visage d'une photo de face avec les éléments du portrait-robot. La photo reste dans ce navigateur : seuls les points du visage partent."), on: { click: () => fileIn.click() } }, tt("📷 Transposer un portrait…")), BODYKIT ? "" : fileIn,
-      BODYKIT ? "" : h("button.mini", { title: tt("Ouvre le générateur de corps avec cette tête : torse, bras, jambes, chaussures… à assembler ou à dessiner"), on: { click: toBody } }, tt("🧍 Composer un corps…")),
       h("button.mini", { on: { click: () => { layers = []; sel = null; multi.clear(); paint(); props(); marks(); } } }, tt("Tout retirer")),
       eraseBox,
       h("button.mini", { title: tt("Télécharge le portrait tel qu'il est affiché, en pleine définition, sans les poignées"), on: { click: (e) => exportMenu(e) } }, tt("⬇ Exporter le portrait ▾")),
@@ -893,6 +892,8 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       } catch (e) { toast(tt("Portrait refusé : ") + e.message, "error", 9000); return false; }
     } }]);
   m.box.classList.add("wide", "idk-box");
+  // « Composer un corps » : le bouton important, en bas a droite a cote de « Fermer »
+  if (!BODYKIT) m.box.querySelector("footer").prepend(h("button.idk-tobody", { title: tt("Ouvre le générateur de corps avec cette tête : torse, bras, jambes, chaussures… à assembler ou à dessiner"), on: { click: toBody } }, tt("🧍 Composer un corps…")));
   hist.watch(m.box);                                // chaque geste dans la fenetre note l'etat (souris, curseurs, menus)
   if (BODYKIT) m.box.classList.add("idk-corpsbox");
   if (opts.name && !name.value) name.value = opts.name;
