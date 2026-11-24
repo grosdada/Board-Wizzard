@@ -6,6 +6,7 @@
     python tools/expressions.py fal <element> <joie,colere,...> [--variante v] [--images ...] --oui   # PAYANT
     python tools/expressions.py essai <element> [--variante v] [--retirer]        # fausses cartes (gratuit), pour l'affichage
     python tools/expressions.py retirer <element> [--variante v] [joie,...]
+    python tools/expressions.py cuire <element> [--variante v] [--portee 4]     # cartes image par image (gratuit), apres assemble
 
 prep (Dzine, gratuit pour nos personnages) : pour chaque image-cle (par defaut celles des bouches dessinees de face), une
 grille 2x2 par groupe de quatre expressions, et expressions.json (fichier, consigne, ordre des cases). Les grilles se
@@ -42,7 +43,7 @@ def keys_of(s):
 
 def main():
     a = [x for x in sys.argv[1:] if not x.startswith("--")]
-    for o in ("--variante", "--images", "--out"):
+    for o in ("--variante", "--images", "--out", "--portee"):
         if o in sys.argv:
             a.remove(sys.argv[sys.argv.index(o) + 1])
     if len(a) < 2:
@@ -105,6 +106,8 @@ def main():
             _, row = ex.assemble(iid, vid, f, ex.fake_grid(iid, vid, f, keys), keys, model="essai")
             rows.append(row)
         print("planche", ex.sheet(rows, settings.DATA / "qa" / ("expressions-%s-%s-essai.jpg" % (iid, vid))))
+    elif cmd == "cuire":
+        print(len(ex.bake(iid, vid, int(opt("--portee", "4")), test="--test" in sys.argv)), "images cuites")
     elif cmd == "retirer":
         ex.remove(iid, vid, [k for k in keys_of(a[2]) if k] if len(a) > 2 else None)
         print("retire")

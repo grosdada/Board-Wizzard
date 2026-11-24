@@ -7,7 +7,9 @@ bouche FERMEE, joues. Chaque case est recalee sur la decoupe (hors du visage : c
 que ce qui a change dans le visage, a l'interieur de la silhouette d'origine : une carte transparente par expression.
 
     <orbite>/expr/kFFF_<cle>.webp       les cartes (pixels de l'image d'orbite, carre x, y, s de la decoupe)
-    <orbite>/expr.json                  { w, h, model, keys: [{ f, x, y, s, cards: {cle: chemin}, out: {cle: part} }] }
+    <orbite>/expr/kFFF_<cle>_g.webp     les gommes : ou effacer le dessin d'origine sous la carte (tete redessinee plus etroite)
+    <orbite>/expr/cFFF_<cle>.webp       cartes « cuites » des images voisines (bake : flot optique depuis l'image-cle)
+    <orbite>/expr.json                  { w, h, model, exact, keys: [{ f, x, y, s, cards: {cle: chemin}, gom?, out?, cuite? }] }
     variants[v].orbit.expr              instant de la derniere ecriture (le navigateur recharge)
     variants[v].orbit.exprs             cles des expressions disponibles (menus du clic droit)
 
@@ -235,7 +237,10 @@ def card_alpha(gen, flat, rgba, mx, my, mw, hw):
     keep = (keep | (ff == 1)) & zone
     r = max(2, int(mw * 0.10))
     m = Image.fromarray((keep * 255).astype("uint8")).filter(ImageFilter.MaxFilter(2 * r + 1)).filter(ImageFilter.GaussianBlur(r * 0.8))
-    m = np.minimum(np.asarray(m), (zone * 255).astype("uint8"))
+    # bord de la zone en fondu (un sourcil releve qui touche le haut de la zone ne laisse pas de couture nette)
+    zsoft = np.asarray(Image.fromarray((zone * 255).astype("uint8")).filter(ImageFilter.MinFilter(int(max(3, hw * 0.05)) | 1))
+                       .filter(ImageFilter.GaussianBlur(max(1.5, hw * 0.04))))
+    m = np.minimum(np.asarray(m), zsoft)
     sil = np.asarray(Image.fromarray((srcA * 255).astype("uint8")).filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.8)), np.float32) / 255
     # gomme : blanc de la case rendue relie au fond d'origine (le blanc est ronge avant, pour qu'un trait interrompu ne
     # laisse pas le fond entrer dans le visage), sur le dessin d'origine, dans la zone de la bouche et pres du bord
@@ -365,6 +370,105 @@ def remove(iid, vid, keys=None):
     return store.mutate_item(iid, fn)
 
 
+def bake(iid, vid="base", reach=4, test=False):
+    """Cartes « cuites » image par image (comme tools/levres_bake.py pour les bouches) : une carte de visage recalee sur une
+    image voisine par les seuls bouts de la bouche laisse voir un double contour de tete des 3 images d'ecart. Ici, pour
+    chaque image de face a `reach` images au plus d'une image-cle dessinee, le flot optique entre cette image et l'image-cle
+    deforme la carte et sa gomme : une carte par image, posee sans recalage. expr.json prend exact: true (l'affichage ne
+    recale plus une carte sur une voisine) ; les cles cuites portent cuite: f de l'image-cle. Les anciennes sont refaites."""
+    import cv2
+    _, o, od = orbit_folder(iid, vid)
+    data = json.loads((od / "expr.json").read_text(encoding="utf-8"))
+    frames = json.loads((od / "mouth.json").read_text(encoding="utf-8"))["frames"]
+    n = len(frames)
+    drawn = [k for k in data["keys"] if "cuite" not in k]
+    for k in data["keys"]:                                   # les anciennes cartes cuites partent
+        if "cuite" in k and not test:
+            for rel in list(k["cards"].values()) + list((k.get("gom") or {}).values()):
+                (od / rel).unlink(missing_ok=True)
+    taken = {k["f"] for k in drawn}
+    cache = {}
+
+    def spr(i):
+        if i not in cache:
+            cache[i] = Image.open(od / ("%03d.webp" % i)).convert("RGBA")
+        return cache[i]
+
+    def gray(im):
+        a = np.asarray(im).astype(np.float32)
+        rgb = a[..., :3] * (a[..., 3:] / 255) + 255 * (1 - a[..., 3:] / 255)
+        return rgb.mean(axis=2).astype(np.uint8), a[..., 3] / 255
+    dis = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_MEDIUM)
+    new = []
+    for i in range(n):
+        m = frames[i]
+        if i in taken or not m or not m.get("up") or m.get("ext") or m.get("back"):
+            continue
+        best = None
+        for k in drawn:
+            dd = abs(k["f"] - i)
+            dd = min(dd, n - dd)
+            if dd <= reach and (best is None or dd < best[1]):
+                best = (k, dd)
+        if not best:
+            continue
+        k, far = best
+        x, y, sz = int(k["x"]), int(k["y"]), int(k["s"])
+        mg = int(sz * 0.25)
+        Wd, Hd = spr(i).size
+        X0, Y0, X1, Y1 = max(0, x - mg), max(0, y - mg), min(Wd, x + sz + mg), min(Hd, y + sz + mg)
+        gi, ai = gray(spr(i).crop((X0, Y0, X1, Y1)))
+        gk, _ = gray(spr(k["f"]).crop((X0, Y0, X1, Y1)))
+        flow = dis.calc(gi, gk, None)                       # pixel p de l'image i -> p + flot dans l'image-cle
+        sg = max(3.0, sz * 0.03)
+        flow = np.stack([cv2.GaussianBlur(flow[..., c], (0, 0), sg) for c in range(2)], -1)
+        h, w = gi.shape
+        gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
+        mapx, mapy = gx + flow[..., 0], gy + flow[..., 1]
+        sl = (slice(y - Y0, y - Y0 + sz), slice(x - X0, x - X0 + sz))
+
+        def warp(arr):
+            big = np.zeros((h, w) + arr.shape[2:], np.float32)
+            big[sl] = arr
+            if big.ndim == 2:
+                return cv2.remap(big, mapx, mapy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            return np.stack([cv2.remap(big[..., c], mapx, mapy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+                             for c in range(big.shape[2])], -1)
+        entry = {"f": i, "x": x, "y": y, "s": sz, "cards": {}, "gom": {}, "cuite": k["f"], "ecart": far}
+        for ex, rel in k["cards"].items():
+            card = np.asarray(Image.open(od / rel).convert("RGBA").resize((sz, sz), Image.LANCZOS), np.float32)
+            wc = warp(card)
+            wc[..., 3] *= np.clip(ai, 0, 1)                     # jamais hors de la silhouette de cette image
+            name = "expr/c%03d_%s.webp" % (i, ex)
+            entry["cards"][ex] = name
+            gsrc = (k.get("gom") or {}).get(ex)
+            gw = None
+            if gsrc:
+                g = np.asarray(Image.open(od / gsrc).convert("RGBA").resize((sz, sz), Image.LANCZOS))[..., 3].astype(np.float32)
+                gw = warp(g) * ai
+                entry["gom"][ex] = name[:-5] + "_g.webp"
+            if not test:
+                Image.fromarray(wc[sl].clip(0, 255).astype(np.uint8), "RGBA").save(od / name, quality=92, method=4)
+                if gw is not None:
+                    gim = Image.new("RGBA", (sz, sz), (0, 0, 0, 0))
+                    gim.putalpha(Image.fromarray(gw[sl].clip(0, 255).astype(np.uint8)))
+                    gim.save(od / entry["gom"][ex], lossless=True, method=4)
+        if not entry["gom"]:
+            entry.pop("gom")
+        new.append(entry)
+    if not test:
+        data["keys"] = sorted(drawn + new, key=lambda e: e["f"])
+        data["exact"] = True
+        (od / "expr.json").write_text(json.dumps(data), encoding="utf-8")
+
+        def fn(it):
+            oo = ((it["variants"].get(vid) or {}).get("orbit")) or {}
+            if oo.get("dir") == o["dir"]:
+                oo["expr"] = int(time.time() * 1000)
+        store.mutate_item(iid, fn)
+    return new
+
+
 def groups(keys):
     """Les expressions par grilles de quatre (la derniere completee par des cases inchangees)."""
     keys = list(keys)
@@ -410,6 +514,9 @@ def run_fal(job, keys, frames=None, vid="base"):
             got = prov.fetch(out["images"][0]["url"], tmp / ("rendu_%03d_%d.png" % (f, n)))
             _, row = assemble(iid, vid, f, got, g, model=MODEL)
             rows.append(row)
+        if rows:
+            job["progress"] = "expressions : cartes image par image"
+            bake(iid, vid)
     finally:
         for p in tmp.glob("*"):
             p.unlink(missing_ok=True)
