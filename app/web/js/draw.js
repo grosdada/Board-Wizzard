@@ -1006,7 +1006,14 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     props(); paint();
     if (layers) hist.snap();                               // atelier d'elements : chaque trait est une etape d'annulation
   });
-  svg.addEventListener("dblclick", (e) => { if (building) { e.preventDefault(); finish(true); } });
+  svg.addEventListener("dblclick", (e) => {
+    if (building) { e.preventDefault(); finish(true); return; }
+    const t = target();                                    // double-clic sur une forme choisie : ses points, a tirer un par un
+    if (!t || tool !== "select" || t.t === "img") return;
+    e.preventDefault();
+    if (t.t === "pre" || PRIMS[t.t]) editPoints(t);
+    else if (MANY.has(t.t) && t.t !== "poly" && t.t !== "polyline" && !t.ed) pointsOf(t);
+  });
   svg.addEventListener("contextmenu", (e) => {             // clic droit : dupliquer, copier, coller, ordre, supprimer
     e.preventDefault();
     if (building) return;

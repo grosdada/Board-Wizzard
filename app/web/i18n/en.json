@@ -2062,7 +2062,15 @@
   "Le portrait tel qu'il est affiché part à fal avec cette consigne. Environ 0,06 $ par image, une minute environ.": "The portrait as displayed is sent to fal with this prompt. About $0.06 per image, about a minute.",
   "Consigne": "Prompt",
   "Rendu photoréaliste du portrait tel qu'il est, en gardant exactement la forme du dessin (GPT Image 2.6 Sunburst sur fal, payant)": "Photorealistic render of the portrait as it is, keeping the drawing's shape exactly (GPT Image 2.6 Sunburst on fal, paid)",
-  "✨ Generate (photo)": "✨ Generate (photo)"
+  "✨ Generate (photo)": "✨ Generate (photo)",
+  "Gomme : choisis d'abord l'élément à gommer (clic dessus).": "Eraser: first pick the element to erase (click it).",
+  "Gomme : glisser sur l'élément choisi efface ses parties (un bout de cheveux…). Ctrl+Z annule un coup. Clic encore : arrêter.": "Eraser: dragging over the chosen element erases parts of it (a bit of hair…). Ctrl+Z undoes a stroke. Click again: stop.",
+  "⌫ Gomme": "⌫ Eraser",
+  "Taille de la gomme": "Eraser size",
+  "Remet l'élément choisi entier : retire tous ses coups de gomme": "Restores the chosen element whole: removes all its eraser strokes",
+  "Rien à rétablir sur cet élément.": "Nothing to restore on this element.",
+  "↺ Dégommer": "↺ Un-erase",
+  "Gomme : glisse sur l'élément choisi.": "Eraser: drag over the chosen element."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

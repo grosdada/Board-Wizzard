@@ -121,6 +121,12 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   };
   const unstack = () => { layers.forEach((l) => { delete l.z; }); paint(); hist.snap(); };
   const tf = (l) => `translate(${l.x} ${l.y}) rotate(${l.rot}) scale(${l.flip ? -1 : 1} 1)`;
+  // gomme : l.er = [{ w, p: [[u, v], ...] }], coordonnees de l'image de l'element (0..1), epaisseur en hauteur d'image
+  const erasePts = (l, s) => { const W = l.w * l.kx, hh = boxH(l); return s.p.map(([u, v]) => [imgX(l) + u * W, -hh / 2 + v * hh]); };
+  const eraseSvg = (l) => (l.er || []).map((s) => { const q = erasePts(l, s), hh = boxH(l);
+    return q.length === 1 ? `<circle cx="${q[0][0].toFixed(1)}" cy="${q[0][1].toFixed(1)}" r="${(s.w * hh / 2).toFixed(1)}" fill="#000"/>`
+      : `<polyline points="${q.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ")}" fill="none" stroke="#000" stroke-width="${(s.w * hh).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`; }).join("");
+  let erasing = false, eraseW = 28;                         // gomme allumee, epaisseur (unites de la feuille)
   const paint = () => {
     // chaque coupe (ou couvre-chef) masque, au-dessus de son profil, tout ce qui est pose dessous : le crane ne depasse pas
     let acc = "", defs = "";
@@ -134,7 +140,8 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       }
       const W = l.w * l.kx, hh = boxH(l), bw = boxW(l);
       if (l.half) defs += `<clipPath id="idkh${l.n}"><rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}"/></clipPath>`;
-      acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${imgX(l)}" y="${-hh / 2}" width="${W}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"${l.half ? ` clip-path="url(#idkh${l.n})"` : ""}/>` +
+      if ((l.er || []).length) defs += `<mask id="idker${l.n}" maskUnits="userSpaceOnUse" x="${imgX(l) - 2}" y="${-hh / 2 - 2}" width="${W + 4}" height="${hh + 4}"><rect x="${imgX(l) - 2}" y="${-hh / 2 - 2}" width="${W + 4}" height="${hh + 4}" fill="#fff"/>${eraseSvg(l)}</mask>`;
+      acc += `<g transform="${tf(l)}" data-n="${l.n}"><image href="${url(l)}" x="${imgX(l)}" y="${-hh / 2}" width="${W}" height="${hh}" preserveAspectRatio="none" data-n="${l.n}"${l.half ? ` clip-path="url(#idkh${l.n})"` : ""}${(l.er || []).length ? ` mask="url(#idker${l.n})"` : ""}/>` +
         (sel === l.n || multi.has(l.n) ? `<rect x="${-bw / 2}" y="${-hh / 2}" width="${bw}" height="${hh}" fill="none" stroke="#10b5e0" stroke-width="2" stroke-dasharray="8 6" pointer-events="none"/>` : "") + `</g>`;
     }
     const ph = !BODYKIT && photo && photo.on ? (() => { const M = photo.M; return `<image href="${photo.url}" width="${photo.w}" height="${photo.h}" preserveAspectRatio="none" opacity="${photo.op}" pointer-events="none" transform="matrix(${M[0][0]} ${M[1][0]} ${M[0][1]} ${M[1][1]} ${M[0][2]} ${M[1][2]})"/>`; })() : "";
@@ -454,6 +461,15 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       e.preventDefault(); return;
     }
     const tn = +(e.target.dataset && e.target.dataset.n), tl = layers.find((x) => x.n === tn);
+    if (erasing) {                                  // gomme : sur l'element choisi, sinon celui qu'on touche
+      const l = layers.find((x) => x.n === sel) || tl;
+      if (!l) { toast(tt("Gomme : choisis d'abord l'élément à gommer (clic dessus).")); return; }
+      if (sel !== l.n) { sel = l.n; props(); }
+      const q = local(l, pt(e)), W = l.w * l.kx, hh = boxH(l);
+      const s = { w: +(eraseW / hh).toFixed(4), p: [[+((q.x - imgX(l)) / W).toFixed(4), +((q.y + hh / 2) / hh).toFixed(4)]] };
+      (l.er = l.er || []).push(s);
+      svg.setPointerCapture(e.pointerId); drag = { erase: s, l }; paint(); e.preventDefault(); return;
+    }
     if (tl && e.shiftKey) {                         // Maj+clic : ajouter ou oter un element du groupe
       if (!multi.size && sel != null) multi.add(sel);
       if (multi.has(tl.n)) multi.delete(tl.n); else multi.add(tl.n);
@@ -493,6 +509,11 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   svg.addEventListener("pointermove", (e) => {
     if (!drag) return;
     const p = pt(e), l = drag.l;
+    if (drag.erase) {
+      const q = local(l, p), W = l.w * l.kx, hh = boxH(l), u = +((q.x - imgX(l)) / W).toFixed(4), v = +((q.y + hh / 2) / hh).toFixed(4), last = drag.erase.p[drag.erase.p.length - 1];
+      if (Math.hypot((u - last[0]) * W, (v - last[1]) * hh) > 2) { drag.erase.p.push([u, v]); paint(); }
+      return;
+    }
     if (drag.band) { band.x1 = p.x; band.y1 = p.y; paint(); return; }
     if (drag.all || drag.group) {
       const dx = Math.round(p.x - drag.p.x) - drag.done.x, dy = Math.round(p.y - drag.p.y) - drag.done.y;
@@ -626,9 +647,22 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       const im = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = url(l); });
       if (!im) continue;
       const W = l.w * l.kx * k, hh = boxH(l) * k, bw = boxW(l) * k;
-      x.save(); x.translate(l.x * k, l.y * k); x.rotate(l.rot * Math.PI / 180); x.scale(l.flip ? -1 : 1, 1);
-      if (l.half) { x.beginPath(); x.rect(-bw / 2, -hh / 2, bw, hh); x.clip(); }      // une moitie : seulement sa moitie de l'image
-      x.drawImage(im, imgX(l) * k, -hh / 2, W, hh); x.restore();
+      const er = (l.er || []).length, lc = er ? document.createElement("canvas") : null;
+      if (lc) { lc.width = wpx; lc.height = hpx; }
+      const y = lc ? lc.getContext("2d") : x;
+      y.save(); y.translate(l.x * k, l.y * k); y.rotate(l.rot * Math.PI / 180); y.scale(l.flip ? -1 : 1, 1);
+      if (l.half) { y.beginPath(); y.rect(-bw / 2, -hh / 2, bw, hh); y.clip(); }      // une moitie : seulement sa moitie de l'image
+      y.drawImage(im, imgX(l) * k, -hh / 2, W, hh);
+      if (lc) {                                     // gomme : les coups effacent l'element seul
+        y.globalCompositeOperation = "destination-out"; y.strokeStyle = "#000"; y.fillStyle = "#000"; y.lineCap = "round"; y.lineJoin = "round";
+        for (const s of l.er) {
+          const q = erasePts(l, s).map(([a, b]) => [a * k, b * k]); y.lineWidth = s.w * boxH(l) * k;
+          if (q.length === 1) { y.beginPath(); y.arc(q[0][0], q[0][1], y.lineWidth / 2, 0, 7); y.fill(); }
+          else { y.beginPath(); q.forEach((p, i) => (i ? y.lineTo(p[0], p[1]) : y.moveTo(p[0], p[1]))); y.stroke(); }
+        }
+      }
+      y.restore();
+      if (lc) x.drawImage(lc, 0, 0);
     }
     let src = a;
     if (crop) {                                     // la boite du dessin, plus 4 % de marge
@@ -738,6 +772,13 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   };
   const fileIn = h("input", { type: "file", accept: "image/*", style: { display: "none" }, on: { change: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) transposeFile(f); } } });
   // « Deplacer tout » : tant qu'il est allume, glisser deplace tout le visage (pour le recentrer)
+  // gomme : efface des bouts de l'element choisi (un bout de cheveux...) ; Ctrl+Z annule un coup
+  const eraseBtn = h("button.mini", { title: tt("Gomme : glisser sur l'élément choisi efface ses parties (un bout de cheveux…). Ctrl+Z annule un coup. Clic encore : arrêter.") }, tt("⌫ Gomme"));
+  const eraseOut = h("output", String(eraseW));
+  const eraseRange = h("input", { type: "range", min: 4, max: 120, step: 1, value: eraseW, title: tt("Taille de la gomme"), on: { input: (e) => { eraseW = +e.target.value; eraseOut.textContent = String(eraseW); } } });
+  const eraseClear = h("button.mini", { title: tt("Remet l'élément choisi entier : retire tous ses coups de gomme") , on: { click: () => { const l = layers.find((x) => x.n === sel); if (!l || !(l.er || []).length) return toast(tt("Rien à rétablir sur cet élément.")); delete l.er; paint(); hist.snap(); } } }, tt("↺ Dégommer"));
+  const eraseBox = h("span.row.idk-erase", eraseBtn, eraseRange, eraseOut, eraseClear);
+  eraseBtn.addEventListener("click", () => { erasing = !erasing; eraseBtn.classList.toggle("on", erasing); svg.style.cursor = erasing ? "crosshair" : ""; if (erasing) toast(tt("Gomme : glisse sur l'élément choisi.")); });
   const moveBtn = h("button.mini.idk-moveall", { title: tt("Déplacer tout : tant que ce bouton est allumé, glisser sur le portrait déplace tous les éléments ensemble (Échap pour arrêter)"),
     on: { click: () => { moveAll = !moveAll; moveBtn.classList.toggle("on", moveAll); if (moveAll) { sel = null; multi.clear(); } paint(); props(); } } }, "✥");
   // exporter le portrait compose : PNG transparent ou JPEG sur blanc, 2 pixels par unite du cadre
@@ -800,6 +841,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       BODYKIT ? "" : h("button.mini", { title: tt("Reconstruit le visage d'une photo de face avec les éléments du portrait-robot. La photo reste dans ce navigateur : seuls les points du visage partent."), on: { click: () => fileIn.click() } }, tt("📷 Transposer un portrait…")), BODYKIT ? "" : fileIn,
       BODYKIT ? "" : h("button.mini", { title: tt("Ouvre le générateur de corps avec cette tête : torse, bras, jambes, chaussures… à assembler ou à dessiner"), on: { click: toBody } }, tt("🧍 Composer un corps…")),
       h("button.mini", { on: { click: () => { layers = []; sel = null; multi.clear(); paint(); props(); marks(); } } }, tt("Tout retirer")),
+      eraseBox,
       h("button.mini", { title: tt("Télécharge le portrait tel qu'il est affiché, en pleine définition, sans les poignées"), on: { click: (e) => exportMenu(e) } }, tt("⬇ Exporter le portrait ▾")),
       h("button.mini", { title: tt("Rendu photoréaliste du portrait tel qu'il est, en gardant exactement la forme du dessin (GPT Image 2.6 Sunburst sur fal, payant)"), on: { click: () => realistic() } }, tt("✨ Generate (photo)"))), photoBox, knobs),
     h("div.idk-right", h("label.row", tt("Nom"), name), bankTabs, tabs, grid)),
