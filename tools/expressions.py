@@ -70,15 +70,16 @@ def main():
             manifest = json.loads(mf.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             manifest = []
-        keys = [k for k in keys_of(a[2]) if k]
+        keys = keys_of(a[2])                     # « joie,colere,joie,colere » : deux propositions par expression
+        groups = ex.groups([k for k in keys if k]) if len(keys) != 4 else [keys]
         for f in frames or ex.default_frames(iid, vid):
             _, _, _, _, flat, _, _, _ = ex.crop(iid, vid, f)
-            for n, g in enumerate(ex.groups(keys)):
+            for n, g in enumerate(groups):
                 name = "expr_%s_%s_%d_%d.png" % (iid, vid, f, n)
                 ex.grid_from(flat).save(out / name)
                 manifest = [e for e in manifest if e["fichier"] != name]
                 manifest.append({"id": iid, "variante": vid, "f": f, "fichier": name, "expressions": ",".join(k or "-" for k in g),
-                                 "prompt": ex.prompt(g), "ratio": "1:1", "taille": "1K", "modele": "Nano Banana Pro",
+                                 "prompt": ex.prompt(g, ex.NOTES.get(iid, "")), "ratio": "1:1", "taille": "1K", "modele": "Nano Banana Pro",
                                  "cases": dict(zip(ex.GRID, [k or "inchangee" for k in g]))})
                 print("grille", out / name)
         mf.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")

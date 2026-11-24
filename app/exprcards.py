@@ -31,6 +31,7 @@ SIDE = 1024
 MARGIN = 16
 CELL = (SIDE - 3 * MARGIN) // 2           # 488, comme tools/levres_dzine.py
 GRID = ["haut-gauche", "haut-droite", "bas-gauche", "bas-droite"]
+MASK = "tete"                             # carte : « tete » (toute la tete, fondu sous le menton) ou « visage » (ce qui change)
 
 KEEP = ("Change ONLY the facial expression: the eyebrows, the eyelids and the gaze, the closed mouth and the cheeks. The mouth "
         "stays CLOSED in every panel: no teeth, no open mouth. The lips keep their own size, thickness and width exactly as in "
@@ -45,8 +46,30 @@ KEEP = ("Change ONLY the facial expression: the eyebrows, the eyelids and the ga
         "new colours, no added detail, no added shading, no text, no labels.")
 
 
-def prompt(keys):
-    """Consigne de la grille : une expression par case (None : la tete inchangee)."""
+# notes propres a un personnage, ajoutees a la consigne (ce que le modele a tendance a redessiner chez lui)
+NOTES = {
+    "super-heros-a-cape": "This character wears a dark brown mask over the eyes and the upper part of the nose, with white eye "
+    "openings. The nose is a separate shape drawn BELOW the edge of the mask, with its own outline and its own lighter wash: "
+    "the line where the mask ends and the nose begins must stay clearly visible, exactly where it is in the reference, and the "
+    "nose keeps exactly its shape and size. The very thick lips keep exactly their shape, their thickness, their outline and "
+    "their wash shading; only their corners move a little. Draw the expression only with the eyebrows above the mask, the "
+    "eyes inside the mask openings, the forehead wrinkles and the corners of the lips.",
+    "vieux-a-lunettes-carrees": "Behind the square glasses the eyes are drawn as concentric spirals: keep the spiral eyes in "
+    "every panel and show the expression with the eyebrows, the eyelids drawn over the spirals, the wrinkles and the mouth.",
+    "costaud-en-smoking": "This character wears a dark grey mask over the eyes and the upper part of the nose; the nose below "
+    "the mask keeps exactly its shape and the edge of the mask stays visible. His lips are very big and fat: in every panel they "
+    "stay exactly as big, fat and wide as in the reference, with the same wash shading; a smile or a pout is drawn by curving "
+    "those same thick lips, never with a thin line or small lips.",
+    "femme-au-col-roule": "Her eyes are drawn as big round circles with a small round pupil and a ring around it: keep these "
+    "big round circle eyes in every panel, same size, same rings; show the expression with the eyebrows, the eyelids cutting "
+    "the top or the bottom of the circles, the wrinkles and the mouth. Her lips keep their shape and thickness.",
+    "robote-steph-v2": "Keep every piercing exactly where it is: the ring in the nose, the two small metal studs and the bar "
+    "under the lower lip, the ear plugs.",
+}
+
+
+def prompt(keys, note=""):
+    """Consigne de la grille : une expression par case (None : la tete inchangee). note : consigne propre au personnage."""
     out = ("The image is a 2x2 grid of four panels separated by thin white gutters. All four panels show the SAME drawn head, "
            "repeated. Redraw the four panels so that the head stays identical in every panel and ONLY the facial expression "
            "changes, differently in each panel. Keep the grid layout, every panel at the same size and position. ")
@@ -54,7 +77,8 @@ def prompt(keys):
     for c, k in zip(GRID, keys):
         e = poses.expression(k) if k else None
         out += "%s panel: %s. " % (names[c], ("the character looks " + e[1]) if e else "exactly the reference, unchanged")
-    return out + "All panels: " + KEEP
+    return out + "All panels: " + KEEP + ((" " + note) if note else "") + (" The nose keeps exactly its shape, size and "
+           "drawing in every panel. The style is the reference's own: never a cleaner, smoother or more realistic face.")
 
 
 # ------------------------------------------------------------------ images-cles et decoupe
@@ -259,6 +283,49 @@ def card_alpha(gen, flat, rgba, mx, my, mw, hw):
     return Image.fromarray(al.astype("uint8")), outside, gom
 
 
+def head_alpha(gen, flat, rgba, mx, my, mw, hw):
+    """Carte « toute la tete » (demande de David, 24/11) : la tete redessinee remplace la tete d'origine entiere, cheveux,
+    front, visage et menton, au-dessus d'une ligne sous le menton, en fondu sur cette ligne et sur les bords de la
+    decoupe ; plus de melange de traits d'origine et de traits redessines. Silhouette de la carte : celle de la tete
+    redessinee (le blanc relie au fond d'origine est du fond) ; gomme : le dessin d'origine la ou la tete redessinee est du
+    fond. Rend (alpha L, part changee hors du visage (controle), gomme L ou None)."""
+    import cv2
+    s = flat.width
+    yy, xx = np.mgrid[0:s, 0:s].astype(np.float32)
+    chin = my + max(hw * 0.32, mw * 0.85)                  # sous le menton : la carte s'arrete la, en fondu
+    fe = max(6.0, hw * 0.08)
+    ramp = np.clip((chin - yy) / fe, 0, 1)
+    edge = np.minimum.reduce([xx, yy, s - 1 - xx, s - 1 - yy])
+    ramp *= np.clip((edge - 4) / fe, 0, 1)                  # bords de la decoupe : fondu (gouttiere blanche de la grille)
+    srcA = np.asarray(rgba.split()[3]) > 40
+    arr = np.asarray(gen, dtype=np.int16)
+    ink = (arr.min(axis=2) < 200).astype(np.uint8)
+    kc = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, ((int(max(5, mw * 0.5)) | 1),) * 2)
+    white = (arr.min(axis=2) > 224).astype(np.uint8) & (1 - cv2.morphologyEx(ink, cv2.MORPH_CLOSE, kc))
+    n, lab = cv2.connectedComponents(white, connectivity=4)
+    cnt = np.bincount(lab[~srcA], minlength=n)
+    bg = np.isin(lab, [i for i in range(1, n) if cnt[i] >= 20])
+    inside = cv2.erode((~bg).astype(np.uint8), np.ones((3, 3), np.uint8))
+    n2, lab2 = cv2.connectedComponents(inside, connectivity=8)  # taches isolees dessinees a cote : retirees
+    touch = np.bincount(lab2[srcA], minlength=n2)
+    inside = np.isin(lab2, [j for j in range(1, n2) if touch[j] >= 50]).astype(np.float32)
+    inside = cv2.GaussianBlur(inside, (3, 3), 0)
+    # jamais loin hors de la silhouette d'origine : le blanc enferme entre le cou et les epaules n'est pas de la tete
+    near = cv2.dilate(srcA.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, ((int(max(3, hw * 0.04)) | 1),) * 2))
+    near = cv2.GaussianBlur(near.astype(np.float32), (5, 5), 0)
+    al = inside * ramp * near
+    g = ((ramp > 0.985) & srcA & (inside < 0.5)).astype(np.float32) * 255
+    g = np.asarray(Image.fromarray(g.astype("uint8")).filter(ImageFilter.GaussianBlur(0.7)), np.float32)
+    gom = Image.fromarray(g.astype("uint8")) if (g > 128).sum() >= 6 else None
+    # controle : ce qui a change hors du visage (cheveux, epaules, contour) ; un autre personnage dessine depasse 15 %
+    zone = face_zone(s, mx, my, hw, mw)
+    soft = lambda im: np.asarray(im.filter(ImageFilter.GaussianBlur(1.3)), dtype=np.int16)
+    dd = np.abs(soft(gen) - soft(flat)).max(axis=2)
+    m = (ramp > 0.5) & ~zone & srcA
+    outside = float((dd[m] > 45).mean()) if m.any() else 0.0
+    return Image.fromarray((al * 255).astype("uint8")), outside, gom
+
+
 def assemble(iid, vid, f, rendered, keys, test=False, model="dzine/nano-banana-pro"):
     """Grille rendue (chemin ou image) -> cartes des expressions `keys` (une par case, None = case ignoree) pour l'image-cle f.
     Ecrit les cartes, expr.json et orbit.expr / orbit.exprs (sauf test). Rend (entree, rangee de controle)."""
@@ -272,7 +339,7 @@ def assemble(iid, vid, f, rendered, keys, test=False, model="dzine/nano-banana-p
         if not k:
             continue
         gen, score = register(flat, wide, zone)
-        al, out, gom = card_alpha(gen, flat, rgba, mx, my, mw, hw)
+        al, out, gom = (head_alpha if MASK == "tete" else card_alpha)(gen, flat, rgba, mx, my, mw, hw)
         card = gen.convert("RGBA")
         card.putalpha(al)
         rel = "expr/k%03d_%s.webp" % (f, k)
@@ -510,7 +577,7 @@ def run_fal(job, keys, frames=None, vid="base"):
             _, _, s, _, flat, _, _, _ = crop(iid, vid, f)
             src = tmp / ("grille_%03d_%d.png" % (f, n))
             grid_from(flat).save(src)
-            out = prov.run(MODEL, {"prompt": prompt(g), "image_urls": [prov.upload(src)], "num_images": 1, "aspect_ratio": "1:1"})
+            out = prov.run(MODEL, {"prompt": prompt(g, NOTES.get(iid, "")), "image_urls": [prov.upload(src)], "num_images": 1, "aspect_ratio": "1:1"})
             got = prov.fetch(out["images"][0]["url"], tmp / ("rendu_%03d_%d.png" % (f, n)))
             _, row = assemble(iid, vid, f, got, g, model=MODEL)
             rows.append(row)
