@@ -698,7 +698,8 @@ class App {
       o += `<rect x="0" y="${f1(yOf(1) - H * 0.035)}" width="${W}" height="${f1(H * 0.035)}" fill="#cfcabd"/>` +
         tt`<text x="${W / 2}" y="${f1(yOf(1) - H * 0.045)}" font-size="${f1(fs * 0.8)}" fill="#8a8578" text-anchor="middle">DÉCOR</text>`;
       if (dof.on) o += `<line x1="0" x2="${W}" y1="${f1(yOf(dof.focus ?? 0.5))}" y2="${f1(yOf(dof.focus ?? 0.5))}" stroke="#16a34a" stroke-width="2.5"/>` +
-        tt`<text x="${W - 6}" y="${f1(yOf(dof.focus ?? 0.5) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT</text>`;
+        tt`<text x="${W - 6}" y="${f1(yOf(dof.focus ?? 0.5) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT · ${(dof.focus ?? 0.5).toFixed(2)}</text>` +
+        `<line x1="0" x2="${W}" y1="${f1(yOf(dof.focus ?? 0.5))}" y2="${f1(yOf(dof.focus ?? 0.5))}" stroke="transparent" stroke-width="${f1(Math.max(16, H * 0.03))}" data-focus="1" style="cursor:ns-resize"><title>${tt("Glisser : déplacer la mise au point")}</title></line>`;
       pan.layers.forEach((l, li) => {
         const it = this.bank.get(l.item), sp = it && sprite(it, l.v, l.f);
         if (!sp) return;
@@ -714,6 +715,11 @@ class App {
     };
     const pt = (e) => { const r = svg.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
     svg.addEventListener("pointerdown", (e) => {
+      if (e.target.dataset && e.target.dataset.focus && pan.dof && pan.dof.on) {   // la ligne verte de mise au point se glisse
+        svg.setPointerCapture(e.pointerId); e.preventDefault();
+        drag = { focus: true, p: pt(e), fo: pan.dof.focus ?? 0.5 };
+        return;
+      }
       const id = e.target.dataset && e.target.dataset.layer, l = id && pan.layers.find((x) => x.id === id);
       if (!l) return;
       sel = id; svg.setPointerCapture(e.pointerId); e.preventDefault();
@@ -723,10 +729,11 @@ class App {
     svg.addEventListener("pointermove", (e) => {
       if (!drag) return;
       const q = pt(e);
+      if (drag.focus) { pan.dof.focus = f3(clamp(drag.fo - (q.y - drag.p.y) / (DY0 - DY1), 0, 1)); paint(); this.editor.render(true); return; }
       setDepth(drag.l, drag.d - (q.y - drag.p.y) / (DY0 - DY1)); drag.l.x = f3(clamp(drag.x + (q.x - drag.p.x), -0.3, 1.3));
       paint(); this.editor.render(true);
     });
-    svg.addEventListener("pointerup", () => { if (drag) { drag = null; this.commit("depth"); this.editor.render(); this.refreshInspector(); } });
+    svg.addEventListener("pointerup", () => { if (drag) { const f = drag.focus; drag = null; this.commit(f ? "dof" : "depth"); this.editor.render(); this.refreshInspector(); } });
     // Ctrl+Z / Ctrl+Y (Cmd sur Mac) : la meme annulation que la case, puisque c'est la meme case
     const onKey = (e) => {
       if (!document.body.contains(svg)) return document.removeEventListener("keydown", onKey);

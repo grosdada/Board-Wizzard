@@ -341,7 +341,8 @@ export function openMontage(app, pid) {
     o += `<rect x="0" y="${f1(yOf(1) - H * 0.035)}" width="${W}" height="${f1(H * 0.035)}" fill="#cfcabd"/>` +
       tt`<text x="${W / 2}" y="${f1(yOf(1) - H * 0.045)}" font-size="${f1(fs * 0.8)}" fill="#8a8578" text-anchor="middle">DÉCOR</text>`;
     if (dof.on) o += `<line x1="0" x2="${W}" y1="${f1(yOf(c.fo))}" y2="${f1(yOf(c.fo))}" stroke="#16a34a" stroke-width="2.5"/>` +
-      tt`<text x="${W - 6}" y="${f1(yOf(c.fo) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT · ${c.fo.toFixed(2)}</text>`;
+      tt`<text x="${W - 6}" y="${f1(yOf(c.fo) - 5)}" font-size="${f1(fs * 0.75)}" fill="#16a34a" text-anchor="end">MISE AU POINT · ${c.fo.toFixed(2)}</text>` +
+      `<line x1="0" x2="${W}" y1="${f1(yOf(c.fo))}" y2="${f1(yOf(c.fo))}" stroke="transparent" stroke-width="${f1(Math.max(16, H * 0.03))}" data-focus="1" style="cursor:ns-resize"><title>${tt("Glisser : déplacer la mise au point")}</title></line>`;
     const th = H * 0.03;
     shapes().forEach((sh, i) => {                           // formes du decor : des cartes plus fines, a glisser en profondeur et en travers
       const b = boxOf(sh, H), y = yOf(sh.d ?? 1), on = sel === "s:" + sh.id;
@@ -1804,6 +1805,12 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       if (fl) { dof.on = true; change("fo", { fo: f3(depthNow(fl)) }); sel = "fo"; paint(); lanes(); props(); }
       return;
     }
+    if (depthView && e.button === 0 && e.target.closest("[data-focus]")) {   // vue de dessus : la ligne verte de mise au point se glisse
+      sel = "fo"; selKey = null; vdrag = { focus: true, p: ptOf(e), fo: camAt().fo };
+      try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+      paint(); lanes(); props(); vdrag.p = ptOf(e);
+      return;
+    }
     const lockCam = camLock && !depthView;                 // camera verrouillee : on ne prend ni personnage ni forme
     const id = lockCam ? null : e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
     const shId = id || lockCam ? null : (e.target.closest("[data-shape]") || {}).dataset?.shape, shp = shId ? shapeOf("s:" + shId) : null;
@@ -1834,6 +1841,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (tdraw) { traceMove(e); return; }
     if (!vdrag) return;
     const p = ptOf(e), dx = p[0] - vdrag.p[0], dy = p[1] - vdrag.p[1];
+    if (vdrag.focus) { change("fo", { fo: f3(clamp(vdrag.fo - dy / (DY0 - DY1), 0, 1)) }); return; }
     if (vdrag.shape) {                                      // haut / bas : sa profondeur ; gauche / droite : sa place en travers
       vdrag.shape.d = f3(clamp(vdrag.d - dy / (DY0 - DY1), 0, 1));
       vdrag.shape.p = vdrag.p0.map(([x, y]) => [+(x + dx).toFixed(4), y]);
