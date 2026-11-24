@@ -847,7 +847,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   };
   // rendu photoreliste du portrait affiche (GPT Image 2.6 Sunburst, fal) : la forme du dessin est gardee a l'identique
   // trois modeles a comparer, chacun son gros bouton et sa colonne de resultat
-  const REAL_MODELS = [["gpt", tt("Généré par GPT Image 2.6"), "≈ 0,06 $"], ["nano", tt("Généré par Nano Banana 2"), "≈ 0,08 $"], ["seedream", tt("Généré par Seedream 5.5"), "≈ 0,04 $"]];
+  const REAL_MODELS = [["gpt", tt("Généré par GPT Image 2.6"), "≈ 0,06 $"], ["seedream", tt("Généré par Seedream 5.5"), "≈ 0,04 $"]];
   const realistic = () => {
     const prompt = h("textarea", { rows: 7 }); prompt.value = REAL_PROMPT;
     const cols = h("div.idk-realcols");
@@ -860,7 +860,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       try {
         const blob = await render(1024, Math.round(1024 * SH / S), true);
         const uri = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(blob); });
-        const txt = prompt.value.trim() + (key !== "gpt" ? " " + NANO_TAIL : "");      // Nano Banana et Seedream redressent l'anatomie : on leur rappelle que c'est un dessin
+        const txt = prompt.value.trim() + (key !== "gpt" ? " " + NANO_TAIL : "");      // Seedream redresse l'anatomie : on leur rappelle que c'est un dessin
         const r = await post("portrait/realistic", { image: uri, prompt: txt, model: key });
         last = r.image;
         out.textContent = "";
@@ -879,8 +879,8 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
       return h("div.idk-realcol", go, out);
     };
     REAL_MODELS.forEach((mdl) => cols.append(column(mdl)));
-    modal(tt("Portrait en photo : comparer trois modèles"), h("div.form.idk-realform",
-      h("p.muted", tt("Le portrait tel qu'il est affiché part à fal avec cette consigne. Chaque bouton lance son modèle (payant, une minute environ) ; on peut lancer les trois et comparer.")),
+    modal(tt("Portrait en photo : comparer deux modèles"), h("div.form.idk-realform",
+      h("p.muted", tt("Le portrait tel qu'il est affiché part à fal avec cette consigne. Chaque bouton lance son modèle (payant, une minute environ) ; on peut lancer les deux et comparer.")),
       h("label.col", tt("Consigne"), prompt), cols), [{ label: tt("Fermer") }]).box.classList.add("wide");
   };
   // composition gardee dans l'element de banque, pour le rouvrir ici

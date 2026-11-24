@@ -58,7 +58,7 @@ aside.right { border-left: 1px solid var(--line); padding: 0; display: flex; fle
 .draw-framerow { display: flex; gap: 10px; align-items: flex-start; } .draw-framerow > .draw-frame { flex: 1 1 0; min-width: 0; } .draw-liveslot:empty { display: none; } .draw-liveslot { flex: 0 0 42%; }
 .draw-live { display: flex; flex-direction: column; gap: 6px; } .draw-live-out { width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 6px; }
 .draw-live textarea { width: 100%; } .draw-live-status { font-size: 12px; }
-.idk-realcols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; } .idk-realcol { display: flex; flex-direction: column; gap: 6px; }
+.idk-realcols { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; } .idk-realcol { display: flex; flex-direction: column; gap: 6px; }
 .idk-realgo { padding: 12px 10px; font-size: 14px; } .idk-real img { width: 100%; border-radius: 6px; background: #fff; }
 .idk-tobody { font-size: 15px; font-weight: 700; padding: 9px 18px; background: #e2603a; color: #fff; border: 0; border-radius: 8px; }
 .idk-tobody:hover { background: #f07246; }

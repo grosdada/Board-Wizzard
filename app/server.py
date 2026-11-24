@@ -24,8 +24,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 REALTIME_APP = "fal-ai/flux-2/klein/realtime"              # croquis -> image en direct (essai)
 REALISTIC_MODEL = "openai/gpt-image-2.6/sunburst/edit"     # portrait-robot -> photo (modele par defaut)
-REALISTIC_MODELS = {"gpt": "openai/gpt-image-2.6/sunburst/edit", "nano": "fal-ai/nano-banana-2/edit",   # les trois a comparer
-                    "seedream": "bytedance/seedream/v5.5/edit"}
+REALISTIC_MODELS = {"gpt": "openai/gpt-image-2.6/sunburst/edit", "seedream": "bytedance/seedream/v5.5/edit"}
 from . import accounts, brain, cost, jobs, mouthfind, packs, parts, poses, procedural, retouch, settings, sprites, store, eleven
 
 WEB = Path(__file__).resolve().parent / "web"

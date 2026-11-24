@@ -2090,7 +2090,9 @@
   "🔒 Verrouiller (ne plus le prendre ni le bouger par erreur)": "🔒 Lock (no more grabbing or moving it by mistake)",
   "🔒 Verrouiller": "🔒 Lock",
   "Loupe : Ctrl + molette (ou molette sans élément choisi) autour du pointeur ; se déplacer : bouton du milieu, ou Espace + glisser": "Magnifier: Ctrl + wheel (or wheel with nothing selected) around the pointer; move around: middle button, or Space + drag",
-  "Tout le portrait": "Whole portrait"
+  "Tout le portrait": "Whole portrait",
+  "Portrait en photo : comparer deux modèles": "Portrait as a photo: compare two models",
+  "Le portrait tel qu'il est affiché part à fal avec cette consigne. Chaque bouton lance son modèle (payant, une minute environ) ; on peut lancer les deux et comparer.": "The portrait as displayed is sent to fal with this prompt. Each button runs its model (paid, about a minute); you can run both and compare."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
