@@ -406,11 +406,30 @@ export function openMontage(app, pid) {
     if (mouthDot.dataset.c !== c) { mouthDot.dataset.c = c; mouthDot.className = "mdot " + c; }
     if (mouthDot.title !== why) mouthDot.title = why;
   }
+  // la meme pastille en haut a droite du cadre de l'element choisi : on voit en le tournant s'il a une bouche a cet angle
+  function boxDot() {
+    const g = svg.querySelector(".lh[data-layer]"), bx = g && g.querySelector(".lh-box"), l = g && layerOf(g.dataset.layer);
+    if (!bx || !l) return;
+    const st = stateOf(l), it = itemOf(l), sp = it && sprite(it, st.v, st.f), lip = l.lip || {};
+    if (!sp || !(lip.on || sp.mouth || lip.set)) return;      // pas de bouche en jeu (accessoire, decor) : pas de pastille
+    const [c, why] = mouthStatus(l), m = g.getScreenCTM(), u = m ? 1 / (Math.hypot(m.a, m.b) || 1) : 1;
+    // a cote de la boule du coin en haut a droite (elle reste dans la partie visible du cadre)
+    const pts = [...g.querySelectorAll('g[data-h="corner"]')].map((e) => (e.getAttribute("transform").match(/translate\(([-\d.e]+) ([-\d.e]+)\)/) || []).slice(1).map(Number)).filter((q) => q.length === 2);
+    const tr = pts.length ? pts.reduce((a, q) => (q[0] - q[1] > a[0] - a[1] ? q : a)) : [+bx.getAttribute("x") + +bx.getAttribute("width"), +bx.getAttribute("y")];
+    const dot = document.createElementNS(NS, "circle");
+    dot.setAttribute("cx", (tr[0] - 22 * u).toFixed(3)); dot.setAttribute("cy", (tr[1] + 22 * u).toFixed(3)); dot.setAttribute("r", (6.5 * u).toFixed(3));
+    dot.setAttribute("fill", c === "green" ? "#3ecf6a" : c === "red" ? "#e5484d" : "#888");
+    dot.setAttribute("stroke", "rgba(0,0,0,.45)"); dot.setAttribute("stroke-width", (2 * u).toFixed(3));
+    dot.setAttribute("class", "lh-mdot"); dot.setAttribute("pointer-events", "none");
+    const tt_ = document.createElementNS(NS, "title"); tt_.textContent = why; dot.append(tt_);
+    g.append(dot);
+  }
   function paint() {
     recSync();
     updMouthDot();
     const mk = isoView ? isoMarkup() : depthView ? topView() : v3 ? `<rect width="${W}" height="${f1(H)}" fill="#26292d"/>` : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
     if (!(playing && !markupReady(mk) && svg.firstChild)) svg.innerHTML = mk;   // en lecture, une image pas prete : on garde la precedente
+    boxDot();
     if (v3) render3(); else box3.style.display = "none";
     if (showMask && !playing) svg.querySelectorAll('[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
   }
