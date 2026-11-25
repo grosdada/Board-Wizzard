@@ -315,7 +315,7 @@ export function openMontage(app, pid) {
   const anim = pan.anim = Object.assign({ dur: 4, tracks: {} }, pan.anim);
   const dof = pan.dof = Object.assign({ on: false, focus: 0.3, amount: 12 }, pan.dof);
   anim.tracks = anim.tracks || {};
-  let t = 0, sel = "cam", selKey = null, playing = false, loop = true, auto = true, raf = 0, last = 0, drag = null;
+  let t = 0, sel = "cam", selKey = null, playing = false, loop = true, auto = localStorage.getItem("bw.autokey") !== "0", raf = 0, last = 0, drag = null;
   let recArmed = false, recAct = null, recRaf = 0, recBtn = null;      // Rec Action (voir recStart)
   const picked = new Set();                                // cles prises au lasso (ou Ctrl + clic) : elles bougent et s'effacent ensemble
   const NS = "http://www.w3.org/2000/svg";
@@ -743,11 +743,27 @@ export function openMontage(app, pid) {
     const t0 = t; t = mt;
     try { setKey0(id, patch); } finally { t = t0; }
   }
+  function fullOf(id) {                                    // valeurs de la piste a l'instant affiche
+    const nl = nullOf(id);
+    return id === "bg" ? scene.viewAt(t) : CAMS[id] ? camAt() : nl ? scene.nullLocal(nl, t) : stateOf(layerOf(id));
+  }
+  function shiftTrack(id, patch) {                         // sans cle auto, hors d'une cle : toute l'animation de la piste bouge d'autant
+    const cur = fullOf(id), keys = keysOf(id);
+    for (const [c, v] of Object.entries(patch)) {
+      const d = typeof v === "number" && typeof cur[c] === "number" ? v - cur[c] : null;
+      for (const k of keys) {
+        if (d != null && typeof k[c] === "number") k[c] = f3(k[c] + d);
+        else if (d == null && c in k) k[c] = v;
+      }
+      const o = layerOf(id) || nullOf(id);                   // reglage que les cles ne portent pas : sur l'element lui-meme
+      if (o && !keys.some((k) => c in k)) o[c] = v;
+    }
+  }
   function setKey0(id, patch) {                            // pose ou met a jour la cle de la piste a l'instant courant
     const keys = anim.tracks[id] || (anim.tracks[id] = []);
     let k = near(id);
     if (!k) {
-      const l = layerOf(id), nl = nullOf(id), full = id === "bg" ? scene.viewAt(t) : CAMS[id] ? camAt() : nl ? scene.nullLocal(nl, t) : stateOf(l);
+      const nl = nullOf(id), full = fullOf(id);
       const base = id === "bg" ? { zoom: full.zoom, ox: full.ox, oy: full.oy } : id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot, dz: full.dz || 0 } : CAMS[id] ? { [id]: full[id] } : nl ? { x: full.x, y: full.y, s: full.s, rz: full.rz } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
       if (!keys.length && t > 0.04) keys.push(Object.assign({ t: 0 }, base));     // premiere cle posee plus loin : on garde le depart
       k = Object.assign({ t: f3(t) }, base);
@@ -767,7 +783,9 @@ export function openMontage(app, pid) {
       paint(); lanes(); syncProps(); return;
     }
     if (id === "bg" && !anim.bgAnim) pan.view = Object.assign({ zoom: 1, ox: 0, oy: 0 }, pan.view, patch);   // decor fixe : sa place, sans cle
-    else if (auto || keysOf(id).length) setKey(id, patch);
+    else if (auto || (keysOf(id).length && near(id))) setKey(id, patch);   // cle auto, ou la cle sous la tete de lecture
+    else if (keysOf(id).length && muteOf(id) == null) shiftTrack(id, patch);
+    else if (keysOf(id).length) setKey(id, patch);
     else if (id === "bg") pan.view = Object.assign({ zoom: 1, ox: 0, oy: 0 }, pan.view, patch);
     else if (id === "fo") dof.focus = patch.fo;
     else if (id === "bl") dof.amount = patch.bl;
@@ -941,7 +959,6 @@ export function openMontage(app, pid) {
       }
     }
     keyBar();
-    side.append(h("label.row.check", { title: tt("Dans l'image, sur un élément : glisser = le déplacer ; glisser l'anneau au centre = le faire tourner (orbite, ou Alt + glisser) ; glisser la flèche du haut = le pencher (Maj : crans de 15°) ; glisser une boule de coin = sa taille ; molette = taille ; clic droit = son menu (pose, axe, ordre, ombres…). Dans le vide : glisser déplace le cadre. Alt + molette : la caméra avance ou recule. En vue « Profondeur » : glisser une carte vers le haut l'éloigne, vers le bas la rapproche ; glisser la caméra la déplace. Avec la clé automatique, chaque geste pose une clé à l'instant affiché.") }, h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; } } }), tt("Clé automatique à chaque réglage ⓘ")));
     syncProps = () => rows.forEach((f) => f());
   }
   // boutons de cle : juste au-dessus de la timeline
@@ -949,7 +966,7 @@ export function openMontage(app, pid) {
   function keyBar() {
     keyBox.textContent = "";
     if (shapeOf(sel)) { keyBox.append(h("span.muted", tt("Forme du décor : elle se place en profondeur, sans clés."))); return; }
-    const k = near(sel), name = CAMS[sel] || (nullOf(sel) || {}).name || (itemOf(layerOf(sel)) || {}).name || tt("élément");
+    const k = selKey && keysOf(sel).includes(selKey) ? selKey : near(sel), name = CAMS[sel] || (nullOf(sel) || {}).name || (itemOf(layerOf(sel)) || {}).name || tt("élément");
     keyBox.append(
       h("button.mini", { title: tt("Aller à la clé précédente (Alt + ←). Piste choisie ; si elle n'a pas de clé, toutes les pistes."), on: { click: () => jumpKey(-1) } }, "◀◆"),
       h("button.mini", { title: tt("Aller à la clé suivante (Alt + →)"), on: { click: () => jumpKey(1) } }, "◆▶"),
@@ -1893,7 +1910,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
         drag = { kind: "keys", t0: timeAt({ clientX: e.clientX }, lane), start: new Map([...picked].map((q) => [q, q.t])) }; return;
       }
       picked.clear();
-      sel = e.target.dataset.key; selKey = e.target.dataset.ch ? splitChannel(k, e.target.dataset.ch, e.target.dataset.key) : k; drag = { kind: "key", key: selKey, lane }; seek(selKey.t, true); return;
+      sel = e.target.dataset.key; selKey = e.target.dataset.ch ? splitChannel(k, e.target.dataset.ch, e.target.dataset.key) : k; drag = { kind: "key", key: selKey, lane }; paint(); lanes(); props(); return;   // la tete de lecture ne suit pas : seule la regle la bouge
     }
     if (lane.dataset.lane === "ruler") { picked.clear(); selKey = null; drag = { kind: "seek", lane }; seek(timeAt(e, lane), true); return; }
     drag = { kind: "box", lane, x0: e.clientX, y0: e.clientY };  // dans une piste : simple clic = aller a cet instant, glisser = lasso
@@ -1940,7 +1957,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       paint(); lanes(); return;
     }
     if (drag.kind === "seek") { if (drag.lane.isConnected) seek(timeAt(e, drag.lane)); else { const ln = tl.querySelector(".mt-lane"); seek(timeAt(e, ln)); } }
-    else { const ln = tl.querySelector(`.mt-lane[data-lane="${sel}"]`) || tl.querySelector(".mt-lane"); drag.key.t = f3(timeAt(e, ln, drag.key)); keysOf(sel).sort((a, b) => a.t - b.t); t = drag.key.t; paint(); lanes(); }
+    else { const ln = tl.querySelector(`.mt-lane[data-lane="${sel}"]`) || tl.querySelector(".mt-lane"); drag.key.t = f3(timeAt(e, ln, drag.key)); keysOf(sel).sort((a, b) => a.t - b.t); paint(); lanes(); }
   });
   tl.addEventListener("pointerup", (e) => {
     if (!drag) return;
@@ -1948,7 +1965,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (d.kind === "stretch") hist.snap();
     if (d.kind === "box") {
       if (d.el) { d.el.remove(); if (picked.size === 1) { selKey = [...picked][0]; picked.clear(); } }
-      else { picked.clear(); sel = d.lane.dataset.lane; selKey = null; t = clamp(timeAt(e, d.lane), 0, anim.dur); paint(); }
+      else { picked.clear(); sel = d.lane.dataset.lane; selKey = null; paint(); }
     }
     lanes(); props();
   });
@@ -2203,6 +2220,8 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   };
   const bar = h("div.mt-bar", h("button.mini", { title: tt("Revenir au début"), on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn, recBtn,
     h("button.mini.mt-null", { title: tt("Ajoute un null : un repère animable, invisible à l'image, sur lequel parenter des éléments"), on: { click: addNull } }, tt("✛ Null")),
+    h("label.row.check", { title: tt("Coché : chaque réglage pose une clé à l'instant affiché. Décoché : on règle sans poser de clé ; sur une clé, on la modifie ; ailleurs, toute l'animation de l'élément bouge d'autant. Dans l'image, sur un élément : glisser = le déplacer ; glisser l'anneau au centre = le faire tourner (orbite, ou Alt + glisser) ; glisser la flèche du haut = le pencher (Maj : crans de 15°) ; glisser une boule de coin = sa taille ; molette = taille ; clic droit = son menu.") },
+      h("input", { type: "checkbox", checked: auto, on: { change: (e) => { auto = e.target.checked; localStorage.setItem("bw.autokey", auto ? "1" : "0"); } } }), tt("Autokey ⓘ")),
     h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), tt("En boucle")), clock,
     h("span.muted", { title: tt("Dans une piste : glisser trace un lasso qui prend les clés, Ctrl + clic en ajoute une. Les clés prises se déplacent ensemble et s'effacent avec Suppr. La règle des secondes déplace la tête de lecture.") }, tt("Maj : aimant sur les clés · glisser : lasso ⓘ")),
     h("span.spacer"),

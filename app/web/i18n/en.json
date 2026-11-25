@@ -2155,7 +2155,9 @@
   "Revenir à la graine des réglages": "Back to the seed from the settings",
   "réglages": "settings",
   "réglages ({0})": "settings ({0})",
-  "Même graine et même consigne donnent la même vidéo. Si le décor reste vide au demi-tour, relance avec une autre graine.": "Same seed and same prompt give the same video. If the set stays empty during the half-turn, run again with another seed."
+  "Même graine et même consigne donnent la même vidéo. Si le décor reste vide au demi-tour, relance avec une autre graine.": "Same seed and same prompt give the same video. If the set stays empty during the half-turn, run again with another seed.",
+  "Autokey ⓘ": "Autokey ⓘ",
+  "Coché : chaque réglage pose une clé à l'instant affiché. Décoché : on règle sans poser de clé ; sur une clé, on la modifie ; ailleurs, toute l'animation de l'élément bouge d'autant. Dans l'image, sur un élément : glisser = le déplacer ; glisser l'anneau au centre = le faire tourner (orbite, ou Alt + glisser) ; glisser la flèche du haut = le pencher (Maj : crans de 15°) ; glisser une boule de coin = sa taille ; molette = taille ; clic droit = son menu.": "Checked: every adjustment sets a key at the current time. Unchecked: adjust without setting keys; on a key, it is updated; elsewhere, the element's whole animation shifts by the same amount. In the image, on an element: drag = move it; drag the centre ring = turn it (orbit, or Alt + drag); drag the top arrow = tilt it (Shift: 15° steps); drag a corner ball = its size; wheel = size; right click = its menu."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
