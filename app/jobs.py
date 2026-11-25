@@ -823,30 +823,34 @@ PANEL_REFS_PROMPT = (" The character reference sheets show each character of the
                      "the back: use them for every side of a character that the start image does not show, never invent "
                      "a face or a back. The set references show the same place from other angles: use them for the parts "
                      "of the set that are off-screen.")
-# Sans elle, quand les personnages sont colles au mur du fond (case p92, couloir vu de face), la camera ne peut pas tourner
-# autour d'eux : H3 les fait pivoter sur place devant un decor fige (et les dedouble). Essais du 25/11/2026 sur les machines.
+# Case p92 (couloir vu de face, personnages devant le mur) : sans cette phrase, H3 fait pivoter les personnages sur place
+# devant un decor fige et les dedouble ; avec elle, le decor tourne dans tous les essais du 25/11/2026 sur les machines.
+# Le demi-tour peut encore montrer un fond vide selon la graine. La derniere phrase empeche la camera de reculer (p89).
 PANEL_ROOM_PROMPT = (" The characters stand in the middle of the place, several metres in front of the background, with empty "
                      "floor all around them, so the camera can circle all the way around them: behind the camera at the start "
                      "is the rest of the place. Halfway round, the camera stands between the characters and the background it "
                      "first saw and looks back at them: we see the other side of each character, and behind them the opposite "
-                     "side of the place, which was behind the camera at the start.")
+                     "side of the place, which was behind the camera at the start. The camera keeps the same distance from the "
+                     "characters as in the start image: they stay the same size in the frame all the way round.")
 
 
 def _panel_who(who):
     """Phrase qui distingue les personnages des references (le noeud les presente comme une seule personne vue de
-    plusieurs cotes) : <Picture i> = nom dans la banque et place dans la case. Essai du 25/11/2026 (p92, graine des
-    reglages) : avec les noms, aucun fond vide au demi-tour ; avec la place seule, 14 images vides."""
-    if len(who) < 2:
+    plusieurs cotes) : <Picture i> = nom dans la banque et place dans la case. who : [(nom, x, kind)]. Un seul essai
+    compare (p92, graine des reglages) : avec les noms, aucun fond vide au demi-tour ; avec la place seule, 14 images."""
+    people = [w for w in who if w[2] == "character"]
+    if len(people) < 2:
         return ""
     def place(x):
         return "on the left" if x < 0.4 else "on the right" if x > 0.6 else "in the middle"
-    parts = ["<Picture %d> is %s, standing %s" % (i + 1, name, place(x)) for i, (name, x) in enumerate(who)]
-    return (" There are %d different people, never merge or duplicate them: %s." % (len(who), "; ".join(parts)))
+    parts = ["<Picture %d> is %s, standing %s" % (i + 1, name, place(x)) for i, (name, x, kind) in enumerate(who)
+             if kind == "character"]
+    return (" There are %d different people, never merge or duplicate them: %s." % (len(people), "; ".join(parts)))
 
 
 def _panel_sets(nc, ns):
-    """Les quatre vues d'un decor 360 (case, quart de tour, demi-tour, trois quarts) : sans elles, au demi-tour H3 laisse
-    souvent un fond blanc vide (case p92). Leurs numeros <Picture N> suivent ceux des personnages."""
+    """Designe les quatre vues d'un decor 360 (case, quart de tour, demi-tour, trois quarts), pour que le demi-tour
+    reprenne le cote oppose du lieu. Leurs numeros <Picture N> suivent ceux des personnages."""
     if ns != 4:
         return ""
     return (" <Picture %d> is the set exactly as seen in the start image; <Picture %d> is the opposite side of the place, "
@@ -910,12 +914,12 @@ def _panel_refs(project, panel_id, tmp):
                 dest = tmp / ("perso%d.png" % n_)
                 sheet.save(dest)
                 chars.append(dest)
-                who.append((it.get("name") or it["id"], float(l.get("x") or 0.5)))
+                who.append((it.get("name") or it["id"], float(l.get("x") or 0.5), it.get("kind")))
                 continue
         src = v.get("cut") or v.get("ref")
         if src and (store.item_dir(it.get("src") or it["id"]) / src).exists():
             chars.append(_flat_white(store.item_dir(it.get("src") or it["id"]) / src, tmp / ("perso%d.png" % n_)))
-            who.append((it.get("name") or it["id"], float(l.get("x") or 0.5)))
+            who.append((it.get("name") or it["id"], float(l.get("x") or 0.5), it.get("kind")))
     sets = []
     bg = pan.get("bg") or {}
     if bg.get("file") and (store.project_dir(project) / bg["file"]).exists():
