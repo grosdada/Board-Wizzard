@@ -30,7 +30,7 @@ export const perspOf = (d, dz) => { const den = d + CAM_BACK - (dz || 0); return
 // doux : depart et arrivee amortis · lin : vitesse reguliere · fixe : pas d'intermediaire, on saute a la cle (paliers)
 export const EASES = { doux: tt("En douceur"), lin: tt("Régulière"), fixe: tt("Fixe (par paliers, sans intermédiaire)") };
 const ease = (u, e) => (e === "fixe" ? 0 : e === "lin" ? u : u * u * (3 - 2 * u));
-const NUM = ["x", "y", "s", "rz", "cx", "cy", "z", "rot", "dz", "fo", "bl", "fx", "lw", "shg", "shw", "sha"];
+const NUM = ["x", "y", "s", "rz", "cx", "cy", "z", "rot", "dz", "fo", "bl", "fx", "lw", "shg", "shw", "sha", "zoom", "ox", "oy"];
 // mouvements de camera prets : [nom, depart, arrivee]
 export const MOVES = {
   "trav-d": [tt("Travelling vers la droite"), { cx: 0.38, z: 1.35 }, { cx: 0.62, z: 1.35 }],
@@ -150,6 +150,12 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     const X = dx * W, Y = dy * H, c = Math.cos(-q.th), s = Math.sin(-q.th);
     return [(c * X - s * Y) / q.k / W, (s * X + c * Y) / q.k / H];
   };
+  const viewAt = (t) => {                                   // taille et place du decor : fixes, ou piste « Décor » (anim.bgAnim)
+    const v = pan.view || {}, base = { zoom: v.zoom || 1, ox: v.ox || 0, oy: v.oy || 0 };
+    if (!anim.bgAnim || !keysOf("bg").length) return base;
+    const q = valueAt(keysOf("bg"), base, tm("bg", t), 0);
+    return { zoom: q.zoom, ox: q.ox, oy: q.oy };
+  };
   const camAt = (t) => {
     const d = pan.dof || {}, c = valueAt(keysOf("cam"), CAM0, tm("cam", t), 0);
     c.fo = valueAt(keysOf("fo"), { fo: c.fo ?? d.focus ?? 0.3 }, tm("fo", t), 0).fo;
@@ -197,7 +203,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     let bgIn = "";
     { const o0 = o; o = "";
     if (bgInfo) {
-      const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, pan.view), vf = vecFrame(bgInfo, again);
+      const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, viewAt(t)), vf = vecFrame(bgInfo, again);
       if (vf) { const st = inkStroke(pan.bglw), bw = wiggleFilter(`${pre}wgb`, pan.bghand, pan.bgwave, vf.w, vf.h, 11); o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})">${bw}<path d="${vf.body}" fill="#fff"/><path d="${vf.ink}"${bw ? ` filter="url(#${pre}wgb)"` : ""} fill="#111" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/></g>`; }
       else o += `<image href="${bgInfo.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/>`;
       const bcm = bgCM(pan);                               // colorimetrie et colorize du decor
@@ -297,7 +303,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     }
     return o + `</g></g><defs>${Object.values(blurs).join("")}</defs><rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
   }
-  return { H, anim, markup, stateOf, localOf, camAt, nOf, itemOf, keysOf, angleOf, nullOf, nullLocal, nullWorld, xfOf, unDelta };
+  return { H, anim, markup, stateOf, localOf, camAt, viewAt, nOf, itemOf, keysOf, angleOf, nullOf, nullLocal, nullWorld, xfOf, unDelta };
 }
 
 export function openMontage(app, pid) {
@@ -373,8 +379,9 @@ export function openMontage(app, pid) {
     localStorage.setItem("bw.camChannels", chanOpen.has("cam") ? "1" : ""); localStorage.setItem("bw.chanOpen", JSON.stringify([...chanOpen].slice(-60))); lanes(); };
   const LAYER_CHANNELS = [["x", tt("Position ↔")], ["y", tt("Position ↕")], ["s", tt("Taille")], ["rz", tt("Inclinaison")], ["f", tt("Angle (orbite)")], ["v", tt("Pose")],
     ["lw", tt("Trait")], ["shg", tt("Ombre : gris")], ["shw", tt("Ombre : largeur")], ["sha", tt("Ombre : lumière")]];
-  const chansOf = (id) => (id === "cam" ? CHANNELS : layerOf(id) ? LAYER_CHANNELS : nullOf(id) ? LAYER_CHANNELS.slice(0, 4) : []);
-  const CAMS = { cam: tt("Caméra"), fo: tt("Mise au point"), bl: tt("Flou"), fx: tt("Lignes d'effet") };      // pistes de la camera ; fo et bl : profondeur de champ
+  const BG_CHANNELS = [["zoom", tt("Taille")], ["ox", tt("Position ↔")], ["oy", tt("Position ↕")]];
+  const chansOf = (id) => (id === "cam" ? CHANNELS : id === "bg" ? BG_CHANNELS : layerOf(id) ? LAYER_CHANNELS : nullOf(id) ? LAYER_CHANNELS.slice(0, 4) : []);
+  const CAMS = { cam: tt("Caméra"), fo: tt("Mise au point"), bl: tt("Flou"), fx: tt("Lignes d'effet"), bg: tt("Décor") };      // pistes de la camera ; fo et bl : profondeur de champ
 
   // ------------------------------------------------------------------------------------------ visionneuse
   // pastille de la bouche (panneau de droite) : verte = une bouche calculee pour cette orientation, rouge = aucune. Mise a jour a chaque image (l'orientation peut etre animee).
@@ -487,7 +494,7 @@ export function openMontage(app, pid) {
     // le decor de la case, en mur au fond
     const bgI = background(pan, app.bank, app.project.id);
     if (bgI) {
-      const pl = placement(bb, bgI.w || 16, bgI.h || 9, pan.view);
+      const pl = placement(bb, bgI.w || 16, bgI.h || 9, scene.viewAt(t));
       o += `<g transform="${mat(P(0, hw, 1.02), P(1, hw, 1.02), P(0, 0, 1.02), W, H)}" opacity="0.9"><g clip-path="url(#mt-isowall)"><rect width="${W}" height="${f1(H)}" fill="#fff"/>` +
         `<image href="${bgI.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/></g></g>`;
     }
@@ -591,7 +598,7 @@ export function openMontage(app, pid) {
     const zEnd = bgI ? zW : 40;
     if (bgI) {
       const zc = zW + D0, ww = zc / D0, hh = rb.hw * zc / D0, top = rb.camY + rb.hz * rb.hw * zc / D0;
-      const pl = placement(bb, bgI.w || 16, bgI.h || 9, pan.view), el = h("div");
+      const pl = placement(bb, bgI.w || 16, bgI.h || 9, scene.viewAt(t)), el = h("div");
       el.innerHTML = `<svg viewBox="0 0 ${W} ${f1(H)}" width="400" height="${f1(400 * H / W)}" preserveAspectRatio="none" style="display:block"><rect width="${W}" height="${f1(H)}" fill="#fff"/><image href="${bgI.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/></svg>`;
       put(el, plane([0.5 - ww / 2, top, zW], [ww / 400, 0, 0], [0, -hh / (400 * H / W), 0], 400, 400 * H / W), 400, 400 * H / W);
     }
@@ -740,8 +747,8 @@ export function openMontage(app, pid) {
     const keys = anim.tracks[id] || (anim.tracks[id] = []);
     let k = near(id);
     if (!k) {
-      const l = layerOf(id), nl = nullOf(id), full = CAMS[id] ? camAt() : nl ? scene.nullLocal(nl, t) : stateOf(l);
-      const base = id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot, dz: full.dz || 0 } : CAMS[id] ? { [id]: full[id] } : nl ? { x: full.x, y: full.y, s: full.s, rz: full.rz } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
+      const l = layerOf(id), nl = nullOf(id), full = id === "bg" ? scene.viewAt(t) : CAMS[id] ? camAt() : nl ? scene.nullLocal(nl, t) : stateOf(l);
+      const base = id === "bg" ? { zoom: full.zoom, ox: full.ox, oy: full.oy } : id === "cam" ? { cx: full.cx, cy: full.cy, z: full.z, rot: full.rot, dz: full.dz || 0 } : CAMS[id] ? { [id]: full[id] } : nl ? { x: full.x, y: full.y, s: full.s, rz: full.rz } : Object.fromEntries(KEYED.map((q) => [q, full[q]]));
       if (!keys.length && t > 0.04) keys.push(Object.assign({ t: 0 }, base));     // premiere cle posee plus loin : on garde le depart
       k = Object.assign({ t: f3(t) }, base);
       if (chanOpen.has(id) && keys.length && chansOf(id).some(([c]) => c in patch)) k.skip = chansOf(id).map(([c]) => c).filter((c) => !(c in patch));   // canaux deployes : la cle ne porte que ce qu'on regle
@@ -752,14 +759,16 @@ export function openMontage(app, pid) {
     selKey = k;
   }
   function change(id, patch) {                             // un reglage bouge : cle automatique, ou valeur de base
-    if (recArmed && !recAct && vdrag && vdrag.id === id && layerOf(id)) recStart(id);   // Rec Action : le premier mouvement lance l'horloge
+    if (recArmed && !recAct && vdrag && vdrag.id === id && (layerOf(id) || nullOf(id))) recStart(id);   // Rec Action : le premier mouvement lance l'horloge
     if (recAct && recAct.id === id) {                       // en enregistrement : toujours une cle, a l'instant qui avance
       t = recNow();
       recAct.patch = Object.assign(recAct.patch || {}, patch);
       setKey(id, patch); recAct.keys.add(selKey);
       paint(); lanes(); syncProps(); return;
     }
-    if (auto || keysOf(id).length) setKey(id, patch);
+    if (id === "bg" && !anim.bgAnim) pan.view = Object.assign({ zoom: 1, ox: 0, oy: 0 }, pan.view, patch);   // decor fixe : sa place, sans cle
+    else if (auto || keysOf(id).length) setKey(id, patch);
+    else if (id === "bg") pan.view = Object.assign({ zoom: 1, ox: 0, oy: 0 }, pan.view, patch);
     else if (id === "fo") dof.focus = patch.fo;
     else if (id === "bl") dof.amount = patch.bl;
     else if (id === "fx") pan.draw.fx.force = patch.fx;
@@ -843,11 +852,24 @@ export function openMontage(app, pid) {
         ...(anim.shake && anim.shake.on ? [[tt("Amplitude"), "a", 0, 5, 0.05, tt("Ampleur du tremblé, en % de la largeur de l'image")], [tt("Vitesse"), "v", 0.1, 4, 0.05, tt("Lent : on respire ; rapide : on court")], [tt("Roulis"), "r", 0, 4, 0.05, tt("Inclinaison qui oscille, en degrés")]].map(([lab, k, min, max, step, title]) =>
           h("label.row.range", { title }, lab, h("input", { type: "range", min, max, step, value: anim.shake[k] ?? 1, on: { input: (e) => { anim.shake[k] = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (+(anim.shake[k] ?? 1)).toFixed(2)))) : []),
         h("h4", tt("Décor")),
-        pan.bg ? (() => {                                     // taille du decor : plus grand (on recadre dedans) ou plus petit que la case
-          const z0 = (pan.view || {}).zoom || 1, out = h("output", z0.toFixed(2));
-          return h("div", h("label.row.range", { title: tt("Agrandir ou rétrécir le décor de la case (1 : il remplit juste la case ; moins : plus petit que la case)") }, tt("Taille du décor"),
-            h("input", { type: "range", min: 0.25, max: 6, step: 0.01, value: z0, on: { input: (e) => { pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: +e.target.value }); out.textContent = (+e.target.value).toFixed(2); paint(); }, change: () => hist.snap() } }), out),
-            h("button.mini", { title: tt("Taille 1, décor centré"), on: { click: () => { pan.view = { zoom: 1, ox: 0, oy: 0 }; hist.snap(); paint(); props(); } } }, tt("Recentrer le décor")));
+        pan.bg ? (() => {                                     // taille et place du decor ; animables (piste « Décor ») quand c'est coche
+          const bgI = background(pan, app.bank, app.project.id) || {};
+          // course du decor de chaque cote : la reglette le pousse dans son sens (100 = a fond vers la droite / le bas)
+          const travel = (v) => { const pl = placement(bb, bgI.w || 16, bgI.h || 9, v); return { mx: Math.abs(pl.w - W) / (2 * W), my: Math.abs(pl.h - H) / (2 * H), pl }; };
+          const pos = (a) => { const v = scene.viewAt(t), tr = travel(v), m = a === "x" ? tr.mx : tr.my, o = a === "x" ? tr.pl.ox : tr.pl.oy; return m > 1e-4 ? Math.round(o / m * 100) : 0; };
+          const setPos = (a, x) => { const tr = travel(scene.viewAt(t)); change("bg", a === "x" ? { ox: f3(x / 100 * tr.mx) } : { oy: f3(x / 100 * tr.my) }); };
+          const rg = (label, title, get, min, max, step, set, fmt) => {
+            const out = h("output", fmt(get())), inp = h("input", { type: "range", min, max, step, value: get(), on: { input: (e) => { set(+e.target.value); out.textContent = fmt(+e.target.value); }, change: () => hist.snap() } });
+            rows.push(() => { const v = get(), tr = travel(scene.viewAt(t)), free = label === "z" || (label === "x" ? tr.mx : tr.my) > 1e-4; if (document.activeElement !== inp) inp.value = v; out.textContent = fmt(v); inp.disabled = !free; });
+            return h("label.row.range", { title }, label === "z" ? tt("Taille du décor") : label === "x" ? tt("Position ↔") : tt("Position ↕"), inp, out);
+          };
+          return h("div",
+            rg("z", tt("Agrandir ou rétrécir le décor de la case (1 : il remplit juste la case ; moins : plus petit que la case)"), () => scene.viewAt(t).zoom, 0.25, 6, 0.01, (x) => change("bg", { zoom: x }), (x) => (+x).toFixed(2)),
+            rg("x", tt("Pousser le décor vers la gauche ou vers la droite (-100 / 100 : à fond). Il faut qu'il soit plus grand ou plus petit que la case pour pouvoir bouger."), () => pos("x"), -100, 100, 1, (x) => setPos("x", x), (x) => String(Math.round(x))),
+            rg("y", tt("Pousser le décor vers le haut ou vers le bas (-100 / 100 : à fond). Il faut qu'il soit plus grand ou plus petit que la case pour pouvoir bouger."), () => pos("y"), -100, 100, 1, (x) => setPos("y", x), (x) => String(Math.round(x))),
+            h("label.row.check", { title: tt("Coché : la taille et la place du décor se posent en clés sur la piste « Décor » de la timeline (zoom, glissement du fond). Décoché : le décor reste fixe, ses clés sont gardées.") },
+              h("input", { type: "checkbox", checked: !!anim.bgAnim, on: { change: (e) => { if (e.target.checked) anim.bgAnim = true; else delete anim.bgAnim; if (!anim.bgAnim && sel === "bg") sel = "cam"; hist.snap(); paint(); lanes(); props(); } } }), tt("Animer le décor ⓘ")),
+            h("button.mini", { title: tt("Taille 1, décor centré"), on: { click: () => { change("bg", { zoom: 1, ox: 0, oy: 0 }); hist.snap(); paint(); props(); } } }, tt("Recentrer le décor")));
         })() : "",
         h("button.mini", { title: tt("Ouvre l'atelier de dessin du fond de cette case : formes simples, tracés, gris en trame, lignes d'effet (touche Q)"), on: { click: drawDecor } }, pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond")));
     } else {
@@ -1764,6 +1786,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     for (const n of anim.nulls || []) { row(n.id, n.name, "✛"); chanRows(n.id); }
     if (dof.on) { row("fo", tt("Mise au point"), "◎"); row("bl", tt("Flou"), "◌"); }
     if (fxAnim()) row("fx", tt("Lignes d'effet"), "⚡");
+    if (anim.bgAnim && pan.bg) { row("bg", tt("Décor"), "🖼"); chanRows("bg"); }
     for (const l of [...pan.layers].reverse()) {
       const name = itemOf(l) ? itemOf(l).name : tt("élément");
       const pn = parentOf(l.id);
@@ -1829,6 +1852,8 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     const lid = lane && !row.classList.contains("voice") ? lane.dataset.lane : null;   // piste Camera ou d'un element (ou un de ses canaux)
     if (lid === "cam")
       ctxMenu(e, [{ head: tt("Caméra") }, { label: chanOpen.has("cam") ? tt("Replier les canaux") : tt("Déployer les canaux (cadre, zoom, inclinaison, avancer)"), click: () => chanToggle("cam") }]);
+    else if (lid === "bg")
+      ctxMenu(e, [{ head: tt("Décor") }, { label: chanOpen.has("bg") ? tt("Replier les canaux") : tt("Déployer les canaux (taille, position)"), click: () => chanToggle("bg") }]);
     else if (lid && nullOf(lid)) {
       const n = nullOf(lid);
       ctxMenu(e, [{ head: "✛ " + n.name }, { label: chanOpen.has(lid) ? tt("Replier les canaux") : tt("Déployer les canaux (position, échelle, rotation)"), click: () => chanToggle(lid) },
@@ -1927,7 +1952,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     }
     lanes(); props();
   });
-  tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); const c = lane.dataset.ch; setKey(sel, c ? { [c]: (sel === "cam" ? camAt() : layerOf(sel) ? stateOf(layerOf(sel)) : nullOf(sel) ? scene.nullLocal(nullOf(sel), t) : {})[c] } : {}); paint(); lanes(); props(); } });
+  tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); const c = lane.dataset.ch; setKey(sel, c ? { [c]: (sel === "cam" ? camAt() : sel === "bg" ? scene.viewAt(t) : layerOf(sel) ? stateOf(layerOf(sel)) : nullOf(sel) ? scene.nullLocal(nullOf(sel), t) : {})[c] } : {}); paint(); lanes(); props(); } });
 
   // ------------------------------------------------------------------------------------------ gestes dans l'image
   // point de la souris en fraction de l'image. On passe par la matrice du SVG : son cadre a l'ecran peut etre plus grand
@@ -2067,12 +2092,12 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   // temps reel : la tete de lecture avance depuis l'instant affiche, une cle tous les 1/12 s (meme souris immobile, pour
   // tenir la pose), jusqu'a ce que le bouton de la souris soit relache. Les anciennes cles de sa piste sur ce passage partent.
   const REC_STEP = 1 / 12;
-  recBtn = h("button.mini.mt-rec", { title: tt("Enregistrer une action : choisis un personnage, arme ce bouton, puis fais le geste dans l'image (déplacer, tourner, pencher, taille). Le temps avance pendant le geste et chaque instant devient une clé, jusqu'à ce que tu relâches la souris. La voix et la lecture suivent."),
-    on: { click: () => { recArmed = !recArmed && !!layerOf(sel); recSync(); } } }, tt("● Rec Action"));
+  recBtn = h("button.mini.mt-rec", { title: tt("Enregistrer une action : choisis un personnage (ou un null), arme ce bouton, puis fais le geste dans l'image (déplacer, tourner, pencher, taille). Le temps avance pendant le geste et chaque instant devient une clé, jusqu'à ce que tu relâches la souris. La voix et la lecture suivent."),
+    on: { click: () => { recArmed = !recArmed && !!(layerOf(sel) || nullOf(sel)); recSync(); } } }, tt("● Rec Action"));
   function recSync() {
     if (!recBtn) return;
-    if (recArmed && !layerOf(sel)) recArmed = false;
-    recBtn.disabled = !layerOf(sel) && !recArmed;
+    if (recArmed && !layerOf(sel) && !nullOf(sel)) recArmed = false;
+    recBtn.disabled = !layerOf(sel) && !nullOf(sel) && !recArmed;
     recBtn.classList.toggle("on", recArmed);
     recBtn.classList.toggle("live", !!recAct);
   }
@@ -2177,7 +2202,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     app.commit("montage"); app.editor.render(); app.refreshInspector();
   };
   const bar = h("div.mt-bar", h("button.mini", { title: tt("Revenir au début"), on: { click: () => { stop(); seek(0, true); } } }, "⏮"), playBtn, recBtn,
-    h("button.mini", { title: tt("Ajoute un null : un repère animable, invisible à l'image, sur lequel parenter des éléments"), on: { click: addNull } }, tt("✛ Null")),
+    h("button.mini.mt-null", { title: tt("Ajoute un null : un repère animable, invisible à l'image, sur lequel parenter des éléments"), on: { click: addNull } }, tt("✛ Null")),
     h("label.row.check", h("input", { type: "checkbox", checked: loop, on: { change: (e) => { loop = e.target.checked; } } }), tt("En boucle")), clock,
     h("span.muted", { title: tt("Dans une piste : glisser trace un lasso qui prend les clés, Ctrl + clic en ajoute une. Les clés prises se déplacent ensemble et s'effacent avec Suppr. La règle des secondes déplace la tête de lecture.") }, tt("Maj : aimant sur les clés · glisser : lasso ⓘ")),
     h("span.spacer"),

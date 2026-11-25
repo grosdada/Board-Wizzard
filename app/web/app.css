@@ -403,6 +403,7 @@ details.fold > summary:hover { opacity: 1; }
 /* cible de la mise au point */
 button.mini.target { padding: 1px 5px; font-size: 13px; line-height: 16px; flex: none; }
 button.mini.target.on { background: #e2603a; border-color: #e2603a; color: #fff; }
+button.mini.mt-null { background: #f2c230; border-color: #f2c230; color: #1a1a1a; font-weight: 600; }   /* « ✛ Null » : qu'on le voie */
 body.focus-pick .layer, body.focus-pick .vlayer *, svg.focus-pick [data-layer] { cursor: crosshair !important; }
 /* mute des pistes du montage, verrou de la camera */
 .mt-mute { font: 600 9px/1 sans-serif; width: 15px; height: 15px; padding: 0; margin-right: 4px; border: 1px solid var(--line); border-radius: 3px; background: transparent; color: inherit; opacity: 0.45; cursor: pointer; vertical-align: 1px; }
