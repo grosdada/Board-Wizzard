@@ -124,6 +124,7 @@ label.row.range output { width: 34px; text-align: right; color: var(--muted); fo
 .tabs { display: flex; flex: none; }
 .tabs button { flex: 1; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 9px 4px; color: var(--muted); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
+.insp button:disabled { opacity: .38; cursor: not-allowed; }
 .tabs .count { margin-left: 4px; font-size: 11px; color: var(--muted); }
 .bank-bar { display: flex; gap: 5px; padding: 8px 10px; flex: none; }
 .bank-bar .search { flex: 1; }
