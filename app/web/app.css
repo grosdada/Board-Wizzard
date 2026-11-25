@@ -667,6 +667,10 @@ svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http:
 .menu.mt-casc button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu.mt-casc button small { flex: none; color: var(--muted); font-size: 11px; }
 .menu.mt-casc button.dir.open { background: var(--panel2); }
+.menu.mt-casc button.snd { align-items: center; justify-content: flex-start; }
+.menu.mt-casc button.snd small { margin-left: auto; }
+.menu.mt-casc .mt-cplay { flex: none; font-style: normal; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; background: #2c3b38; color: #5fc4a8; font-size: 10px; cursor: pointer; }
+.menu.mt-casc .mt-cplay:hover { background: #5fc4a8; color: #111; }
 
 /* onglet Audio : multi-selection, comme les vignettes */
 .bank-grid.audio.multi .acard { position: relative; padding-left: 32px; cursor: pointer; }

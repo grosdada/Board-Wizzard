@@ -2171,7 +2171,8 @@
   "🖌 Remettre le dessin": "🖌 Restore the drawing",
   "Au pinceau : le dessin d'origine revient là où il était effacé.": "Brush: the original drawing comes back where it was erased.",
   "🗑 Retirer ce son": "🗑 Remove this sound",
-  "Son retiré (Ctrl+Z pour le remettre).": "Sound removed (Ctrl+Z to bring it back)."
+  "Son retiré (Ctrl+Z pour le remettre).": "Sound removed (Ctrl+Z to bring it back).",
+  "Écouter avant de choisir": "Listen before choosing"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

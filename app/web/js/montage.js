@@ -1174,6 +1174,18 @@ export function openMontage(app, pid) {
     if (!libAudio) get("audio").then((v) => { libAudio = v || []; btn.textContent = label(); }).catch(() => {});
     return btn;
   }
+  let casPlayer = null, casPlaying = null, casBtn = null;   // ecoute d'un son du menu en cascade
+  function listen(a, btn) {
+    if (!casPlayer) casPlayer = new Audio();
+    const same = casPlaying === a.id && !casPlayer.paused;
+    casPlayer.pause();
+    if (casBtn && casBtn.isConnected) casBtn.textContent = "▶";
+    if (same) { casPlaying = null; return; }
+    casPlayer.src = `/audio/${a.file}`; casPlayer.currentTime = 0;
+    casPlayer.onended = () => { if (btn.isConnected) btn.textContent = "▶"; casPlaying = null; };
+    casPlayer.play().catch((e) => toast(tt("Lecture impossible : ") + e.message, "error"));
+    casPlaying = a.id; casBtn = btn; btn.textContent = "■";
+  }
   /** Menu en cascade des sons de la banque : les dossiers d'abord (survol : leur contenu s'ouvre a cote), puis les sons. */
   function cascade(anchor, list, onPick) {
     document.querySelectorAll(".mt-casc").forEach((m) => m.remove());
@@ -1189,7 +1201,7 @@ export function openMontage(app, pid) {
     const count = (n) => n.files.length + [...n.dirs.values()].reduce((s, d) => s + count(d), 0);
     const levels = [];
     const closeFrom = (i) => { while (levels.length > i) levels.pop().remove(); };
-    const closeAll = () => { closeFrom(0); document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", esc, true); };
+    const closeAll = () => { if (casPlayer) casPlayer.pause(); casPlaying = null; closeFrom(0); document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", esc, true); };
     const outside = (ev) => { if (!levels.some((m) => m.contains(ev.target)) && ev.target !== anchor) closeAll(); };
     const esc = (ev) => { if (ev.key === "Escape") { ev.stopPropagation(); closeAll(); } };
     function open(node, depth, x, y, leftEdge) {
@@ -1208,7 +1220,10 @@ export function openMontage(app, pid) {
         box.append(row);
       }
       for (const a of node.files) {
-        const row = h("button.snd", { title: a.text || a.name, on: { click: () => { closeAll(); onPick(a.id); } } }, h("span", "🔊 " + a.name), a.dur ? h("small", `${a.dur.toFixed(1)} s`) : "");
+        // ▶ : ecouter le son avant de le prendre (un clic sur le nom le prend)
+        const play = h("i.mt-cplay", { title: tt("Écouter avant de choisir") }, casPlaying === a.id && casPlayer && !casPlayer.paused ? "■" : "▶");
+        play.addEventListener("click", (ev) => { ev.stopPropagation(); ev.preventDefault(); listen(a, play); });
+        const row = h("button.snd", { title: a.text || a.name, on: { click: () => { closeAll(); onPick(a.id); } } }, play, h("span", a.name), a.dur ? h("small", `${a.dur.toFixed(1)} s`) : "");
         row.addEventListener("pointerenter", () => { closeFrom(depth + 1); box.querySelectorAll(".dir.open").forEach((r) => r.classList.remove("open")); });
         box.append(row);
       }
