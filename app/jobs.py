@@ -823,6 +823,35 @@ PANEL_REFS_PROMPT = (" The character reference sheets show each character of the
                      "the back: use them for every side of a character that the start image does not show, never invent "
                      "a face or a back. The set references show the same place from other angles: use them for the parts "
                      "of the set that are off-screen.")
+# Sans elle, quand les personnages sont colles au mur du fond (case p92, couloir vu de face), la camera ne peut pas tourner
+# autour d'eux : H3 les fait pivoter sur place devant un decor fige (et les dedouble). Essais du 25/11/2026 sur les machines.
+PANEL_ROOM_PROMPT = (" The characters stand in the middle of the place, several metres in front of the background, with empty "
+                     "floor all around them, so the camera can circle all the way around them: behind the camera at the start "
+                     "is the rest of the place. Halfway round, the camera stands between the characters and the background it "
+                     "first saw and looks back at them: we see the other side of each character, and behind them the opposite "
+                     "side of the place, which was behind the camera at the start.")
+
+
+def _panel_who(who):
+    """Phrase qui distingue les personnages des references (le noeud les presente comme une seule personne vue de
+    plusieurs cotes) : <Picture i> = nom dans la banque et place dans la case. Essai du 25/11/2026 (p92, graine des
+    reglages) : avec les noms, aucun fond vide au demi-tour ; avec la place seule, 14 images vides."""
+    if len(who) < 2:
+        return ""
+    def place(x):
+        return "on the left" if x < 0.4 else "on the right" if x > 0.6 else "in the middle"
+    parts = ["<Picture %d> is %s, standing %s" % (i + 1, name, place(x)) for i, (name, x) in enumerate(who)]
+    return (" There are %d different people, never merge or duplicate them: %s." % (len(who), "; ".join(parts)))
+
+
+def _panel_sets(nc, ns):
+    """Les quatre vues d'un decor 360 (case, quart de tour, demi-tour, trois quarts) : sans elles, au demi-tour H3 laisse
+    souvent un fond blanc vide (case p92). Leurs numeros <Picture N> suivent ceux des personnages."""
+    if ns != 4:
+        return ""
+    return (" <Picture %d> is the set exactly as seen in the start image; <Picture %d> is the opposite side of the place, "
+            "the side that was behind the camera at the start: halfway round, it is what we see behind the characters; "
+            "<Picture %d> and <Picture %d> are the two sides in between." % (nc + 1, nc + 3, nc + 2, nc + 4))
 
 
 def _flat_white(src, dest, height=None):
@@ -852,7 +881,7 @@ def _panel_refs(project, panel_id, tmp):
     (sinon son image). {"character": [...], "set": [...]} ou None."""
     from PIL import Image
     pan = store.find_panel(store.load_project(project), panel_id) or {}
-    chars, seen = [], set()
+    chars, who, seen = [], [], set()
     for l in sorted(pan.get("layers") or [], key=lambda l: -(l.get("s") or 0)):
         key = (l.get("item"), l.get("v") or "base")
         if not l.get("item") or key in seen or len(chars) >= 4:
@@ -881,10 +910,12 @@ def _panel_refs(project, panel_id, tmp):
                 dest = tmp / ("perso%d.png" % n_)
                 sheet.save(dest)
                 chars.append(dest)
+                who.append((it.get("name") or it["id"], float(l.get("x") or 0.5)))
                 continue
         src = v.get("cut") or v.get("ref")
         if src and (store.item_dir(it.get("src") or it["id"]) / src).exists():
             chars.append(_flat_white(store.item_dir(it.get("src") or it["id"]) / src, tmp / ("perso%d.png" % n_)))
+            who.append((it.get("name") or it["id"], float(l.get("x") or 0.5)))
     sets = []
     bg = pan.get("bg") or {}
     if bg.get("file") and (store.project_dir(project) / bg["file"]).exists():
@@ -904,6 +935,8 @@ def _panel_refs(project, panel_id, tmp):
         except Exception:                                          # noqa: BLE001 : decor retire de la banque
             pass
     refs = {k: x for k, x in (("character", chars), ("set", sets)) if x}
+    if refs and chars:
+        refs["who"] = who
     return refs or None
 
 
@@ -917,12 +950,15 @@ def run_panel_orbit(job, prov):
         prompt = (p.get("prompt") or "").strip() or comfy.SCENE_ORBIT_PROMPT
         refs = None
         if getattr(prov, "takes_refs", False):                     # machines : les tournettes des persos et le decor 360 en references
+            prompt += PANEL_ROOM_PROMPT                            # essaye sur les machines seulement, pas sur fal
             try:
                 refs = _panel_refs(p["project"], p["panel"], tmp)
             except Exception:                                      # noqa: BLE001 : sans references, l'orbite se fait comme avant
                 refs = None
+            who = (refs or {}).pop("who", [])
             if refs:
-                prompt += PANEL_REFS_PROMPT
+                prompt += (PANEL_REFS_PROMPT + _panel_who(who)
+                           + _panel_sets(len(refs.get("character", [])), len(refs.get("set", []))))
                 job["progress"] = "orbite : %d perso(s), %d vue(s) du décor en références" % (len(refs.get("character", [])), len(refs.get("set", [])))
         rgb, _ = prov.orbit(d / p["flat"], int(p.get("length") or r["orbit_length"]), _seed(job),
                             prompt, 0.8, False, tmp, refs=refs, bare=True)
