@@ -1049,6 +1049,8 @@ class App {
     const pan = this.curPanel(); if (!pan) return toast(tt("Choisis d'abord une case."));
     const base = (this.info && this.info.sceneOrbit) || "";
     const prompt = h("textarea", { rows: 9 }); prompt.value = localStorage.getItem("bw.sceneOrbit") || base;
+    const rs = (this.info && this.info.settings && this.info.settings.render) || {};
+    const seed = h("input", { type: "number", min: 1, step: 1, style: { width: "11em" }, placeholder: rs.seed ? tt`réglages (${rs.seed})` : tt("réglages") });
     const go = async () => {
       const txt = prompt.value.trim();
       if (txt && txt !== base) localStorage.setItem("bw.sceneOrbit", txt); else localStorage.removeItem("bw.sceneOrbit");
@@ -1056,14 +1058,18 @@ class App {
         let flat;
         if (pan.show === "integrated" && pan.integrated) flat = pan.integrated;        // l'image integree tourne mieux qu'un collage
         else flat = await this.flat();
-        await post(`projects/${this.project.id}/orbit`, { panel: this.sel.panel, flat, prompt: txt, target: target() });
+        await post(`projects/${this.project.id}/orbit`, { panel: this.sel.panel, flat, prompt: txt, seed: +seed.value || 0, target: target() });
         toast(tt("Orbite de la case lancée (≈ 3 min).")); this.pollSoon();
       } catch (e) { toast(tt("Orbite impossible : ") + e.message, "error"); return false; }
     };
     modal(tt("Orbite de la case"), h("div.form",
       h("p.muted", tt("La caméra fait le tour de la scène : le décor tourne avec les personnages, et ce qui était hors champ est inventé dans le même style. La consigne se modifie ; elle est gardée pour les prochaines orbites.")),
       h("label.col", tt("Consigne"), prompt),
-      h("button.mini", { type: "button", on: { click: () => { prompt.value = base; } } }, tt("Remettre la consigne d'origine"))),
+      h("button.mini", { type: "button", on: { click: () => { prompt.value = base; } } }, tt("Remettre la consigne d'origine")),
+      h("div", { style: { display: "flex", gap: "6px", alignItems: "center" } }, tt("Graine"), seed,
+        h("button.mini", { type: "button", title: tt("Tirer une autre graine"), on: { click: () => { seed.value = 1 + Math.floor(Math.random() * 999999); } } }, "🎲"),
+        h("button.mini", { type: "button", title: tt("Revenir à la graine des réglages"), on: { click: () => { seed.value = ""; } } }, tt("Réglages"))),
+      h("p.muted", tt("Même graine et même consigne donnent la même vidéo. Si le décor reste vide au demi-tour, relance avec une autre graine."))),
       [{ label: tt("Annuler") }, { label: tt("↻ Lancer l'orbite"), primary: true, click: go }]).box.classList.add("wide");
   }
   guessStyle(pan) {

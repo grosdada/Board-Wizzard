@@ -1264,8 +1264,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"job": jid})
         if act == "orbit" and method == "POST":
             store.safe(pdir, d["flat"])
-            jid = S.add("panel_orbit", {"project": pid, "panel": d["panel"], "flat": d["flat"], "prompt": str(d.get("prompt") or "")[:4000]},
-                        "Orbite de la case %s" % d["panel"], **self.job_opts(d))
+            params = {"project": pid, "panel": d["panel"], "flat": d["flat"], "prompt": str(d.get("prompt") or "")[:4000]}
+            try:
+                seed = int(d.get("seed") or 0)                 # vide = graine des reglages (jobs._seed)
+            except (TypeError, ValueError):
+                raise ApiError("graine invalide")
+            if seed > 0:
+                params["seed"] = seed
+            jid = S.add("panel_orbit", params, "Orbite de la case %s%s" % (d["panel"], " · graine %d" % seed if seed > 0 else ""),
+                        **self.job_opts(d))
             return self.send_json({"job": jid})
         raise ApiError("route inconnue", 404)
 
