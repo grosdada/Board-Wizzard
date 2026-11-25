@@ -42,7 +42,9 @@ SHAPES = {
          "present in the drawing, with the paper showing through, a lighter rounded tongue resting at the bottom. On a drawing "
          "that has no paint, add no grey paint and no wash: lines and hatching only.",
     "O": "The character is speaking: the lips are pushed forward into a small round 'OH' shape, a small round opening filled with "
-         "the darkest colour already used in the drawing.",
+         "the darkest colour already used in the drawing. The lips themselves keep exactly the same pale colour and the same "
+         "light shading as the lips in the reference: NO lipstick, NO dark or brown lips, NO filled-in lips; only the small "
+         "opening is dark.",
     "E": "The character is speaking: the mouth is half open and stretched wide as when saying 'EE', showing a plain row of upper "
          "teeth left as bare paper, a thin dark gap under them.",
     "D": "The character is speaking: the mouth is slightly open, a narrow dark slit between the lips, as when saying 'D' or 'S'.",
