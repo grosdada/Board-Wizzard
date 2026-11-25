@@ -802,20 +802,43 @@ def run_panel_integrate(job, prov):
     if p.get("edit_model") and isinstance(getattr(prov, "cfg", None), dict):   # modele fal choisi pour Integrate
         prov.cfg = dict(prov.cfg, edit=p["edit_model"])
     tmp = _tmp()
+    to_bg = p.get("to") == "bg"
     try:
-        png = prov.edit([d / p["flat"]], prompt, _seed(job), tmp)
-        rel = "integ/%s_%d.png" % (p["panel"], int(time.time()))
-        (d / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(png, d / rel)
+        src = d / p["flat"]
+        if to_bg:                                                  # une image de l'orbite (webp) : en png pour tous les moteurs
+            from PIL import Image
+            im0 = Image.open(src).convert("RGB")
+            src = tmp / "vue.png"
+            im0.save(src)
+        png = prov.edit([src], prompt, _seed(job), tmp)
+        if to_bg:                                                  # le decor a la taille exacte de l'image de l'orbite : meme cadrage
+            rel = "processed_orbit/%s_decor_%d.png" % (p["panel"], int(time.time()))
+            (d / rel).parent.mkdir(parents=True, exist_ok=True)
+            im = Image.open(png).convert("RGB")
+            if im.size != im0.size:
+                im = im.resize(im0.size, Image.LANCZOS)
+            im.save(d / rel)
+            size = im0.size
+        else:
+            rel = "integ/%s_%d.png" % (p["panel"], int(time.time()))
+            (d / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(png, d / rel)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
     def apply(x):
         pan = store.find_panel(x, p["panel"])
-        if pan is not None:
-            pan.setdefault("integrations", []).append(rel)
-            pan["integrated"] = rel
-            pan["show"] = "integrated"
+        if pan is None:
+            return
+        if to_bg:                                                  # le fond d'avant reste dans pan.orbitPrev (orbitpersp)
+            pan["bg"] = {"file": rel, "w": size[0], "h": size[1]}
+            pan.pop("view", None)
+            pan["orbitBg"] = rel
+            pan["show"] = "layers"
+            return
+        pan.setdefault("integrations", []).append(rel)
+        pan["integrated"] = rel
+        pan["show"] = "integrated"
     store.mutate_project(p["project"], apply)
 
 

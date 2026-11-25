@@ -13,7 +13,8 @@ import { openDrawEditor, drawImage } from "./draw.js";
 import { openMontage } from "./montage.js";
 import { photoDialog, openGenerations } from "./photo.js";
 import { openDeck, addClip } from "./deck.js";
-import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox } from "./model.js";
+import { orbitPerspective } from "./orbitpersp.js";
+import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox, pad3 } from "./model.js";
 
 const FORMATS = [
   { id: "story", label: tt("Storyboard 16:10"), w: 2400, h: 1500 },
@@ -206,9 +207,14 @@ class App {
         mine.integrations = sp.integrations; mine.integrated = sp.integrated; mine.show = sp.show; changed = true;
       }
       if (sp.orbit && (!mine.orbit || mine.orbit.dir !== sp.orbit.dir)) { mine.orbit = sp.orbit; mine.show = sp.show; changed = true; }
+      if (sp.orbitBg && sp.orbitBg !== mine.orbitBg) {
+        mine.bg = sp.bg; mine.orbitBg = sp.orbitBg; delete mine.view; mine.show = "layers"; changed = true;
+        (this._orbitSnap = this._orbitSnap || new Set()).add(pid);
+      }
     }
     this.project.rev = srv.rev;
     if (changed) { this.last = this.snapshot(); this.editor.render(); this.refreshInspector(); }
+    for (const pid of this._orbitSnap || []) if (this.geo(pid)) { this._orbitSnap.delete(pid); this.orbitSnap(pid, "decor"); }
   }
 
   // ---------------------------------------------------------------- selection
@@ -616,6 +622,7 @@ class App {
         pan.integrations = left; pan.integrated = left[left.length - 1] || null; if (!pan.integrated) { delete pan.integrated; pan.show = "layers"; }
         this.commit("ver"); this.editor.render(); this.refreshInspector(); } });
       if (pan.orbit) items.push({ label: tt("Orbite"), checked: pan.show === "orbit", click: () => this.setShow("orbit") });
+      if (pan.orbit && pan.show === "orbit") items.push({ label: tt("↻ Recalculer la perspective (cet angle de l'orbite)…"), star: true, click: () => this.orbitPlace() });
     }
     if (this.editor.geom.panels.length > 1) items.push({ label: tt("Copier cette case vers…"), click: () => this.copyPanelTo(pid) });
     items.push({ head: tt("Découpage") }, { label: tt("Couper ━"), click: () => this.split("h"), half: true }, { label: tt("Couper ┃"), click: () => this.split("v"), half: true });
@@ -1072,6 +1079,87 @@ class App {
       h("p.muted", tt("Même graine et même consigne donnent la même vidéo. Si le décor reste vide au demi-tour, relance avec une autre graine."))),
       [{ label: tt("Annuler") }, { label: tt("↻ Lancer l'orbite"), primary: true, click: go }]).box.classList.add("wide");
   }
+  // « Recalculer la perspective » depuis l'orbite de la case : les marionnettes de la case (pas une image calculee) se
+  // calent sur l'angle ou l'orbite est arretee (orbitpersp.js, la meme reconstruction que la vue 3D du montage). Le calcul
+  // part toujours de la case telle qu'avant le premier recalcul (pan.orbitBase) : recalculer deux fois ne tourne pas deux
+  // fois. Le resultat va dans la case choisie ; un instantane aplati part dans processed_orbit/ ; le decor de cet angle
+  // peut etre redessine (image de l'orbite sans les personnages, moteur d'Integrate).
+  orbitPlace() {
+    const pid = this.sel.panel, pg = this.page(), pan = pg.panels[pid], g = this.geo(pid);
+    if (!pan || !pan.orbit || !g) return toast(tt("Cette case n'a pas d'orbite."));
+    const o = pan.orbit, n = o.n || 72, k = (((o.frame || 0) % n) + n) % n, yaw = k * 360 / n;
+    const base = pan.orbitBase || { layers: JSON.parse(JSON.stringify(pan.layers || [])), ground: pan.ground ? JSON.parse(JSON.stringify(pan.ground)) : null, bg: pan.bg ? JSON.parse(JSON.stringify(pan.bg)) : null, view: pan.view || null };
+    if (!base.layers.length) return toast(tt("Pose d'abord des éléments dans la case."));
+    const filled = (q) => !!(q && (q.bg || (q.layers || []).length));
+    const cases = this.editor.geom.panels.slice().sort((a, b) => a.order - b.order);
+    const free = cases.find((x) => x.id !== pid && !filled(pg.panels[x.id]));
+    const dest = h("select", cases.map((x) => h("option", { value: x.id, selected: x.id === (free ? free.id : pid) },
+      tt`Case ${x.order}` + (x.id === pid ? tt(" (cette case, son orbite reste)") : filled(pg.panels[x.id]) ? tt(" (déjà remplie : remplacée)") : ""))));
+    const bgIt = base.bg && base.bg.item && this.bank.get(base.bg.item), bgV = bgIt && variantOf(bgIt, base.bg.v || "base");
+    const turns = !!(bgV && bgV.orbit && bgV.orbit.n > 1);
+    const decor = h("input", { type: "checkbox", checked: !turns && localStorage.getItem("bw.orbitDecor") === "1" });
+    const eng = ((this.info.settings.render || {}).integrate_engine || "");
+    const engName = (INTEGRATE_ENGINES.find(([x]) => x === eng) || [eng, eng.replace(/^fal:/, "fal · ")])[1];
+    modal(tt`Recalculer la perspective · image ${k} (${Math.round(yaw)}°)`, h("div.form",
+      h("p.muted", tt("Les éléments de la case (les mêmes marionnettes) prennent la place, la taille et l'image de tournette qu'ils ont sous cet angle de l'orbite. Rien n'est régénéré, sauf le décor si tu le coches.")),
+      h("label.row", tt("Mettre dans"), dest),
+      turns ? h("p.muted", tt("Le décor est un décor 360 de la banque : il tourne avec, sans calcul.")) : "",
+      h("label.row.check", decor, tt("Redessiner le décor sous cet angle"), h("span.muted", " · " + tt("l'image de l'orbite sans les personnages, moteur d'Integrate : ") + (engName || tt("automatique")) + (/^fal:/.test(eng) || (!eng && this.noMachines()) ? tt(" (fal, payant)") : ""))),
+      h("p.muted", tt("Un instantané de la case part dans le dossier processed_orbit du storyboard (et un second quand le décor arrive)."))),
+      [{ label: tt("Annuler") }, { label: tt("↻ Placer"), primary: true, click: () => {
+        const to = dest.value, same = to === pid;
+        const r = orbitPerspective(Object.assign({}, pan, { layers: base.layers, ground: base.ground, bg: base.bg }), g.bbox.h / g.bbox.w, this.bank, yaw);
+        // les elements de la case tels qu'a l'image 0 (pan.orbitBase) ; ceux ajoutes depuis gardent leur place, ceux
+        // retires depuis ne reviennent pas
+        const baseOf = new Map(base.layers.map((l, i) => [l.id, Object.assign(JSON.parse(JSON.stringify(l)), l.d == null ? { d: +depthOf({ layers: base.layers }, i).toFixed(3) } : {})]));
+        const now = (pan.layers || []).map((l) => baseOf.get(l.id) || JSON.parse(JSON.stringify(l)));
+        let tgt;
+        if (same) { pan.orbitBase = base; tgt = pan; tgt.layers = now; }
+        else {                                               // une copie neuve de la case : sans ses images calculees, nouveaux identifiants
+          tgt = JSON.parse(JSON.stringify(pan));
+          for (const x of ["integrated", "integrations", "orbit", "orbitBase", "orbitBg", "anim"]) delete tgt[x];
+          tgt.layers = now;
+          for (const b of tgt.bubbles || []) b.id = uid();
+          for (const m of tgt.marks || []) m.id = uid();
+        }
+        const byId = new Map(tgt.layers.map((l) => [l.id, l]));
+        for (const x of r.out) { const l = byId.get(x.l.id); if (!l) continue; l.x = x.x; l.y = x.y; l.s = x.s; l.d = x.d; if (x.f != null) l.f = x.f; }
+        tgt.layers.forEach((l, i, a) => { if (l.d == null) l.d = +depthOf({ layers: a }, i).toFixed(3); });
+        tgt.layers.sort((a, b) => b.d - a.d);
+        if (!same) for (const l of tgt.layers) l.id = uid();
+        if (r.ground && tgt.ground) Object.assign(tgt.ground, r.ground);
+        tgt.bg = base.bg ? JSON.parse(JSON.stringify(base.bg)) : tgt.bg;
+        if (same && base.view) tgt.view = base.view;
+        if (turns) { const a = frameToAngle(bgV.orbit, base.bg.f || 0); tgt.bg.f = angleToFrame(bgV.orbit, a + yaw); }
+        tgt.show = "layers";
+        tgt.orbitOf = { panel: pid, frame: k };
+        if (!same) pg.panels[to] = tgt;
+        const keyed = same && pan.anim && Object.keys(pan.anim.tracks || {}).some((id) => byId.has(id) && (pan.anim.tracks[id] || []).length);
+        this.commit("orbit-place"); this.select({ panel: to }); this.editor.render(); this.refreshInspector();
+        localStorage.setItem("bw.orbitDecor", decor.checked ? "1" : "0");
+        const go = async () => {
+          await this.orbitSnap(to, "f" + k);
+          if (decor.checked && !turns) {
+            try {
+              await post(`projects/${this.project.id}/integrate`, { panel: to, flat: `${o.dir}/${pad3(k)}.webp`, to: "bg", prompt: ORBIT_DECOR_PROMPT, target: target() });
+              this.pollSoon();
+            } catch (e) { toast(tt("Décor non lancé : ") + e.message, "error"); }
+          }
+        };
+        go();
+        toast(tt`Perspective de l'image ${k} posée : ${r.out.length} élément(s)` + (r.skipped ? tt` · ${r.skipped} derrière la caméra, laissé(s) tel(s) quels` : "") +
+          (keyed ? tt(" · des clés du montage gardent leur valeur") : "") + (decor.checked && !turns ? tt(" · décor en calcul") : "") + ".");
+      } }]);
+  }
+  /** La case aplatie, dans processed_orbit/ du storyboard. */
+  async orbitSnap(pid, tag) {
+    try {
+      const g = this.geo(pid); if (!g) return;
+      const blob = await flattenPanel(this, g);
+      const r = await upload(`projects/${this.project.id}/orbit-snap/${pid}?tag=${encodeURIComponent(tag || "")}`, blob);
+      toast(tt("Instantané : ") + r.file);
+    } catch (e) { toast(tt("Instantané impossible : ") + e.message, "error"); }
+  }
   guessStyle(pan) {
     const it = (pan.layers || []).map((l) => this.bank.get(l.item)).find(Boolean) || this.bank.get(pan.bg?.item);
     return it && it.style === "dessin" ? "dessin" : "photo";
@@ -1285,7 +1373,10 @@ class App {
       h("div.row", h("button.photo-go", { title: tt("La case rendue en photo : GPT Image 2.6 et Seedream 5.5 à comparer (fal, payant)"), on: { click: () => this.casePhoto() } }, tt("📷 Générer photo"))));
     if (pan.integrated || pan.orbit) {
       const modes = [["layers", tt("Calques")]]; if (pan.integrated) modes.push(["integrated", tt("Intégrée")]); if (pan.orbit) modes.push(["orbit", tt("Orbite")]);
-      box.append(h("div.row", h("span.muted", tt("Afficher :")), modes.map(([m, t]) => h("button.mini" + ((pan.show || "layers") === m ? ".on" : ""), { on: { click: () => this.setShow(m) } }, t))));
+      const oOn = pan.orbit && pan.show === "orbit";
+      box.append(h("div.row", h("span.muted", tt("Afficher :")), modes.map(([m, t]) => h("button.mini" + ((pan.show || "layers") === m ? ".on" : ""), { on: { click: () => this.setShow(m) } }, t)),
+        pan.orbit ? h("button.mini" + (oOn ? ".star" : ""), { disabled: !oOn, title: oOn ? tt("Remet les éléments de la case en place vus sous cet angle de l'orbite : même place, même taille, l'image de leur tournette qui correspond. Rien n'est calculé, sauf le décor si tu le demandes.") : tt("Affiche l'orbite et arrête-toi sur un angle"),
+          on: { click: () => this.orbitPlace() } }, tt("↻ Recalculer la perspective")) : ""));
       if ((pan.integrations || []).length > 1) box.append(h("div.versions", pan.integrations.map((f, i) => h("img" + (f === pan.integrated ? ".on" : ""), {
         src: `/projects/${this.project.id}/${f}`, title: tt("Version ") + (i + 1), on: { click: () => { pan.integrated = f; pan.show = "integrated"; this.commit("ver"); this.editor.render(); this.refreshInspector(); } } }))));
       if (pan.show === "orbit" && pan.orbit) box.append(range(tt("Axe de la scène"), pan.orbit.frame || 0, 0, pan.orbit.n - 1, 1, (x) => { pan.orbit.frame = x; }, "oturn"));
@@ -1600,6 +1691,10 @@ const fmt = (v) => (Math.abs(v) >= 10 || Number.isInteger(v) ? String(Math.round
 function transposeIf(page, layout) { return page.width > page.height ? transpose(layout) : layout; }
 const CID = Math.random().toString(36).slice(2, 10);       // cet onglet, pour que le serveur reconnaisse ses propres enregistrements
 // moteurs d'Integrate : [valeur du reglage render.integrate_engine, nom]. Seul Qwen Image Edit Plus a servi sur fal.
+// decor d'un angle de l'orbite de case : l'image de l'orbite sans personne, meme cadrage et meme style
+const ORBIT_DECOR_PROMPT = "Remove every character, person and creature from this picture, and change nothing else. Keep the place exactly as it is: " +
+  "same framing, same camera angle and perspective, same drawing style, line work, colours and wash. Where a character stood, continue the floor, " +
+  "walls and furniture that were behind them. No people, no new objects, no text.";
 const INTEGRATE_ENGINES = [
   ["", tt("Automatique (mes machines, sinon fal)")],
   ["local", tt("Mes machines · Qwen-Image-Edit")],

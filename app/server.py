@@ -59,6 +59,9 @@ def merge_project(new, old):
                 pan["integrated"], pan["show"] = srv.get("integrated"), srv.get("show")
             if stale and (srv.get("orbit") or {}).get("dir") != (pan.get("orbit") or {}).get("dir") and srv.get("orbit"):
                 pan["orbit"], pan["show"] = srv["orbit"], srv.get("show")
+            if stale and srv.get("orbitBg") and srv.get("orbitBg") != pan.get("orbitBg"):   # decor d'un angle de l'orbite
+                pan["bg"], pan["orbitBg"], pan["show"] = srv.get("bg"), srv["orbitBg"], srv.get("show")
+                pan.pop("view", None)
     new["rev"] = old.get("rev", 0)
     new["created"] = old.get("created", new.get("created"))
     return new
@@ -1276,18 +1279,27 @@ class Handler(BaseHTTPRequestHandler):
             (pdir / rel).parent.mkdir(parents=True, exist_ok=True)
             (pdir / rel).write_bytes(body)
             return self.send_json({"file": rel})
+        if act == "orbit-snap" and method == "POST":               # mise en place tiree de l'orbite, aplatie : dossier processed_orbit
+            panel = re.sub(r"[^\w-]", "", seg[2])
+            tag = re.sub(r"[^\w-]", "", q.get("tag", ""))[:40]
+            rel = "processed_orbit/%s%s_%d.png" % (panel, "_" + tag if tag else "", time.time())
+            (pdir / rel).parent.mkdir(parents=True, exist_ok=True)
+            (pdir / rel).write_bytes(body)
+            return self.send_json({"file": rel})
         if act == "integrate" and method == "POST":
             store.safe(pdir, d["flat"])
             opts = self.job_opts(d)
             eng = d.get("engine") if d.get("engine") is not None else (settings.load()["render"].get("integrate_engine") or "")
             params = {"project": pid, "panel": d["panel"], "flat": d["flat"], "style": d.get("style", "photo"),
                       "prompt": d.get("prompt", ""), "extra": d.get("extra", "")}
+            if d.get("to") == "bg":                                 # le decor d'un angle de l'orbite : il devient le fond de la case
+                params["to"] = "bg"
             if eng == "local":                                      # moteur choisi pour Integrate : il passe avant la cible generale
                 opts["target"] = "local"
             elif eng.startswith("fal:") and eng[4:].strip():
                 opts["target"] = "fal"
                 params["edit_model"] = eng[4:].strip()
-            jid = S.add("panel_integrate", params, "Integrate · case %s" % d["panel"], **opts)
+            jid = S.add("panel_integrate", params, ("Décor de l'orbite · case %s" if params.get("to") == "bg" else "Integrate · case %s") % d["panel"], **opts)
             return self.send_json({"job": jid})
         if act == "orbit" and method == "POST":
             store.safe(pdir, d["flat"])
