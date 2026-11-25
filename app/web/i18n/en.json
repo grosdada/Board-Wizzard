@@ -2148,7 +2148,8 @@
   "Pousser le décor vers la gauche ou vers la droite (-100 / 100 : à fond). Il faut qu'il soit plus grand ou plus petit que la case pour pouvoir bouger.": "Push the set left or right (-100 / 100: all the way). It must be larger or smaller than the panel to move.",
   "Pousser le décor vers le haut ou vers le bas (-100 / 100 : à fond). Il faut qu'il soit plus grand ou plus petit que la case pour pouvoir bouger.": "Push the set up or down (-100 / 100: all the way). It must be larger or smaller than the panel to move.",
   "Coché : la taille et la place du décor se posent en clés sur la piste « Décor » de la timeline (zoom, glissement du fond). Décoché : le décor reste fixe, ses clés sont gardées.": "Checked: the set's size and position are keyed on the \"Set\" track of the timeline (zoom, background slide). Unchecked: the set stays still, its keys are kept.",
-  "Animer le décor ⓘ": "Animate the set ⓘ"
+  "Animer le décor ⓘ": "Animate the set ⓘ",
+  "Montrer ce décor dans la banque": "Show this set in the bank"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

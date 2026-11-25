@@ -1216,6 +1216,7 @@ class App {
     const dof = pan.dof || (pan.dof = { on: false, focus: 0.3, amount: 12 });
     box.append(h("h3", tt("Case ") + (g ? g.order : "")));
     box.append(h("div.row", h("span.muted", tt("Fond :")), h("span", bg ? (bg.item ? bg.item.name : tt("image importée")) : "aucun"),
+      bg && bg.item ? h("button.mini", { title: tt("Montrer ce décor dans la banque"), on: { click: () => this.bankUI.reveal(bg.item.id) } }, "📍") : null,
       bg ? h("button.mini", { on: { click: () => { delete pan.bg; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer")) : null));
     box.append(h("div.row", h("button.mini", { title: tt("Formes simples, tracés, gris en trame de points : un décor fait à la main en noir et blanc"), on: { click: () => this.drawBackground(this.sel.panel) } }, (pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond"))),
       pan.draw ? h("button.mini.danger", { on: { click: () => { delete pan.draw; this.commit("draw"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer le dessin")) : ""));

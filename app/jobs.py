@@ -32,6 +32,7 @@ class Cancelled(Exception):
 
 # ------------------------------------------------------------------ fournisseur local
 class LocalProvider:
+    takes_refs = True                                           # H3OrbitalConditioning : character_1..4, set_1..4
     name = "local"
 
     def __init__(self, url, job):
@@ -818,6 +819,94 @@ def run_panel_integrate(job, prov):
     store.mutate_project(p["project"], apply)
 
 
+PANEL_REFS_PROMPT = (" The character reference sheets show each character of the scene from the front, the side and "
+                     "the back: use them for every side of a character that the start image does not show, never invent "
+                     "a face or a back. The set references show the same place from other angles: use them for the parts "
+                     "of the set that are off-screen.")
+
+
+def _flat_white(src, dest, height=None):
+    """Image (transparente ou non) posee sur du blanc, a une hauteur donnee."""
+    from PIL import Image
+    im = Image.open(src).convert("RGBA")
+    if height and im.height != height:
+        im = im.resize((max(1, round(im.width * height / im.height)), height), Image.LANCZOS)
+    out = Image.new("RGB", im.size, (255, 255, 255))
+    out.paste(im, mask=im.split()[3])
+    out.save(dest)
+    return dest
+
+
+def _orbit_of(item, vid):
+    """(dossier de l'orbite, orbite) de la variante, ou (None, None) : un personnage assemble prend celles de son corps."""
+    v = (item.get("variants") or {}).get(vid or "base") or (item.get("variants") or {}).get("base") or {}
+    o = v.get("orbit") or {}
+    if not o.get("n") or not o.get("dir"):
+        return None, None, v
+    return store.item_dir(item.get("src") or item["id"]) / o["dir"], o, v
+
+
+def _panel_refs(project, panel_id, tmp):
+    """References de l'orbite d'une case, prises dans la banque : pour chaque element (4 au plus, les plus grands
+    d'abord), une planche face / profil / dos / profil tiree de sa tournette ; pour le decor 360, quatre vues a 90 degres
+    (sinon son image). {"character": [...], "set": [...]} ou None."""
+    from PIL import Image
+    pan = store.find_panel(store.load_project(project), panel_id) or {}
+    chars, seen = [], set()
+    for l in sorted(pan.get("layers") or [], key=lambda l: -(l.get("s") or 0)):
+        key = (l.get("item"), l.get("v") or "base")
+        if not l.get("item") or key in seen or len(chars) >= 4:
+            continue
+        seen.add(key)
+        try:
+            it = store.load_item(l["item"])
+        except Exception:                                          # noqa: BLE001 : element retire de la banque
+            continue
+        folder, o, v = _orbit_of(it, l.get("v"))
+        n_ = len(chars)
+        if folder is not None:
+            n = int(o["n"])
+            snaps = o.get("snaps") or sprites.default_snaps(n, it.get("facing") or "face")
+            views = []
+            for ax in ("face", "profil gauche", "dos", "profil droit"):
+                f = folder / ("%03d.webp" % (int(snaps.get(ax, 0)) % n))
+                if f.exists():
+                    views.append(Image.open(_flat_white(f, tmp / ("v%d_%s.png" % (n_, ax.replace(" ", "_"))), 640)))
+            if views:
+                W = sum(x.width for x in views) + 24 * (len(views) + 1)
+                sheet = Image.new("RGB", (W, 640 + 48), (255, 255, 255))
+                x = 24
+                for im in views:
+                    sheet.paste(im, (x, 24)); x += im.width + 24
+                dest = tmp / ("perso%d.png" % n_)
+                sheet.save(dest)
+                chars.append(dest)
+                continue
+        src = v.get("cut") or v.get("ref")
+        if src and (store.item_dir(it.get("src") or it["id"]) / src).exists():
+            chars.append(_flat_white(store.item_dir(it.get("src") or it["id"]) / src, tmp / ("perso%d.png" % n_)))
+    sets = []
+    bg = pan.get("bg") or {}
+    if bg.get("file") and (store.project_dir(project) / bg["file"]).exists():
+        sets.append(_flat_white(store.project_dir(project) / bg["file"], tmp / "decor0.png"))
+    elif bg.get("item"):
+        try:
+            it = store.load_item(bg["item"])
+            folder, o, v = _orbit_of(it, bg.get("v"))
+            if folder is not None:
+                n, f0 = int(o["n"]), int(bg.get("f") or 0)
+                for k in range(4):                                 # la vue de la case, puis tous les quarts de tour
+                    f = folder / ("%03d.webp" % ((f0 + round(k * n / 4)) % n))
+                    if f.exists():
+                        sets.append(_flat_white(f, tmp / ("decor%d.png" % k)))
+            elif v.get("ref") and (store.item_dir(it["id"]) / v["ref"]).exists():
+                sets.append(_flat_white(store.item_dir(it["id"]) / v["ref"], tmp / "decor0.png"))
+        except Exception:                                          # noqa: BLE001 : decor retire de la banque
+            pass
+    refs = {k: x for k, x in (("character", chars), ("set", sets)) if x}
+    return refs or None
+
+
 def run_panel_orbit(job, prov):
     p = job["params"]
     d = store.project_dir(p["project"])
@@ -825,8 +914,18 @@ def run_panel_orbit(job, prov):
     tmp = _tmp()
     try:
         # consigne de la case (decor compris) : sur fal, elle remplace celle du LoRA, faite pour un sujet seul
+        prompt = (p.get("prompt") or "").strip() or comfy.SCENE_ORBIT_PROMPT
+        refs = None
+        if getattr(prov, "takes_refs", False):                     # machines : les tournettes des persos et le decor 360 en references
+            try:
+                refs = _panel_refs(p["project"], p["panel"], tmp)
+            except Exception:                                      # noqa: BLE001 : sans references, l'orbite se fait comme avant
+                refs = None
+            if refs:
+                prompt += PANEL_REFS_PROMPT
+                job["progress"] = "orbite : %d perso(s), %d vue(s) du décor en références" % (len(refs.get("character", [])), len(refs.get("set", [])))
         rgb, _ = prov.orbit(d / p["flat"], int(p.get("length") or r["orbit_length"]), _seed(job),
-                            (p.get("prompt") or "").strip() or comfy.SCENE_ORBIT_PROMPT, 0.8, False, tmp, bare=True)
+                            prompt, 0.8, False, tmp, refs=refs, bare=True)
         rel = "orbit/%s_%d" % (p["panel"], int(time.time()))
         info = sprites.build_orbit(rgb, None, d / rel)
         info["dir"] = rel
