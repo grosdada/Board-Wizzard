@@ -2149,7 +2149,13 @@
   "Pousser le décor vers le haut ou vers le bas (-100 / 100 : à fond). Il faut qu'il soit plus grand ou plus petit que la case pour pouvoir bouger.": "Push the set up or down (-100 / 100: all the way). It must be larger or smaller than the panel to move.",
   "Coché : la taille et la place du décor se posent en clés sur la piste « Décor » de la timeline (zoom, glissement du fond). Décoché : le décor reste fixe, ses clés sont gardées.": "Checked: the set's size and position are keyed on the \"Set\" track of the timeline (zoom, background slide). Unchecked: the set stays still, its keys are kept.",
   "Animer le décor ⓘ": "Animate the set ⓘ",
-  "Montrer ce décor dans la banque": "Show this set in the bank"
+  "Montrer ce décor dans la banque": "Show this set in the bank",
+  "Graine": "Seed",
+  "Tirer une autre graine": "Draw another seed",
+  "Revenir à la graine des réglages": "Back to the seed from the settings",
+  "réglages": "settings",
+  "réglages ({0})": "settings ({0})",
+  "Même graine et même consigne donnent la même vidéo. Si le décor reste vide au demi-tour, relance avec une autre graine.": "Same seed and same prompt give the same video. If the set stays empty during the half-turn, run again with another seed."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
