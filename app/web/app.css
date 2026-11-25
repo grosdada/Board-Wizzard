@@ -122,9 +122,9 @@ label.row.range output { width: 34px; text-align: right; color: var(--muted); fo
 .bank { flex: 1 1 52%; min-height: 180px; display: flex; flex-direction: column; border-bottom: 1px solid var(--line); }
 .bank.drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .tabs { display: flex; flex: none; }
-.tabs button { flex: 1; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 9px 4px; color: var(--muted); }
+.tabs button { flex: 1; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 9px 4px; color: var(--muted); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
-.tabs .count { margin-left: 5px; font-size: 11px; color: var(--muted); }
+.tabs .count { margin-left: 4px; font-size: 11px; color: var(--muted); }
 .bank-bar { display: flex; gap: 5px; padding: 8px 10px; flex: none; }
 .bank-bar .search { flex: 1; }
 .bank-grid { flex: 1; overflow-y: auto; padding: 0 10px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 7px; align-content: start; }
@@ -446,6 +446,13 @@ body.focus-pick .layer, body.focus-pick .vlayer *, svg.focus-pick [data-layer] {
 
 /* banque audio : une ligne par son */
 .bank-grid.audio { grid-template-columns: 1fr; gap: 5px; }
+.bank-grid.cases { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.bank-grid.cases .card img { height: auto; object-fit: cover; background: #fff; }
+.bank-grid.cases .card-meta { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+.bank-grid.cases .card-meta button.mini { padding: 0 5px; }
+.item-pick { display: flex; flex-direction: column; gap: 6px; min-height: 60vh; }
+.item-pick .pick-grid { max-height: 62vh; padding: 0; }
+.item-pick .card { cursor: pointer; }
 .acard { display: flex; align-items: center; gap: 6px; padding: 5px 7px; background: var(--panel, #1f2223); border: 1px solid var(--line, #34383a); border-radius: 7px; }
 .acard .ainfo { flex: 1; min-width: 0; }
 .acard .aname { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

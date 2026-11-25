@@ -256,9 +256,108 @@ def audio_entry(aid):
     raise KeyError(aid)
 
 
+# ---- cases enregistrees (onglet Cases) : une case entiere (fond, calques, bulles, sol, montage...) a reposer dans
+# n'importe quel storyboard. data/cases/index.json + <id>/case.json (la case), <id>/thumb.png, <id>/files/ (les fichiers du
+# storyboard dont elle se sert : fond importe, voix... recopies dans le storyboard ou on la pose).
+_CASE_DROP = ("integrated", "integrations", "orbit", "orbitBase", "orbitBg", "orbitOf", "show")
+
+
+def list_cases():
+    try:
+        out = _read(_dir("cases") / "index.json")
+    except (OSError, ValueError):
+        out = []
+    return [c for c in out if isinstance(c, dict) and c.get("id")]
+
+
+def _case_files(obj, found):
+    if isinstance(obj, dict):
+        for v in obj.values():
+            _case_files(v, found)
+    elif isinstance(obj, list):
+        for v in obj:
+            _case_files(v, found)
+    elif isinstance(obj, str) and "/" in obj and ".." not in obj and len(obj) < 300 and not obj.startswith(("/", "data:", "http")):
+        found.add(obj)
+
+
+def add_case(project, panel, name, folder="", ratio=1.0, thumb=None):
+    """Enregistre une case d'un storyboard dans l'onglet Cases ; rend sa fiche."""
+    pan = json.loads(json.dumps(panel or {}))
+    for k in _CASE_DROP:
+        pan.pop(k, None)
+    cid = "c%x%s" % (int(time.time() * 1000), uuid.uuid4().hex[:3])
+    d = _dir("cases") / cid
+    pdir = project_dir(project) if project else None
+    with _lock:
+        d.mkdir(parents=True, exist_ok=True)
+        refs = set()
+        _case_files(pan, refs)
+        files = []
+        for rel in sorted(refs):                                   # seulement ce qui existe dans le storyboard
+            try:
+                src = safe(pdir, rel) if pdir else None
+            except Exception:                                      # noqa: BLE001
+                continue
+            if src and src.is_file():
+                dst = d / "files" / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dst)
+                files.append(rel)
+        _write(d / "case.json", {"panel": pan, "files": files})
+        if thumb:
+            (d / "thumb.png").write_bytes(thumb)
+        entry = {"id": cid, "name": (str(name or "").strip() or "case")[:80], "folder": _clean_folder(folder),
+                 "ratio": round(float(ratio or 1), 4), "n": len(pan.get("layers") or []), "created": int(time.time())}
+        _write(_dir("cases") / "index.json", list_cases() + [entry])
+    return entry
+
+
+def case_content(cid, project=None):
+    """La case enregistree ; avec un storyboard, ses fichiers y sont recopies (sans ecraser ce qui y est deja)."""
+    d = safe(_dir("cases"), cid)
+    data = _read(d / "case.json")
+    if project:
+        pdir = project_dir(project)
+        for rel in data.get("files") or []:
+            dst = safe(pdir, rel)
+            if not dst.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(safe(d / "files", rel), dst)
+    return data
+
+
+def update_case(cid, patch):
+    with _lock:
+        items = list_cases()
+        for c in items:
+            if c["id"] == cid:
+                if "name" in (patch or {}):
+                    c["name"] = str(patch["name"]).strip()[:80] or c["name"]
+                if "folder" in (patch or {}):
+                    c["folder"] = _clean_folder(patch["folder"])
+                _write(_dir("cases") / "index.json", items)
+                return c
+    raise KeyError(cid)
+
+
+def remove_case(cid):
+    """Retire une case de l'onglet ; son dossier part a la corbeille du dossier de donnees."""
+    with _lock:
+        items = list_cases()
+        keep = [c for c in items if c["id"] != cid]
+        d = safe(_dir("cases"), cid)
+        if d.exists():
+            trash = _dir("trash")
+            trash.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(d), str(trash / ("case-%s-%d" % (cid, time.time()))))
+        _write(_dir("cases") / "index.json", keep)
+    return len(items) - len(keep)
+
+
 # ---- dossiers de la banque : un chemin « Projet/Sous-dossier », propre a chaque onglet (personnages, decors, assets,
-# audio). folders.json garde les dossiers encore vides : { "character": [...], "decor": [...], "asset": [...], "audio": [...] }.
-FOLDER_KINDS = ("character", "decor", "asset", "audio")
+# audio, cases). folders.json garde les dossiers encore vides : { "character": [...], "decor": [...], "asset": [...], ... }.
+FOLDER_KINDS = ("character", "decor", "asset", "audio", "case")
 
 
 def _clean_folder(name):
@@ -271,6 +370,7 @@ def _foldered(kind=None):
     out = [(it.get("kind"), _clean_folder(it.get("folder", "")), (lambda f, i=it["id"]: mutate_item(i, lambda x: x.update(folder=f))))
            for it in list_items()]
     out += [("audio", _clean_folder(a.get("folder", "")), (lambda f, i=a["id"]: update_audio(i, {"folder": f}))) for a in list_audio()]
+    out += [("case", _clean_folder(c.get("folder", "")), (lambda f, i=c["id"]: update_case(i, {"folder": f}))) for c in list_cases()]
     return [o for o in out if kind is None or o[0] == kind]
 
 

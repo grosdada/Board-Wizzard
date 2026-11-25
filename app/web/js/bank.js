@@ -6,10 +6,12 @@ import { openPortrait, portraitThumb } from "./portrait.js";
 import { openIdentikit } from "./identikit.js";
 import { sprite, preload, variantOf, AXES, nearestAxis, angleToFrame, frameToAngle } from "./model.js";
 
-const KINDS = [["character", tt("Personnages")], ["decor", tt("Décors")], ["asset", tt("Assets")], ["audio", tt("Audio")]];
+const KINDS = [["character", tt("Personnages")], ["decor", tt("Décors")], ["asset", tt("Assets")], ["audio", tt("Audio")], ["case", tt("Cases")]];
 const SOURCES = { import: tt("importée"), micro: "micro", elevenlabs: "ElevenLabs" };
 const STYLES = [["photo", tt("Photoréaliste")], ["dessin", tt("Dessin")], ["3d", "3D"]];
-const KIND_ONE = { character: tt("personnage"), decor: tt("décor"), asset: tt("asset"), audio: tt("son") };
+const KIND_ONE = { character: tt("personnage"), decor: tt("décor"), asset: tt("asset"), audio: tt("son"), case: tt("case") };
+// les cases enregistrees, les sons et les elements de la banque : leurs routes et leur liste
+const ROUTE = { audio: "audio/", case: "cases/" };
 
 export function target() { return localStorage.getItem("bw.target") || "auto"; }
 
@@ -24,6 +26,7 @@ export class Bank {
     host.addEventListener("dragleave", () => host.classList.remove("drop"));
     host.addEventListener("drop", (e) => {
       host.classList.remove("drop");
+      if (this.tab === "case") return;
       if (this.tab === "audio") { const snd = [...e.dataTransfer.files].filter((f) => /^(audio|video)\//.test(f.type)); if (snd.length) { e.preventDefault(); this.importAudio(snd); } return; }
       const packs = [...e.dataTransfer.files].filter((f) => /\.bwpack$/i.test(f.name));
       if (packs.length) { e.preventDefault(); this.importPacks(packs); return; }
@@ -36,8 +39,9 @@ export class Bank {
   set folder(f) { this.folderBy[this.tab] = f || ""; localStorage.setItem("bw.folders", JSON.stringify(this.folderBy)); }
 
   async reload() {
-    const [items, extra, audio] = await Promise.all([get("bank"), get("folders").catch(() => ({})), get("audio").catch(() => [])]);
+    const [items, extra, audio, cases] = await Promise.all([get("bank"), get("folders").catch(() => ({})), get("audio").catch(() => []), get("cases").catch(() => [])]);
     this.audio = (audio || []).map((a) => Object.assign(a, { kind: "audio" }));          // banque audio : voix importees, micro, generees
+    this.cases = (cases || []).map((c) => Object.assign(c, { kind: "case" }));           // cases enregistrees, a glisser dans une case
     this.app.bank = new Map(items.map((it) => [it.id, it]));
     this.extraFolders = extra && !Array.isArray(extra) ? extra : {};
     this.render();
@@ -49,13 +53,15 @@ export class Bank {
     if (this.folder && this.folder !== "·" && !folders.includes(this.folder)) this.folder = "";
     // un dossier montre aussi le contenu de ses sous-dossiers
     const inFolder = (it) => !this.folder || (this.folder === "·" ? !it.folder : it.folder === this.folder || (it.folder || "").startsWith(this.folder + "/"));
-    const isAudio = this.tab === "audio", pool = (k) => (k === "audio" ? this.audio || [] : [...app.bank.values()]);
+    const isAudio = this.tab === "audio", isCase = this.tab === "case", pool = (k) => this.pool(k);
     const items = pool(this.tab).filter((it) => it.kind === this.tab && inFolder(it) &&
       (!this.query || (it.name + " " + (it.tags || []).join(" ") + " " + (it.text || "")).toLowerCase().includes(this.query)));
     const pick = h("input", { type: "file", accept: isAudio ? "audio/*,video/mp4,.webm" : "image/*", multiple: true, style: { display: "none" },
                               on: { change: (e) => { if (e.target.files.length) (isAudio ? this.importAudio([...e.target.files]) : this.importDialog([...e.target.files])); e.target.value = ""; } } });
-    const grid = h("div.bank-grid" + (isAudio ? ".audio" : "") + (this.multi ? ".multi" : ""), items.map((it) => (isAudio ? this.audioCard(it) : this.card(it))));
-    if (!items.length) grid.append(h("p.muted.bank-empty", isAudio ? tt("Aucun son pour l'instant. Les voix importées, enregistrées au micro ou générées dans le montage arrivent ici ; tu peux aussi glisser des fichiers son.") : tt`Aucun ${KIND_ONE[this.tab]} pour l'instant. Glisse des images ici, ou « Générer ».`));
+    const grid = h("div.bank-grid" + (isAudio ? ".audio" : "") + (isCase ? ".cases" : "") + (this.multi ? ".multi" : ""), items.map((it) => (isAudio ? this.audioCard(it) : isCase ? this.caseCard(it) : this.card(it))));
+    if (!items.length) grid.append(h("p.muted.bank-empty", isAudio ? tt("Aucun son pour l'instant. Les voix importées, enregistrées au micro ou générées dans le montage arrivent ici ; tu peux aussi glisser des fichiers son.")
+      : isCase ? tt("Aucune case enregistrée pour l'instant. Clic droit dans une case › « 💾 Enregistrer la case… » : elle arrive ici, avec tout son contenu, à glisser dans d'autres cases.")
+      : tt`Aucun ${KIND_ONE[this.tab]} pour l'instant. Glisse des images ici, ou « Générer ».`));
     const search = h("input.search", { type: "search", placeholder: tt("Chercher…"), value: this.query,
                                        on: { input: (e) => { this.query = e.target.value.toLowerCase(); this.renderGrid(); } } });
     const folderSel = h("select.folder", { title: tt`Dossiers de l'onglet ${KINDS.find(([k]) => k === this.tab)[1]} (un par projet, par exemple)`,
@@ -71,10 +77,10 @@ export class Bank {
         h("button.mini", { title: this.folder && this.folder !== "·" ? tt`Créer un sous-dossier dans « ${this.folder} »` : tt("Créer un dossier"), on: { click: () => this.newFolder() } }, tt("＋ Dossier")),
         this.folder && this.folder !== "·" ? h("button.mini", { title: tt`Renommer le dossier « ${this.folder} »`, on: { click: () => this.renameFolder() } }, "✎") : "",
         this.folder && this.folder !== "·" ? h("button.mini.danger", { title: tt`Supprimer le dossier « ${this.folder} » (ses éléments ne sont pas supprimés)`, on: { click: () => this.deleteFolder() } }, "🗑") : ""),
-      h("div.bank-bar", search, h("button.mini", { title: isAudio ? tt("Importer des fichiers son") : tt("Importer des images"), on: { click: () => pick.click() } }, tt("＋ Importer")),
-        isAudio ? "" : h("button.mini", { title: tt("Générer à partir d'une description"), on: { click: () => this.generateDialog() } }, tt("✨ Générer")),
+      h("div.bank-bar", search, isCase ? h("button.mini", { title: tt("Enregistre la case choisie dans l'onglet Cases"), on: { click: () => this.app.saveCase(this.app.sel.panel) } }, tt("💾 Enregistrer la case")) : h("button.mini", { title: isAudio ? tt("Importer des fichiers son") : tt("Importer des images"), on: { click: () => pick.click() } }, tt("＋ Importer")),
+        isAudio || isCase ? "" : h("button.mini", { title: tt("Générer à partir d'une description"), on: { click: () => this.generateDialog() } }, tt("✨ Générer")),
         this.tab === "character" ? h("button.mini", { title: tt("Portrait-robot, comme ceux de la police : monter un visage en superposant des éléments dessinés (forme du visage, cheveux, yeux, nez, bouche…), ou dessiner les siens"), on: { click: () => openIdentikit(this) } }, tt("🧩 Portrait-robot")) : "",
-        isAudio ? "" : h("button.mini", { title: tt("Paquets de personnages : exporter ce dossier dans un fichier, importer un paquet reçu, ou piocher dans la bibliothèque en ligne"), on: { click: () => this.packDialog() } }, tt("📦 Paquets")), pick),
+        isAudio || isCase ? "" : h("button.mini", { title: tt("Paquets de personnages : exporter ce dossier dans un fichier, importer un paquet reçu, ou piocher dans la bibliothèque en ligne"), on: { click: () => this.packDialog() } }, tt("📦 Paquets")), pick),
       grid);
     this.grid = grid;
     if (!this.hostClick) {                           // multi-selection : un clic ailleurs que sur une vignette ou un bouton decoche tout
@@ -93,10 +99,12 @@ export class Bank {
   // les vignettes de la grille : elements de banque (.card) ou sons (.acard, onglet Audio)
   cards() { return [...this.grid.querySelectorAll(".card, .acard")]; }
   sound(id) { return (this.audio || []).find((a) => a.id === id); }
+  pool(k) { return k === "audio" ? this.audio || [] : k === "case" ? this.cases || [] : [...this.app.bank.values()]; }
+  thing(id, k = this.tab) { return k === "audio" ? this.sound(id) : k === "case" ? (this.cases || []).find((c) => c.id === id) : this.app.bank.get(id); }
   pickedIds() {                      // les elements coches presents dans la grille affichee
     this.picked = this.picked || new Set();
-    const shown = new Set(this.cards().map((c) => c.dataset.id)), audio = this.tab === "audio";
-    return [...this.picked].filter((id) => shown.has(id) && (audio ? !!this.sound(id) : this.app.bank.has(id)));
+    const shown = new Set(this.cards().map((c) => c.dataset.id));
+    return [...this.picked].filter((id) => shown.has(id) && !!this.thing(id));
   }
   pickCard(id, range) {              // clic : coche ou decoche ; Maj + clic : coche tout depuis la vignette cliquee juste avant
     this.picked = this.picked || new Set();
@@ -131,7 +139,7 @@ export class Bank {
     if (!ids.length) return;
     const f = await this.pickFolder(this.tab, null, tt`Ranger ${ids.length} élément(s) dans…`);
     if (f === null) return;
-    const route = this.tab === "audio" ? "audio/" : "bank/";
+    const route = ROUTE[this.tab] || "bank/";
     try { for (const id of ids) await put(route + id, { folder: f }); this.picked.clear(); this.lastPick = null; toast(tt`${ids.length} élément(s) déplacé(s) dans « ${f || tt("Sans dossier")} ».`); }
     catch (err) { toast(err.message, "error"); }
     this.reload();
@@ -139,12 +147,13 @@ export class Bank {
   async deletePicked() {
     const ids = this.pickedIds();
     if (!ids.length) return;
-    const audio = this.tab === "audio", nameOf = (id) => (audio ? this.sound(id) : this.app.bank.get(id)).name;
+    const audio = this.tab === "audio", nameOf = (id) => this.thing(id).name;
     const names = ids.slice(0, 8).map((id) => "• " + nameOf(id)).join("\n") + (ids.length > 8 ? "\n…" : "");
-    if (!confirm(audio ? tt`Retirer ${ids.length} son(s) de la banque audio ? Tu es sûr ?\n\n${names}\n\nLes montages qui s'en servent gardent leur copie.`
+    if (!confirm(this.tab === "case" ? tt`Retirer ${ids.length} case(s) de l'onglet Cases ? Tu es sûr ?\n\n${names}\n\nElles partent à la corbeille du dossier de données ; les storyboards où elles sont posées ne changent pas.`
+      : audio ? tt`Retirer ${ids.length} son(s) de la banque audio ? Tu es sûr ?\n\n${names}\n\nLes montages qui s'en servent gardent leur copie.`
       : tt`Supprimer ${ids.length} élément(s) de la banque ? Tu es sûr ?\n\n${names}\n\nIls partent à la corbeille du dossier de données.`)) return;
     if (audio && this.player && ids.includes(this.playing)) this.player.pause();
-    try { for (const id of ids) { await del((audio ? "audio/" : "bank/") + id); this.picked.delete(id); if (this.openId === id) this.openId = null; } toast(tt`${ids.length} élément(s) supprimé(s).`); }
+    try { for (const id of ids) { await del((ROUTE[this.tab] || "bank/") + id); this.picked.delete(id); if (this.openId === id) this.openId = null; } toast(tt`${ids.length} élément(s) supprimé(s).`); }
     catch (err) { toast(err.message, "error"); }
     this.reload();
   }
@@ -166,7 +175,7 @@ export class Bank {
     });
   }
   folders(kind = this.tab) {          // dossiers d'un onglet : ceux de ses elements, ceux crees vides, et leurs parents
-    const things = kind === "audio" ? this.audio || [] : [...this.app.bank.values()].filter((it) => it.kind === kind);
+    const things = this.pool(kind).filter((it) => it.kind === kind);
     const all = new Set([...((this.extraFolders || {})[kind] || []), ...things.map((it) => it.folder).filter(Boolean)]);
     for (const f of [...all]) { const p = f.split("/"); for (let i = 1; i < p.length; i++) all.add(p.slice(0, i).join("/")); }
     return [...all].sort((a, b) => a.localeCompare(b, "fr"));
@@ -193,7 +202,7 @@ export class Bank {
     toast(tt`Dossier renommé en « ${name} ».`);
   }
   async deleteFolder() {
-    const f = this.folder, n = (this.tab === "audio" ? this.audio || [] : [...this.app.bank.values()].filter((it) => it.kind === this.tab)).filter((it) => it.folder === f || (it.folder || "").startsWith(f + "/")).length;
+    const f = this.folder, n = this.pool(this.tab).filter((it) => it.kind === this.tab).filter((it) => it.folder === f || (it.folder || "").startsWith(f + "/")).length;
     const parent = f.split("/").slice(0, -1).join("/");
     if (!confirm(tt`Supprimer le dossier « ${f} » et ses sous-dossiers ?
 ` + (n ? tt`Ses ${n} élément(s) ne sont pas supprimés : ils vont dans ${parent ? "« " + parent + " »" : tt("« Sans dossier »")}.` : tt("Il est vide.")))) return;
@@ -332,6 +341,52 @@ export class Bank {
       h("button.mini", { title: tt("Renommer"), on: { click: async () => { const n = (prompt(tt("Nom du son :"), a.name) || "").trim(); if (n && n !== a.name) { await put("audio/" + a.id, { name: n }); this.reload(); } } } }, "✎"),
       h("button.mini", { title: tt("Ranger dans un dossier de l'onglet Audio : un clic sur le dossier"), on: { click: async () => { const f = await this.pickFolder("audio", a.folder || "", tt`Ranger « ${a.name} » dans…`); if (f !== null && f !== (a.folder || "")) { await put("audio/" + a.id, { folder: f }); this.reload(); } } } }, "📁"),
       h("button.mini.danger", { title: tt("Retirer de la banque audio (les montages qui s'en servent gardent leur copie)"), on: { click: async () => { if (!confirm(tt`Retirer « ${a.name} » de la banque audio ?`)) return; if (this.playing === a.id && this.player) this.player.pause(); await del("audio/" + a.id); this.reload(); } } }, "🗑"));
+  }
+  // une case enregistree : vignette, glisser dans une case (ou clic : dans la case choisie)
+  caseCard(c) {
+    return h("div.card.case", { draggable: true, "data-id": c.id, "data-name": c.name.toLowerCase(), title: c.name + tt(" : glisser dans une case, ou cliquer pour la poser dans la case choisie"),
+      on: {
+        dragstart: (e) => { e.dataTransfer.setData("application/x-bw-case", c.id); e.dataTransfer.effectAllowed = "copy"; },
+        click: (e) => { if (e.target.closest("button")) return; if (this.multi) { e.preventDefault(); this.pickCard(c.id, e.shiftKey); } else this.app.dropCase(this.app.sel.panel, c.id); },
+      } },
+      this.multi ? h("span.card-check", "✓") : null,
+      h("img", { src: `/cases/${c.id}/thumb.png?t=${c.created || 0}`, loading: "lazy", draggable: false, alt: "", style: { aspectRatio: String(1 / (c.ratio || 1)) } }),
+      h("div.card-name", c.name),
+      h("div.card-meta", h("span.b", tt`${c.n || 0} élément(s)`),
+        h("button.mini", { title: tt("Renommer"), on: { click: async () => { const n = (prompt(tt("Nom de la case :"), c.name) || "").trim(); if (n && n !== c.name) { await put("cases/" + c.id, { name: n }); this.reload(); } } } }, "✎"),
+        h("button.mini", { title: tt("Ranger dans un dossier de l'onglet Cases"), on: { click: async () => { const f = await this.pickFolder("case", c.folder || "", tt`Ranger « ${c.name} » dans…`); if (f !== null && f !== (c.folder || "")) { await put("cases/" + c.id, { folder: f }); this.reload(); } } } }, "📁"),
+        h("button.mini.danger", { title: tt("Retirer de l'onglet Cases (les storyboards où elle est posée ne changent pas)"), on: { click: async () => { if (!confirm(tt`Retirer « ${c.name} » de l'onglet Cases ?`)) return; await del("cases/" + c.id); this.reload(); } } }, "🗑")));
+  }
+  /** Choisir un element de la banque (« Remplacer par… ») : onglets Personnages, Decors, Assets, dossiers, recherche.
+   *  Rend { id, v } ou null. */
+  pickItem(kind = "character", title = tt("Remplacer par…")) {
+    return new Promise((done) => {
+      let tab = ["character", "decor", "asset"].includes(kind) ? kind : "character", folder = (this.folderBy || {})[tab] || "", q = "", m = null, ended = false;
+      const end = (x) => { if (ended) return; ended = true; if (m) m.close(); done(x); };
+      const body = h("div.item-pick");
+      const paint = () => {
+        const fs = this.folders(tab);
+        if (folder && folder !== "·" && !fs.includes(folder)) folder = "";
+        const inF = (it) => !folder || (folder === "·" ? !it.folder : it.folder === folder || (it.folder || "").startsWith(folder + "/"));
+        const list = [...this.app.bank.values()].filter((it) => it.kind === tab && inF(it) && (!q || (it.name + " " + (it.tags || []).join(" ")).toLowerCase().includes(q)))
+          .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+        const sel = h("select.folder", { on: { change: (e) => { folder = e.target.value; paint(); } } }, h("option", { value: "" }, tt("Tous les dossiers")),
+          fs.map((f) => { const p = f.split("/"); return h("option", { value: f, selected: f === folder }, "   ".repeat(p.length - 1) + (p.length > 1 ? "└ " : "📁 ") + p[p.length - 1]); }),
+          h("option", { value: "·", selected: folder === "·" }, tt("Sans dossier")));
+        const search = h("input.search", { type: "search", placeholder: tt("Chercher…"), value: q, on: { input: (e) => { q = e.target.value.toLowerCase(); const pos = e.target.selectionStart; paint(); const s = body.querySelector("input.search"); s.focus(); s.setSelectionRange(pos, pos); } } });
+        body.textContent = "";
+        body.append(h("div.tabs", [["character", tt("Personnages")], ["decor", tt("Décors")], ["asset", tt("Assets")]].map(([k, label]) =>
+          h("button" + (k === tab ? ".on" : ""), { on: { click: () => { tab = k; folder = (this.folderBy || {})[k] || ""; paint(); } } }, label))),
+          h("div.bank-bar", sel, search),
+          h("div.bank-grid.pick-grid", list.length ? list.map((it) => h("div.card." + it.kind, { title: it.name, on: { click: () => end({ id: it.id, v: this.cover(it) }) } },
+            it.face ? portraitThumb(h("div.card-svg"), it) : h("img", { src: this.thumb(it, this.cover(it)), loading: "lazy", draggable: false, alt: "" }),
+            h("div.card-name", it.name))) : h("p.muted", tt("Rien dans ce dossier."))));
+      };
+      paint();
+      m = modal(title, body, [{ label: tt("Annuler"), click: () => end(null) }]);
+      m.box.classList.add("wide");
+      const x = m.box.querySelector("header button"); if (x) x.addEventListener("click", () => end(null));
+    });
   }
   card(it) {
     const vs = Object.values(it.variants || {}), orbits = vs.filter((v) => v.orbit).length;

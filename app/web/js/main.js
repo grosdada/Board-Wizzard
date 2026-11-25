@@ -506,6 +506,62 @@ class App {
     l.v = vid; l.f = b && b.orbit ? angleToFrame(b.orbit, ang) : 0;
     this.commit("pose"); this.editor.render(); this.refreshInspector();
   }
+  /** « Remplacer par… » : un autre element de la banque prend la place du calque (meme place, meme hauteur, meme miroir,
+   *  meme axe si les deux tournent). */
+  async replaceLayer(l) {
+    const old = this.bank.get(l.item);
+    const pick = await this.bankUI.pickItem(old ? old.kind : "character", tt`Remplacer « ${old ? old.name : "?"} » par…`);
+    if (!pick || pick.id === l.item && pick.v === l.v) return;
+    const a = variantOf(old, l.v), it = this.bank.get(pick.id), b = variantOf(it, pick.v);
+    const ang = a && a.orbit ? frameToAngle(a.orbit, l.f || 0) : 0;
+    l.item = pick.id; l.v = pick.v; l.f = b && b.orbit ? angleToFrame(b.orbit, ang) : 0;
+    delete l.exk;                                            // les expressions sont celles de l'ancien personnage
+    this.commit("replace"); this.editor.render(); this.refreshInspector();
+    toast(tt`« ${old ? old.name : "?"} » remplacé par « ${it.name} ».`);
+  }
+  // ---------------------------------------------------------------- cases enregistrees (onglet Cases)
+  saveCase(pid) {
+    const pan = pid && this.page().panels[pid], g = pid && this.geo(pid);
+    if (!pan || !g || (!pan.bg && !(pan.layers || []).length && !pan.draw)) return toast(tt("Choisis d'abord une case remplie."));
+    const names = (pan.layers || []).map((l) => this.bank.get(l.item)?.name).filter(Boolean);
+    const name = h("input", { type: "text", value: (this.project.name + " · " + tt`case ${g.order}`) + (names.length ? " · " + names.slice(0, 3).join(", ") : "") });
+    const bf = this.bankUI, cur = (bf.folderBy || {}).case || "", folder = bf.folderInput(cur && cur !== "·" ? cur : "", "case");
+    modal(tt("💾 Enregistrer la case"), h("div.form",
+      h("p.muted", tt("La case entière (fond et cadrage, personnages et objets, bulles, carte de sol, montage) part dans l'onglet Cases, à glisser dans n'importe quelle case, de n'importe quel storyboard. Les images calculées (Integrate, orbite) ne suivent pas.")),
+      h("label.row", tt("Nom"), name), h("label.row", tt("Dossier"), folder)),
+      [{ label: tt("Annuler") }, { label: tt("💾 Enregistrer"), primary: true, click: async () => {
+        try {
+          const blob = await flattenPanel(this, g, 480);
+          const thumb = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
+          const c = await post("cases", { project: this.project.id, panel: JSON.parse(JSON.stringify(pan)), name: name.value.trim(), folder: folder.querySelector("select").value,
+                                          ratio: g.bbox.h / g.bbox.w, thumb });
+          await this.bankUI.reload();
+          toast(tt`Case enregistrée : « ${c.name} »` + (c.folder ? tt` · dossier « ${c.folder} »` : "") + ".");
+        } catch (e) { toast(tt("Case non enregistrée : ") + e.message, "error"); return false; }
+      } }]);
+  }
+  /** Pose une case enregistree dans la case pid (remplace son contenu, Ctrl+Z la retrouve). */
+  async dropCase(pid, cid) {
+    const pg = this.page(), g = pid && this.geo(pid);
+    if (!g) return toast(tt("Choisis d'abord une case où la poser."));
+    const cur = pg.panels[pid] || {};
+    if ((cur.bg || (cur.layers || []).length || (cur.bubbles || []).length) && !confirm(tt`La case ${g.order} est déjà remplie : la remplacer par la case enregistrée ?`)) return;
+    try {
+      const data = await get(`cases/${cid}?project=${encodeURIComponent(this.project.id)}`);
+      const copy = JSON.parse(JSON.stringify(data.panel || {})), ren = {};
+      for (const l of copy.layers || []) { const n = uid(); ren[l.id] = n; l.id = n; }
+      for (const b of copy.bubbles || []) b.id = uid();
+      for (const m of copy.marks || []) m.id = uid();
+      const tr0 = copy.anim && copy.anim.tracks;
+      if (tr0) for (const k of Object.keys(tr0)) if (ren[k]) { tr0[ren[k]] = tr0[k]; delete tr0[k]; }
+      copy.show = "layers";
+      const missing = (copy.layers || []).filter((l) => !this.bank.has(l.item)).length;
+      pg.panels[pid] = copy;
+      this.commit("case"); this.select({ panel: pid }); this.editor.render(); this.refreshInspector();
+      const c = (this.bankUI.cases || []).find((x) => x.id === cid);
+      toast(tt`Case « ${c ? c.name : cid} » posée dans la case ${g.order}.` + (missing ? tt` ${missing} élément(s) ne sont plus dans la banque.` : "") + tt(" Ctrl+Z pour revenir."));
+    } catch (e) { toast(tt("Case non posée : ") + e.message, "error"); }
+  }
   setAxis(l, axis) {
     const v = variantOf(this.bank.get(l.item), l.v);
     if (!v || !v.orbit) return;
@@ -571,6 +627,7 @@ class App {
     const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [{ label: tt("🎬 Montage (animer la case)… (Tab)"), star: true, click: () => openMontage(this, this.sel.panel) },
       { label: tt("✎ Dessiner le fond… (Q)"), star: "blue", click: () => this.drawBackground(this.sel.panel) },
       { label: tt("📍 Montrer dans la banque"), click: () => this.bankUI.reveal(l.item) },
+      { label: tt("🔄 Remplacer par…"), click: () => this.replaceLayer(l) },
       { label: tt("Générer d'autres poses…"), click: () => this.bankUI.openItem(l.item) }];
     // ↻ : orbite calculee, la pose tourne · ⏳ : orbite en calcul · ▫ : image fixe, pas d'orbite
     const poses = Object.entries(item?.variants || {}).map(([k, vv]) => ({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + tr(vv.label), checked: k === l.v, click: () => this.setPose(l, k) }));
@@ -607,6 +664,7 @@ class App {
     items.push({ head: tt("Integrate (image unifiée)") },
       ...INTEGRATE_STYLES.map(([k, label, tip]) => ({ label, click: () => this.integrate(k) })),
       { head: tt("Case") }, { label: tt("⬒ Profondeur (vue de dessus)"), click: () => this.depthDialog(pid) }, { label: tt("Orbite de la case"), click: () => this.panelOrbit() },
+      { label: tt("💾 Enregistrer la case…"), click: () => this.saveCase(pid) },
       { label: tt("🧹 Restore case (tout vider)"), danger: true, click: () => this.restorePanel(pid) });
     if (pan.integrated || pan.orbit) {
       items.push({ head: tt("Afficher") }, { label: tt("Calques d'origine"), checked: (pan.show || "layers") === "layers", click: () => this.setShow("layers") });
@@ -1385,6 +1443,7 @@ class App {
       pan.anim ? h("span.muted", tt`${pan.anim.dur} s · ${Object.values(pan.anim.tracks || {}).reduce((n, k) => n + k.length, 0)} clés`) : ""),
       h("div.row", h("button.mini", { title: tt("Ajoute cette case comme plan dans le deck de montage global"), on: { click: () => this.sendToDeck(this.sel.panel) } }, tt("▸ Envoyer dans le deck")),
         h("button.mini", { on: { click: () => openDeck(this) } }, tt("🎞 Ouvrir le deck")),
+        h("button.mini", { title: tt("La case entière dans l'onglet Cases de la banque, à glisser dans d'autres cases"), on: { click: () => this.saveCase(this.sel.panel) } }, tt("💾 Enregistrer la case")),
         (() => { const d = this.decks().find((x) => x.id === this.project.deckCur) || this.decks()[0]; if (!d) return ""; const n = d.clips.filter((c) => c.panel === this.sel.panel && c.page === this.page().id).length; return h("span.muted", `« ${d.name} »` + (n ? tt` · déjà ${n} fois` : "")); })()));
     box.append(h("h4", tt("Indications")), h("div.row.wrap", Object.entries(MARKS).map(([t, [label, ico]]) => h("button.mini" + (this.markTool === t ? ".on" : ""), { title: tt("Tracer dans une case : ") + label, on: { click: () => this.armMark(t) } }, `${ico} ${label}`))));
     box.append(h("h4", tt("Bulles")), h("div.row", Object.entries(BUB).map(([t, [label]]) => h("button.mini", { on: { click: () => this.addBubble(t) } }, "+ " + label))));

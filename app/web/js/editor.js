@@ -764,7 +764,7 @@ export class Editor {
   // ---------------------------------------------------------------- depot (banque ou fichier)
   dragover(e) {
     const types = [...(e.dataTransfer?.types || [])];
-    if (!types.includes("Files") && !types.includes("application/x-bw-item")) return;
+    if (!types.includes("Files") && !types.includes("application/x-bw-item") && !types.includes("application/x-bw-case")) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     const g = this.panelAt(this.pagePt(e));
@@ -781,6 +781,8 @@ export class Editor {
     this.hoverDrop(null);
     if (!g) return;
     const rel = { x: (pt.x - g.bbox.x0) / g.bbox.w, y: (pt.y - g.bbox.y0) / g.bbox.h };
+    const cs = e.dataTransfer.getData("application/x-bw-case");          // une case enregistree (onglet Cases)
+    if (cs) return this.app.dropCase(g.id, cs);
     const raw = e.dataTransfer.getData("application/x-bw-item");
     if (raw) {
       const d = JSON.parse(raw);

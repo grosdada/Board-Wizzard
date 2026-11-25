@@ -5,6 +5,7 @@ Mot de passe facultatif (server.password dans local_settings.json) : indispensab
 """
 
 import argparse
+import base64
 import hashlib
 import hmac
 import io
@@ -367,6 +368,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(store.safe(store._dir("parts"), "/".join(parts[1:])), "max-age=86400")
         if parts[0] == "audio" and len(parts) == 2:                 # fichiers de la banque audio
             return self.send_file(store.safe(store._dir("audio"), parts[1]), "max-age=86400")
+        if parts[0] == "cases" and len(parts) == 3 and parts[2] == "thumb.png":   # vignette d'une case enregistree
+            return self.send_file(store.safe(store._dir("cases"), parts[1] + "/thumb.png"), "max-age=3600")
         if parts[0] == "projects" and len(parts) > 2:
             return self.send_file(store.safe(store.project_dir(parts[1]), "/".join(parts[2:])), "max-age=86400")
         if parts[0] == "generations" and len(parts) == 3:            # archive des generations IA (administrateur)
@@ -463,6 +466,23 @@ class Handler(BaseHTTPRequestHandler):
             if method == "DELETE":
                 return self.send_json({"removed": store.remove_audio(seg[1])})
             return self.send_json(store.audio_entry(seg[1]))
+        if head == "cases":                                         # cases enregistrees (onglet Cases)
+            if len(seg) == 1:
+                if method == "POST":
+                    d = data or {}
+                    thumb = None
+                    if str(d.get("thumb") or "").startswith("data:image/png;base64,"):
+                        thumb = base64.b64decode(d["thumb"].split(",", 1)[1])
+                    if d.get("project"):
+                        store.project_dir(d["project"])
+                    return self.send_json(store.add_case(d.get("project"), d.get("panel") or {}, d.get("name", ""),
+                                                         d.get("folder", ""), d.get("ratio") or 1, thumb))
+                return self.send_json(store.list_cases())
+            if method == "PUT":
+                return self.send_json(store.update_case(seg[1], data or {}))
+            if method == "DELETE":
+                return self.send_json({"removed": store.remove_case(seg[1])})
+            return self.send_json(store.case_content(seg[1], q.get("project") or None))
         if head == "tts" and seg[1:] == ["voices"]:                 # voix ElevenLabs du compte
             try:
                 return self.send_json(eleven.voices(self.eleven_key()))
