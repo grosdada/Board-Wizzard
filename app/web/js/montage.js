@@ -1894,6 +1894,10 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       const items = [{ head: tt`Voix · ${lip.name || "voix"}` }, { label: tt("✂ Scinder ici"), click: split }];
       if (lip.segs && lip.segs.length > 1 && j >= 0) items.push({ label: tt("Retirer ce morceau"), click: () => { lip.segs.splice(j, 1); hist.snap(); paint(); lanes(); props(); } });
       if (lip.segs) items.push({ label: tt("Recoller les morceaux"), click: () => { delete lip.segs; hist.snap(); paint(); lanes(); props(); } });
+      items.push({ label: tt("🗑 Retirer ce son"), danger: true, click: () => {   // la voix entiere et ses bouches ; la place de la bouche est gardee
+        const a = players.get(l.id); if (a) a.pause(); players.delete(l.id);
+        for (const q of ["src", "cues", "name", "dur", "in", "out", "segs"]) delete lip[q];
+        hist.snap(); paint(); lanes(); props(); toast(tt("Son retiré (Ctrl+Z pour le remettre).")); } });
       sel = l.id; ctxMenu(e, items);
       return;
     }
