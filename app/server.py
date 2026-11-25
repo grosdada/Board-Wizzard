@@ -809,6 +809,14 @@ class Handler(BaseHTTPRequestHandler):
                 src = orig / Path(rel).name
                 if src.exists():
                     shutil.copyfile(src, folder / rel)
+            for shape, rel in (key.get("gom") or {}).items():
+                src = orig / Path(rel).name
+                if src.exists():
+                    shutil.copyfile(src, folder / rel)
+            for shape in key.pop("gom_added", []):             # masques crees a la main : retires
+                (key.get("gom") or {}).pop(shape, None)
+            if "gom" in key and not key["gom"]:
+                key.pop("gom")
             if key.get("orig_box"):
                 key["x"], key["y"], key["s"] = key.pop("orig_box")
         else:
@@ -829,6 +837,25 @@ class Handler(BaseHTTPRequestHandler):
                     shutil.copyfile(dest, orig / dest.name)
                 im = Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))).convert("RGBA")
                 im.save(dest, "WEBP", lossless=True)
+            for shape, url in (d.get("goms") or {}).items():        # masque du dessin (gomme) de la carte, retouche
+                crel = key.get("cards", {}).get(shape)
+                if not crel or not isinstance(url, str) or "," not in url:
+                    continue
+                gm = key.setdefault("gom", {})
+                rel = gm.get(shape)
+                if not rel:
+                    rel = crel[:-5] + "_g.webp"
+                    gm[shape] = rel
+                    if shape not in key.setdefault("gom_added", []):
+                        key["gom_added"].append(shape)
+                dest = store.safe(folder, rel)
+                orig.mkdir(parents=True, exist_ok=True)
+                if dest.exists() and not (orig / dest.name).exists():
+                    shutil.copyfile(dest, orig / dest.name)
+                im = Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))).convert("RGBA")
+                out = Image.new("RGBA", im.size, (0, 0, 0, 0))
+                out.putalpha(im.split()[3])
+                out.save(dest, "WEBP", lossless=True)
         (folder / "lips.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         stamp = int(time.time() * 1000)
 

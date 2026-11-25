@@ -1347,54 +1347,79 @@ export function openMontage(app, pid) {
     const SZ = 440, cv = h("canvas", { width: SZ, height: SZ, style: { border: "1px solid #555", touchAction: "none", cursor: "move", maxWidth: "100%" } });
     lipsCv = cv;                                             // tant qu'il est ouvert, Ctrl+Z et Espace sont a lui, pas au montage
     const ctx = cv.getContext("2d"), info = h("div.muted"), shapes = h("div.row.wrap"), tools = h("div.row.wrap");
-    let K, box, frame, cards, orig, undo, dirty, vz = 1, vc = [0, 0], hover = null, space = false;
+    let K, box, frame, cards, orig, goms, gdirty, undo, dirty, vz = 1, vc = [0, 0], hover = null, space = false;
+    // couche travaillee : la bouche ajoutee, ou le masque du dessin (gomme : la part du dessin d'origine effacee sous la
+    // bouche, lips/kFFF_X_g.webp, noire, meme place que la carte ; c'est elle qui fait le menton du resultat final)
+    let layer = "bouche";
+    const tgt = () => (layer === "masque" ? goms[shape] : cards[shape]);
+    const blank = (c) => { const g = document.createElement("canvas"); g.width = c.width; g.height = c.height; return g; };
     const load = (u) => new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = u; });
     const toCanvas = (im) => { const c = document.createElement("canvas"); c.width = im ? im.naturalWidth : 256; c.height = im ? im.naturalHeight : 256; if (im) c.getContext("2d").drawImage(im, 0, 0); return c; };
     const zoomIn = h("input", { type: "range", min: 0.5, max: 8, step: 0.05, value: 1, on: { input: (e) => { vz = +e.target.value; draw(); } } });
     const sizeIn = h("input", { type: "range", min: 0.4, max: 2.5, step: 0.01, value: 1, on: { pointerdown: () => snap(), input: (e) => { const cx = box.x + box.s / 2, cy = box.y + box.s / 2; box.s = K.s * +e.target.value; box.x = cx - box.s / 2; box.y = cy - box.s / 2; draw(); } } });
     async function openKey() {
-      K = keys[ki]; box = { x: K.x, y: K.y, s: K.s }; cards = {}; orig = {}; undo = []; dirty = new Set();
+      K = keys[ki]; box = { x: K.x, y: K.y, s: K.s }; cards = {}; orig = {}; goms = {}; undo = []; dirty = new Set(); gdirty = new Set();
       vz = 1; vc = [K.x + K.s / 2, K.y + K.s / 2]; zoomIn.value = 1; sizeIn.value = 1;
       frame = await load(`${sp.dir}/${String(K.f).padStart(3, "0")}.webp`);
       await Promise.all(Object.entries(K.cards).map(async ([k, f]) => { const im = await load(`${L.base}/${f}?v=${L.v}`); cards[k] = toCanvas(im); orig[k] = toCanvas(im); }));
+      await Promise.all(Object.keys(cards).map(async (k) => {   // masque du dessin, a la taille de la carte (vide s'il n'y en a pas)
+        const g = blank(cards[k]), f = (K.gom || {})[k], im = f && await load(`${L.base}/${f}?v=${L.v}`);
+        if (im) g.getContext("2d").drawImage(im, 0, 0, g.width, g.height);
+        goms[k] = g;
+      }));
       if (!cards[shape]) shape = Object.keys(cards)[0];
       bar(); draw();
     }
     // vue : un carre de 2 x s (divise par le zoom) centre sur vc, en pixels de l'orbite
     const view = () => { const s0 = K.s * 2 / vz; return { x: vc[0] - s0 / 2, y: vc[1] - s0 / 2, k: SZ / s0 }; };
     const toOrbit = (e) => { const r = cv.getBoundingClientRect(), v = view(); return [v.x + (e.clientX - r.left) * (SZ / r.width) / v.k, v.y + (e.clientY - r.top) * (SZ / r.height) / v.k]; };
-    const toCard = (p) => { const c = cards[shape]; return [(p[0] - box.x) / box.s * c.width, (p[1] - box.y) / box.s * c.height]; };
+    const toCard = (p, c = cards[shape]) => { return [(p[0] - box.x) / box.s * c.width, (p[1] - box.y) / box.s * c.height]; };
     let lasso = null;
     function draw() {
       const v = view();
       ctx.imageSmoothingEnabled = vz < 3;                  // de pres : les pixels nets, pour bien voir le detourage
       ctx.fillStyle = bg; ctx.fillRect(0, 0, SZ, SZ);
-      if (frame) ctx.drawImage(frame, -v.x * v.k, -v.y * v.k, frame.naturalWidth * v.k, frame.naturalHeight * v.k);
+      const bx = (box.x - v.x) * v.k, by = (box.y - v.y) * v.k, bs = box.s * v.k, gm = goms[shape];
+      if (frame) {                                          // le dessin, gomme par son masque comme dans le resultat final
+        const fc = document.createElement("canvas"); fc.width = fc.height = SZ;
+        const fg = fc.getContext("2d"); fg.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
+        fg.drawImage(frame, -v.x * v.k, -v.y * v.k, frame.naturalWidth * v.k, frame.naturalHeight * v.k);
+        if (gm && (shown || layer === "masque")) { fg.globalCompositeOperation = "destination-out"; fg.drawImage(gm, bx, by, bs, bs); }
+        ctx.drawImage(fc, 0, 0);
+      }
       const c = cards[shape];
-      if (c && shown) ctx.drawImage(c, (box.x - v.x) * v.k, (box.y - v.y) * v.k, box.s * v.k, box.s * v.k);
+      if (c && shown) ctx.drawImage(c, bx, by, bs, bs);
+      if (gm && layer === "masque") {                       // le masque en rouge transparent, par-dessus
+        const mc = document.createElement("canvas"); mc.width = mc.height = SZ;
+        const mg = mc.getContext("2d"); mg.drawImage(gm, bx, by, bs, bs); mg.globalCompositeOperation = "source-in"; mg.fillStyle = "rgba(255,40,80,.45)"; mg.fillRect(0, 0, SZ, SZ);
+        ctx.drawImage(mc, 0, 0);
+      }
       ctx.strokeStyle = "rgba(95,196,168,.9)"; ctx.setLineDash([5, 4]); ctx.lineWidth = 1;
       ctx.strokeRect((box.x - v.x) * v.k, (box.y - v.y) * v.k, box.s * v.k, box.s * v.k); ctx.setLineDash([]);
       if (lasso && lasso.length > 1) { ctx.strokeStyle = "#ff3b8d"; ctx.lineWidth = 1.5; ctx.beginPath(); lasso.forEach((p, i) => { const q = [(p[0] - v.x) * v.k, (p[1] - v.y) * v.k]; if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }); ctx.stroke(); }
       if (hover && (tool === "gomme" || tool === "pousser" || tool === "crayon")) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc((hover[0] - v.x) * v.k, (hover[1] - v.y) * v.k, rad * v.k, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = "#000"; ctx.beginPath(); ctx.arc((hover[0] - v.x) * v.k, (hover[1] - v.y) * v.k, rad * v.k + 1, 0, Math.PI * 2); ctx.stroke(); }
       info.textContent = tt`Image-clé ${ki + 1} sur ${keys.length} (image ${K.f} de l'orbite) · taille ${Math.round(box.s)} px`;
     }
-    const snap = () => { const c = cards[shape]; undo.push({ shape, data: c.getContext("2d").getImageData(0, 0, c.width, c.height), box: { ...box } }); if (undo.length > 30) undo.shift(); };
+    const snap = () => { const c = tgt(); undo.push({ c, shape, data: c.getContext("2d").getImageData(0, 0, c.width, c.height), box: { ...box } }); if (undo.length > 30) undo.shift(); };
+    const touch = () => (layer === "masque" ? gdirty : dirty).add(shape);
     function applyLasso(pts, mode) {
-      const c = cards[shape], g = c.getContext("2d"), q = pts.map(toCard);
+      const c = tgt(), g = c.getContext("2d"), q = pts.map((p) => toCard(p, c));
       snap(); g.save(); g.beginPath(); q.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath(); g.clip();
       g.clearRect(0, 0, c.width, c.height);
-      if (mode === "remettre") g.drawImage(orig[shape], 0, 0);
-      g.restore(); dirty.add(shape);
+      if (layer === "masque") { if (mode === "vider") { g.fillStyle = "#000"; g.fillRect(0, 0, c.width, c.height); } }   // vider : le dessin s'efface la ; remettre : il revient
+      else if (mode === "remettre") g.drawImage(orig[shape], 0, 0);
+      g.restore(); touch();
     }
-    function brush(p, r) {
-      const c = cards[shape], g = c.getContext("2d"), q = toCard(p), rr = r / box.s * c.width;
-      g.save(); g.globalCompositeOperation = "destination-out"; g.beginPath(); g.arc(q[0], q[1], rr, 0, Math.PI * 2); g.fill(); g.restore(); dirty.add(shape);
+    function brush(p, r) {                                   // gomme : efface la bouche, ou (masque) efface le dessin
+      const c = tgt(), g = c.getContext("2d"), q = toCard(p, c), rr = r / box.s * c.width;
+      g.save(); if (layer === "masque") g.fillStyle = "#000"; else g.globalCompositeOperation = "destination-out";
+      g.beginPath(); g.arc(q[0], q[1], rr, 0, Math.PI * 2); g.fill(); g.restore(); touch();
     }
     // Crayon : trait rond de la couleur choisie, sur la bouche choisie (Alt + clic : prendre une couleur dans la vue)
-    function pencil(a, b) {
-      const c = cards[shape], g = c.getContext("2d"), p0 = toCard(a), p1 = toCard(b);
-      g.save(); g.strokeStyle = g.fillStyle = ink; g.lineWidth = rad / box.s * c.width * 2; g.lineCap = g.lineJoin = "round";
-      g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0] + 0.01, p1[1]); g.stroke(); g.restore(); dirty.add(shape);
+    function pencil(a, b) {                                  // sur le masque : pinceau qui remet le dessin
+      const c = tgt(), g = c.getContext("2d"), p0 = toCard(a, c), p1 = toCard(b, c);
+      g.save(); g.strokeStyle = g.fillStyle = ink; if (layer === "masque") { g.globalCompositeOperation = "destination-out"; g.strokeStyle = "#000"; } g.lineWidth = rad / box.s * c.width * 2; g.lineCap = g.lineJoin = "round";
+      g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0] + 0.01, p1[1]); g.stroke(); g.restore(); touch();
     }
     function pick(e) {
       const r = cv.getBoundingClientRect(), x = Math.round((e.clientX - r.left) * SZ / r.width), y = Math.round((e.clientY - r.top) * SZ / r.height);
@@ -1536,7 +1561,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       };
       setTimeout(wait, 2500);
     }
-    const doUndo = () => { const u = undo.pop(); if (!u) return toast(tt("Rien à annuler")); cards[u.shape].getContext("2d").putImageData(u.data, 0, 0); box = u.box; sizeIn.value = box.s / K.s; draw(); };
+    const doUndo = () => { const u = undo.pop(); if (!u) return toast(tt("Rien à annuler")); u.c.getContext("2d").putImageData(u.data, 0, 0); box = u.box; sizeIn.value = box.s / K.s; draw(); };
     const panning = (e) => space || e.button === 1 || e.button === 2;
     cv.addEventListener("contextmenu", (e) => e.preventDefault());
     cv.addEventListener("pointerdown", (e) => {
@@ -1544,8 +1569,8 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       if (panning(e)) { drag = { pan: true, x: e.clientX, y: e.clientY, c: [...vc] }; return; }
       if (tool === "move") { snap(); drag = { p, x: box.x, y: box.y }; }
       else if (tool === "gomme") { snap(); drag = { p }; brush(p, rad); draw(); }
-      else if (tool === "pousser") { snap(); drag = { p, last: p }; }
-      else if (tool === "crayon") { if (e.altKey) { pick(e); return; } snap(); drag = { p, last: p }; pencil(p, p); draw(); }
+      else if (tool === "pousser") { if (layer === "masque") return; snap(); drag = { p, last: p }; }
+      else if (tool === "crayon") { if (e.altKey && layer !== "masque") { pick(e); return; } snap(); drag = { p, last: p }; pencil(p, p); draw(); }
       else { lasso = [p]; drag = { p }; }
     });
     cv.addEventListener("pointermove", (e) => {
@@ -1587,20 +1612,25 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
         h("button.mini", { title: tt("Image-clé précédente"), on: { click: () => change(-1) } }, "◀"), h("button.mini", { title: tt("Image-clé suivante"), on: { click: () => change(1) } }, "▶"),
         h("button.mini" + (shown ? ".on" : ""), { title: tt("Montre ou cache la bouche ajoutée, pour comparer avec le dessin et voir les défauts de détourage"), on: { click: () => { shown = !shown; bar(); draw(); } } }, shown ? tt("👁 Bouche visible") : tt("👁 Bouche cachée")));
       tools.textContent = "";
+      const M = layer === "masque";
+      tools.append(h("span.muted", tt("Couche : ")),
+        h("button.mini" + (!M ? ".on" : ""), { title: tt("Retouche la bouche ajoutée"), on: { click: () => { layer = "bouche"; bar(); draw(); } } }, tt("Bouche")),
+        h("button.mini" + (M ? ".on" : ""), { title: tt("Masque du dessin : la part du dessin d'origine effacée sous la bouche (menton, joue), en rouge. Gomme et lasso « effacer » effacent le dessin ; pinceau et lasso « remettre » le font revenir. Il suit la place et la taille de la bouche."), on: { click: () => { layer = "masque"; if (tool === "pousser") tool = "gomme"; cv.style.cursor = curOf(tool); bar(); draw(); } } }, tt("Masque du dessin ⓘ")),
+        h("span", { style: { flexBasis: "100%", height: 0 } }));
       const tb = (k, label, title) => h("button.mini" + (tool === k ? ".on" : ""), { title, on: { click: () => { tool = k; cv.style.cursor = curOf(k); bar(); } } }, label);
       tools.append(tb("move", tt("✥ Déplacer"), tt("Glisser : déplace la bouche (les quatre bouches de cette image-clé ensemble). Sa taille : le curseur « Taille de la bouche ».")),
-        tb("pousser", tt("👆 Pousser"), tt("Comme l'outil Fluidité : les pixels sous le pinceau suivent la souris. Pour ajuster la forme de la bouche au visage, par petites touches.")),
-        tb("vider", tt("✂ Lasso : vider"), tt("Entoure à la souris ce qui dépasse de la bouche : cela devient transparent, sur la bouche choisie.")),
-        tb("remettre", tt("🩹 Lasso : remettre"), tt("Entoure une zone vidée à tort : la bouche d'origine y revient.")),
-        tb("gomme", tt("◌ Gomme"), tt("Efface au pinceau, sur la bouche choisie")),
-        tb("crayon", tt("✏ Crayon"), tt("Dessine sur la bouche choisie, à la taille du pinceau et dans la couleur choisie. Alt + clic : prendre une couleur dans la vue.")), inkIn,
+        M ? "" : tb("pousser", tt("👆 Pousser"), tt("Comme l'outil Fluidité : les pixels sous le pinceau suivent la souris. Pour ajuster la forme de la bouche au visage, par petites touches.")),
+        M ? tb("vider", tt("✂ Lasso : effacer le dessin"), tt("Entoure une part du dessin d'origine : elle disparaît sous la bouche choisie.")) : tb("vider", tt("✂ Lasso : vider"), tt("Entoure à la souris ce qui dépasse de la bouche : cela devient transparent, sur la bouche choisie.")),
+        M ? tb("remettre", tt("🩹 Lasso : remettre le dessin"), tt("Entoure une part du dessin effacée à tort : elle revient.")) : tb("remettre", tt("🩹 Lasso : remettre"), tt("Entoure une zone vidée à tort : la bouche d'origine y revient.")),
+        M ? tb("gomme", tt("◌ Gommer le dessin"), tt("Efface au pinceau le dessin d'origine sous la bouche choisie")) : tb("gomme", tt("◌ Gomme"), tt("Efface au pinceau, sur la bouche choisie")),
+        M ? tb("crayon", tt("🖌 Remettre le dessin"), tt("Au pinceau : le dessin d'origine revient là où il était effacé.")) : tb("crayon", tt("✏ Crayon"), tt("Dessine sur la bouche choisie, à la taille du pinceau et dans la couleur choisie. Alt + clic : prendre une couleur dans la vue.")), M ? "" : inkIn,
         h("label.row", { style: { gap: "4px", margin: 0 }, title: tt("Taille du pinceau : crayon, gomme et « Pousser » (touches [ et ])") }, h("span.muted", tt("Taille")), radIn, radVal),
         h("button.mini", { title: tt("Annule la dernière retouche (Ctrl+Z)"), on: { click: doUndo } }, tt("↶ Annuler (Ctrl+Z)")),
         h("button.mini", { disabled: !!regen, title: tt("Redessine la bouche choisie de cette image-clé (GPT Image 2.5 sur fal, environ 0,02 $) ; la tâche passe en tête de la file"), on: { click: regenerate } },
           regen ? tt`⏳ Bouche « ${regen.shape === "E" ? "É" : regen.shape} » en calcul…` : tt`🔄 Régénérer la bouche « ${shape === "E" ? "É" : shape} »`),
         h("select", { title: tt("Fond de la vue, pour bien voir le détourage"), on: { change: (e) => { bg = e.target.value; draw(); } } }, [["#7fd47f", tt("Fond vert")], ["#ff6fd0", tt("Fond rose")], ["#222222", tt("Fond noir")], ["#ffffff", tt("Fond blanc")]].map(([c, nm]) => h("option", { value: c, selected: bg === c }, nm))));
     }
-    const touched = () => dirty.size || box.x !== K.x || box.y !== K.y || box.s !== K.s;
+    const touched = () => dirty.size || gdirty.size || box.x !== K.x || box.y !== K.y || box.s !== K.s;
     async function change(d) {
       if (touched() && !confirm(tt("Quitter cette image-clé sans enregistrer ses retouches ?"))) return;
       ki = (ki + d + keys.length) % keys.length; await openKey();
@@ -1621,8 +1651,9 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       { label: tt("Annuler") },
       { label: tt("Enregistrer dans le personnage"), primary: true, click: async () => {
         if (!touched()) return;
-        const c = {}; for (const k of dirty) c[k] = cards[k].toDataURL("image/png");
-        try { await send({ x: box.x, y: box.y, s: box.s, cards: c }); toast(tt("Bouches retouchées, enregistrées dans le personnage.")); } catch (err) { toast(tt("Retouche non enregistrée : ") + err.message, "error"); return false; }
+        const c = {}, g = {}; for (const k of dirty) c[k] = cards[k].toDataURL("image/png");
+        for (const k of gdirty) g[k] = goms[k].toDataURL("image/png");
+        try { await send({ x: box.x, y: box.y, s: box.s, cards: c, goms: g }); toast(tt("Bouches retouchées, enregistrées dans le personnage.")); } catch (err) { toast(tt("Retouche non enregistrée : ") + err.message, "error"); return false; }
       } }]);
     await openKey();
   }

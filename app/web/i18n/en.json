@@ -2157,7 +2157,19 @@
   "réglages ({0})": "settings ({0})",
   "Même graine et même consigne donnent la même vidéo. Si le décor reste vide au demi-tour, relance avec une autre graine.": "Same seed and same prompt give the same video. If the set stays empty during the half-turn, run again with another seed.",
   "Autokey ⓘ": "Autokey ⓘ",
-  "Coché : chaque réglage pose une clé à l'instant affiché. Décoché : on règle sans poser de clé ; sur une clé, on la modifie ; ailleurs, toute l'animation de l'élément bouge d'autant. Dans l'image, sur un élément : glisser = le déplacer ; glisser l'anneau au centre = le faire tourner (orbite, ou Alt + glisser) ; glisser la flèche du haut = le pencher (Maj : crans de 15°) ; glisser une boule de coin = sa taille ; molette = taille ; clic droit = son menu.": "Checked: every adjustment sets a key at the current time. Unchecked: adjust without setting keys; on a key, it is updated; elsewhere, the element's whole animation shifts by the same amount. In the image, on an element: drag = move it; drag the centre ring = turn it (orbit, or Alt + drag); drag the top arrow = tilt it (Shift: 15° steps); drag a corner ball = its size; wheel = size; right click = its menu."
+  "Coché : chaque réglage pose une clé à l'instant affiché. Décoché : on règle sans poser de clé ; sur une clé, on la modifie ; ailleurs, toute l'animation de l'élément bouge d'autant. Dans l'image, sur un élément : glisser = le déplacer ; glisser l'anneau au centre = le faire tourner (orbite, ou Alt + glisser) ; glisser la flèche du haut = le pencher (Maj : crans de 15°) ; glisser une boule de coin = sa taille ; molette = taille ; clic droit = son menu.": "Checked: every adjustment sets a key at the current time. Unchecked: adjust without setting keys; on a key, it is updated; elsewhere, the element's whole animation shifts by the same amount. In the image, on an element: drag = move it; drag the centre ring = turn it (orbit, or Alt + drag); drag the top arrow = tilt it (Shift: 15° steps); drag a corner ball = its size; wheel = size; right click = its menu.",
+  "Couche : ": "Layer: ",
+  "Retouche la bouche ajoutée": "Retouch the added mouth",
+  "Masque du dessin : la part du dessin d'origine effacée sous la bouche (menton, joue), en rouge. Gomme et lasso « effacer » effacent le dessin ; pinceau et lasso « remettre » le font revenir. Il suit la place et la taille de la bouche.": "Drawing mask: the part of the original drawing erased under the mouth (chin, cheek), in red. Eraser and the \"erase\" lasso erase the drawing; brush and the \"restore\" lasso bring it back. It follows the mouth's position and size.",
+  "Masque du dessin ⓘ": "Drawing mask ⓘ",
+  "✂ Lasso : effacer le dessin": "✂ Lasso: erase the drawing",
+  "Entoure une part du dessin d'origine : elle disparaît sous la bouche choisie.": "Circle part of the original drawing: it disappears under the chosen mouth.",
+  "🩹 Lasso : remettre le dessin": "🩹 Lasso: restore the drawing",
+  "Entoure une part du dessin effacée à tort : elle revient.": "Circle part of the drawing erased by mistake: it comes back.",
+  "◌ Gommer le dessin": "◌ Erase the drawing",
+  "Efface au pinceau le dessin d'origine sous la bouche choisie": "Brush away the original drawing under the chosen mouth",
+  "🖌 Remettre le dessin": "🖌 Restore the drawing",
+  "Au pinceau : le dessin d'origine revient là où il était effacé.": "Brush: the original drawing comes back where it was erased."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
