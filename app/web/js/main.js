@@ -561,32 +561,32 @@ class App {
 
   layerMenu(e) {
     const l = this.layer(); if (!l) return;
+    // en haut, les gestes directs ; puis un sous-menu par theme (Pose, Expression, Axe, Calque), ouvert au survol
     const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [{ label: tt("🎬 Montage (animer la case)… (Tab)"), star: true, click: () => openMontage(this, this.sel.panel) },
-      { label: tt("✎ Dessiner le fond… (Q)"), star: "blue", click: () => this.drawBackground(this.sel.panel) }];
-    items.push({ head: tt("Pose") });
+      { label: tt("✎ Dessiner le fond… (Q)"), star: "blue", click: () => this.drawBackground(this.sel.panel) },
+      { label: tt("📍 Montrer dans la banque"), click: () => this.bankUI.reveal(l.item) },
+      { label: tt("Générer d'autres poses…"), click: () => this.bankUI.openItem(l.item) }];
     // ↻ : orbite calculee, la pose tourne · ⏳ : orbite en calcul · ▫ : image fixe, pas d'orbite
-    for (const [k, vv] of Object.entries(item?.variants || {})) items.push({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + tr(vv.label), checked: k === l.v, click: () => this.setPose(l, k) });
-    items.push({ note: tt("↻ orbite prête · ⏳ en calcul · ▫ image fixe") });
-    items.push({ label: tt("📍 Montrer dans la banque"), click: () => this.bankUI.reveal(l.item) });
-    items.push({ label: tt("Générer d'autres poses…"), click: () => this.bankUI.openItem(l.item) });
+    const poses = Object.entries(item?.variants || {}).map(([k, vv]) => ({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + tr(vv.label), checked: k === l.v, click: () => this.setPose(l, k) }));
+    poses.push({ note: tt("↻ orbite prête · ⏳ en calcul · ▫ image fixe") });
+    items.push({ sub: tt("Pose"), value: v ? tr(v.label) : "", items: poses });
     {                                                     // expression du visage (cartes de l'orbite, app/exprcards.py) ; la bouche du lip sync passe par-dessus
       const sp = item && sprite(item, l.v, l.f), ex = (sp && sp.expr && sp.exprs) || [];
-      items.push({ head: tt("Expression") });
-      if (ex.length) for (const k of ["", ...ex]) items.push({ label: exprName(k), checked: (l.exk || "") === k, half: true,
-        click: () => { if (k) l.exk = k; else delete l.exk; this.commit("expr"); this.editor.render(); this.refreshInspector(); } });
-      else items.push({ note: tt("Pas encore d'expressions pour ce personnage.") });
+      const exs = ex.length ? ["", ...ex].map((k) => ({ label: exprName(k), checked: (l.exk || "") === k,
+        click: () => { if (k) l.exk = k; else delete l.exk; this.commit("expr"); this.editor.render(); this.refreshInspector(); } }))
+        : [{ note: tt("Pas encore d'expressions pour ce personnage.") }];
+      items.push({ sub: tt("Expression"), value: ex.length ? exprName(l.exk || "") : "", items: exs });
     }
     if (v && v.orbit) {
       const cur = nearestAxis(v.orbit, l.f || 0);
-      items.push({ head: tt("Axe") });
-      for (const a of AXES) items.push({ label: tr(a), checked: a === cur, click: () => this.setAxis(l, a), half: true });
+      items.push({ sub: tt("Axe"), value: tr(cur), items: AXES.map((a) => ({ label: tr(a), checked: a === cur, click: () => this.setAxis(l, a), half: true })) });
     }
-    items.push({ head: tt("Calque") },
+    items.push({ sub: tt("Calque"), items: [
       { label: tt("Miroir"), checked: !!l.flip, click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); } },
       { label: tt("Premier plan"), click: () => this.order(l, "top"), half: true }, { label: tt("Arrière-plan"), click: () => this.order(l, "bottom"), half: true },
       { label: tt("Avancer"), click: () => this.order(l, "up"), half: true }, { label: tt("Reculer"), click: () => this.order(l, "down"), half: true },
       { label: tt("Dupliquer"), click: () => this.duplicate(l), half: true }, { label: tt("Supprimer"), click: () => this.removeLayer(l), half: true, danger: true },
-      { label: tt("Copier vers une case…"), click: () => this.copyLayerTo(l) });
+      { label: tt("Copier vers une case…"), click: () => this.copyLayerTo(l) }] });
     menu(e, items);
   }
 
@@ -1632,16 +1632,41 @@ function presetThumb(p, page) {
   return svg;
 }
 
-// menu contextuel : [{head}, {label, click, checked, half, danger}]
+// menu contextuel : [{head}, {note}, {label, click, checked, half, danger}, {sub, value, items}] ; un {sub} ouvre ses
+// items en sous-menu, a cote, quand la souris s'y arrete
 function menu(e, items) {
   document.querySelector(".menu")?.remove();
   const box = h("div.menu");
-  for (const it of items) {
-    if (it.head) { box.append(h("div.mhead", it.head)); continue; }
-    if (it.note) { box.append(h("div.mnote", it.note)); continue; }
-    box.append(h("button" + (it.half ? ".half" : "") + (it.checked ? ".on" : "") + (it.danger ? ".danger" : "") + (it.star ? ".star" : "") + (it.star === "blue" ? ".blue" : ""),
-      { on: { click: () => { box.remove(); it.click(); } } }, it.checked ? "✓ " : "", it.label));
-  }
+  let open = null;                                           // sous-menu ouvert : [bouton, panneau]
+  const shut = () => { if (open) { open[0].classList.remove("open"); open[1].remove(); open = null; } };
+  const fill = (into, list) => {
+    for (const it of list) {
+      if (it.head) { into.append(h("div.mhead", it.head)); continue; }
+      if (it.note) { into.append(h("div.mnote", it.note)); continue; }
+      if (it.sub) {
+        const b = h("button.msub", h("span", it.sub), it.value ? h("span.mval", it.value) : "", h("span.marrow", "▸"));
+        const show = () => {
+          if (open && open[0] === b) return;
+          shut();
+          const p = h("div.menu.submenu"); fill(p, it.items);
+          box.append(p); open = [b, p]; b.classList.add("open");
+          const r = b.getBoundingClientRect(), pr = p.getBoundingClientRect();
+          const right = r.right + pr.width + 4 <= innerWidth;
+          p.style.left = (right ? box.getBoundingClientRect().right + 2 : box.getBoundingClientRect().left - pr.width - 2) + "px";
+          p.style.top = Math.max(4, Math.min(r.top - 6, innerHeight - pr.height - 6)) + "px";
+        };
+        b.addEventListener("pointerenter", show);
+        b.addEventListener("click", show);
+        into.append(b); continue;
+      }
+      const btn = h("button" + (it.half ? ".half" : "") + (it.checked ? ".on" : "") + (it.danger ? ".danger" : "") + (it.star ? ".star" : "") + (it.star === "blue" ? ".blue" : ""),
+        { on: { click: () => { box.remove(); it.click(); } } }, it.checked ? "✓ " : "", it.label);
+      if (into === box) btn.addEventListener("pointerenter", shut);      // un autre geste du menu : le sous-menu se ferme
+      into.append(btn);
+    }
+  };
+  fill(box, items);
+  box.addEventListener("pointerover", (ev) => { if (ev.target.classList?.contains("mhead") || ev.target.classList?.contains("mnote")) shut(); });
   document.body.append(box);
   const r = box.getBoundingClientRect();
   box.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + "px";
