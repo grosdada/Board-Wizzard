@@ -2172,7 +2172,11 @@
   "Au pinceau : le dessin d'origine revient là où il était effacé.": "Brush: the original drawing comes back where it was erased.",
   "🗑 Retirer ce son": "🗑 Remove this sound",
   "Son retiré (Ctrl+Z pour le remettre).": "Sound removed (Ctrl+Z to bring it back).",
-  "Écouter avant de choisir": "Listen before choosing"
+  "Écouter avant de choisir": "Listen before choosing",
+  "Masque de la bouche ⓘ": "Mouth mask ⓘ",
+  "🖌 Remettre la bouche": "🖌 Restore the mouth",
+  "Au pinceau : la bouche d'origine revient, pleinement opaque, là où elle avait quelque chose.": "Brush: the original mouth comes back, fully opaque, wherever it had something.",
+  "Masque de la bouche : ce qui se voit de la bouche ajoutée, en bleu ; en bleu pâle, ce que la bouche d'origine porte et qu'on peut faire revenir. Gomme et lasso « vider » cachent ; pinceau et lasso « remettre » font revenir la bouche d'origine, sans fondu.": "Mouth mask: what shows of the added mouth, in blue; in pale blue, what the original mouth carries and can be brought back. Eraser and the \"empty\" lasso hide; brush and the \"restore\" lasso bring back the original mouth, without feathering."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
