@@ -35,10 +35,43 @@ export const BRUSHES = { brush: [tt("Pinceau en pointe"), "🖌"], paint: [tt("P
 const OPEN = new Set(["line", "free", "polyline", "brush", "paint", "erase", "stamp", "hair"]);       // sans remplissage
 const MANY = new Set(["free", "blob", "poly", "polyline", "brush", "paint", "erase", "stamp", "hair"]);
 const SPECIAL = new Set(["brush", "paint", "erase", "stamp", "img", "hair"]);
-const BRUSH_KEYS = ["bsw", "tp", "sv", "pc", "bw", "op", "soft", "ss", "gap", "ink", "iop", "pw", "hd", "hs", "hl", "hz", "hj", "ho"];
+const BRUSH_KEYS = ["bsw", "tp", "sv", "pc", "bw", "op", "soft", "ss", "gap", "ink", "iop", "pw", "hd", "hs", "hl", "hz", "hj", "ho", "hf"];
 // pinceaux enregistres (bw.brushes) : { n : nom, t : type de pinceau, v : ses reglages }
 const BRUSH_SAVE = { brush: ["stroke", "bsw", "tp", "sv"], paint: ["pc", "bw", "op", "soft"], stamp: ["href", "ar", "ss", "gap", "ink", "stroke"],
-                     hair: ["stroke", "hd", "hs", "hl", "hz", "hj", "ho"], erase: ["bw"] };
+                     hair: ["stroke", "hd", "hs", "hl", "hz", "hj", "ho", "hf"], erase: ["bw"] };
+// formes semees par le pinceau a poils (hf) : contours pleins de rayon 1, tournes et poses a chaque point du semis
+const ring0 = (n, f) => Array.from({ length: n }, (_, i) => f(i / n * 2 * Math.PI, i));
+const SEEDS = {
+  poil: tt("Poils ou points"),
+  etoile: [tt("Étoiles"), ring0(10, (a, i) => { const r = i % 2 ? 0.42 : 1; return [Math.cos(a - Math.PI / 2) * r, Math.sin(a - Math.PI / 2) * r]; })],
+  scint: [tt("Scintillements ✦"), ring0(8, (a, i) => { const r = i % 2 ? 0.17 : 1; return [Math.cos(a) * r, Math.sin(a) * r]; })],
+  croix: [tt("Croix +"), [[-0.14, -1], [0.14, -1], [0.14, -0.14], [1, -0.14], [1, 0.14], [0.14, 0.14], [0.14, 1], [-0.14, 1], [-0.14, 0.14], [-1, 0.14], [-1, -0.14], [-0.14, -0.14]]],
+  losange: [tt("Losanges"), [[1, 0], [0, 0.55], [-1, 0], [0, -0.55]]],
+  rond: [tt("Ronds"), ring0(14, (a) => [Math.cos(a) * 0.8, Math.sin(a) * 0.8])],
+  carre: [tt("Carrés"), [[-0.7, -0.7], [0.7, -0.7], [0.7, 0.7], [-0.7, 0.7]]],
+  coeur: [tt("Cœurs"), ring0(24, (a) => [Math.pow(Math.sin(a), 3), -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) / 16])],
+  feuille: [tt("Feuilles"), ring0(20, (a) => [Math.cos(a), 0.45 * Math.sin(a) * Math.abs(Math.sin(a))])],
+  goutte: [tt("Gouttes"), ring0(20, (a) => [Math.cos(a) * 0.9 - 0.1, 0.62 * Math.sin(a) * Math.pow(Math.abs(Math.sin(a / 2)), 1.4)])],
+};
+// prereglages des poils : la couleur seulement quand elle fait le pinceau (etoiles, neige) ; sinon celle choisie reste
+const HAIR_PRESETS = [
+  [tt("Ciel étoilé"), { stroke: "#ffffff", hd: 1.5, hs: 40, hl: 0, hz: 1.2, ho: 0, hj: 0 }],
+  [tt("Étoiles scintillantes ✦"), { stroke: "#ffffff", hd: 1, hs: 40, hl: 5, hz: 1, ho: 0, hj: 12, hf: "scint" }],
+  [tt("Ciel d'étoiles dessinées ★"), { stroke: "#ffffff", hd: 1.2, hs: 40, hl: 3.5, hz: 1, ho: 0, hj: 90, hf: "etoile" }],
+  [tt("Voie lactée (étoiles serrées)"), { stroke: "#ffffff", hd: 14, hs: 25, hl: 0, hz: 0.5, ho: 0, hj: 0 }],
+  [tt("Étoiles filantes"), { stroke: "#ffffff", hd: 0.8, hs: 40, hl: 7, hz: 0.6, ho: 0, hj: 4 }],
+  [tt("Neige"), { stroke: "#ffffff", hd: 3, hs: 40, hl: 0, hz: 2.2, ho: 0, hj: 0 }],
+  [tt("Grain, sable"), { hd: 40, hs: 15, hl: 0, hz: 0.3, ho: 0, hj: 0 }],
+  [tt("Barbe de trois jours"), { hd: 25, hs: 8, hl: 0, hz: 0.5, ho: 0, hj: 0 }],
+  [tt("Poil ras"), { hd: 30, hs: 4, hl: 1.2, hz: 0.4, ho: 90, hj: 30 }],
+  [tt("Barbe fournie"), { hd: 22, hs: 6, hl: 4, hz: 0.6, ho: 80, hj: 35 }],
+  [tt("Fourrure"), { hd: 18, hs: 5, hl: 6, hz: 0.7, ho: 60, hj: 40 }],
+  [tt("Poils longs, cheveux"), { hd: 10, hs: 3, hl: 14, hz: 0.5, ho: 15, hj: 12 }],
+  [tt("Cheveux en bataille"), { hd: 16, hs: 5, hl: 5, hz: 0.6, ho: 0, hj: 90 }],
+  [tt("Sourcils"), { hd: 20, hs: 3, hl: 3, hz: 0.7, ho: 30, hj: 10 }],
+  [tt("Herbe (tracer de gauche à droite)"), { hd: 14, hs: 2, hl: 9, hz: 0.8, ho: -85, hj: 20 }],
+  [tt("Pluie (tracer vers le bas)"), { hd: 3, hs: 40, hl: 8, hz: 0.3, ho: 0, hj: 3 }],
+];
 const savedBrushes = () => { try { return JSON.parse(localStorage.getItem("bw.brushes") || "[]") || []; } catch (e) { return []; } };
 const storeBrushes = (l) => localStorage.setItem("bw.brushes", JSON.stringify(l.slice(0, 60)));
 let clip = null;                                           // formes copiees (Ctrl+C), gardees d'un atelier a l'autre
@@ -59,7 +92,7 @@ const FORMS = { points: tt("Points"), lignes: tt("Lignes"), croix: tt("Croisillo
                 cercles: tt("Cercles concentriques"), vagues: tt("Lignes ondulées"), grain: tt("Grain") };
 const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, col: "#ffffff",   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
               bsw: 2.5, tp: 0.3, sv: 0.6, pc: "#7d8c99", bw: 12, op: 0.55, soft: 0.3, ss: 25, gap: 0.3, ink: "clair", iop: 1,   // pinceaux (voir BRUSHES)
-              hd: 8, hs: 5, hl: 5, hz: 0.6, hj: 25, ho: 90 };
+              hd: 8, hs: 5, hl: 5, hz: 0.6, hj: 25, ho: 90, hf: "poil" };
 // poils ou pointille le long d'un trace : semis au hasard mais toujours le meme pour une forme (graine = son identifiant)
 function hairSvg(sh, H, tag, d) {
   const P = sh.p.map(([x, y]) => [x * W, y * H]);
@@ -68,6 +101,7 @@ function hairSvg(sh, H, tag, d) {
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const dens = Math.max(0.2, +sh.hd || 0), spread = Math.max(0, +sh.hs || 0) * 4, len = Math.max(0, +sh.hl || 0) * 4, th = Math.max(0.2, +sh.hz || 0) * 2;
   const jit = (+sh.hj || 0) * Math.PI / 180, dir = (+sh.ho || 0) * Math.PI / 180;
+  const form = SEEDS[sh.hf] && typeof SEEDS[sh.hf] !== "string" ? SEEDS[sh.hf][1] : null;
   let dots = "", lines = "", carry = 0;
   for (let k = 1; k < P.length; k++) {
     const a = P[k - 1], b = P[k], dx = b[0] - a[0], dy = b[1] - a[1], seg = Math.hypot(dx, dy);
@@ -78,7 +112,11 @@ function hairSvg(sh, H, tag, d) {
     for (let j = 0; j < count; j++) {
       const t = rnd(), off = (rnd() + rnd() + rnd() - 1.5) / 1.5 * spread;
       const px = a[0] + dx * t + nx * off, py = a[1] + dy * t + ny * off;
-      if (len <= 0) { const r = th / 2 * (0.6 + 0.8 * rnd()); dots += `M${f1(px - r)} ${f1(py)}a${f1(r)} ${f1(r)} 0 1 0 ${f1(2 * r)} 0a${f1(r)} ${f1(r)} 0 1 0 ${f1(-2 * r)} 0`; }
+      if (form) {                                          // forme semee : taille par la longueur (sinon l'epaisseur), tournee par le desordre
+        const an = base + (rnd() - 0.5) * 2 * jit, r = (len > 0 ? len / 2 : th * 1.5) * (0.6 + 0.8 * rnd()), c = Math.cos(an), s = Math.sin(an);
+        dots += form.map(([u, v], q) => (q ? "L" : "M") + f1(px + (u * c - v * s) * r) + " " + f1(py + (u * s + v * c) * r)).join("") + "Z";
+      }
+      else if (len <= 0) { const r = th / 2 * (0.6 + 0.8 * rnd()); dots += `M${f1(px - r)} ${f1(py)}a${f1(r)} ${f1(r)} 0 1 0 ${f1(2 * r)} 0a${f1(r)} ${f1(r)} 0 1 0 ${f1(-2 * r)} 0`; }
       else { const an = base + (rnd() - 0.5) * 2 * jit, L = len * (0.5 + rnd()); lines += `M${f1(px)} ${f1(py)}l${f1(Math.cos(an) * L)} ${f1(Math.sin(an) * L)}`; }
     }
   }
@@ -452,7 +490,24 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       h("input", { type: "checkbox", checked: !!fx.anim, on: { change: (e) => { fx.anim = e.target.checked; } } }), tt("Animable dans le montage ⓘ")));
   };
   fxUi(); fxPaint();
-  svg.append(back, art, fxG, ghost, guide, over);
+  // pointeur des pinceaux : un cercle a la taille du pinceau (poils : l'etalement en pointille, et jusqu'au bout des poils)
+  const ring = document.createElementNS(NS, "g");
+  ring.setAttribute("style", "pointer-events:none");
+  let ringP = null;
+  const ringAt = (p) => {
+    ringP = p;
+    const v = (k) => +(cur[k] ?? DEF[k]) || 0;
+    let r = 0, r2 = 0;
+    if (tool === "hair") { r2 = v("hs") * 4; r = Math.max(r2 + v("hl") * 4, v("hz")); }
+    else if (tool === "brush") r = v("bsw") * 2;
+    else if (tool === "paint" || tool === "erase") r = v("bw") * 2;
+    if (!p || !(r > 0)) { ring.innerHTML = ""; return; }
+    const x = f1(p[0] * W), y = f1(p[1] * H), c = (rr, dash) => `<circle cx="${x}" cy="${y}" r="${f1(rr)}" fill="none" stroke="#fff" stroke-width="3" vector-effect="non-scaling-stroke"${dash}/>` +
+      `<circle cx="${x}" cy="${y}" r="${f1(rr)}" fill="none" stroke="#111" stroke-width="1.2" vector-effect="non-scaling-stroke"${dash}/>`;
+    ring.innerHTML = c(r, "") + (r2 > 0.5 && r2 < r - 0.5 ? c(r2, ` stroke-dasharray="4 4"`) : "");
+  };
+  svg.append(back, art, fxG, ghost, guide, over, ring);
+  svg.addEventListener("pointerleave", () => ringAt(null));
   // agrandir la zone : un demi-format de case a chaque clic, de chaque cote
   const grow = (side, d) => { ext[side] = Math.max(0, Math.min(6, +(ext[side] + d).toFixed(2))); zone(); paint(); extInfo(); };
   const fit = () => {                                     // recadrer : juste ce qu'il faut pour contenir les formes
@@ -486,7 +541,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const target = () => (sel ? shapes.find((s) => s.id === sel) : null);
   const val = (k) => { const t = target(); return t && t[k] !== undefined ? t[k] : cur[k]; };
   const chosen = () => { const t = target(), ids = new Set(multi); if (t) ids.add(t.id); return shapes.filter((s) => ids.has(s.id)); };
-  const set = (k, v) => { for (const t of chosen()) { t[k] = v; syncTwin(t); } cur[k] = v; paint(); };
+  const set = (k, v) => { for (const t of chosen()) { t[k] = v; syncTwin(t); } cur[k] = v; paint(); if (ringP) ringAt(ringP); };
   // retourne une forme gauche-droite par rapport au milieu du cadre (sur place)
   const flipShape = (c) => {
     c.p = c.p.map(([x, y]) => [1 - x, y]);
@@ -711,15 +766,19 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (kind === "erase") side.append(range(tt("Largeur"), "bw", 1, 80, 0.5));
     if (kind === "hair") side.append(col(tt("Couleur"), "stroke", "#111111"), range(tt("Densité"), "hd", 0.5, 60, 0.5), range(tt("Étalement"), "hs", 0, 40, 0.5),
       range(tt("Longueur (0 = points)"), "hl", 0, 30, 0.5), range(tt("Épaisseur"), "hz", 0.2, 6, 0.1), range(tt("Direction (°)"), "ho", -90, 90, 1), range(tt("Désordre (°)"), "hj", 0, 90, 1));
+    if (kind === "hair") side.append(pick(tt("Forme semée"), "hf", Object.fromEntries(Object.entries(SEEDS).map(([k, x]) => [k, typeof x === "string" ? x : x[0]]))),
+      val("hf") && val("hf") !== "poil" ? h("p.muted", tt("Forme semée : la Longueur donne sa taille (0 : selon l'épaisseur), le Désordre la fait tourner.")) : "");
     if (BRUSH_SAVE[kind]) {                                // pinceaux enregistres : les reglages d'un pinceau, gardes sous un nom
-      const mine = savedBrushes().filter((b) => b.t === kind);
-      const pickB = h("select", { on: { change: (e) => { const b = e.target.value === "" ? null : mine[+e.target.value]; if (!b) return; for (const [k, v] of Object.entries(b.v)) set(k, v); if (b.v.href) { cur.href = b.v.href; cur.ar = b.v.ar || 1; } props(); } } },
-        h("option", { value: "" }, mine.length ? tt("Mes pinceaux…") : tt("Aucun pinceau enregistré")), mine.map((b, i) => h("option", { value: i }, b.n)));
+      const mine = savedBrushes().filter((b) => b.t === kind), pre = kind === "hair" ? HAIR_PRESETS : [];
+      const pickB = h("select", { on: { change: (e) => { const x = e.target.value, b = x === "" ? null : x[0] === "p" ? { v: Object.assign({ hf: "poil" }, pre[+x.slice(1)][1]) } : mine[+x]; if (!b) return; for (const [k, v] of Object.entries(b.v)) set(k, v); if (b.v.href) { cur.href = b.v.href; cur.ar = b.v.ar || 1; } props(); } } },
+        h("option", { value: "" }, mine.length || pre.length ? tt("Mes pinceaux…") : tt("Aucun pinceau enregistré")),
+        pre.length ? h("optgroup", { label: tt("Préréglages") }, pre.map(([n], i) => h("option", { value: "p" + i }, n))) : "",
+        mine.length ? h("optgroup", { label: tt("Mes pinceaux") }, mine.map((b, i) => h("option", { value: i }, b.n))) : "");
       side.append(h("div.row.wrap", { title: tt("Enregistre les réglages de ce pinceau sous un nom, pour les reprendre d'un clic (gardés dans ce navigateur)") }, pickB,
         h("button.mini", { type: "button", on: { click: () => { const n = (prompt(tt("Nom du pinceau :")) || "").trim(); if (!n) return;
           const v = Object.fromEntries(BRUSH_SAVE[kind].map((k) => [k, val(k) ?? cur[k]]).filter(([, x]) => x !== undefined));
           storeBrushes([...savedBrushes().filter((b) => !(b.t === kind && b.n === n)), { n, t: kind, v }]); toast(tt("Pinceau enregistré.")); props(); } } }, tt("＋ Enregistrer ce pinceau")),
-        mine.length ? h("button.mini", { type: "button", title: tt("Retirer le pinceau choisi dans la liste"), on: { click: () => { const b = pickB.value === "" ? null : mine[+pickB.value]; if (!b) return toast(tt("Choisis d'abord un pinceau dans la liste.")); storeBrushes(savedBrushes().filter((x) => x !== b && !(x.t === b.t && x.n === b.n))); props(); } } }, "✕") : ""));
+        mine.length ? h("button.mini", { type: "button", title: tt("Retirer le pinceau choisi dans la liste"), on: { click: () => { const b = pickB.value === "" || pickB.value[0] === "p" ? null : mine[+pickB.value]; if (!b) return toast(tt("Choisis d'abord un pinceau dans la liste.")); storeBrushes(savedBrushes().filter((x) => x !== b && !(x.t === b.t && x.n === b.n))); props(); } } }, "✕") : ""));
     }
     if (kind === "img" || kind === "stamp") {
       side.append(inkPick());
@@ -929,6 +988,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   svg.addEventListener("pointermove", (e) => {
     if (pan) { vc = [pan.c[0] - (e.clientX - pan.x) / pan.k, pan.c[1] - (e.clientY - pan.y) / pan.k]; zone(); return; }
     const p = at(e);
+    ringAt(fxAim ? null : p);
     if (fxAim) { if (fxDrag) { fx.cx = +p[0].toFixed(3); fx.cy = +p[1].toFixed(3); fxPaint(); } return; }
     if (building) { hover = p; return paint(); }
     if (!drag) return;
