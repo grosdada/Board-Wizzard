@@ -150,10 +150,11 @@ class App {
     this.el.pages.textContent = "";
     const go = (i) => { if (i < 0 || i >= P.pages.length || i === this.pageIndex) return; this.pageIndex = i; this.sel = {}; this.refresh(); };
     // peu de pages : un bouton par page ; au-dela, ‹ Page n / N ▾ › et la planche de toutes les pages en menu
-    const nav = P.pages.length <= 8 ? [h("span.muted", tt("Page")), ...P.pages.map((pg, i) => h("button.pg" + (i === this.pageIndex ? ".on" : ""),
-      { on: { click: () => go(i) } }, String(i + 1)))]
+    const nav = P.pages.length <= 8 ? [h("span.muted", tt("Page")), ...P.pages.map((pg, i) => h("button.pg" + (i === this.pageIndex ? ".on" : "") + (pg.name ? ".named" : ""),
+      { title: this.pageTitle(i), on: { click: () => go(i), contextmenu: (e) => this.pageMenu(e, i) } }, String(i + 1)))]
       : [h("button.pg", { title: tt("Page précédente"), disabled: this.pageIndex === 0, on: { click: () => go(this.pageIndex - 1) } }, "‹"),
-         h("button.pg.pg-cur", { title: tt("Voir toutes les pages"), on: { click: (e) => this.pagesGrid(e.currentTarget, go) } }, tt`Page ${this.pageIndex + 1} / ${P.pages.length}` + " ▾"),
+         h("button.pg.pg-cur", { title: this.pageTitle(this.pageIndex) + " · " + tt("clic : toutes les pages ; clic droit : renommer"), on: { click: (e) => this.pagesGrid(e.currentTarget, go), contextmenu: (e) => this.pageMenu(e, this.pageIndex) } },
+           tt`Page ${this.pageIndex + 1} / ${P.pages.length}` + (P.pages[this.pageIndex].name ? " · " + P.pages[this.pageIndex].name : "") + " ▾"),
          h("button.pg", { title: tt("Page suivante"), disabled: this.pageIndex === P.pages.length - 1, on: { click: () => go(this.pageIndex + 1) } }, "›")];
     this.el.pages.append(...nav,
       h("button.pg", { title: tt("Ajouter une page (même découpage)"), on: { click: () => this.addPage() } }, "+"),
@@ -176,7 +177,7 @@ class App {
         }
       } catch (e) { /* page illisible : vignette vide */ }
       svg.innerHTML = inner;
-      box.append(h("button.pg-tile" + (i === this.pageIndex ? ".on" : ""), { title: tt`Page ${i + 1}`, on: { click: () => { close(); go(i); } } }, svg, h("span", String(i + 1))));
+      box.append(h("button.pg-tile" + (i === this.pageIndex ? ".on" : ""), { title: this.pageTitle(i), on: { click: () => { close(); go(i); }, contextmenu: (e) => { close(); this.pageMenu(e, i); } } }, svg, h("span", String(i + 1) + (pg.name ? " · " + pg.name : ""))));
     });
     document.body.append(box);
     const r = anchor.getBoundingClientRect();
@@ -186,6 +187,18 @@ class App {
     const esc = (e) => { if (e.key === "Escape") close(); };
     const close = () => { box.remove(); document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", esc, true); };
     setTimeout(() => { document.addEventListener("pointerdown", outside, true); document.addEventListener("keydown", esc, true); });
+  }
+  // nom d'une feuille (pg.name) : la feuille garde son numero, le nom vient au survol
+  pageTitle(i) { const pg = this.project.pages[i]; return tt`Page ${i + 1}` + (pg && pg.name ? " · " + pg.name : ""); }
+  pageMenu(e, i) {
+    e.preventDefault();
+    const pg = this.project.pages[i];
+    menu(e, [{ head: this.pageTitle(i) }, { label: tt("✎ Renommer la feuille…"), click: () => {
+      const n = prompt(tt`Nom de la page ${i + 1} (vide : sans nom) :`, pg.name || "");
+      if (n === null) return;
+      if (n.trim()) pg.name = n.trim(); else delete pg.name;
+      this.commit("page-name"); this.renderPages();
+    } }]);
   }
   addPage() {
     const cur = this.page(), P = this.project;
@@ -208,12 +221,21 @@ class App {
     const rename = h("input", { type: "text", value: this.project.name });
     const m = modal(tt("Storyboards"), h("div.form",
       h("label.row", tt("Nom de celui-ci"), rename),
-      h("div.plist", list.map((p) => h("div.prow" + (p.id === this.project.id ? ".on" : ""),
+      h("div.plist", list.map((p) => { const sub = h("div.psub"); let shown = false;
+        // la fleche deplie les feuilles : numero et nom ; un clic ouvre le storyboard a cette feuille
+        const arrow = h("button.mini.parrow", { title: tt("Voir ses feuilles"), on: { click: async () => {
+          shown = !shown; arrow.textContent = shown ? "▾" : "▸"; sub.textContent = "";
+          if (!shown) return;
+          const pj = p.id === this.project.id ? this.project : await get("projects/" + p.id);
+          sub.append(...pj.pages.map((pg, i) => h("button.link.psheet", { on: { click: async () => { m.close(); if (p.id !== this.project.id) await this.open(p.id); this.pageIndex = i; this.sel = {}; this.refresh(); } } },
+            h("b", String(i + 1)), pg.name ? " " + pg.name : h("span.muted", " " + tt("sans nom")))));
+        } } }, "▸");
+        return h("div", h("div.prow" + (p.id === this.project.id ? ".on" : ""), arrow,
         h("button.link", { on: { click: async () => { m.close(); await this.open(p.id); } } }, p.name),
         h("span.muted", tt`${p.pages} page(s) · ${new Date(p.updated * 1000).toLocaleDateString("fr-FR")}`),
         p.id !== this.project.id ? h("button.mini.danger", { on: { click: async (e) => {
           if (!confirm(tt`Supprimer « ${p.name} » ? (corbeille du dossier de données)`)) return;
-          await del("projects/" + p.id); e.target.closest(".prow").remove(); } } }, tt("Supprimer")) : null))),
+          await del("projects/" + p.id); e.target.closest(".prow").parentNode.remove(); } } }, tt("Supprimer")) : null), sub); })),
       h("div.row", name, h("button.primary", { on: { click: async () => { m.close(); await this.create(name.value.trim() || tt("Storyboard")); } } }, tt("Créer")))),
       [{ label: tt("Fermer"), click: () => { if (rename.value.trim() && rename.value !== this.project.name) { this.project.name = rename.value.trim(); this.commit("name"); this.refresh(); } } }]);
   }

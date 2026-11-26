@@ -181,6 +181,11 @@ label.row.range output { width: 34px; text-align: right; color: var(--muted); fo
 .prow { display: flex; gap: 10px; align-items: center; padding: 4px 8px; border-radius: 6px; }
 .prow.on { background: var(--panel2); }
 .prow .link { flex: 1; }
+.prow .parrow { padding: 0 6px; min-width: 22px; }
+.psub { display: flex; flex-direction: column; margin: 0 0 4px 44px; }
+.psub .psheet { text-align: left; padding: 2px 6px; }
+.psub .psheet b { display: inline-block; min-width: 22px; }
+.pages .pg.named { text-decoration: underline dotted; text-underline-offset: 3px; }
 .wstatus { font-size: 12.5px; margin-bottom: 6px; }
 
 /* ---- fiche d'un element */
