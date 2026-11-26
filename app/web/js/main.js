@@ -562,6 +562,12 @@ class App {
       toast(tt`Case « ${c ? c.name : cid} » posée dans la case ${g.order}.` + (missing ? tt` ${missing} élément(s) ne sont plus dans la banque.` : "") + tt(" Ctrl+Z pour revenir."));
     } catch (e) { toast(tt("Case non posée : ") + e.message, "error"); }
   }
+  /** Verrouiller un element : il ne se prend plus a la souris (le clic passe a travers, sur la case) ; clic droit pour le liberer. */
+  toggleLock(l) {
+    if (l.lock) delete l.lock; else l.lock = 1;
+    this.commit("lock"); this.editor.render(); this.refreshInspector();
+    toast(l.lock ? tt("Élément verrouillé : il ne bouge plus à la souris. Clic droit dessus pour le déverrouiller.") : tt("Élément déverrouillé."));
+  }
   setAxis(l, axis) {
     const v = variantOf(this.bank.get(l.item), l.v);
     if (!v || !v.orbit) return;
@@ -628,6 +634,7 @@ class App {
       { label: tt("✎ Dessiner le fond… (Q)"), star: "blue", click: () => this.drawBackground(this.sel.panel) },
       { label: tt("📍 Montrer dans la banque"), click: () => this.bankUI.reveal(l.item) },
       { label: tt("🔄 Remplacer par…"), click: () => this.replaceLayer(l) },
+      { label: l.lock ? tt("🔓 Déverrouiller l'élément") : tt("🔒 Verrouiller l'élément"), click: () => this.toggleLock(l) },
       { label: tt("Générer d'autres poses…"), click: () => this.bankUI.openItem(l.item) }];
     // ↻ : orbite calculee, la pose tourne · ⏳ : orbite en calcul · ▫ : image fixe, pas d'orbite
     const poses = Object.entries(item?.variants || {}).map(([k, vv]) => ({ label: (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + tr(vv.label), checked: k === l.v, click: () => this.setPose(l, k) }));
@@ -1265,7 +1272,7 @@ class App {
       // le trait est une version de l'illustration, jamais a sa place : l.ill montre l'illustration (les images de l'orbite) ;
       // pour un element qui n'est pas un dessin, l'illustration par defaut et le trait sur demande (l.tr)
       const sp = layerSp(sp0, l), trait = !!(sp && sp.vec);
-      box.append(h("h3", item ? item.name : tt("Élément retiré de la banque")));
+      box.append(h("h3", item ? item.name : tt("Élément retiré de la banque"), l.lock ? h("span", { title: tt("Verrouillé : clic droit dessus pour le déverrouiller") }, " 🔒") : ""));
       if (sp0 && (sp0.vec || sp0.vecAlt)) box.append(h("div.axes", { title: tt("Le trait est une version de l'illustration, tracée pour être nette à tout zoom. L'illustration reste toujours là.") },
         [[true, tt("Illustration")], [false, tt("Trait")]].map(([ill, lab]) => h("button.mini" + (ill !== trait ? ".on" : ""), { on: { click: () => {
           if (ill) { if (sp0.vec) l.ill = 1; delete l.tr; } else { delete l.ill; if (sp0.vecAlt) l.tr = 1; }

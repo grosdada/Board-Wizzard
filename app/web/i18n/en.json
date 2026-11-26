@@ -2256,7 +2256,12 @@
   "Étoiles scintillantes ✦": "Twinkling stars ✦",
   "Ciel d'étoiles dessinées ★": "Sky of drawn stars ★",
   "Scatter (forme semée)": "Scatter (scattered shape)",
-  "Scatter : la Longueur donne la taille de la forme (0 : selon l'épaisseur), le Désordre la fait tourner.": "Scatter: Length sets the shape's size (0: from the thickness), Disorder rotates it."
+  "Scatter : la Longueur donne la taille de la forme (0 : selon l'épaisseur), le Désordre la fait tourner.": "Scatter: Length sets the shape's size (0: from the thickness), Disorder rotates it.",
+  "🔓 Déverrouiller l'élément": "🔓 Unlock the element",
+  "🔒 Verrouiller l'élément": "🔒 Lock the element",
+  "Élément verrouillé : il ne bouge plus à la souris. Clic droit dessus pour le déverrouiller.": "Element locked: it no longer moves with the mouse. Right-click it to unlock.",
+  "Élément déverrouillé.": "Element unlocked.",
+  "Verrouillé : clic droit dessus pour le déverrouiller": "Locked: right-click it to unlock"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

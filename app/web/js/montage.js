@@ -272,7 +272,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const cm = layerCM(l, !!vf);                         // colorize et colorimetrie : l'image et ses bouches prennent la meme couleur
       if (cm) o = o.slice(0, o1) + cmFilter(`${pre}tn-${l.id}`, cm) + `<g filter="url(#${pre}tn-${l.id})">` + o.slice(o1) + "</g>";
       if (rz) o = o.slice(0, o1) + `<g transform="rotate(${f1(rz)} ${f1(box.cx)} ${f1(box.y + box.h / 2)})">` + o.slice(o1) + "</g>";
-      if (sel === l.id) {                                  // poignees : les memes que dans les cases (handles.js)
+      if (sel === l.id && !l.lock) {                       // poignees : les memes que dans les cases (handles.js)
         const u = 1 / ((px || 1 / 2.4) * c.z), hx = W / 2 / c.z, hy = H / 2 / c.z;
         const vis = c.rot ? null : { x0: c.cx * W - hx, x1: c.cx * W + hx, y0: c.cy * H - hy, y1: c.cy * H + hy };   // le cadre de la camera
         o += handlesSvg({ box, rz, u, view: vis, bounds: vis, orbit: !!sp.orbit, attrs: ` data-layer="${l.id}"` });
@@ -1072,7 +1072,8 @@ export function openMontage(app, pid) {
   }
   function layerMenu(e, l) {
     const it = itemOf(l), st = stateOf(l), vv = it && variantOf(it, st.v), items = [{ head: it ? it.name : tt("Élément") }];
-    items.push({ label: tt("◆ Poser une clé ici"), click: () => { setKey(l.id, {}); paint(); lanes(); props(); } });
+    items.push({ label: tt("◆ Poser une clé ici"), click: () => { setKey(l.id, {}); paint(); lanes(); props(); } },
+      { label: l.lock ? tt("🔓 Déverrouiller l'élément") : tt("🔒 Verrouiller l'élément"), click: () => { if (l.lock) delete l.lock; else l.lock = 1; hist.snap(); paint(); props(); } });
     if (it && Object.keys(it.variants).length > 1) {
       items.push({ head: tt("Pose") });
       for (const [k, v] of Object.entries(it.variants)) items.push({ label: (v.orbit ? "↻ " : "▫ ") + tr(v.label), checked: k === st.v, click: () => { preload(it, k); change(l.id, { v: k, f: v.orbit ? Math.min(st.f, v.orbit.n - 1) : 0 }); props(); } });
@@ -2148,7 +2149,8 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
       paint(); lanes(); props(); vdrag.p = ptOf(e);
       return;
     }
-    const id = lockCam ? null : e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
+    const id0 = lockCam ? null : e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
+    const id = id0 && e.button !== 2 && (layerOf(id0) || {}).lock ? null : id0;   // verrouille : on ne le prend pas (clic droit : son menu)
     const shId = id || lockCam ? null : (e.target.closest("[data-shape]") || {}).dataset?.shape, shp = shId ? shapeOf("s:" + shId) : null;
     sel = id || (shp ? "s:" + shId : "cam"); selKey = null;
     const p = ptOf(e), c = camAt();

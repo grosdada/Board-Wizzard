@@ -95,7 +95,7 @@ export class Editor {
     const svg = this.svg;
     svg.querySelectorAll(":scope > g.lh").forEach((x) => { if (!x.classList.contains("mh")) x.remove(); });
     const hs = this.hs, l = this.app.layer();
-    if (!hs || !l) return;
+    if (!hs || !l || l.lock) return;                       // element verrouille : pas de poignees
     const { box, sp, g } = hs, bb = g.bbox, FT = frameT(this.panel(g.id), bb), u = 1 / (this.scale() || 1) / (FT ? FT.z : 1);      // u : unites de page par pixel d'ecran
     this.rotCenter = { x: box.cx, y: box.y + box.h / 2 };
     const gh = s("g");
@@ -581,7 +581,8 @@ export class Editor {
       e.preventDefault();
       return;
     }
-    if (t.dataset && t.dataset.layer) {
+    // element verrouille : le clic passe a travers, comme sur la case (clic droit : son menu, pour le deverrouiller)
+    if (t.dataset && t.dataset.layer && !((this.panel(t.dataset.panel).layers || []).find((x) => x.id === t.dataset.layer) || {}).lock) {
       const pid = t.dataset.panel, g = this.geom.panels.find((x) => x.id === pid), [pt, F] = inPanel(pid, g);
       const l = (this.panel(pid).layers || []).find((x) => x.id === t.dataset.layer);
       if (!l || !g) return;
