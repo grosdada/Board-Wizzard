@@ -2255,8 +2255,8 @@
   "Feuilles": "Leaves",
   "Étoiles scintillantes ✦": "Twinkling stars ✦",
   "Ciel d'étoiles dessinées ★": "Sky of drawn stars ★",
-  "Forme semée": "Scattered shape",
-  "Forme semée : la Longueur donne sa taille (0 : selon l'épaisseur), le Désordre la fait tourner.": "Scattered shape: Length sets its size (0: from the thickness), Disorder rotates it."
+  "Scatter (forme semée)": "Scatter (scattered shape)",
+  "Scatter : la Longueur donne la taille de la forme (0 : selon l'épaisseur), le Désordre la fait tourner.": "Scatter: Length sets the shape's size (0: from the thickness), Disorder rotates it."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

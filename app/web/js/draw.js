@@ -766,8 +766,8 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (kind === "erase") side.append(range(tt("Largeur"), "bw", 1, 80, 0.5));
     if (kind === "hair") side.append(col(tt("Couleur"), "stroke", "#111111"), range(tt("Densité"), "hd", 0.5, 60, 0.5), range(tt("Étalement"), "hs", 0, 40, 0.5),
       range(tt("Longueur (0 = points)"), "hl", 0, 30, 0.5), range(tt("Épaisseur"), "hz", 0.2, 6, 0.1), range(tt("Direction (°)"), "ho", -90, 90, 1), range(tt("Désordre (°)"), "hj", 0, 90, 1));
-    if (kind === "hair") side.append(pick(tt("Forme semée"), "hf", Object.fromEntries(Object.entries(SEEDS).map(([k, x]) => [k, typeof x === "string" ? x : x[0]]))),
-      val("hf") && val("hf") !== "poil" ? h("p.muted", tt("Forme semée : la Longueur donne sa taille (0 : selon l'épaisseur), le Désordre la fait tourner.")) : "");
+    if (kind === "hair") side.append(pick(tt("Scatter (forme semée)"), "hf", Object.fromEntries(Object.entries(SEEDS).map(([k, x]) => [k, typeof x === "string" ? x : x[0]]))),
+      val("hf") && val("hf") !== "poil" ? h("p.muted", tt("Scatter : la Longueur donne la taille de la forme (0 : selon l'épaisseur), le Désordre la fait tourner.")) : "");
     if (BRUSH_SAVE[kind]) {                                // pinceaux enregistres : les reglages d'un pinceau, gardes sous un nom
       const mine = savedBrushes().filter((b) => b.t === kind), pre = kind === "hair" ? HAIR_PRESETS : [];
       const pickB = h("select", { on: { change: (e) => { const x = e.target.value, b = x === "" ? null : x[0] === "p" ? { v: Object.assign({ hf: "poil" }, pre[+x.slice(1)][1]) } : mine[+x]; if (!b) return; for (const [k, v] of Object.entries(b.v)) set(k, v); if (b.v.href) { cur.href = b.v.href; cur.ar = b.v.ar || 1; } props(); } } },
