@@ -2261,7 +2261,10 @@
   "🔒 Verrouiller l'élément": "🔒 Lock the element",
   "Élément verrouillé : il ne bouge plus à la souris. Clic droit dessus pour le déverrouiller.": "Element locked: it no longer moves with the mouse. Right-click it to unlock.",
   "Élément déverrouillé.": "Element unlocked.",
-  "Verrouillé : clic droit dessus pour le déverrouiller": "Locked: right-click it to unlock"
+  "Verrouillé : clic droit dessus pour le déverrouiller": "Locked: right-click it to unlock",
+  "▦ Égaliser les cases": "▦ Equalize panels",
+  "Toutes les cases de la même taille, au format de celle qui remplit le mieux le cadre : le bloc se resserre sur les côtés ou en hauteur. Un trait penché garde sa pente.": "All panels the same size, in the format of the one that best fills the frame: the block narrows at the sides or in height. A slanted cut keeps its slope.",
+  "Cases égalisées au format {0} (largeur / hauteur). Ctrl+Z pour revenir.": "Panels equalized to format {0} (width / height). Ctrl+Z to go back."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

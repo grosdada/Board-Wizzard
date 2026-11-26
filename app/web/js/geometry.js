@@ -322,6 +322,51 @@ export function keep169(page, layout) {
   return mx > page.margin + 1 ? mx : null;
 }
 
+/** Egaliser les cases : chaque trait se place pour que les rangees aient la meme hauteur et les colonnes la meme largeur,
+ *  gouttieres comprises. Un trait penche garde sa pente (ses deux bouts bougent d'autant). Modifie layout sur place. */
+export function equalize(page, layout) {
+  const rowsN = (n) => (!n || n.t === "leaf" ? 1 : n.dir === "h" ? rowsN(n.c[0]) + rowsN(n.c[1]) : Math.max(rowsN(n.c[0]), rowsN(n.c[1])));
+  const colsN = (n) => (!n || n.t === "leaf" ? 1 : n.dir === "v" ? colsN(n.c[0]) + colsN(n.c[1]) : Math.max(colsN(n.c[0]), colsN(n.c[1])));
+  const under = (page.under || 0) * page.height;
+  let depth = 0;
+  (function d(n, k) { if (n && n.t === "split") { depth = Math.max(depth, k + 1); d(n.c[0], k + 1); d(n.c[1], k + 1); } })(layout, 0);
+  for (let pass = 0; pass < depth + 1; pass++) {           // du haut de l'arbre vers le bas : une case parente fixe la boite de ses enfants
+    for (const { node, bb } of compute(page, layout).cuts) {
+      const cnt = node.dir === "h" ? rowsN : colsN, n0 = cnt(node.c[0]), N = n0 + cnt(node.c[1]);
+      const L = node.dir === "h" ? bb.h : bb.w, g = node.dir === "v" ? page.gutterV ?? page.gutter : page.gutter + under;
+      // avec de la place sous les rangees, compute partage deja la hauteur hors gouttiere (voir « sh ») ; sinon on en tient compte ici
+      const want = node.dir === "h" && under > 0 ? n0 / N : (n0 * (L + g) / N - g / 2) / L;
+      const d = want - (node.a + node.b) / 2;
+      node.a = +(node.a + d).toFixed(5); node.b = +(node.b + d).toFixed(5);
+    }
+  }
+  return layout;
+}
+
+/** Egaliser au meilleur format : toutes les cases au format (largeur / hauteur) d'une des cases actuelles, celui qui remplit
+ *  le mieux le cadre une fois les cases egalisees ; le bloc se resserre sur les cotes (page.mx) ou en hauteur (page.room,
+ *  recentre par page.dy). Modifie page et layout ; rend le format choisi. */
+export function equalizeBest(page, layout) {
+  const ratios = compute(page, layout).panels.filter((q) => q.bbox && q.bbox.h > 1).map((q) => q.bbox.w / q.bbox.h);
+  const dy0 = (page.dy || 0) + (page.room || 0) / 2;
+  delete page.mx; delete page.room; page.dy = dy0;
+  const med = () => { const r = compute(page, equalize(page, layout)).panels.filter((q) => q.bbox && q.bbox.h > 1).map((q) => q.bbox.w / q.bbox.h).sort((a, b) => a - b); return r[r.length >> 1] || 1; };
+  const r0 = med();
+  if (!ratios.length) return r0;
+  const want = ratios.reduce((best, r) => (Math.abs(Math.log(r / r0)) < Math.abs(Math.log(best / r0)) ? r : best), ratios[0]);
+  if (Math.abs(Math.log(want / r0)) < 0.003) return r0;
+  // plus etroites : les cotes se resserrent ; plus larges : le bloc perd de la hauteur, au milieu de la page
+  const set = want < r0 ? (k) => { page.mx = page.margin + k * (page.width / 2 - page.margin); }
+                        : (k) => { page.room = k * 0.9; page.dy = dy0 + page.room / 2; };
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 30; i++) { const k = (lo + hi) / 2; set(k); const r = med(); if ((want < r0) === (r > want)) lo = k; else hi = k; }
+  set((lo + hi) / 2); equalize(page, layout);
+  if (page.mx != null) page.mx = Math.round(page.mx);
+  if (page.room != null) { page.room = +page.room.toFixed(4); page.dy = +page.dy.toFixed(4); }
+  if (!page.dy) delete page.dy;
+  return want;
+}
+
 export function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
 // ------------------------------------------------------------------ presets

@@ -2,7 +2,7 @@
 // assets en orbite, bulles, fausse profondeur de champ, « Integrate », orbite de case.
 import { tt, tr, LANG, setLang } from "./i18n.js";
 import { h, get, post, put, del, upload, toast, modal, debounce } from "./api.js";
-import { compute, PRESETS, transpose, splitLeaf, removeLeaf, leaves, randomLayout, clone, keep169 } from "./geometry.js";
+import { compute, PRESETS, transpose, splitLeaf, removeLeaf, leaves, randomLayout, clone, keep169, equalize, equalizeBest } from "./geometry.js";
 import { Editor } from "./editor.js";
 import { Bank, target } from "./bank.js";
 import { flattenPanel } from "./flatten.js";
@@ -308,6 +308,9 @@ class App {
         h("label.row.check", { title: tt("Quand la place sous les rangées grandit, les cases rétrécissent aussi en largeur et restent centrées : elles gardent leur format 16/9.") },
           h("input", { type: "checkbox", checked: page.keep169 ?? page.gutter0 !== undefined, on: { change: (e) => { page.keep169 = e.target.checked; this.fit169(); this.reflowNotes(); this.editor.render(); this.commit("page-place"); } } }), tt("Garder les cases en 16/9")),
         h("div.row.wrap",
+          h("button.mini", { title: tt("Toutes les cases de la même taille, au format de celle qui remplit le mieux le cadre : le bloc se resserre sur les côtés ou en hauteur. Un trait penché garde sa pente."),
+            on: { click: () => { const pg = this.page(), r = equalizeBest(pg.page, pg.layout); this.reflowNotes(); this.editor.render(); this.commit("page-equal"); this.renderLeft();
+              toast(tt`Cases égalisées au format ${r.toFixed(2)} (largeur / hauteur). Ctrl+Z pour revenir.`); } } }, tt("▦ Égaliser les cases")),
           h("button.mini", { title: tt("Le bloc de cases colle au haut de la page"), on: { click: () => { page.dy = -Math.max(0, page.margin - page.height * 0.012) / page.height; this.reflowNotes(); this.editor.render(); this.commit("page-place"); this.renderLeft(); } } }, tt("⤒ Tout en haut")),
           h("button.mini", { title: tt("Cases à leur place : sans décalage ni place libre ajoutée"), on: { click: () => { delete page.dx; delete page.dy; delete page.room; delete page.under; delete page.mx; this.reflowNotes(); this.editor.render(); this.commit("page-place"); this.renderLeft(); } } }, tt("Recentrer")))),
       h("details.fold", { open: !!(page.hand > 0) }, h("summary", tt("Tremblé du contour")), ...[[tt("Tremblé"), "hand", 0, 10, 0], [tt("Ondulation"), "wave", 0.5, 12, 4]].map(([label, key, min, max, def]) => {
