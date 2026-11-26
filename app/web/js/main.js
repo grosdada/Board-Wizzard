@@ -131,11 +131,12 @@ class App {
     this.restoring = false;
     this.savePos();
     if (pos && pos.mt && this.geo(pos.mt)) openMontage(this, pos.mt);
+    else if (pos && pos.dk && (this.project.decks || []).some((d) => d.id === pos.dk)) openDeck(this, pos.dk);
   }
   savePos() {
     if (!this.project || this.restoring) return;
     const pg = this.page();
-    try { localStorage.setItem("bw.pos." + this.project.id, JSON.stringify({ pg: pg && pg.id, sel: this.sel || {}, mt: this.montagePid || null })); } catch (e) { /* plein */ }
+    try { localStorage.setItem("bw.pos." + this.project.id, JSON.stringify({ pg: pg && pg.id, sel: this.sel || {}, mt: this.montagePid || null, dk: this.deckOpen || null })); } catch (e) { /* plein */ }
   }
 
   refresh() {

@@ -133,6 +133,8 @@ export function openDeck(app, deckId) {
     [{ label: tt("Fermer"), primary: true, click: done }]);
   m.box.classList.add("modal-wide", "modal-montage");
   { const hd = m.box.querySelector("header"); fullBtn.classList.add("head-full"); hd.insertBefore(fullBtn, hd.querySelector("button.icon")); }   // plein ecran : en haut a droite, a cote de la croix
+  app.deckOpen = deck.id; app.savePos?.();                // F5 : le deck se rouvre
+  new MutationObserver((_, ob) => { if (!m.box.isConnected) { ob.disconnect(); if (app.deckOpen === deck.id) { app.deckOpen = null; app.savePos?.(); } } }).observe(document.body, { childList: true });
   return m;
 }
 
