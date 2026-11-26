@@ -1311,6 +1311,15 @@ class Handler(BaseHTTPRequestHandler):
             (pdir / rel).parent.mkdir(parents=True, exist_ok=True)
             (pdir / rel).write_bytes(body)
             return self.send_json({"file": rel})
+        if act == "orbit-frame" and method == "POST":              # orbite de case sans generation : une image rendue par le navigateur
+            panel = re.sub(r"[^\w-]", "", seg[2])
+            run, k = re.sub(r"\D", "", q.get("run", ""))[:14], int(q.get("k", -1))
+            if not panel or not run or not 0 <= k < 360 or not body or len(body) > 8 * 1024 * 1024:
+                raise ApiError("image d'orbite invalide")
+            rel = "orbit/%s_%s_3d" % (panel, run)
+            (pdir / rel).mkdir(parents=True, exist_ok=True)
+            (pdir / rel / ("%03d.webp" % k)).write_bytes(body)
+            return self.send_json({"dir": rel})
         if act == "orbit-snap" and method == "POST":               # mise en place tiree de l'orbite, aplatie : dossier processed_orbit
             panel = re.sub(r"[^\w-]", "", seg[2])
             tag = re.sub(r"[^\w-]", "", q.get("tag", ""))[:40]

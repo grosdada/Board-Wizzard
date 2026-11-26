@@ -9,7 +9,7 @@ import { bgStroke, frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, cm
 import { exprCard } from "./lipsync.js";
 import { sprite, layerSp, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
-export async function flattenPanel(app, g, longSide = 1344, sharp = true, over = null) {
+export async function flattenPanel(app, g, longSide = 1344, sharp = true, over = null, type = "image/png") {
   const pg = app.page(), pan = over || pg.panels[g.id] || {}, bb = g.bbox;     // over : une case modifiee (image du montage)
   const k = longSide / Math.max(bb.w, bb.h);
   const cv = document.createElement("canvas");
@@ -160,5 +160,5 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
     await withGom(l, sp, box, async () => draw(im, box.x, box.y, box.w, box.h, sharp ? 0 : blurOf(pan, depthOf(pan, i), bb), l.flip, l.rz));
     await exprDraw(l, sp, box);
   }
-  return new Promise((ok) => cv.toBlob(ok, "image/png"));
+  return new Promise((ok) => cv.toBlob(ok, type, 0.92));
 }

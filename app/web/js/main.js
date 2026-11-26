@@ -1257,6 +1257,44 @@ class App {
         toast(tt("Orbite de la case lancée (≈ 3 min).")); this.pollSoon();
       } catch (e) { toast(tt("Orbite impossible : ") + e.message, "error"); return false; }
     };
+    // Sans generation : 72 images de la case aplatie, la camera tournant de 5 degres a chaque image. Les elements montrent
+    // l'image de leur tournette sous cet angle (orbitpersp.js) ; un decor 360 de la banque tourne du meme angle, comme
+    // enroule sur un cylindre autour de la scene (ses images se lisent a rebours : la camera part a droite, le decor
+    // defile vers la droite). Essaye sur p92 de zz-essais le 26/11/2026. Un decor en simple image reste fixe.
+    const goLocal = async () => {
+      const g = this.geo(this.sel.panel), pid = this.sel.panel, N = 72, opt = { glue: true, tele: 2 };
+      const base = pan.orbitBase || { layers: pan.layers || [], ground: pan.ground || null, bg: pan.bg || null, view: pan.view || null };
+      const src = Object.assign({}, pan, { layers: base.layers, ground: base.ground, bg: base.bg, view: base.view || pan.view, show: "layers" });
+      if (!g || !(src.layers || []).some((l) => { const it = this.bank.get(l.item), v = it && variantOf(it, l.v); return v && v.orbit && v.orbit.n > 1; }))
+        { toast(tt("Aucun élément de cette case n'a de tournette : rien ne tournerait."), "error"); return false; }
+      const bgIt = src.bg && src.bg.item && this.bank.get(src.bg.item), bgV = bgIt && variantOf(bgIt, src.bg.v || "base");
+      const turns = !!(bgV && bgV.orbit && bgV.orbit.n > 1), a0 = turns ? frameToAngle(bgV.orbit, src.bg.f || 0) : 0;
+      const run = Date.now();
+      toast(tt("Orbite sans génération : rendu des 72 images…"));
+      (async () => {
+        try {
+          let dir = "", w = 0, hh = 0;
+          for (let k = 0; k < N; k++) {
+            const yaw = k * 360 / N, r = orbitPerspective(src, g.bbox.h / g.bbox.w, this.bank, yaw, opt);
+            const by = new Map(r.out.map((x) => [x.l.id, x]));
+            const layers = src.layers.map((l, i) => { const x = by.get(l.id), c = Object.assign({}, l, l.d == null ? { d: depthOf(src, i) } : {});
+              return x ? Object.assign(c, { x: x.x, y: x.y, s: x.s, d: x.d }, x.f != null ? { f: x.f } : {}) : c; }).sort((p, q) => q.d - p.d);
+            const over = Object.assign({}, src, { layers });
+            if (turns) over.bg = Object.assign({}, src.bg, { f: angleToFrame(bgV.orbit, a0 - yaw) });
+            if (r.ground && src.ground) over.ground = Object.assign({}, src.ground, r.ground);
+            const blob = await flattenPanel(this, g, 1152, true, over, "image/webp");
+            if (!k) { const im = await createImageBitmap(blob); w = im.width; hh = im.height; }
+            dir = (await upload(`projects/${this.project.id}/orbit-frame/${pid}?run=${run}&k=${k}`, blob)).dir;
+          }
+          const tgt = this.project.pages.flatMap((pg) => (pg.panels[pid] ? [pg.panels[pid]] : []))[0];
+          if (!tgt) return;
+          tgt.orbit = { n: N, w, h: hh, ext: "webp", alpha: false, dir, frame: 0, local: opt };
+          tgt.show = "orbit";
+          this.commit("orbit-local"); this.editor.render(); this.refreshInspector();
+          toast(tt("Orbite sans génération prête.") + (turns ? "" : " " + tt("Le décor n'est pas un décor 360 : il reste fixe.")));
+        } catch (e) { toast(tt("Orbite impossible : ") + e.message, "error"); }
+      })();
+    };
     modal(tt("Orbite de la case"), h("div.form",
       h("p.muted", tt("La caméra fait le tour de la scène : le décor tourne avec les personnages, et ce qui était hors champ est inventé dans le même style. La consigne se modifie ; elle est gardée pour les prochaines orbites.")),
       h("label.col", tt("Consigne"), prompt),
@@ -1264,8 +1302,10 @@ class App {
       h("div", { style: { display: "flex", gap: "6px", alignItems: "center" } }, tt("Graine"), seed,
         h("button.mini", { type: "button", title: tt("Tirer une autre graine"), on: { click: () => { seed.value = 1 + Math.floor(Math.random() * 999999); } } }, "🎲"),
         h("button.mini", { type: "button", title: tt("Revenir à la graine des réglages"), on: { click: () => { seed.value = ""; } } }, tt("Réglages"))),
-      h("p.muted", tt("Même graine et même consigne donnent la même vidéo. Si le décor reste vide au demi-tour, relance avec une autre graine."))),
-      [{ label: tt("Annuler") }, { label: tt("↻ Lancer l'orbite"), primary: true, click: go }]).box.classList.add("wide");
+      h("p.muted", tt("Même graine et même consigne donnent la même vidéo. Si le décor reste vide au demi-tour, relance avec une autre graine.")),
+      h("p.muted", tt("« ⚡ Sans génération » : immédiat et gratuit. Les éléments montrent leur tournette sous chaque angle et un décor 360 de la banque défile derrière eux ; un décor en simple image reste fixe."))),
+      [{ label: tt("Annuler") }, { label: tt("⚡ Sans génération"), title: tt("Immédiat et gratuit : les tournettes des éléments et le décor 360 de la banque, sans calcul"), click: goLocal },
+       { label: tt("↻ Lancer l'orbite"), primary: true, click: go }]).box.classList.add("wide");
   }
   // « Recalculer la perspective » depuis l'orbite de la case : les marionnettes de la case (pas une image calculee) se
   // calent sur l'angle ou l'orbite est arretee (orbitpersp.js, la meme reconstruction que la vue 3D du montage). Le calcul
@@ -1296,7 +1336,7 @@ class App {
       h("p.muted", tt("Un instantané de la case part dans le dossier processed_orbit du storyboard (et un second quand le décor arrive)."))),
       [{ label: tt("Annuler") }, { label: tt("↻ Placer"), primary: true, click: () => {
         const to = dest.value, same = to === pid;
-        const r = orbitPerspective(Object.assign({}, pan, { layers: base.layers, ground: base.ground, bg: base.bg }), g.bbox.h / g.bbox.w, this.bank, yaw);
+        const r = orbitPerspective(Object.assign({}, pan, { layers: base.layers, ground: base.ground, bg: base.bg }), g.bbox.h / g.bbox.w, this.bank, yaw, o.local || {});
         // les elements de la case tels qu'a l'image 0 (pan.orbitBase) ; ceux ajoutes depuis gardent leur place, ceux
         // retires depuis ne reviennent pas
         const baseOf = new Map(base.layers.map((l, i) => [l.id, Object.assign(JSON.parse(JSON.stringify(l)), l.d == null ? { d: +depthOf({ layers: base.layers }, i).toFixed(3) } : {})]));
@@ -1318,7 +1358,7 @@ class App {
         if (r.ground && tgt.ground) Object.assign(tgt.ground, r.ground);
         tgt.bg = base.bg ? JSON.parse(JSON.stringify(base.bg)) : tgt.bg;
         if (same && base.view) tgt.view = base.view;
-        if (turns) { const a = frameToAngle(bgV.orbit, base.bg.f || 0); tgt.bg.f = angleToFrame(bgV.orbit, a + yaw); }
+        if (turns) { const a = frameToAngle(bgV.orbit, base.bg.f || 0); tgt.bg.f = angleToFrame(bgV.orbit, o.local ? a - yaw : a + yaw); }
         tgt.show = "layers";
         tgt.orbitOf = { panel: pid, frame: k };
         if (!same) pg.panels[to] = tgt;

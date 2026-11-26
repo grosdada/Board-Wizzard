@@ -12,7 +12,11 @@ const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
 /** pan : la case telle qu'a l'image 0 de l'orbite ; ratio : hauteur / largeur de la case ; yaw en degres.
  *  Rend { out: [{ l, x, y, s, f?, d }], skipped, ground: { m, hz } | null }, sans rien modifier. */
-export function orbitPerspective(pan, ratio, bank, yaw) {
+export function orbitPerspective(pan, ratio, bank, yaw, opt = {}) {
+  // opt (orbite sans generation, main.js panelOrbitLocal) : glue = les pieds donnent la profondeur meme sans carte de sol ;
+  // tele = la camera recule d'autant et sa focale s'allonge d'autant (memes tailles au milieu de la scene, moins de
+  // perspective : tout pres, un personnage devenait geant au demi-tour)
+  const tele = Math.max(1, +opt.tele || 1);
   const hw = ratio, hz = pan.ground && pan.ground.hz != null ? pan.ground.hz : estimateHorizon(pan), cards = [];
   (pan.layers || []).forEach((l, i) => {
     const it = bank.get(l.item), sp = it && sprite(it, l.v, l.f || 0);
@@ -22,7 +26,7 @@ export function orbitPerspective(pan, ratio, bank, yaw) {
   });
   const eyes = cards.map((c) => (c.yf - hz) * hw * c.zc / D0).filter((v) => v > 0.01).sort((a, b) => a - b);
   const camY = eyes.length ? eyes[Math.floor(eyes.length / 2)] : 0.3 * hw;
-  const glue = !!(pan.ground && pan.ground.on);
+  const glue = !!(opt.glue || (pan.ground && pan.ground.on));
   for (const c of cards) {
     const below = (c.yf - hz) * hw;
     if (glue && !c.l.fly && below > 0.004) {
@@ -33,19 +37,19 @@ export function orbitPerspective(pan, ratio, bank, yaw) {
   }
   const zMid = cards.length ? cards.reduce((a, c) => a + c.z, 0) / cards.length : ZD / 2;
   // camera tournee autour du milieu de la scene, a la meme distance, regard horizontal, meme focale
-  const ya = yaw * Math.PI / 180, R = zMid + D0;
+  const ya = yaw * Math.PI / 180, R = (zMid + D0) * tele;
   const C = [0.5 + R * Math.sin(ya), camY, zMid - R * Math.cos(ya)];
   const fw = [-Math.sin(ya), 0, Math.cos(ya)], r = [Math.cos(ya), 0, Math.sin(ya)];
   const u = [fw[1] * r[2] - fw[2] * r[1], fw[2] * r[0] - fw[0] * r[2], fw[0] * r[1] - fw[1] * r[0]];
-  const f = 0.5 / Math.tan(FOV0 * Math.PI / 360);
+  const f = tele * 0.5 / Math.tan(FOV0 * Math.PI / 360);
   const proj = (p) => { const d = sub(p, C), x = dot(r, d), y = dot(u, d), zc = dot(fw, d); return { x: 0.5 + x * f / zc, y: hz - y * f / zc / hw, zc }; };
-  const base = [0.5, camY, -D0], an = (p) => Math.atan2(p[2], p[0]) * 180 / Math.PI;
+  const base = [0.5, camY, zMid - R], an = (p) => Math.atan2(p[2], p[0]) * 180 / Math.PI;
   const out = [];
   let skipped = 0;
   for (const c of cards) {
     const feet = proj([c.X, c.Y, c.z]), top = proj([c.X, c.Y + c.Hc, c.z]);
     if (feet.zc < 0.05) { skipped++; continue; }
-    const o = { l: c.l, x: f3(feet.x), y: f3(feet.y), s: f3(Math.max(0.02, feet.y - top.y)), d: f3(clamp((feet.zc - D0) / ZD, 0, 1)) };
+    const o = { l: c.l, x: f3(feet.x), y: f3(feet.y), s: f3(Math.max(0.02, feet.y - top.y)), d: f3(clamp((feet.zc - (R - zMid)) / ZD, 0, 1)) };
     let da = an(sub(C, [c.X, 0, c.z])) - an(sub(base, [c.X, 0, c.z]));
     da = ((da + 540) % 360) - 180;
     const vv = variantOf(c.it, c.l.v);
