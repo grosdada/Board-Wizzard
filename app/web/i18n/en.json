@@ -2267,7 +2267,12 @@
   "Cases égalisées au format {0} (largeur / hauteur). Ctrl+Z pour revenir.": "Panels equalized to format {0} (width / height). Ctrl+Z to go back.",
   "Taille du contour": "Outline size",
   "Perspective": "Perspective",
-  "Perspective : la rotation se couche, comme vue en biais, pour montrer un objet qui tourne sur son axe. Inclinaison : l'axe penche.": "Perspective: the rotation lies down, as if seen at an angle, to show an object spinning on its axis. Tilt: the axis leans."
+  "Perspective : la rotation se couche, comme vue en biais, pour montrer un objet qui tourne sur son axe. Inclinaison : l'axe penche.": "Perspective: the rotation lies down, as if seen at an angle, to show an object spinning on its axis. Tilt: the axis leans.",
+  "Page précédente": "Previous page",
+  "Page suivante": "Next page",
+  "Voir toutes les pages": "See all pages",
+  "Page {0} / {1}": "Page {0} / {1}",
+  "Page {0}": "Page {0}"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

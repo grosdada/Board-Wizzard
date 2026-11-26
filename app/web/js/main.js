@@ -147,12 +147,45 @@ class App {
   renderPages() {
     const P = this.project;
     this.el.pages.textContent = "";
-    this.el.pages.append(h("span.muted", tt("Page")), ...P.pages.map((pg, i) => h("button.pg" + (i === this.pageIndex ? ".on" : ""),
-      { on: { click: () => { this.pageIndex = i; this.sel = {}; this.refresh(); } } }, String(i + 1))),
+    const go = (i) => { if (i < 0 || i >= P.pages.length || i === this.pageIndex) return; this.pageIndex = i; this.sel = {}; this.refresh(); };
+    // peu de pages : un bouton par page ; au-dela, ‹ Page n / N ▾ › et la planche de toutes les pages en menu
+    const nav = P.pages.length <= 8 ? [h("span.muted", tt("Page")), ...P.pages.map((pg, i) => h("button.pg" + (i === this.pageIndex ? ".on" : ""),
+      { on: { click: () => go(i) } }, String(i + 1)))]
+      : [h("button.pg", { title: tt("Page précédente"), disabled: this.pageIndex === 0, on: { click: () => go(this.pageIndex - 1) } }, "‹"),
+         h("button.pg.pg-cur", { title: tt("Voir toutes les pages"), on: { click: (e) => this.pagesGrid(e.currentTarget, go) } }, tt`Page ${this.pageIndex + 1} / ${P.pages.length}` + " ▾"),
+         h("button.pg", { title: tt("Page suivante"), disabled: this.pageIndex === P.pages.length - 1, on: { click: () => go(this.pageIndex + 1) } }, "›")];
+    this.el.pages.append(...nav,
       h("button.pg", { title: tt("Ajouter une page (même découpage)"), on: { click: () => this.addPage() } }, "+"),
       ...(P.pages.length > 1 ? [h("button.pg", { title: tt("Supprimer cette page"), on: { click: () => this.removePage() } }, "−")] : []));
   }
 
+  // planche des pages : une vignette par page (le decoupage, les cases remplies en gris), sous le bouton
+  pagesGrid(anchor, go) {
+    document.querySelector(".pages-grid")?.remove();
+    const P = this.project, NS = "http://www.w3.org/2000/svg";
+    const box = h("div.pages-grid");
+    P.pages.forEach((pg, i) => {
+      const svg = document.createElementNS(NS, "svg"), W = pg.page.width, H = pg.page.height;
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      let inner = `<rect width="${W}" height="${H}" fill="#f4f1ea"/>`;
+      try {
+        for (const g of compute(pg.page, pg.layout).panels) {
+          const pan = pg.panels[g.id] || {}, full = (pan.layers || []).length || pan.bg || pan.draw;
+          inner += `<polygon points="${g.poly.map((q) => q.join(",")).join(" ")}" fill="${full ? "#b9b2a4" : "#fff"}" stroke="#333" stroke-width="${W / 160}"/>`;
+        }
+      } catch (e) { /* page illisible : vignette vide */ }
+      svg.innerHTML = inner;
+      box.append(h("button.pg-tile" + (i === this.pageIndex ? ".on" : ""), { title: tt`Page ${i + 1}`, on: { click: () => { close(); go(i); } } }, svg, h("span", String(i + 1))));
+    });
+    document.body.append(box);
+    const r = anchor.getBoundingClientRect();
+    box.style.left = Math.max(8, Math.min(r.left, innerWidth - box.offsetWidth - 8)) + "px"; box.style.top = (r.bottom + 6) + "px";
+    box.querySelector(".pg-tile.on")?.scrollIntoView({ block: "nearest" });
+    const outside = (e) => { if (!box.contains(e.target) && e.target !== anchor) close(); };
+    const esc = (e) => { if (e.key === "Escape") close(); };
+    const close = () => { box.remove(); document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", esc, true); };
+    setTimeout(() => { document.addEventListener("pointerdown", outside, true); document.addEventListener("keydown", esc, true); });
+  }
   addPage() {
     const cur = this.page(), P = this.project;
     const layout = clone(cur.layout);
