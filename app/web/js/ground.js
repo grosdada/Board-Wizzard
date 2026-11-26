@@ -2,6 +2,9 @@
 // dans l'image, jusqu'a la ligne d'horizon. panel.ground = { on, pat, hz (horizon, fraction de la hauteur de la case),
 // sc (taille des carreaux), col (couleur), a (opacite), m (place du motif sur le sol, voir groundMap) }. Le meme trace dans
 // la case, au montage (image, isometrique, 3D) et dans l'image aplatie.
+// Plaque de sol (« Make Ground ») : gr.ext = [u0, u1, v0, v1], ses bords sur le sol (u : de cote, v : devant la camera, les
+// deux divises par la hauteur de la camera, comme groundMap) ; sans ext le sol va jusqu'a l'horizon. gr.fill : couleur de
+// la plaque (pleine, sous le motif ; "none" : seulement le motif).
 import { tt } from "./i18n.js";
 
 export const PATS = { damier: tt("Damier"), grille: tt("Grille"), points: tt("Points"), lignes: tt("Lignes (bandes)"), lavis: tt("Lavis (aquarelle)"), uni: tt("Uni") };
@@ -137,12 +140,42 @@ export function groundSvg(gr, box, id = "gr") {
     body = pat === "grille" ? `<path d="${d}" fill="none" stroke="${col}" stroke-width="${lw.toFixed(2)}"/>` : "";
   }
   if (!body) body = `<path d="${d}" fill="${col}"/>`;
+  // plaque de sol : son contour en perspective decoupe le sol ; sa couleur pleine passe sous le motif
+  let plate = "", pclip = "";
+  if (Array.isArray(gr.ext) && gr.ext.length === 4) {
+    const P = plateCorners(gr, box);
+    const pd = "M" + P.map((q) => f1(q[0]) + " " + f1(q[1])).join("L") + "Z";
+    pclip = `<clipPath id="${id}-p"><path d="${pd}"/></clipPath>`;
+    if (gr.fill !== "none") plate = `<g clip-path="url(#${id}-c)" style="pointer-events:none"><path d="${pd}" fill="${gr.fill || PLATE0}"/></g>`;
+    body = `<g clip-path="url(#${id}-p)">${body}</g>`;
+  }
   // vers l'horizon le motif s'efface (trop fin pour etre dessine)
   const yFar = yH + F / vF, yMid = yH + F / (vF / 4);
   return `<defs><linearGradient id="${id}-fade" gradientUnits="userSpaceOnUse" x1="0" y1="${f1(yFar)}" x2="0" y2="${f1(yMid)}"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="1"/></linearGradient>` +
     `<mask id="${id}-m" maskUnits="userSpaceOnUse" x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(yB - yH)}"><rect x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(yB - yH)}" fill="url(#${id}-fade)"/></mask>` +
-    `<clipPath id="${id}-c"><rect x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(yB - yH)}"/></clipPath></defs>` +
+    `<clipPath id="${id}-c"><rect x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(yB - yH)}"/></clipPath>${pclip}</defs>` + plate +
     `<g clip-path="url(#${id}-c)" mask="url(#${id}-m)" opacity="${a}" style="pointer-events:none">${body}</g>`;
+}
+
+export const PLATE0 = "#e6e1d6";
+/** Plaque de sol de depart : du bas de la case jusqu'a mi-distance, un peu moins large que le champ (ses bords se voient). ratio : h / w. */
+export function plateDefault(gr, ratio) {
+  const vN = 1 / Math.max(0.05, (1 - (gr.hz ?? 0.45)) * ratio);
+  return [-vN * 0.42, vN * 0.42, vN * 0.95, vN * 4].map((x) => +x.toFixed(3));
+}
+/** Les quatre coins de la plaque dans la boite (pres gauche, pres droit, loin droit, loin gauche). */
+export function plateCorners(gr, box) {
+  const hz = gr.hz ?? 0.45, yH = box.y + hz * box.h, F = box.w, cx = box.x + box.w / 2;
+  const [u0, u1, v0, v1] = gr.ext, n = Math.max(0.05, v0), f = Math.max(n + 0.01, v1);
+  const img = (u, v) => [cx + F * u / v, yH + F / v];
+  return [img(u0, n), img(u1, n), img(u1, f), img(u0, f)];
+}
+/** Point de la boite -> point du sol (u, v) ; null au-dessus de l'horizon. */
+export function groundAt(gr, box, x, y) {
+  const hz = gr.hz ?? 0.45, yH = box.y + hz * box.h, F = box.w, cx = box.x + box.w / 2;
+  if (y <= yH + 0.5) return null;
+  const v = F / (y - yH);
+  return [(x - cx) * v / F, v];
 }
 
 /** Le sol vu de dessus (vue isometrique, dalles de la vue 3D) : un rectangle (x0, y0, w, hh) en unites de l'appelant, ou

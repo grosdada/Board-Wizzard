@@ -12,7 +12,7 @@ import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put, del } from "./api.js";
 import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime, segsOf, exprMarkup, exprGom, exprAt, exprName } from "./lipsync.js";
 import { swatch } from "./colors.js";
-import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
+import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0, PLATE0, plateDefault, plateCorners, groundAt } from "./ground.js";
 import { markupReady } from "./model.js";
 import { bgStroke, jitterFilter, sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
@@ -429,9 +429,12 @@ export function openMontage(app, pid) {
   function paint() {
     recSync();
     updMouthDot();
-    const mk = isoView ? isoMarkup() : depthView ? topView() : v3 ? `<rect width="${W}" height="${f1(H)}" fill="#26292d"/>` : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
+    const mk = isoView ? scene.markup(t, null, paint, (svg.getScreenCTM() || {}).a) : depthView ? topView() : v3 ? `<rect width="${W}" height="${f1(H)}" fill="#26292d"/>` : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
     if (!(playing && !markupReady(mk) && svg.firstChild)) svg.innerHTML = mk;   // en lecture, une image pas prete : on garde la precedente
     boxDot();
+    if (isoView) groundOverlay();
+    gbar.style.display = isoView ? "" : "none";
+    if (isoView) gbarFill();
     if (v3) render3(); else box3.style.display = "none";
     if (showMask && !playing) svg.querySelectorAll('[data-mask]').forEach((e) => { e.setAttribute("fill", "#ff5fa2"); e.setAttribute("fill-opacity", "0.55"); });
   }
@@ -564,6 +567,63 @@ export function openMontage(app, pid) {
     return o;
   }
   function isoSave() { localStorage.setItem("bw.iso", JSON.stringify(iso)); }
+  // ------------------------------------------------------------------------------------------ Make Ground
+  // Une plaque de sol en fausse 3D, posee dans l'image de la case : ses bords (pres, loin, gauche, droite) se tirent a la
+  // souris, glisser dedans la deplace sur le sol, la ligne d'horizon fixe les fuyantes. Elle garde ses donnees de sol
+  // (horizon, place du motif) : la 3D, la profondeur et « Stick to the ground » s'en servent.
+  const gbar = h("div.mt-gbar", { style: { display: "none" }, on: { pointerdown: (e) => e.stopPropagation() } });
+  let gdrag = null;
+  function ensureGround() {
+    if (!pan.ground) pan.ground = Object.assign({}, GROUND0, { hz: estimateHorizon(pan) });
+    const gr = pan.ground;
+    if (gr.hz == null) gr.hz = estimateHorizon(pan);
+    if (!Array.isArray(gr.ext)) gr.ext = plateDefault(gr, H / W);
+    gr.on = true;
+    return gr;
+  }
+  // le sol est dessine dans le groupe de la camera : on suit sa transformation
+  function groundCTM() {
+    const g = svg.querySelector('[mask="url(#mtgr-m)"]'), a = svg.getScreenCTM(), b = g && g.getScreenCTM();
+    return a && b ? a.inverse().multiply(b) : new DOMMatrix();
+  }
+  function groundOverlay() {
+    const gr = pan.ground;
+    if (!gr || !Array.isArray(gr.ext)) return;
+    const M = groundCTM(), T = (p) => { const q = new DOMPoint(p[0], p[1]).matrixTransform(M); return [q.x, q.y]; };
+    const box = { x: 0, y: 0, w: W, h: H }, C = plateCorners(gr, box).map(T), yH = (gr.hz ?? 0.45) * H, vp = T([W / 2, yH]);
+    const ln = (a, b, extra) => `<line x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(b[0])}" y2="${f1(b[1])}" vector-effect="non-scaling-stroke" ${extra}/>`;
+    const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const lerp = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];   // poignees des cotes : vers le fond, la ou elles se voient
+    const hd = (p, k, tip) => `<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${f1(W * 0.011)}" fill="#5fc4a8" stroke="#123" stroke-width="1.5" vector-effect="non-scaling-stroke" data-gh="${k}" style="cursor:${k === "n" || k === "f" ? "ns-resize" : "ew-resize"}"><title>${tip}</title></circle>`;
+    const hzA = T([-W, yH]), hzB = T([2 * W, yH]), hzH = T([W * 0.94, yH]);
+    const o = `<g class="mt-ground-edit">` +
+      ln(hzA, hzB, `stroke="#e0b84a" stroke-width="1.5" stroke-dasharray="8 5"`) +
+      [0, 1].map((i) => ln(C[i], vp, `stroke="#5fc4a8" stroke-opacity=".6" stroke-width="1" stroke-dasharray="4 4"`)).join("") +
+      `<path d="M${C.map((q) => f1(q[0]) + " " + f1(q[1])).join("L")}Z" fill="#5fc4a8" fill-opacity="0.07" stroke="#5fc4a8" stroke-width="2" vector-effect="non-scaling-stroke" data-gp="1" style="cursor:move"><title>${tt("Glisser : déplacer la plaque sur le sol")}</title></path>` +
+      hd(mid(C[0], C[1]), "n", tt("Bord de devant")) + hd(mid(C[2], C[3]), "f", tt("Bord du fond")) + hd(lerp(C[0], C[3], 0.7), "l", tt("Bord gauche")) + hd(lerp(C[1], C[2], 0.7), "r", tt("Bord droit")) +
+      `<rect x="${f1(hzH[0] - W * 0.045)}" y="${f1(hzH[1] - H * 0.022)}" width="${f1(W * 0.09)}" height="${f1(H * 0.044)}" rx="4" fill="#e0b84a" data-gh="hz" style="cursor:ns-resize"><title>${tt("Horizon : glisser pour le monter ou le descendre (les fuyantes suivent)")}</title></rect>` +
+      `<text x="${f1(hzH[0])}" y="${f1(hzH[1] + H * 0.012)}" font-size="${f1(H * 0.03)}" text-anchor="middle" fill="#1b1b1b" pointer-events="none" style="font-family:sans-serif">${tt("Horizon")}</text></g>`;
+    svg.insertAdjacentHTML("beforeend", o);
+  }
+  function gbarFill() {
+    const gr = pan.ground;
+    gbar.textContent = "";
+    if (!gr || !Array.isArray(gr.ext)) {
+      gbar.append(h("button.mini.star", { on: { click: () => { ensureGround(); hist.snap(); paint(); } } }, tt("▱ Créer la plaque de sol")),
+        gr && gr.on ? h("span.muted", tt("Le sol actuel va jusqu'à l'horizon.")) : "");
+      return;
+    }
+    const full = gr.fill !== "none";
+    gbar.append(
+      h("label.check", { title: tt("La plaque est peinte d'une couleur pleine, sous le motif ; décoché : seulement le motif") },
+        h("input", { type: "checkbox", checked: full, on: { change: (e) => { if (e.target.checked) delete gr.fill; else gr.fill = "none"; hist.snap(); paint(); } } }), tt("Plaque pleine")),
+      full ? h("input", { type: "color", value: gr.fill && gr.fill !== "none" ? gr.fill : PLATE0, title: tt("Couleur de la plaque"), on: { input: (e) => { gr.fill = e.target.value; paint(); }, change: () => hist.snap() } }) : "",
+      h("button.mini", { title: tt("Motif du sol (damier, grille, lavis…), sa taille, sa couleur"), on: { click: () => groundDialog() } }, tt("Motif…")),
+      h("button.mini", { title: tt("Remet la plaque à sa taille de départ"), on: { click: () => { gr.ext = plateDefault(gr, H / W); hist.snap(); paint(); } } }, tt("↺ Plaque de départ")),
+      h("button.mini", { title: tt("Le sol redevient infini, jusqu'à l'horizon"), on: { click: () => { delete gr.ext; delete gr.fill; hist.snap(); paint(); } } }, tt("Sol infini")),
+      h("button.mini.danger", { on: { click: () => { delete pan.ground; hist.snap(); paint(); } } }, tt("Retirer le sol")),
+      h("span.mt-ghelp", tt("Tire les ronds pour agrandir la plaque, glisse dedans pour la déplacer, la barre jaune règle l'horizon.")));
+  }
   // ------------------------------------------------------------------------------------------ vue 3D
   // La scene en vraie perspective : chaque element est une carte plate, debout dans l'espace, face a la camera de la case.
   // Reconstruction d'apres la case : camera de la case en (0,5 ; hauteur des yeux ; -D0), regard horizontal, horizon a la
@@ -656,7 +716,12 @@ export function openMontage(app, pid) {
       TS = 0.25 * Math.max(1, Math.round((gz + D0) / 1.5));
       const TZ = Math.min(TS, zEnd - gz), half = Math.max(2.5, 1.5 * (gz + TS + D0)), n = Math.ceil(half / TS);
       for (let q = -n; q < n; q++) {
-        const gx = 0.5 + q * TS, tr = plane([gx, 0, gz], [TS / TP, 0, 0], [0, 0, TZ / TP], TP, TP);
+        const gx = 0.5 + q * TS;
+        if (gr && Array.isArray(gr.ext)) {                   // plaque de sol : seulement les dalles qui la touchent
+          const e = gr.ext, cy = rb.camY, u = (gx - 0.5) / cy, u2 = (gx + TS - 0.5) / cy, v = (gz + D0) / cy, v2 = (gz + TZ + D0) / cy;
+          if (u2 < e[0] || u > e[1] || v2 < e[2] || v > e[3]) continue;
+        }
+        const tr = plane([gx, 0, gz], [TS / TP, 0, 0], [0, 0, TZ / TP], TP, TP);
         if (!tr) continue;
         const id = `mt3g${Math.round(gx * 100)}_${Math.round(gz * 100)}`.replace(/-/g, "m");
         const el = h("div");
@@ -2247,7 +2312,33 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   };
   let vdrag = null;
   // vue isometrique : glisser = point de vue, clic sur le sol = carte de sol, molette = zoom
-  svg.addEventListener("pointerdown", (e) => { if (!isoView) return; stop(); try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ } isoDrag = { x: e.clientX, y: e.clientY, yaw: iso.yaw, pitch: iso.pitch, ground: !!e.target.closest("[data-ground]"), moved: false }; svg.style.cursor = "grabbing"; });
+  svg.addEventListener("pointerdown", (e) => {
+    if (!isoView) return;
+    const k = e.target.dataset && (e.target.dataset.gh || (e.target.dataset.gp ? "move" : null)), gr = pan.ground;
+    if (!k || !gr || !gr.ext) return;
+    stop(); try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+    const g = svg.querySelector('[mask="url(#mtgr-m)"]'), Mi = (g || svg).getScreenCTM().inverse();
+    const at = (ev) => { const q = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(Mi); return [q.x, q.y]; };
+    gdrag = { k, at, p0: at(e), ext0: gr.ext.slice(), hz0: gr.hz ?? 0.45 };
+  });
+  svg.addEventListener("pointermove", (e) => {
+    if (!isoView || !gdrag) return;
+    const gr = pan.ground, d = gdrag, p = d.at(e), box = { x: 0, y: 0, w: W, h: H }, x = gr.ext;
+    if (d.k === "hz") { gr.hz = f3(clamp(d.hz0 + (p[1] - d.p0[1]) / H, 0.02, 0.95)); paint(); return; }
+    const q = groundAt(gr, box, p[0], p[1]), q0 = groundAt(Object.assign({}, gr, { hz: d.hz0 }), box, d.p0[0], d.p0[1]);
+    if (!q) return;
+    if (d.k === "n") x[2] = f3(clamp(q[1], 0.05, x[3] - 0.05));
+    else if (d.k === "f") x[3] = f3(clamp(q[1], x[2] + 0.05, 200));
+    else if (d.k === "l") x[0] = f3(Math.min(q[0], x[1] - 0.05));
+    else if (d.k === "r") x[1] = f3(Math.max(q[0], x[0] + 0.05));
+    else if (d.k === "move" && q0) {
+      const du = q[0] - q0[0], dv = q[1] - q0[1], v0 = Math.max(0.05, d.ext0[2] + dv), sh = v0 - d.ext0[2];
+      gr.ext = [d.ext0[0] + du, d.ext0[1] + du, v0, d.ext0[3] + sh].map(f3);
+    }
+    paint();
+  });
+  svg.addEventListener("pointerup", () => { if (gdrag) { gdrag = null; hist.snap(); } });
+  svg.addEventListener("pointerdown", (e) => { if (!isoView || true) return; stop(); try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ } isoDrag = { x: e.clientX, y: e.clientY, yaw: iso.yaw, pitch: iso.pitch, ground: !!e.target.closest("[data-ground]"), moved: false }; svg.style.cursor = "grabbing"; });
   svg.addEventListener("pointermove", (e) => {
     if (!isoView || !isoDrag) return;
     const dx = e.clientX - isoDrag.x, dy = e.clientY - isoDrag.y;
@@ -2353,7 +2444,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   });
   svg.addEventListener("wheel", (e) => {
     e.preventDefault();
-    if (isoView) { iso.zoom = clamp(iso.zoom * Math.exp(-e.deltaY * 0.0015), 0.4, 4); isoSave(); paint(); return; }
+    if (isoView) return;
     const k = Math.exp(-e.deltaY * 0.0015);
     if (e.altKey || (depthView && CAMS[sel])) change("cam", { dz: f3(clamp((camAt().dz || 0) - e.deltaY * 0.0012, -2, 1.95)) });   // Alt + molette : la camera avance ou recule
     else if (sel === "cam") change("cam", { z: f3(clamp(camAt().z * k, 0.4, 5)) });
@@ -2459,7 +2550,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   const fullBtn = h("button.mini", { title: tt("La fenêtre de montage prend tout l'écran"), on: { click: () => { const on = m.box.classList.toggle("modal-full"); fullBtn.textContent = on ? tt("🗗 Fenêtre") : tt("⛶ Plein écran"); } } }, tt("⛶ Plein écran"));
   // quatre vues : l'image, la profondeur (schema vu de dessus), l'isometrique, la 3D
   const VIEWS = [["image", tt("🖼 Image"), tt("L'image de la case, comme elle sera montrée")], ["depth", tt("⬒ Profondeur"), tt("Schéma vu de dessus : chaque élément est une carte, à glisser vers le fond ou vers la caméra")],
-    ["iso", tt("◇ Isométrique"), tt("La scène sur son sol, vue d'en haut et de côté : glisser pour changer de point de vue, clic sur le sol pour la carte de sol")],
+    ["iso", tt("▱ Make Ground"), tt("Une plaque de sol en fausse 3D dans l'image : tirer ses bords pour l'agrandir, glisser dedans pour la déplacer, régler l'horizon et les fuyantes ; motif et couleur")],
     ["3d", tt("🧊 3D"), tt("La scène en vraie perspective : glisser de côté pour en faire le tour (360°), vers le bas pour passer au-dessus (clic droit + glisser : la caméra, même sur un élément), Maj + glisser pour monter, molette pour avancer. Clic sur un élément : le choisir (Ctrl : plusieurs) ; le glisser : le déplacer (Alt : en hauteur) ; « Stick to the ground », « Generate View »")]];
   const viewSeg = h("div.mt-views");
   const camLockBtn = h("button.mini.mt-camlock", { title: tt("Verrouillé : dans l'image, tout geste déplace le cadre de la caméra, même sur un personnage (touche C). Déverrouiller pour reprendre les personnages."),
@@ -2471,7 +2562,8 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   function setView(v) {
     depthView = v === "depth"; isoView = v === "iso"; isoDrag = null; v3 = v === "3d"; v3drag = null;
     viewSeg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
-    svg.style.cursor = isoView ? "grab" : "";
+    svg.style.cursor = "";
+    if (isoView && !(pan.ground && pan.ground.ext)) { ensureGround(); hist.snap(); }   // Make Ground : la plaque est creee en entrant
     paint();
   }
   viewSeg.append(...VIEWS.map(([k, n, title]) => h("button" + (k === "image" ? ".on" : ""), { "data-view": k, title, on: { click: () => setView(k) } }, n)));
@@ -2558,7 +2650,7 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
   }
   const beforeUnload = (e) => { if (m.box.isConnected && dirty()) { e.preventDefault(); e.returnValue = ""; } };
   window.addEventListener("beforeunload", beforeUnload);
-  const m = modal(tt`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg, box3), side), bar, keyBox, tl),
+  const m = modal(tt`Montage · case ${g.order}`, h("div.mt-editor", h("div.mt-top", h("div.mt-view", svg, box3, gbar), side), bar, keyBox, tl),
     [{ label: tt("Annuler"), click: async () => (await leave()) ? undefined : false },
      { label: tt("Enregistrer le montage"), click: () => { save(); toast(tt("Montage enregistré.")); } },
      { label: tt("Enregistrer et envoyer dans le deck ▸"), primary: true, click: () => { save(); app.sendToDeck(pid); } }]);
