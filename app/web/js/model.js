@@ -20,6 +20,8 @@ export function sprite(item, vid, f) {
     const n = v.orbit.n, i = ((Math.round(f || 0) % n) + n) % n;
     return { url: `/bank/${id}/${v.orbit.dir}/${pad3(i)}.webp?t=${v.orbit.t || 0}`, w: v.orbit.w, h: v.orbit.h, n, i, orbit: true,
              vec: v.orbit.vec && item.style === "dessin" ? `/bank/${id}/${v.orbit.dir}/vec.json?v=${v.orbit.vt || 0}` : null,
+             // les autres styles : le trait existe aussi, mais seulement sur demande, calque par calque (l.tr)
+             vecAlt: v.orbit.vec && item.style !== "dessin" ? `/bank/${id}/${v.orbit.dir}/vec.json?v=${v.orbit.vt || 0}` : null,
              head: v.orbit.head ? `/bank/${id}/${v.orbit.dir}/head.json?v=${v.orbit.vt || 0}` : null,   // tete suivie (corps de mannequin)
              mouth: v.orbit.mouth ? `/bank/${id}/${v.orbit.dir}/mouth.json?v=${v.orbit.mt || 0}` : null,
              lips: v.orbit.mouth && v.orbit.lips ? `/bank/${id}/${v.orbit.dir}/lips.json?v=${v.orbit.lips}` : null,
@@ -29,6 +31,14 @@ export function sprite(item, vid, f) {
   return { url: `/bank/${id}/${v.ref}?t=${v.t || 0}`, w: item.w || 1, h: item.h || 1, n: 1, i: 0, raw: true };
 }
 
+/** Le sprite tel que le calque le montre : l.ill = l'illustration (images de l'orbite) plutot que le trait ; l.tr = le
+ *  trait d'un element qui n'est pas un dessin (par defaut, on y voit l'illustration). */
+export function layerSp(sp, l) {
+  if (!sp || !l) return sp;
+  if (l.ill) return sp.vec ? Object.assign({}, sp, { vec: null }) : sp;
+  if (l.tr && sp.vecAlt) return Object.assign({}, sp, { vec: sp.vecAlt });
+  return sp;
+}
 // ---- dessins en traces : vec.json d'une orbite = { w, h, frames: [{ body, ink }] }, charge une fois puis garde
 const vecs = new Map();
 /** Traces de l'image affichee, ou null tant qu'ils ne sont pas charges (l'image WebP sert en attendant). */

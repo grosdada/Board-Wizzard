@@ -14,7 +14,7 @@ import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, uses
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
 import { markupReady } from "./model.js";
-import { sprite, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM } from "./model.js";
+import { sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
 import { PRESETS } from "./presets.js";
 import { faceFor, opsSvg } from "./face.js";
@@ -218,7 +218,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const par = anim.parallax ? (anim.pstr ?? 0.4) * (depthOf(pan, li) - 0.5) : 0, bl = blur(depthOf(pan, li));
       const kp = perspOf(depthOf(pan, li), c.dz);
       if (!kp) return;                                     // la camera l'a depasse
-      const box = layerBox(bb, Object.assign({}, l, s, { x: c.cx + (s.x - c.cx) * kp + (c.cx - 0.5) * par, y: c.cy + (s.y - c.cy) * kp + (c.cy - 0.5) * par, s: s.s * kp }), sp), vf = vecFrame(l.ill ? null : sp, again);
+      const box = layerBox(bb, Object.assign({}, l, s, { x: c.cx + (s.x - c.cx) * kp + (c.cx - 0.5) * par, y: c.cy + (s.y - c.cy) * kp + (c.cy - 0.5) * par, s: s.s * kp }), sp), vf = vecFrame(layerSp(sp, l), again);
       const flip = l.flip ? `translate(${f1(2 * box.cx)} 0) scale(-1 1) ` : "";
       const gsd = groundShadow(l, box);                    // ombre portee : sous l'element
       const rz = s.rz || 0;                 // ce qui suit (dessin, bouche, cadre, poignees) tourne autour du centre
@@ -956,7 +956,7 @@ export function openMontage(app, pid) {
         rows.push(() => { const v = depthNow(l); if (document.activeElement !== inp) inp.value = v; out.textContent = v.toFixed(2); });
         side.append(h("label.row.range", { title: tt("0 = tout devant, 1 = au fond. Sert à la parallaxe, au flou de profondeur et à l'ordre des éléments.") }, tt("Profondeur"), inp, out));
       }
-      if (sprite(it, cur().v, cur().f)?.vec) {
+      if (layerSp(sprite(it, cur().v, cur().f), l)?.vec) {
         const wig = (label, k, min, max, def) => { const out = h("output", (l[k] ?? def).toFixed(1)); return h("label.row.range", label, h("input", { type: "range", min, max, step: 0.1, value: l[k] ?? def, on: { input: (e) => { l[k] = +e.target.value; out.textContent = (+e.target.value).toFixed(1); paint(); } } }), out); };
         side.append(range(tt("Trait"), "lw", -12, 6, 0.1, (x) => (+x).toFixed(1)), fold("wig", tt("Tremblé du trait"), wig(tt("Tremblé"), "hand", 0, 10, 0), wig(tt("Ondulation"), "wave", 0.5, 12, 4)),
           h("label.row.check", { title: tt("Le trait tremble en boucle pendant la lecture, comme un dessin refait à chaque image") }, h("input", { type: "checkbox", checked: !!(l.boil && l.boil.on), on: { change: (e) => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: e.target.checked }); paint(); props(); } } }), tt("Animer le tremblé")),
@@ -974,7 +974,7 @@ export function openMontage(app, pid) {
           swatch(tn.c || "#e9b98f", (c) => { l.tint = { on: true, c }; cb.checked = true; paint(); })));
       }
       side.append(voiceBox(l));
-      if (l.boil && l.boil.on && sprite(it, cur().v, cur().f)?.vec) {
+      if (l.boil && l.boil.on && layerSp(sprite(it, cur().v, cur().f), l)?.vec) {
         const bo = (label, k, min, max, step, def, fmt) => { const out = h("output", fmt(l.boil[k] ?? def)); return h("label.row.range", label, h("input", { type: "range", min, max, step, value: l.boil[k] ?? def, on: { input: (e) => { l.boil[k] = +e.target.value; out.textContent = fmt(+e.target.value); paint(); } } }), out); };
         const at = [...side.children].find((x) => x.matches && x.matches("label.check") && /Animer le tremblé/.test(x.textContent));
         const box = h("div.fold-in", bo(tt("Intensité"), "a", 0.3, 8, 0.1, 2, (x) => (+x).toFixed(1)), bo(tt("Rapidité"), "v", 1, 24, 1, 8, (x) => Math.round(x) + " /s"));
@@ -986,7 +986,7 @@ export function openMontage(app, pid) {
       if (it && Object.keys(it.variants).length > 1) side.append(h("label.row", tt("Pose"), h("select", { on: { change: (e) => { const vv = variantOf(it, e.target.value); preload(it, e.target.value); change(sel, { v: e.target.value, f: vv && vv.orbit ? Math.min(cur().f, vv.orbit.n - 1) : 0 }); props(); } } },
         Object.entries(it.variants).map(([k, vv]) => h("option", { value: k, selected: k === cur().v }, (vv.orbit ? "↻ " : "▫ ") + tr(vv.label))))));
       // ombre et ombre portee : en dernier, apres la profondeur et le reste
-      if (sprite(it, cur().v, cur().f)?.vec) {
+      if (layerSp(sprite(it, cur().v, cur().f), l)?.vec) {
         const sh = l.sh || {};
         side.append(h("label.row.check", h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: e.target.checked }); paint(); props(); } } }), tt("Ombre")));
         if (sh.on) side.append(fold("sh", tt("Réglages de l'ombre"),
@@ -1085,7 +1085,7 @@ export function openMontage(app, pid) {
       { label: tt("Premier plan"), half: true, click: () => reorder(l, "top") }, { label: tt("Arrière-plan"), half: true, click: () => reorder(l, "bottom") },
       { head: tt("Élément") },
       { label: tt("Retourner (miroir)"), checked: !!l.flip, click: () => { l.flip = !l.flip; paint(); } });
-    if (sprite(it, st.v, st.f)?.vec) items.push({ label: tt("Ombre"), checked: !!(l.sh && l.sh.on), click: () => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: !(l.sh && l.sh.on) }); paint(); props(); } },
+    if (layerSp(sprite(it, st.v, st.f), l)?.vec) items.push({ label: tt("Ombre"), checked: !!(l.sh && l.sh.on), click: () => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135, k: 0 }, l.sh, { on: !(l.sh && l.sh.on) }); paint(); props(); } },
       { label: tt("Animer le tremblé"), checked: !!(l.boil && l.boil.on), click: () => { l.boil = Object.assign({ a: 2, v: 8 }, l.boil, { on: !(l.boil && l.boil.on) }); paint(); props(); } });
     items.push({ label: tt("Ombre portée"), checked: !!(l.gs && l.gs.on), click: () => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { on: !(l.gs && l.gs.on) }); paint(); props(); } },
       { label: tt("Bouche qui parle"), checked: !!(l.lip && l.lip.on), click: async () => { l.lip = Object.assign({ off: 0, bg: true }, l.lip, { on: !(l.lip && l.lip.on) }); await persoFirst(l); paint(); props(); } },

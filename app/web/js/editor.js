@@ -6,7 +6,7 @@ import { tt, tr } from "./i18n.js";
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, thin } from "./marks.js";
-import { vecFrame, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
+import { vecFrame, layerSp, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
 import { frameToAngle, thinMask, lineWidth, frameT, markupReady, cmFilter, layerCM, bgCM } from "./model.js";
@@ -260,7 +260,7 @@ export class Editor {
           const gsd = groundShadow(l, box);                  // ombre portee : sous l'element
           if (gsd) grp.append(s("path", { d: gsd.d, fill: gsd.col, opacity: gsd.a, "pointer-events": "none",
                                              filter: this.blur(defs, gsd.blur + blurOf(pan, depthOf(pan, i), bb)) }));
-          const vf = vecFrame(l.ill ? null : sp, () => this.render(true));   // l.ill : l'illustration plutot que le trait
+          const vf = vecFrame(layerSp(sp, l), () => this.render(true));   // l.ill : l'illustration plutot que le trait ; l.tr : le trait sur demande
           if (vf) {                                          // dessin en traces : net a tout zoom, trait reglable
             const sc = Math.min(box.w / vf.w, box.h / vf.h), tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc;
             const col = bodyFill(l), ink = inkFill(l), st = inkStroke(l.lw, col, ink, vf.sw), tag = { "data-layer": l.id, "data-panel": g.id };

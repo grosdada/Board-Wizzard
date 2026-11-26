@@ -14,7 +14,7 @@ import { openMontage } from "./montage.js";
 import { photoDialog, openGenerations } from "./photo.js";
 import { openDeck, addClip } from "./deck.js";
 import { orbitPerspective } from "./orbitpersp.js";
-import { sprite, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox, pad3 } from "./model.js";
+import { sprite, layerSp, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox, pad3 } from "./model.js";
 
 const FORMATS = [
   { id: "story", label: tt("Storyboard 16:10"), w: 2400, h: 1500 },
@@ -1262,11 +1262,14 @@ class App {
     if (!pan) { box.append(h("h3", tt("Sélection")), h("p.muted", tt("Clique une case pour la régler ; glisse-y un décor puis des personnages depuis la banque."))); return; }
     if (l) {
       const item = this.bank.get(l.item), v = variantOf(item, l.v), sp0 = item && sprite(item, l.v, l.f), ls = pan.layers, i = ls.indexOf(l);
-      // le trait est une version de l'illustration, jamais a sa place : l.ill montre l'illustration (les images de l'orbite)
-      const sp = sp0 && l.ill ? Object.assign({}, sp0, { vec: null }) : sp0;
+      // le trait est une version de l'illustration, jamais a sa place : l.ill montre l'illustration (les images de l'orbite) ;
+      // pour un element qui n'est pas un dessin, l'illustration par defaut et le trait sur demande (l.tr)
+      const sp = layerSp(sp0, l), trait = !!(sp && sp.vec);
       box.append(h("h3", item ? item.name : tt("Élément retiré de la banque")));
-      if (sp0 && sp0.vec) box.append(h("div.axes", { title: tt("Le trait est une version de l'illustration, tracée pour être nette à tout zoom. L'illustration reste toujours là.") },
-        [[true, tt("Illustration")], [false, tt("Trait")]].map(([on, lab]) => h("button.mini" + (!!l.ill === on ? ".on" : ""), { on: { click: () => { if (on) l.ill = 1; else delete l.ill; this.commit("ill"); this.editor.render(); this.refreshInspector(); } } }, lab))));
+      if (sp0 && (sp0.vec || sp0.vecAlt)) box.append(h("div.axes", { title: tt("Le trait est une version de l'illustration, tracée pour être nette à tout zoom. L'illustration reste toujours là.") },
+        [[true, tt("Illustration")], [false, tt("Trait")]].map(([ill, lab]) => h("button.mini" + (ill !== trait ? ".on" : ""), { on: { click: () => {
+          if (ill) { if (sp0.vec) l.ill = 1; delete l.tr; } else { delete l.ill; if (sp0.vecAlt) l.tr = 1; }
+          this.commit("ill"); this.editor.render(); this.refreshInspector(); } } }, lab))));
       if (!item) { box.append(h("button.mini.danger", { on: { click: () => this.removeLayer(l) } }, tt("Supprimer le calque"))); return; }
       box.append(h("label.row", tt("Pose"), h("select", { on: { change: (e) => this.setPose(l, e.target.value) } },
         Object.entries(item.variants).map(([k, vv]) => h("option", { value: k, selected: k === l.v }, (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + tr(vv.label))))));
