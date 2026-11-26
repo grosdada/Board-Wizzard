@@ -2293,7 +2293,13 @@
   "Épaisseur aléatoire ⓘ": "Random thickness ⓘ",
   "Épaisseur du trait de tous les éléments (unités de la feuille)": "Line thickness of all elements (sheet units)",
   "Unifier le trait : tous les éléments, déjà posés ou à venir, prennent la même épaisseur de trait, quelle que soit leur taille. Décocher rend à chacun son trait.": "Unify line: all elements, placed now or later, get the same line thickness whatever their size. Unchecking gives each its own line back.",
-  "〰 Unifier le trait": "〰 Unify line"
+  "〰 Unifier le trait": "〰 Unify line",
+  "La scène en vraie perspective : glisser de côté pour en faire le tour (360°), vers le bas pour passer au-dessus, Maj + glisser pour monter, molette pour avancer ; « Recalculer la perspective » ou « Generate View » pour le personnage choisi": "The scene in true perspective: drag sideways to go all around (360°), down to go above, Shift + drag to rise, wheel to move in; “Recalculate perspective” or “Generate View” for the chosen character",
+  "Choisis d'abord un personnage dans la vue 3D.": "First choose a character in the 3D view.",
+  "Vue en file : elle arrivera dans la planche de vues de la fiche.": "View queued: it will arrive in the item's view sheet.",
+  "Génère la vue du personnage choisi sous l'angle de la caméra (de côté, de dos, de dessus…) et l'ajoute à sa planche de vues": "Generates the chosen character's view from the camera angle (side, back, above…) and adds it to its view sheet",
+  "✨ Generate View": "✨ Generate View",
+  "Générer la vue de « {0} » sous cet angle (tour {1}°, plongée {2}°) ? Elle s'ajoute à sa planche de vues. Coût : une image du moteur des poses (Réglages › Calcul) : de 0,02 à 0,15 $ sur fal, gratuit sur les machines.": "Generate the view of “{0}” from this angle (turn {1}°, high angle {2}°)? It is added to its view sheet. Cost: one image of the pose engine (Settings › Compute): $0.02 to $0.15 on fal, free on the machines."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

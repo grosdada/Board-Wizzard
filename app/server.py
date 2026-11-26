@@ -759,6 +759,13 @@ class Handler(BaseHTTPRequestHandler):
         if act == "sheet" and d.get("ok"):                          # planche validee a la main : la tournette part
             store.mutate_item(iid, lambda x: x.update(sheet_wait=False))
             return self.send_json({"job": S.add("item_orbit", {"item": iid, "variant": "base"}, "Orbite · %s · Base" % it["name"], **opts)})
+        if act == "view" and method == "POST":                      # vue a la demande (vue 3D du montage) : rangee dans la planche
+            if it["kind"] != "character":
+                raise ApiError("les vues a la demande sont pour les personnages")
+            az, el = int(round(float(d.get("az", 0)))), int(round(float(d.get("el", 0))))
+            az = ((az + 180) % 360) - 180
+            el = max(-30, min(89, el))
+            return self.send_json({"job": S.add("item_view", {"item": iid, "az": az, "el": el}, "Vue %d° · %d° · %s" % (az, el, it["name"]), **opts)})
         if act == "sheet":                                          # planche de vues d'un personnage (dos, profil...)
             return self.send_json({"job": S.add("item_sheet", {"item": iid, "redo": bool(d.get("redo")), "gate": bool(d.get("gate"))},
                                                 "Planche de vues · %s" % it["name"], **opts)})

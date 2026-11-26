@@ -19,7 +19,7 @@ from pathlib import Path
 from . import archive, brain, comfy, cost, falapi, poses, proportions, settings, sprites, store, vector, headtrack
 
 CAPS = {"item_cut": "matte", "item_orbit": "orbit", "item_pose": "edit", "item_new": "t2i", "item_sheet": "edit",
-        "item_apose": "edit", "item_views": "edit", "item_lips": "edit", "item_expr": "edit",
+        "item_apose": "edit", "item_views": "edit", "item_lips": "edit", "item_expr": "edit", "item_view": "edit",
         "panel_integrate": "edit", "panel_orbit": "orbit"}
 POLL = 3.0
 # priorite : 0 = case en cours de travail (Integrate, orbite de case), 1 = banque a la main, 2 = remplissage en lot
@@ -244,7 +244,8 @@ def ensure_sheet(it, prov, job=None, redo=False, audit=False):
     d = store.item_dir(it["id"])
     with lock:
         it = store.load_item(it["id"])
-        have = {} if redo else dict(it.get("sheet") or {})
+        std = {v for v, _ in poses.SHEET_VIEWS}
+        have = {k: r for k, r in (it.get("sheet") or {}).items() if k not in std} if redo else dict(it.get("sheet") or {})   # refaire : les vues a la demande restent
         base = d / it["variants"]["base"]["ref"]
         eprov, model = _pose_prov(job, prov)
         for k, (view, _) in enumerate(poses.SHEET_VIEWS):
@@ -274,6 +275,34 @@ def ensure_sheet(it, prov, job=None, redo=False, audit=False):
                 shutil.rmtree(tmp, ignore_errors=True)
         store.mutate_item(it["id"], lambda x: x.update(sheet=have, sheet_t=int(time.time()), sheet_model=model or x.get("sheet_model", "")))
         return [d / have[v] for v, _ in poses.SHEET_VIEWS if v in have]
+
+
+def run_item_view(job, prov):
+    """Vue a la demande d'un personnage (vue 3D du montage) : sous l'angle az, el ; rangee dans sa planche de vues."""
+    p = job["params"]
+    it = store.load_item(p["item"])
+    az, el = int(p.get("az", 0)), int(p.get("el", 0))
+    d = store.item_dir(it["id"])
+    base = d / it["variants"]["base"]["ref"]
+    refs = [base] + [d / r for k, r in (it.get("sheet") or {}).items() if k in {v for v, _ in poses.SHEET_VIEWS} and (d / r).exists()][:2]
+    eprov, model = _pose_prov(job, prov)
+    job["progress"] = "vue %d° · %d°" % (az, el)
+    prompt = poses.view_prompt(az, el, it.get("style", "photo"), faithful=bool(model) and it.get("style") != "dessin")
+    if len(refs) > 1:
+        prompt = "The first image is the character; the other images show it from other angles, for reference. " + prompt
+    rel = "sheet/vue-a%d-e%d.png" % (az, el)
+    (d / "sheet").mkdir(parents=True, exist_ok=True)
+    tmp = _tmp()
+    try:
+        png = eprov.edit(refs, prompt, int(p.get("seed") or (abs(az) * 7 + abs(el) * 13 + 5)), tmp)
+        if it.get("style") == "dessin":
+            sprites.ink(png, d / rel)
+        else:
+            sprites.normalize(png, d / rel)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    key = "vue %d° · %d°" % (az, el)
+    store.mutate_item(it["id"], lambda x: x.update(sheet=dict(x.get("sheet") or {}, **{key: rel}), sheet_t=int(time.time())))
 
 
 def run_item_sheet(job, prov):
@@ -1130,7 +1159,7 @@ def run_item_expr(job, prov):
 
 
 RUNNERS = {"item_cut": run_item_cut, "item_lips": run_item_lips, "item_expr": run_item_expr, "item_orbit": run_item_orbit, "item_pose": run_item_pose, "item_sheet": run_item_sheet,
-           "item_apose": run_item_apose, "item_views": run_item_views,
+           "item_apose": run_item_apose, "item_views": run_item_views, "item_view": run_item_view,
            "item_new": run_item_new, "panel_integrate": run_panel_integrate, "panel_orbit": run_panel_orbit}
 
 

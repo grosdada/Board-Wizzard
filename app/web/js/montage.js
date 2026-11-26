@@ -574,7 +574,9 @@ export function openMontage(app, pid) {
   // et l'image de sa tournette qui correspond a l'angle sous lequel la camera la voit desormais.
   let v3 = false, v3drag = null;
   const FOV0 = 53.13, D0 = 0.5 / Math.tan(FOV0 * Math.PI / 360);      // camera de la case : la case entiere a 1 de distance
-  const CAM3 = { yaw: 0, crane: 0, pitch: 0, dolly: 1, fov: FOV0 };
+  // yaw : tour complet autour de la scene ; el : la camera monte sur une sphere et regarde la scene de haut ; crane, pitch :
+  // hauteur et inclinaison en plus (Maj + glisser)
+  const CAM3 = { yaw: 0, el: 0, crane: 0, pitch: 0, dolly: 1, fov: FOV0 };
   const cam3 = Object.assign({}, CAM3);
   const box3 = h("div.mt-3d", { style: { display: "none" } });
   const hzOf = () => (pan.ground && pan.ground.hz != null ? pan.ground.hz : estimateHorizon(pan));
@@ -605,8 +607,8 @@ export function openMontage(app, pid) {
   }
   /** Camera deplacee : position, axes (droite, haut, avant), focale (en largeurs de case). */
   function camera3(rb) {
-    const ya = cam3.yaw * Math.PI / 180, pa = cam3.pitch * Math.PI / 180, R = (rb.zMid + D0) * cam3.dolly;
-    const C = [0.5 + R * Math.sin(ya), rb.camY + cam3.crane, rb.zMid - R * Math.cos(ya)];
+    const ya = cam3.yaw * Math.PI / 180, ea = (cam3.el || 0) * Math.PI / 180, pa = (cam3.pitch + (cam3.el || 0)) * Math.PI / 180, R = (rb.zMid + D0) * cam3.dolly;
+    const C = [0.5 + R * Math.sin(ya) * Math.cos(ea), rb.camY + cam3.crane + R * Math.sin(ea), rb.zMid - R * Math.cos(ya) * Math.cos(ea)];
     const fw = [-Math.sin(ya) * Math.cos(pa), -Math.sin(pa), Math.cos(ya) * Math.cos(pa)], r = [Math.cos(ya), 0, Math.sin(ya)];
     const u = [fw[1] * r[2] - fw[2] * r[1], fw[2] * r[0] - fw[0] * r[2], fw[0] * r[1] - fw[1] * r[0]];
     return { C, fw, r, u, f: 0.5 / Math.tan(cam3.fov * Math.PI / 360) };
@@ -666,16 +668,43 @@ export function openMontage(app, pid) {
     // les cartes, de la plus loin a la plus proche
     const order = rb.cards.map((c) => ({ c, d: camOf(cm, [c.X, c.Y + c.Hc / 2, c.z])[2] })).sort((a, b) => b.d - a.d);
     for (const { c } of order) {
-      const hp = 200, wp = hp * c.Wc / c.Hc, fl = !!c.l.flip;
-      const img = h("img", { src: c.sp.url, draggable: false });
+      // la carte se tourne vers la camera (autour de la verticale) et montre l'image de sa tournette vue sous cet angle
+      const hp = 200, wp = hp * c.Wc / c.Hc, fl = !!c.l.flip, va = viewAngle(c, cm);
+      const dx = cm.C[0] - c.X, dz = cm.C[2] - c.z, dn = Math.hypot(dx, dz) || 1, ex = [-dz / dn, 0, dx / dn];
+      const sp = va.f != null ? (sprite(itemOf(c.l), c.s.v, va.f) || c.sp) : c.sp;
+      const img = h("img", { src: sp.url, draggable: false });
       if (sel === c.l.id) img.classList.add("on");
-      put(img, plane([c.X + (fl ? c.Wc / 2 : -c.Wc / 2), c.Y + c.Hc, c.z], [(fl ? -1 : 1) * c.Wc / wp, 0, 0], [0, -c.Hc / hp, 0], wp, hp), wp, hp);
+      const k = (fl ? -1 : 1) * c.Wc;
+      put(img, plane([c.X - ex[0] * k / 2, c.Y + c.Hc, c.z - ex[2] * k / 2], [ex[0] * k / wp, 0, ex[2] * k / wp], [0, -c.Hc / hp, 0], wp, hp), wp, hp);
     }
     box3.textContent = "";
     box3.append(stage, bar3());
   }
+  /** Angle sous lequel la camera voit une carte : az (angle de la tournette, 0 = de face, a gauche positif), el (degres
+   *  au-dessus de l'horizontale de la carte), f (image de la tournette correspondante, si elle en a une). */
+  function viewAngle(c, cm) {
+    const base = [0.5, 0, -D0], an = (p) => Math.atan2(p[2], p[0]) * 180 / Math.PI;
+    let da = an(sub(cm.C, [c.X, 0, c.z])) - an(sub(base, [c.X, 0, c.z]));
+    da = ((da + 540) % 360) - 180;
+    const it = itemOf(c.l), vv = it && variantOf(it, c.s.v), orb = vv && vv.orbit && vv.orbit.n > 1 ? vv.orbit : null;
+    const a0 = orb ? frameToAngle(orb, c.s.f || 0) : 0, az = ((c.l.flip ? a0 - da : a0 + da) % 360 + 540) % 360 - 180;
+    const mid = c.Y + c.Hc * 0.6, el = Math.atan2(cm.C[1] - mid, Math.hypot(cm.C[0] - c.X, cm.C[2] - c.z)) * 180 / Math.PI;
+    return { az: Math.round(az), el: Math.round(el), f: orb ? angleToFrame(orb, az) : null };
+  }
+  // « Generate View » : la vue du personnage choisi sous l'angle de la camera, ajoutee a sa planche de vues (fiche)
+  async function genView3() {
+    const l = layerOf(sel), it = l && itemOf(l);
+    if (!it || it.kind !== "character") return toast(tt("Choisis d'abord un personnage dans la vue 3D."), "error");
+    const rb = rebuild3(), cm = camera3(rb), c = rb.cards.find((x) => x.l.id === l.id);
+    if (!c) return;
+    const va = viewAngle(c, cm), src = it.src || it.id;
+    if (!confirm(tt`Générer la vue de « ${it.name} » sous cet angle (tour ${va.az}°, plongée ${va.el}°) ? Elle s'ajoute à sa planche de vues. Coût : une image du moteur des poses (Réglages › Calcul) : de 0,02 à 0,15 $ sur fal, gratuit sur les machines.`)) return;
+    try { await post(`bank/${src}/view`, { az: va.az, el: va.el, target: localStorage.getItem("bw.target") || "auto" }); toast(tt("Vue en file : elle arrivera dans la planche de vues de la fiche.")); app.pollSoon?.(); }
+    catch (err) { toast(err.message, "error"); }
+  }
   function bar3() {
-    const moved = cam3.yaw || cam3.crane || cam3.pitch || cam3.dolly !== 1 || cam3.fov !== FOV0;
+    const moved = cam3.yaw || cam3.el || cam3.crane || cam3.pitch || cam3.dolly !== 1 || cam3.fov !== FOV0;
+    const selIt = layerOf(sel) && itemOf(layerOf(sel));
     const fov = h("input", { type: "range", min: 20, max: 100, step: 1, value: cam3.fov, title: tt("Focale : petit angle = téléobjectif (peu de perspective), grand angle = perspective forte"),
       on: { input: (e) => { cam3.fov = +e.target.value; paint(); }, pointerdown: (e) => e.stopPropagation() } });
     return h("div.mt-3d-bar", { on: { pointerdown: (e) => e.stopPropagation(), wheel: (e) => e.stopPropagation() } },
@@ -684,7 +713,8 @@ export function openMontage(app, pid) {
       h("label.mt-3d-fov", tt("Focale"), fov, h("span", Math.round(cam3.fov) + "°")),
       pan.ground && pan.ground.on && layerOf(sel) ? h("button.mini" + (layerOf(sel).fly ? ".on" : ""), { title: tt("Avec une carte de sol, les éléments ont les pieds sur le sol. Coché : celui-ci vole, il garde sa profondeur."),
         on: { click: () => { const l = layerOf(sel); if (l.fly) delete l.fly; else l.fly = true; hist.snap(); paint(); } } }, layerOf(sel).fly ? tt("🕊 Vole (pas collé au sol)") : tt("🕊 Laisser voler")) : "",
-      h("span.mt-3d-info", tt`Orbite ${Math.round(cam3.yaw)}° · plongée ${Math.round(cam3.pitch)}°`));
+      selIt && selIt.kind === "character" ? h("button.mini.star", { title: tt("Génère la vue du personnage choisi sous l'angle de la caméra (de côté, de dos, de dessus…) et l'ajoute à sa planche de vues"), on: { click: genView3 } }, tt("✨ Generate View")) : "",
+      h("span.mt-3d-info", tt`Orbite ${Math.round(cam3.yaw)}° · plongée ${Math.round(cam3.el + cam3.pitch)}°`));
   }
   function recalc3() {
     const rb = rebuild3(), cm = camera3(rb), base = { C: [0.5, rb.camY, -D0] };
@@ -722,20 +752,21 @@ export function openMontage(app, pid) {
     const a = k * cy, b = -k * sy * f, c = k * sy, d = k * cy * f, e = (cm.C[0] - 0.5) / rb.camY, g = (cm.C[2] + D0) / rb.camY;
     const [A, B, C, Dd, E, G] = m0;                         // motif = (A*u + B*v + E, C*u + Dd*v + G)
     gr.m = [A * a + B * c, A * b + B * d, C * a + Dd * c, C * b + Dd * d, A * e + B * g + E, C * e + Dd * g + G].map((x) => +x.toFixed(5));
-    gr.hz = f3(clamp(rb.hz - (cam3.pitch ? cm.f * Math.tan(cam3.pitch * Math.PI / 180) / rb.hw : 0), 0.02, 0.95));
+    const pt = cam3.pitch + (cam3.el || 0);
+    gr.hz = f3(clamp(rb.hz - (pt ? cm.f * Math.tan(Math.min(80, pt) * Math.PI / 180) / rb.hw : 0), 0.02, 0.95));
   }
   box3.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     stop(); box3.setPointerCapture(e.pointerId);
-    v3drag = { x: e.clientX, y: e.clientY, yaw: cam3.yaw, crane: cam3.crane, pitch: cam3.pitch, shift: e.shiftKey };
+    v3drag = { x: e.clientX, y: e.clientY, yaw: cam3.yaw, el: cam3.el || 0, crane: cam3.crane, pitch: cam3.pitch, shift: e.shiftKey };
     box3.style.cursor = "grabbing";
   });
   box3.addEventListener("pointermove", (e) => {
     if (!v3drag) return;
     const dx = (e.clientX - v3drag.x) / box3.clientWidth, dy = (e.clientY - v3drag.y) / box3.clientHeight;
-    cam3.yaw = clamp(v3drag.yaw - dx * 140, -60, 60);        // un arc de 120 degres autour de la scene
-    if (v3drag.shift) cam3.pitch = clamp(v3drag.pitch + dy * 60, -20, 45);
-    else cam3.crane = clamp(v3drag.crane - dy * 0.8, -0.4, 1.2);   // vers le haut : la camera monte
+    cam3.yaw = ((v3drag.yaw - dx * 300) % 360 + 540) % 360 - 180;   // un tour complet autour de la scene
+    if (v3drag.shift) { cam3.crane = clamp(v3drag.crane - dy * 0.8, -0.4, 1.5); }   // Maj : la camera monte sans tourner
+    else cam3.el = clamp(v3drag.el + dy * 140, -15, 85);   // glisser vers le bas : la camera passe au-dessus des elements
     paint();
   });
   box3.addEventListener("pointerup", () => { v3drag = null; box3.style.cursor = ""; });
@@ -2328,7 +2359,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   // quatre vues : l'image, la profondeur (schema vu de dessus), l'isometrique, la 3D
   const VIEWS = [["image", tt("🖼 Image"), tt("L'image de la case, comme elle sera montrée")], ["depth", tt("⬒ Profondeur"), tt("Schéma vu de dessus : chaque élément est une carte, à glisser vers le fond ou vers la caméra")],
     ["iso", tt("◇ Isométrique"), tt("La scène sur son sol, vue d'en haut et de côté : glisser pour changer de point de vue, clic sur le sol pour la carte de sol")],
-    ["3d", tt("🧊 3D"), tt("La scène en vraie perspective, avec des cartes plates : glisser pour tourner autour (120°), molette pour avancer, puis « Recalculer la perspective »")]];
+    ["3d", tt("🧊 3D"), tt("La scène en vraie perspective : glisser de côté pour en faire le tour (360°), vers le bas pour passer au-dessus, Maj + glisser pour monter, molette pour avancer ; « Recalculer la perspective » ou « Generate View » pour le personnage choisi")]];
   const viewSeg = h("div.mt-views");
   const camLockBtn = h("button.mini.mt-camlock", { title: tt("Verrouillé : dans l'image, tout geste déplace le cadre de la caméra, même sur un personnage (touche C). Déverrouiller pour reprendre les personnages."),
     on: { click: () => setCamLock(!camLock) } }, tt("🎥 Bouger la caméra"));

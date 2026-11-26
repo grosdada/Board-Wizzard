@@ -283,6 +283,38 @@ def sheet_prompt(view, style="photo", faithful=False):
     return desc + " " + SHEET_STYLE.get(style, SHEET_STYLE["photo"])
 
 
+def view_prompt(az, el, style="photo", faithful=False):
+    """Vue a la demande (vue 3D du montage, « Generate View ») : az = angle de la tournette (0 = de face, positif = le
+    personnage regarde vers la gauche de l'image), el = hauteur de la camera en degres (positif = vue de dessus)."""
+    a = abs(az)
+    side = "facing the left of the image" if az > 0 else "facing the right of the image"
+    if a < 20:
+        turn = "seen from the front"
+    elif a < 70:
+        turn = "in three-quarter front view, turned about %d degrees, %s" % (a, side)
+    elif a < 110:
+        turn = "in strict side view, profile, %s" % side
+    elif a < 160:
+        turn = "in three-quarter back view, seen from behind and from the side, turned about %d degrees" % a
+    else:
+        turn = "seen exactly from behind, back view"
+    if el >= 60:
+        high = ("The camera is high above, looking almost straight down at the character (bird's-eye view, %d degrees): we "
+                "see the top of the head and the shoulders, the body is strongly foreshortened." % el)
+    elif el >= 15:
+        high = ("The camera is above the character, looking down at a %d degree high angle: we see a little of the top of "
+                "the head and the shoulders, the body is foreshortened, the feet look smaller." % el)
+    elif el <= -10:
+        high = "The camera is low, looking up at the character from a %d degree low angle." % -el
+    else:
+        high = "The camera is at the character's eye level."
+    desc = "Show the same character %s. %s" % (turn, high)
+    if faithful:
+        return ("%s Standing in the same pose. The head and the body keep real volume and thickness seen from this angle. %s"
+                % (desc, FAITHFUL))
+    return desc + " " + SHEET_STYLE.get(style, SHEET_STYLE["photo"])
+
+
 def orbit_subject(kind, name):
     return {"character": "The camera orbits around the character.",
             "decor": "The camera orbits around the centre of the place.",
