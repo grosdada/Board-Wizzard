@@ -14,7 +14,7 @@ import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, uses
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0 } from "./ground.js";
 import { markupReady } from "./model.js";
-import { bgStroke, sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM } from "./model.js";
+import { bgStroke, jitterFilter, sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
 import { PRESETS } from "./presets.js";
 import { faceFor, opsSvg } from "./face.js";
@@ -204,7 +204,8 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     { const o0 = o; o = "";
     if (bgInfo) {
       const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, viewAt(t)), vf = vecFrame(bgInfo, again);
-      if (vf) { const st = bgStroke(pan), bw = wiggleFilter(`${pre}wgb`, pan.bghand, pan.bgwave, vf.w, vf.h, 11); o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})">${bw}<path d="${vf.body}" fill="#fff"/><path d="${vf.ink}"${bw ? ` filter="url(#${pre}wgb)"` : ""} fill="${st.ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/></g>`; }
+      if (vf) { const st = bgStroke(pan), bw = wiggleFilter(`${pre}wgb`, pan.bghand, pan.bgwave, vf.w, vf.h, 11); const bj = jitterFilter(`${pre}jtb`, pan.bglj, vf.w, vf.h, vf.sw, 11), ip = `<path d="${vf.ink}"${bj ? ` filter="url(#${pre}jtb)"` : ""} fill="${st.ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/>`;
+        o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})">${bw}${bj}<path d="${vf.body}" fill="#fff"/>${bw ? `<g filter="url(#${pre}wgb)">${ip}</g>` : ip}</g>`; }
       else o += `<image href="${bgInfo.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/>`;
       const bcm = bgCM(pan);                               // colorimetrie et colorize du decor
       if (bcm) o = cmFilter(`${pre}bcm`, bcm) + `<g filter="url(#${pre}bcm)">` + o + "</g>";
@@ -237,7 +238,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         const fo = faceFor(it, sp, vf, angleOf(l, s.v, s.f), { peau: col, trait: ink, lw: lineWidth(vf.sw, s.lw), bouche: !(l.lip && l.lip.on) }, again), fattr = ` data-layer="${l.id}"`;
         if (fo && !(l.lip && l.lip.set === PERSO && hasPerso(it))) lipAt = Object.assign({}, l.lip, { x: (tx + fo.mouth.x * sc - box.x) / box.w, y: (ty + fo.mouth.y * sc - box.y) / box.h, hw: 0, s: l.lip && l.lip.s != null ? l.lip.s : fo.mouth.s * sc / box.h });
         o += `<g${bl}><g data-layer="${l.id}" transform="${flip}translate(${f1(tx)} ${f1(ty)}) scale(${f3(sc)})">${lwf}<g${lwf ? ` filter="url(#${pre}wg-${l.id})"` : ""}>${fo ? opsSvg(fo.under, fattr) : ""}${tm}<g${tm ? ` mask="url(#${pre}m-${l.id})"` : ""}><clipPath id="${pre}c-${l.id}"><path d="${vf.body}"/></clipPath><path d="${vf.body}" fill="${col}" data-layer="${l.id}"/>` +
-          `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}<path d="${vf.ink}" fill="${ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"/></g></g>${fo ? opsSvg(fo.over, fattr) : ""}</g></g></g>`;
+          `<g clip-path="url(#${pre}c-${l.id})" style="pointer-events:none">${inner}${jitterFilter(`${pre}jt-${l.id}`, l.lj, vf.w, vf.h, vf.sw)}<path d="${vf.ink}" fill="${ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}" stroke-linejoin="round"${l.lj > 0 ? ` filter="url(#${pre}jt-${l.id})"` : ""}/></g></g>${fo ? opsSvg(fo.over, fattr) : ""}</g></g></g>`;
       } else o += `<image${bl} data-layer="${l.id}" href="${sp.url}" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" preserveAspectRatio="xMidYMax meet"${flip ? ` transform="${flip}"` : ""}/>`;
       const o2 = o.length;                                 // fin du dessin : la gomme de la bouche s'y applique
       const exk = sp.orbit && sp.expr ? exprAt(l, t) : "";

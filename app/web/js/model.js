@@ -121,6 +121,18 @@ export function wiggleFilter(id, hand, wave, w, h, seed = 5) {
     `<feTurbulence type="fractalNoise" baseFrequency="${(55 / (Math.max(0.5, wave ?? 4) * h)).toFixed(5)}" numOctaves="2" seed="${seed}"/>` +
     `<feDisplacementMap in="SourceGraphic" scale="${amp.toFixed(2)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
 }
+/** Epaisseur aleatoire du trait (amt 0..10) : par plages, le trait s'epaissit ou s'amincit, comme a la plume. Un bruit lent
+ *  dit ou ; dilatation et erosion de l'encre (feMorphology) aux endroits choisis. sw : epaisseur du trait du dessin. */
+export function jitterFilter(id, amt, w, h, sw, seed = 7) {
+  if (!(amt > 0)) return "";
+  const base = sw > 0 ? sw : Math.max(w, h) / 400, r = (amt / 10) * base * 1.1, pad = r + 4, f = 9 / Math.max(60, Math.min(w, h));
+  const m = (a, b) => `<feColorMatrix in="n" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ${a} 0 0 0 ${b}" result="${a > 0 ? "hi" : "lo"}"/>`;
+  return `<filter id="${id}" filterUnits="userSpaceOnUse" x="${(-pad).toFixed(1)}" y="${(-pad).toFixed(1)}" width="${(w + 2 * pad).toFixed(1)}" height="${(h + 2 * pad).toFixed(1)}" color-interpolation-filters="sRGB">` +
+    `<feTurbulence type="fractalNoise" baseFrequency="${f.toFixed(5)}" numOctaves="1" seed="${seed}" result="n"/>` + m(30, -17) + m(-30, 13) +
+    `<feMorphology in="SourceGraphic" operator="dilate" radius="${r.toFixed(2)}" result="fat"/><feMorphology in="SourceGraphic" operator="erode" radius="${(r * 0.4).toFixed(2)}" result="slim"/>` +
+    `<feComposite in="SourceGraphic" in2="lo" operator="out" result="keep"/><feComposite in="slim" in2="lo" operator="in" result="thin"/><feComposite in="fat" in2="hi" operator="in" result="thick"/>` +
+    `<feMerge><feMergeNode in="keep"/><feMergeNode in="thin"/><feMergeNode in="thick"/></feMerge></filter>`;
+}
 /** Couleur unie d'un dessin en traces (l.col) : blanc par defaut. */
 /** Cadrage de la case (pan.frame = { cx, cy, z, rot }, la camera de la 1re image du montage reportee sur la case) :
  *  { m (transform SVG du contenu), z, rot, fwd (point du contenu -> point de la page), inv (l'inverse) } ou null. */

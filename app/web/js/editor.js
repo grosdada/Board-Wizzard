@@ -6,7 +6,7 @@ import { tt, tr } from "./i18n.js";
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, markOutline, thin } from "./marks.js";
-import { vecFrame, layerSp, inkStroke, bgStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
+import { vecFrame, layerSp, inkStroke, bgStroke, jitterFilter, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
 import { frameToAngle, thinMask, lineWidth, frameT, markupReady, cmFilter, layerCM, bgCM } from "./model.js";
@@ -233,7 +233,10 @@ export class Editor {
             gb.append(s("path", { d: bvf.body, fill: "#ffffff", "data-bg": g.id }));
             const bw = wiggleFilter("wgb-" + g.id, pan.bghand, pan.bgwave, bvf.w, bvf.h, 11);     // tremble du trait du decor
             if (bw) defs.insertAdjacentHTML("beforeend", bw);
-            gb.append(s("path", { d: bvf.ink, fill: st.ink, "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round", "pointer-events": "none", filter: bw ? `url(#wgb-${g.id})` : null }));
+            const bj = jitterFilter("jtb-" + g.id, pan.bglj, bvf.w, bvf.h, bvf.sw, 11);
+            if (bj) defs.insertAdjacentHTML("beforeend", bj);
+            const ink = s("path", { d: bvf.ink, fill: st.ink, "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round", "pointer-events": "none", filter: bj ? `url(#jtb-${g.id})` : null });
+            if (bw) { const gwb = s("g", { filter: `url(#wgb-${g.id})`, "pointer-events": "none" }); gwb.append(ink); gb.append(gwb); } else gb.append(ink);
             grp.append(gb);
           } else
           grp.append(this.image("b:" + g.id, bg.url, { x: pl.x, y: pl.y, width: pl.w, height: pl.h, "data-bg": g.id,
@@ -293,7 +296,9 @@ export class Editor {
                 gi.append(gp);
               });
             }
-            gi.append(s("path", Object.assign({ d: vf.ink, fill: ink, "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round" }, tag)));
+            const jf = jitterFilter("jt-" + g.id + "-" + l.id, l.lj, vf.w, vf.h, vf.sw);      // epaisseur aleatoire du trait
+            if (jf) defs.insertAdjacentHTML("beforeend", jf);
+            gi.append(s("path", Object.assign({ d: vf.ink, fill: ink, "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round", filter: jf ? `url(#jt-${g.id}-${l.id})` : null }, tag)));
             gb.append(gi);
             if (fo) gw.insertAdjacentHTML("beforeend", opsSvg(fo.over, fattr));
             if (st.outline > 0) gv.append(s("path", { d: vf.body, fill: "none", stroke: "#111111", "stroke-width": st.outline, "pointer-events": "none" }));

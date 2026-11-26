@@ -1416,6 +1416,7 @@ class App {
       const fold = (key, label, ...rows) => { this.folds = this.folds || { sh: true, gs: true, wig: false };
         return h("details.fold", { open: !!this.folds[key], on: { toggle: (e) => { this.folds[key] = e.target.open; } } }, h("summary", label), ...rows); };
       if (sp && sp.vec) box.append(h("div", { title: tt("Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin, jusqu'à un filet.") }, range(tt("Trait ⓘ"), l.lw || 0, -12, 6, 0.1, (x) => { l.lw = x; }, "lw")),
+        h("div", { title: tt("Épaisseur aléatoire : par endroits le trait s'épaissit, ailleurs il s'amincit, comme tracé à la plume. 0 : régulier.") }, range(tt("Épaisseur aléatoire ⓘ"), l.lj || 0, 0, 10, 0.1, (x) => { if (x > 0) l.lj = x; else delete l.lj; }, "lj")),
         fold("wig", tt("Tremblé du trait"), range(tt("Tremblé"), l.hand || 0, 0, 10, 0.1, (x) => { l.hand = x; }, "hand"), range(tt("Ondulation"), l.wave ?? 4, 0.5, 12, 0.1, (x) => { l.wave = x; }, "hand")),
         h("div.row.colrow", { title: tt("Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent.") }, h("span", tt("Couleur")),
           swatch(l.col || "#ffffff", (c) => { l.col = c; this.editor.render(true); this.commitSoon("col"); }),
@@ -1525,6 +1526,7 @@ class App {
       const sync = () => { for (const [r, a] of [[rx, "x"], [ry, "y"]]) { const t = travel(), free = (a === "x" ? t.mx : t.my) > 1e-4; r.querySelector("input").value = pos(a); r.querySelector("output").textContent = pos(a); r.querySelector("input").disabled = !free; r.classList.toggle("off", !free); } };
       this.syncPan = sync;
       if (bg.vec) box.append(h("div", { title: tt("Trait à 0 = celui du dessin ; vers la gauche plus fin, jusqu'à effacer les traits les plus fins ; vers la droite plus épais.") }, range(tt("Trait du fond ⓘ"), pan.bglw || 0, -12, 6, 0.1, (x) => { pan.bglw = x; }, "bglw")),
+        h("div", { title: tt("Épaisseur aléatoire : par endroits le trait s'épaissit, ailleurs il s'amincit, comme tracé à la plume. 0 : régulier.") }, range(tt("Épaisseur aléatoire ⓘ"), pan.bglj || 0, 0, 10, 0.1, (x) => { if (x > 0) pan.bglj = x; else delete pan.bglj; }, "bglj")),
         h("div.row.colrow", { title: tt("Tout ce qui est noir dans le décor prend cette couleur.") }, h("span", tt("Couleur du trait")),
           swatch(pan.bgink || "#111111", (c) => { pan.bgink = c; this.editor.render(true); this.commitSoon("bgink"); }),
           pan.bgink && pan.bgink.toLowerCase() !== "#111111" ? h("button.mini", { on: { click: () => { delete pan.bgink; this.commit("bgink"); this.editor.render(); this.refreshInspector(); } } }, tt("Noir")) : ""),
