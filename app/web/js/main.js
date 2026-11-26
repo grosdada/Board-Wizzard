@@ -290,6 +290,48 @@ class App {
     this.commit("dof"); this.sel = { panel: pid }; this.editor.render(); this.refreshInspector();
   }
   // « Restore case » : la case redevient vide (decor, elements, bulles, indications, dessin, sol, montage, rendus), apres confirmation
+  // Inserer une case : une case vide prend la place de `pid`, tout ce qui suit (contenu des cases et texte de leur cadre
+  // d'annotation) recule d'une case, de page en page. La derniere case du storyboard : vide, elle disparait ; pleine, une page
+  // neuve (meme decoupage) s'ajoute a la fin pour la recevoir. Les decks et les calculs en cours suivent leurs cases.
+  ctxMenu(e, items) { menu(e, items); }
+  insertCase(pid) {
+    const P = this.project, slots = [];
+    const listSlots = () => { slots.length = 0; for (const pg of P.pages) for (const g of compute(pg.page, pg.layout).panels.slice().sort((a, b) => a.order - b.order)) slots.push({ pg, id: g.id, g }); };
+    listSlots();
+    const i0 = slots.findIndex((s) => s.id === pid);
+    if (i0 < 0) return;
+    const noteOf = (s) => (s.pg.notes || []).find((n) => n.under === s.id);
+    const full = (c) => !!(c.pan && ((c.pan.layers || []).length || c.pan.bg || c.pan.draw || (c.pan.bubbles || []).length || (c.pan.marks || []).length || c.pan.integrated || c.pan.orbit)) || !!(c.note && (c.note.text || "").trim());
+    const C = slots.slice(i0).map((s) => ({ pan: s.pg.panels[s.id] || null, note: noteOf(s), text: (noteOf(s) || {}).text || "" }));
+    let added = false;
+    if (full(C[C.length - 1])) {                          // la derniere case est pleine : une page de plus, au meme decoupage
+      const cur = P.pages[P.pages.length - 1], layout = clone(cur.layout);
+      (function renum(n, app) { if (n.t === "leaf") n.id = app.newId(); else n.c.forEach((c) => renum(c, app)); })(layout, this);
+      P.pages.push({ id: "pg" + P.nextId++, page: clone(cur.page), layout, panels: {} });
+      listSlots(); added = true;
+    }
+    const moving = added ? C : C.slice(0, -1), map = {};
+    for (let k = moving.length - 1; k >= 0; k--) {        // de la fin vers le debut : rien n'est ecrase avant d'etre deplace
+      const t = slots[i0 + 1 + k], c = moving[k];
+      if (c.pan) t.pg.panels[t.id] = c.pan; else delete t.pg.panels[t.id];
+      map[slots[i0 + k].id] = t;
+      const tn = noteOf(t);
+      if (tn) tn.text = c.text;
+      else if (c.text.trim()) {                            // pas de cadre sous la case d'arrivee : on en pose un, comme celui d'origine
+        const geom = compute(t.pg.page, t.pg.layout), g = geom.panels.find((q) => q.id === t.id), r = g && this.roomUnder(geom, t.pg.page, g);
+        (t.pg.notes = t.pg.notes || []).push(Object.assign({}, c.note, r || {}, { id: uid(), under: t.id, text: c.text }));
+      }
+    }
+    delete slots[i0].pg.panels[pid];
+    const n0 = noteOf(slots[i0]); if (n0) n0.text = "";
+    for (const d of P.decks || []) for (const c of d.clips || []) { const t = map[c.panel]; if (t) { c.page = t.pg.id; c.panel = t.id; } }
+    let moved = false;
+    for (const j of Object.values(this.pending || {})) if (j.project === P.id && map[j.pid]) { j.pid = map[j.pid].id; moved = true; }
+    if (moved) localStorage.setItem("bw.pending", JSON.stringify(this.pending));
+    this.pageIndex = P.pages.indexOf(slots[i0].pg); this.sel = { panel: pid };
+    this.commit("insert-case"); this.refresh();
+    toast(added ? tt("Case insérée : la suite recule d'une case, et une page s'ajoute à la fin pour la dernière. Ctrl+Z pour revenir.") : tt("Case insérée : la suite recule d'une case. Ctrl+Z pour revenir."));
+  }
   restorePanel(pid) {
     const pg = this.page(), pan = pg.panels[pid];
     if (!pan || !Object.keys(pan).length) return toast(tt("Cette case est déjà vide."));
@@ -729,6 +771,7 @@ class App {
       ...INTEGRATE_STYLES.map(([k, label, tip]) => ({ label, click: () => this.integrate(k) })),
       { head: tt("Case") }, { label: tt("⬒ Profondeur (vue de dessus)"), click: () => this.depthDialog(pid) }, { label: tt("Orbite de la case"), click: () => this.panelOrbit() },
       { label: tt("💾 Enregistrer la case…"), click: () => this.saveCase(pid) },
+      { label: tt("➕ Insérer une case ici (la suite recule d'une case)"), click: () => this.insertCase(pid) },
       { label: tt("🧹 Restore case (tout vider)"), danger: true, click: () => this.restorePanel(pid) });
     if (pan.integrated || pan.orbit) {
       items.push({ head: tt("Afficher") }, { label: tt("Calques d'origine"), checked: (pan.show || "layers") === "layers", click: () => this.setShow("layers") });

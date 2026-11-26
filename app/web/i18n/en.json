@@ -2275,7 +2275,11 @@
   "Page {0}": "Page {0}",
   "Trait à 0 = celui du dessin ; vers la gauche plus fin, jusqu'à effacer les traits les plus fins ; vers la droite plus épais.": "Line at 0 = the drawing's own; to the left thinner, until the finest lines disappear; to the right thicker.",
   "Trait du fond ⓘ": "Background line ⓘ",
-  "Tout ce qui est noir dans le décor prend cette couleur.": "Everything black in the background takes this colour."
+  "Tout ce qui est noir dans le décor prend cette couleur.": "Everything black in the background takes this colour.",
+  "Case insérée : la suite recule d'une case, et une page s'ajoute à la fin pour la dernière. Ctrl+Z pour revenir.": "Panel inserted: the following ones move back one panel, and a page is added at the end for the last one. Ctrl+Z to undo.",
+  "Case insérée : la suite recule d'une case. Ctrl+Z pour revenir.": "Panel inserted: the following ones move back one panel. Ctrl+Z to undo.",
+  "➕ Insérer une case ici (la suite recule d'une case)": "➕ Insert a panel here (the following ones move back one)",
+  "➕ Insérer une case entre la {0} et la {1}": "➕ Insert a panel between {0} and {1}"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

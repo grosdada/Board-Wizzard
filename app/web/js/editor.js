@@ -758,10 +758,21 @@ export class Editor {
       return app.layerMenu(e);
     }
     const g = this.panelAt(this.pagePt(e));
-    if (!g) return;
+    if (!g) return this.gutterMenu(e);
     if (!(app.sel.panel === g.id && app.sel.layer && t.dataset && t.dataset.h)) app.select({ panel: g.id });
     if (app.sel.layer) return app.layerMenu(e);
     app.panelMenu(e, g.id, this.pagePt(e), g);
+  }
+
+  // clic droit entre deux cases : « Inserer une case » entre elles (la nouvelle prend la place de la suivante dans l'ordre de lecture)
+  gutterMenu(e) {
+    const p = this.pagePt(e), page = this.pg.page;
+    const dist = (g) => { const b = g.bbox; return Math.hypot(Math.max(b.x0 - p.x, 0, p.x - b.x0 - b.w), Math.max(b.y0 - p.y, 0, p.y - b.y0 - b.h)); };
+    const near = this.geom.panels.filter((g) => g.bbox).map((g) => [dist(g), g]).sort((a, b) => a[0] - b[0]);
+    const lim = Math.max(40, (page.gutter || 0) * 2.5, page.width / 40);
+    if (near.length < 2 || near[1][0] > lim) return;
+    const [a, b] = [near[0][1], near[1][1]].sort((x, y) => x.order - y.order);
+    this.app.ctxMenu(e, [{ head: tt("Cases") }, { label: tt`➕ Insérer une case entre la ${a.order} et la ${b.order}`, click: () => this.app.insertCase(b.id) }]);
   }
 
   // ---------------------------------------------------------------- depot (banque ou fichier)
