@@ -942,6 +942,14 @@ export function openMontage(app, pid) {
         h("button.mini", { title: tt("Ouvre l'atelier de dessin du fond de cette case : formes simples, tracés, gris en trame, lignes d'effet (touche Q)"), on: { click: drawDecor } }, pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond")));
     } else {
       const it = itemOf(l), n = nOf(l, cur().v);
+      const sp0 = it && sprite(it, cur().v, cur().f);
+      if (sp0 && (sp0.vec || sp0.vecAlt)) {                // illustration ou trait, comme dans l'inspecteur de la case (l.ill, l.tr)
+        const trait = !!layerSp(sp0, l).vec;
+        side.append(h("div.axes", { title: tt("Le trait est une version de l'illustration, tracée pour être nette à tout zoom. L'illustration reste toujours là.") },
+          [[true, tt("Illustration")], [false, tt("Trait")]].map(([ill, lab]) => h("button.mini" + (ill !== trait ? ".on" : ""), { on: { click: () => {
+            if (ill) { if (sp0.vec) l.ill = 1; delete l.tr; } else { delete l.ill; if (sp0.vecAlt) l.tr = 1; }
+            hist.snap(); paint(); props(); } } }, lab))));
+      }
       side.append(range(tt("Position ↔"), "x", -1, 2, 0.005), range(tt("Position ↕"), "y", -1, 3, 0.005), range(tt("Taille"), "s", 0.05, 6, 0.01),
         range(tt("Inclinaison"), "rz", -180, 180, 1, (x) => Math.round(x) + "°"));
       if ((anim.nulls || []).length) {                     // parent : un null qu'il suit

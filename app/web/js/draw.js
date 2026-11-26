@@ -608,7 +608,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     art.innerHTML = drawSvg(layers ? { layers } : { shapes }, H, "e", { live: layers ? cl : null });
     let o = "";
     const t = target();
-    if (t && t !== building) {
+    if (t && t !== building && !(drag && drag.kind === "new")) {   // pendant qu'on trace : pas de cadre, il revient au lacher
       const b = boxOf(t, H), top = b.y - 6;
       const corners = MANY.has(t.t) && !(t.t === "poly" || t.t === "polyline" || t.ed) ? "" : t.p.map((p, i) => `<circle cx="${f1(p[0] * W)}" cy="${f1(p[1] * H)}" r="9" class="draw-pt" data-pt="${i}"/>`).join("");
       // poignee de rotation : au-dessus de la forme, elle tourne avec elle
