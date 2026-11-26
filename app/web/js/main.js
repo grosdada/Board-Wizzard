@@ -1061,6 +1061,7 @@ class App {
     const set = (k, v) => () => { m[k] = v; this.commit("mark"); this.editor.render(); this.refreshInspector(); };
     const items = [{ head: MARKS[m.type][0] }];
     for (const [c, name] of Object.entries(MARK_COLORS)) items.push({ label: name, half: true, checked: (m.color || "#111111") === c, click: set("color", c) });
+    items.push({ label: tt("Contour"), checked: m.ol !== false, click: set("ol", m.ol === false ? undefined : false) });
     if (m.type === "turn") items.push({ label: tt("Inverser le sens"), click: set("cw", m.cw === false) });
     else if (m.type !== "frame") items.push({ label: tt("Pointe aux deux bouts"), checked: !!m.both, click: set("both", !m.both) });
     items.push({ label: tt("Pointillés"), checked: m.type === "frame" ? m.dash !== false : !!m.dash, click: set("dash", m.type === "frame" ? m.dash === false : !m.dash) },
@@ -1369,6 +1370,12 @@ class App {
       box.append(h("h3", tt("Indication · ") + MARKS[mk.type][0]),
         h("div.row.colrow", h("span", tt("Couleur")), swatch(mk.color || "#111111", (c) => { mk.color = c; this.editor.render(true); this.commitSoon("mark"); })),
         range(tt("Épaisseur"), mk.w || 1, 0.4, 4, 0.1, (x) => { mk.w = x; }, "mark"),
+        h("label.row.check", h("input", { type: "checkbox", checked: mk.ol !== false, on: { change: (e) => { if (e.target.checked) delete mk.ol; else mk.ol = false; redo(); } } }), tt("Contour")),
+        mk.ol !== false ? [range(tt("Taille du contour"), mk.ow ?? 1, 0.2, 4, 0.1, (x) => { mk.ow = x; }, "mark"),
+          h("div.row.colrow", h("span", tt("Couleur du contour")), swatch(mk.oc || ((mk.color || "#111111") === "#ffffff" ? "#111111" : "#ffffff"), (c) => { mk.oc = c; this.editor.render(true); this.commitSoon("mark"); }))] : "",
+        mk.type === "turn" ? [range(tt("Perspective"), mk.pv || 0, 0, 85, 1, (x) => { mk.pv = x; }, "mark"),
+          range(tt("Inclinaison"), mk.pa || 0, -90, 90, 1, (x) => { mk.pa = x; }, "mark"),
+          h("p.muted", tt("Perspective : la rotation se couche, comme vue en biais, pour montrer un objet qui tourne sur son axe. Inclinaison : l'axe penche."))] : "",
         h("div.row",
           h("button.mini" + ((mk.type === "frame" ? mk.dash !== false : mk.dash) ? ".on" : ""), { on: { click: () => { mk.dash = mk.type === "frame" ? mk.dash === false : !mk.dash; redo(); } } }, tt("Pointillés")),
           mk.type === "turn" ? h("button.mini", { on: { click: () => { mk.cw = mk.cw === false; redo(); } } }, tt("Inverser le sens"))

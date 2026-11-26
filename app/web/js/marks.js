@@ -1,5 +1,7 @@
 // Indications de storyboard posees sur une case : fleches (droite, courbe, dessinee), fleche de rotation, cadre en
-// pointilles. Une indication : { id, type, pts: [[x, y]...] en fraction de la case, color, w (epaisseur), dash, both, cw }.
+// pointilles. Une indication : { id, type, pts: [[x, y]...] en fraction de la case, color, w (epaisseur), dash, both, cw,
+// ol (false : sans contour), ow (taille du contour), oc (couleur du contour, sinon blanc, ou noir sur un trait blanc),
+// pv (rotation : perspective en degres, 0 = cercle vu de face), pa (rotation : inclinaison de l'ellipse, en degres) }.
 //   arrow : depart, arrivee            curve : depart, point de passage, arrivee      free : trace a main levee
 //   turn  : centre, depart de l'arc    frame : deux coins opposes
 import { tt, tr } from "./i18n.js";
@@ -14,11 +16,20 @@ const TURN_SWEEP = 285 * Math.PI / 180;
 const px = (bb, p) => [bb.x0 + p[0] * bb.w, bb.y0 + p[1] * bb.h];
 const f1 = (n) => n.toFixed(1);
 
-function head(tip, dir, size) {                       // pointe pleine : triangle un peu creuse
+function headPts(tip, dir, size, wide = 0.48) {      // pointe pleine : triangle un peu creuse
   const n = Math.hypot(dir[0], dir[1]) || 1, ux = dir[0] / n, uy = dir[1] / n;
-  const bx = tip[0] - ux * size, by = tip[1] - uy * size, wx = -uy * size * 0.48, wy = ux * size * 0.48;
+  const bx = tip[0] - ux * size, by = tip[1] - uy * size, wx = -uy * size * wide, wy = ux * size * wide;
   const nx = tip[0] - ux * size * 0.72, ny = tip[1] - uy * size * 0.72;
-  return `${f1(tip[0])},${f1(tip[1])} ${f1(bx + wx)},${f1(by + wy)} ${f1(nx)},${f1(ny)} ${f1(bx - wx)},${f1(by - wy)}`;
+  return [tip, [bx + wx, by + wy], [nx, ny], [bx - wx, by - wy]];
+}
+const ptsStr = (Q) => Q.map((q) => `${f1(q[0])},${f1(q[1])}`).join(" ");
+const head = (tip, dir, size) => ptsStr(headPts(tip, dir, size));
+
+/** Contour d'une indication : null si retire, sinon { color, extra (largeur ajoutee, en unites de page) }. */
+export function markOutline(m, k) {
+  if (m.ol === false) return null;
+  const col = m.color || "#111111";
+  return { color: m.oc || (col === "#ffffff" ? "#111111" : "#ffffff"), extra: 5 * k * (m.ow ?? 1) };
 }
 
 /** Geometrie d'une indication, en pixels de page : { d, heads: [points], dash, width, handles: [[x, y, index]] } */
@@ -37,12 +48,21 @@ export function markShape(m, bb, k) {
     return out;
   }
   if (m.type === "turn") {
-    const c = P[0], r = Math.hypot(P[1][0] - c[0], P[1][1] - c[1]) || 1, a0 = Math.atan2(P[1][1] - c[1], P[1][0] - c[0]);
-    const s = m.cw === false ? -1 : 1, a1 = a0 + s * TURN_SWEEP;
-    const end = [c[0] + Math.cos(a1) * r, c[1] + Math.sin(a1) * r], tan = [-Math.sin(a1) * s, Math.cos(a1) * s];
-    const stop = a1 - s * (hs * 0.7 / r), e2 = [c[0] + Math.cos(stop) * r, c[1] + Math.sin(stop) * r];
-    out.d = `M ${f1(P[1][0])} ${f1(P[1][1])} A ${f1(r)} ${f1(r)} 0 1 ${s > 0 ? 1 : 0} ${f1(e2[0])} ${f1(e2[1])}`;
-    out.heads.push(head(end, tan, hs));
+    // trace dans le plan du cercle, puis mis en perspective : ecrase par cos(pv), tourne de pa ; la pointe suit le meme plan
+    const c = P[0], cv = Math.cos(Math.min(85, Math.max(0, m.pv || 0)) * Math.PI / 180), pa = (m.pa || 0) * Math.PI / 180;
+    const ca = Math.cos(pa), sa = Math.sin(pa);
+    const T = (q) => { const v = q[1] * cv; return [c[0] + q[0] * ca - v * sa, c[1] + q[0] * sa + v * ca]; };
+    const dx = P[1][0] - c[0], dy = P[1][1] - c[1], lu = dx * ca + dy * sa, lv = (-dx * sa + dy * ca) / cv;
+    const r = Math.hypot(lu, lv) || 1, a0 = Math.atan2(lv, lu);
+    const s = m.cw === false ? -1 : 1, a1 = a0 + s * TURN_SWEEP, at = (a) => [Math.cos(a) * r, Math.sin(a) * r];
+    const beta = Math.min(0.9, hs / r), stop = a1 - s * beta * 0.62;          // la pointe suit la corde : elle epouse l'arc
+    const steps = Math.max(12, Math.ceil(Math.abs(stop - a0) / 0.08));
+    let d = "";
+    for (let i = 0; i <= steps; i++) { const q = T(at(a0 + (stop - a0) * i / steps)); d += (i ? " L " : "M ") + f1(q[0]) + " " + f1(q[1]); }
+    out.d = d;
+    // pointe a plat a l'ecran (sinon elle s'efface en perspective), le long de la corde ; plus grosse devant, plus petite au fond
+    const tip = T(at(a1)), base = T(at(a1 - s * beta)), depth = 1 + 0.35 * Math.sqrt(1 - cv * cv) * Math.sin(a1);
+    out.heads.push(ptsStr(headPts(tip, [tip[0] - base[0], tip[1] - base[1]], hs * 1.1 * depth, 0.5)));
     out.handles = [[c[0], c[1], 0], [P[1][0], P[1][1], 1]];
     return out;
   }

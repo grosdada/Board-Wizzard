@@ -5,7 +5,7 @@
 import { tt, tr } from "./i18n.js";
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
-import { markShape, thin } from "./marks.js";
+import { markShape, markOutline, thin } from "./marks.js";
 import { vecFrame, layerSp, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
@@ -326,12 +326,14 @@ export class Editor {
         grp.append(inner);
       }
       for (const m of pan.marks || []) {                    // indications : fleches, rotation, cadres
-        const sh = markShape(m, bb, k), col = m.color || "#111111", halo = col === "#ffffff" ? "#111111" : "#ffffff";
+        const sh = markShape(m, bb, k), col = m.color || "#111111", ol = markOutline(m, k);
         const gm = s("g", { class: "mark", "data-mark": m.id, "data-panel": g.id });
         const line = (extra) => s("path", Object.assign({ d: sh.d, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round", "data-mark": m.id, "data-panel": g.id }, extra));
         gm.append(line({ stroke: "transparent", "stroke-width": Math.max(sh.width * 4, 26 * k), class: "mark-hit" }));
-        gm.append(line({ stroke: halo, "stroke-width": sh.width + 5 * k, "stroke-opacity": 0.85, "stroke-dasharray": sh.dash }));
-        for (const hp of sh.heads) gm.append(s("polygon", { points: hp, fill: halo, stroke: halo, "stroke-width": 5 * k, "stroke-linejoin": "round", "fill-opacity": 0.85, "stroke-opacity": 0.85, "data-mark": m.id, "data-panel": g.id }));
+        if (ol) {                                          // contour : sous le trait, de la taille et de la couleur choisies
+          gm.append(line({ stroke: ol.color, "stroke-width": sh.width + ol.extra, "stroke-opacity": 0.85, "stroke-dasharray": sh.dash }));
+          for (const hp of sh.heads) gm.append(s("polygon", { points: hp, fill: ol.color, stroke: ol.color, "stroke-width": ol.extra, "stroke-linejoin": "round", "fill-opacity": 0.85, "stroke-opacity": 0.85, "data-mark": m.id, "data-panel": g.id }));
+        }
         gm.append(line({ stroke: col, "stroke-width": sh.width, "stroke-dasharray": sh.dash }));
         for (const hp of sh.heads) gm.append(s("polygon", { points: hp, fill: col, "data-mark": m.id, "data-panel": g.id }));
         grp.append(gm);

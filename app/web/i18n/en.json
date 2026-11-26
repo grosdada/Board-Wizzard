@@ -2264,7 +2264,10 @@
   "Verrouillé : clic droit dessus pour le déverrouiller": "Locked: right-click it to unlock",
   "▦ Égaliser les cases": "▦ Equalize panels",
   "Toutes les cases de la même taille, au format de celle qui remplit le mieux le cadre : le bloc se resserre sur les côtés ou en hauteur. Un trait penché garde sa pente.": "All panels the same size, in the format of the one that best fills the frame: the block narrows at the sides or in height. A slanted cut keeps its slope.",
-  "Cases égalisées au format {0} (largeur / hauteur). Ctrl+Z pour revenir.": "Panels equalized to format {0} (width / height). Ctrl+Z to go back."
+  "Cases égalisées au format {0} (largeur / hauteur). Ctrl+Z pour revenir.": "Panels equalized to format {0} (width / height). Ctrl+Z to go back.",
+  "Taille du contour": "Outline size",
+  "Perspective": "Perspective",
+  "Perspective : la rotation se couche, comme vue en biais, pour montrer un objet qui tourne sur son axe. Inclinaison : l'axe penche.": "Perspective: the rotation lies down, as if seen at an angle, to show an object spinning on its axis. Tilt: the axis leans."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
