@@ -572,7 +572,7 @@ export function openMontage(app, pid) {
   // scene (glisser), hauteur (glisser haut / bas), plongee (Maj + glisser), distance (molette), focale (curseur).
   // « Recalculer la perspective » : chaque carte prend la place, la taille et la profondeur vues par la nouvelle camera,
   // et l'image de sa tournette qui correspond a l'angle sous lequel la camera la voit desormais.
-  let v3 = false, v3drag = null;
+  let v3 = false, v3drag = null, v3sel = new Set();       // v3sel : cartes choisies dans la vue 3D (Ctrl / Maj + clic : plusieurs)
   const FOV0 = 53.13, D0 = 0.5 / Math.tan(FOV0 * Math.PI / 360);      // camera de la case : la case entiere a 1 de distance
   // yaw : tour complet autour de la scene ; el : la camera monte sur une sphere et regarde la scene de haut ; crane, pitch :
   // hauteur et inclinaison en plus (Maj + glisser)
@@ -672,13 +672,46 @@ export function openMontage(app, pid) {
       const hp = 200, wp = hp * c.Wc / c.Hc, fl = !!c.l.flip, va = viewAngle(c, cm);
       const dx = cm.C[0] - c.X, dz = cm.C[2] - c.z, dn = Math.hypot(dx, dz) || 1, ex = [-dz / dn, 0, dx / dn];
       const sp = va.f != null ? (sprite(itemOf(c.l), c.s.v, va.f) || c.sp) : c.sp;
-      const img = h("img", { src: sp.url, draggable: false });
-      if (sel === c.l.id) img.classList.add("on");
+      const img = h("img", { src: sp.url, draggable: false, "data-l": c.l.id });
+      if (sel === c.l.id || v3sel.has(c.l.id)) img.classList.add("on");
       const k = (fl ? -1 : 1) * c.Wc;
       put(img, plane([c.X - ex[0] * k / 2, c.Y + c.Hc, c.z - ex[2] * k / 2], [ex[0] * k / wp, 0, ex[2] * k / wp], [0, -c.Hc / hp, 0], wp, hp), wp, hp);
     }
     box3.textContent = "";
     box3.append(stage, bar3());
+  }
+  /** Pose une carte a un endroit de l'espace (X, Y = hauteur des pieds, z) en gardant sa taille reelle : place, taille et
+   *  profondeur de l'element dans l'image de la case (l'inverse de rebuild3). */
+  function placeCard(rb, c, X, Y, z) {
+    const zc = Math.max(0.05, z + D0), below = (rb.camY - Y) * D0 / zc;
+    change(c.l.id, { x: f3(0.5 + (X - 0.5) * D0 / zc), y: f3(rb.hz + below / rb.hw), s: f3(Math.max(0.02, c.Hc * D0 / (rb.hw * zc))) });
+    setDepth(c.l, clamp(z / ZD, 0, 1));
+  }
+  /** Rayon de la camera par un point de la vue (fractions de la largeur et de la hauteur) coupe le plan horizontal Y. */
+  const rayDir = (rb, cm, sx, sy) => { const a = (sx - 0.5) / cm.f, b = (rb.hz - sy) * rb.hw / cm.f;
+    return [cm.r[0] * a + cm.u[0] * b + cm.fw[0], cm.r[1] * a + cm.u[1] * b + cm.fw[1], cm.r[2] * a + cm.u[2] * b + cm.fw[2]]; };
+  /** Point de la carte sous la souris : le rayon coupe le plan de la carte (tournee vers la camera). */
+  function rayToCard(rb, cm, sx, sy, c) {
+    const d = rayDir(rb, cm, sx, sy), nx = cm.C[0] - c.X, nz = cm.C[2] - c.z, den = nx * d[0] + nz * d[2];
+    if (Math.abs(den) < 1e-9) return null;
+    const t = (nx * (c.X - cm.C[0]) + nz * (c.z - cm.C[2])) / den;
+    return t > 0 ? [cm.C[0] + d[0] * t, cm.C[1] + d[1] * t, cm.C[2] + d[2] * t] : null;
+  }
+  function rayToY(rb, cm, sx, sy, Y) {
+    const d = rayDir(rb, cm, sx, sy);
+    if (Math.abs(d[1]) < 1e-6) return null;
+    const t = (Y - cm.C[1]) / d[1];
+    return t > 0 ? [cm.C[0] + d[0] * t, Y, cm.C[2] + d[2] * t] : null;
+  }
+  // « Coller au sol » : les pieds des elements choisis descendent (ou montent) jusqu'au sol, a la meme place vue de dessus
+  function stickGround3() {
+    const ids = v3sel.size ? [...v3sel] : sel && layerOf(sel) ? [sel] : [];
+    if (!ids.length) return toast(tt("Choisis d'abord un ou des éléments dans la vue 3D (clic, Ctrl + clic pour plusieurs)."), "error");
+    const rb = rebuild3();
+    let n = 0;
+    for (const c of rb.cards) if (ids.includes(c.l.id)) { placeCard(rb, c, c.X, 0, c.z); if (c.l.fly) delete c.l.fly; n++; }
+    hist.snap(); paint(); lanes(); props();
+    toast(tt`${n} élément(s) posé(s) au sol.`);
   }
   /** Angle sous lequel la camera voit une carte : az (angle de la tournette, 0 = de face, a gauche positif), el (degres
    *  au-dessus de l'horizontale de la carte), f (image de la tournette correspondante, si elle en a une). */
@@ -699,8 +732,33 @@ export function openMontage(app, pid) {
     if (!c) return;
     const va = viewAngle(c, cm), src = it.src || it.id;
     if (!confirm(tt`Générer la vue de « ${it.name} » sous cet angle (tour ${va.az}°, plongée ${va.el}°) ? Elle s'ajoute à sa planche de vues. Coût : une image du moteur des poses (Réglages › Calcul) : de 0,02 à 0,15 $ sur fal, gratuit sur les machines.`)) return;
-    try { await post(`bank/${src}/view`, { az: va.az, el: va.el, target: localStorage.getItem("bw.target") || "auto" }); toast(tt("Vue en file : elle arrivera dans la planche de vues de la fiche.")); app.pollSoon?.(); }
-    catch (err) { toast(err.message, "error"); }
+    try {
+      const r = await post(`bank/${src}/view`, { az: va.az, el: va.el, target: localStorage.getItem("bw.target") || "auto" });
+      views3.push({ job: r.job, name: it.name, az: va.az, el: va.el, state: "run", lid: l.id }); paint(); watchViews3();
+      toast(tt("Vue en file : elle arrivera dans la planche de vues de la fiche.")); app.pollSoon?.();
+    } catch (err) { toast(err.message, "error"); }
+  }
+  // les vues demandees : leur etat s'affiche dans la barre de la vue 3D (en plein ecran, les messages du bas ne se voient pas)
+  const views3 = [];
+  let views3Timer = 0;
+  function watchViews3() {
+    if (views3Timer) return;
+    const tick = async () => {
+      views3Timer = 0;
+      if (!svg.isConnected) return;
+      let jobs = [];
+      try { jobs = await get("jobs"); } catch (e) { /* reseau : on reessaie */ }
+      const list = Array.isArray(jobs) ? jobs : jobs.jobs || [];
+      for (const v of views3) if (v.state === "run") {
+        const j = list.find((x) => x.id === v.job);
+        if (!j || j.status === "done") { v.state = "ok"; v.vid = j && j.result && j.result.variant; }
+        else if (j.status === "error" || j.status === "failed" || j.status === "cancelled") { v.state = "err"; v.err = j.error || j.status; }
+      }
+      if (views3.some((v) => v.state === "ok" && !v.seen)) { await app.bankUI?.reload?.(); views3.forEach((v) => { if (v.state === "ok") v.seen = true; }); }
+      if (v3) paint();
+      if (views3.some((v) => v.state === "run")) views3Timer = setTimeout(tick, 3000);
+    };
+    views3Timer = setTimeout(tick, 2500);
   }
   function bar3() {
     const moved = cam3.yaw || cam3.el || cam3.crane || cam3.pitch || cam3.dolly !== 1 || cam3.fov !== FOV0;
@@ -713,8 +771,13 @@ export function openMontage(app, pid) {
       h("label.mt-3d-fov", tt("Focale"), fov, h("span", Math.round(cam3.fov) + "°")),
       pan.ground && pan.ground.on && layerOf(sel) ? h("button.mini" + (layerOf(sel).fly ? ".on" : ""), { title: tt("Avec une carte de sol, les éléments ont les pieds sur le sol. Coché : celui-ci vole, il garde sa profondeur."),
         on: { click: () => { const l = layerOf(sel); if (l.fly) delete l.fly; else l.fly = true; hist.snap(); paint(); } } }, layerOf(sel).fly ? tt("🕊 Vole (pas collé au sol)") : tt("🕊 Laisser voler")) : "",
+      h("button.mini", { title: tt("Les pieds des éléments choisis (clic sur un élément, Ctrl + clic pour plusieurs) se posent sur le sol, à la même place vue de dessus"), on: { click: stickGround3 } }, tt("⤓ Stick to the ground")),
       selIt && selIt.kind === "character" ? h("button.mini.star", { title: tt("Génère la vue du personnage choisi sous l'angle de la caméra (de côté, de dos, de dessus…) et l'ajoute à sa planche de vues"), on: { click: genView3 } }, tt("✨ Generate View")) : "",
-      h("span.mt-3d-info", tt`Orbite ${Math.round(cam3.yaw)}° · plongée ${Math.round(cam3.el + cam3.pitch)}°`));
+      h("span.mt-3d-info", tt`Orbite ${Math.round(cam3.yaw)}° · plongée ${Math.round(cam3.el + cam3.pitch)}°`),
+      ...views3.slice(-3).map((v) => h("span.mt-3d-job." + v.state, { title: v.err || "" },
+        v.state === "run" ? tt`⏳ Vue de ${v.name} (${v.az}°, ${v.el}°) en cours…` : v.state === "ok" ? tt`✓ Vue de ${v.name} (${v.az}°, ${v.el}°) dans sa fiche` : tt`✗ Vue de ${v.name} : échec`,
+        v.state === "ok" && v.vid && layerOf(v.lid) ? h("button.mini", { title: tt("Le personnage prend cette vue comme pose dans la case (image fixe, détourée)"),
+          on: { click: () => { change(v.lid, { v: v.vid, f: 0 }); hist.snap(); paint(); lanes(); props(); toast(tt("Vue posée dans la case.")); } } }, tt("Poser dans la case")) : "")));
   }
   function recalc3() {
     const rb = rebuild3(), cm = camera3(rb), base = { C: [0.5, rb.camY, -D0] };
@@ -755,21 +818,59 @@ export function openMontage(app, pid) {
     const pt = cam3.pitch + (cam3.el || 0);
     gr.hz = f3(clamp(rb.hz - (pt ? cm.f * Math.tan(Math.min(80, pt) * Math.PI / 180) / rb.hw : 0), 0.02, 0.95));
   }
+  box3.addEventListener("contextmenu", (e) => e.preventDefault());
   box3.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 && e.button !== 2) return;
+    const lid = e.button === 0 && e.target.dataset && e.target.dataset.l;   // clic droit glisse : toujours la camera, meme sur un element
+    if (lid) {                                             // un element : il est choisi, et glisser le deplace dans l'espace
+      stop(); try { box3.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+      if (e.ctrlKey || e.metaKey || e.shiftKey) { if (v3sel.has(lid)) v3sel.delete(lid); else v3sel.add(lid); if (!v3sel.size) v3sel.add(lid); }
+      else if (!v3sel.has(lid)) { v3sel.clear(); v3sel.add(lid); }
+      sel = lid; selKey = null;
+      const rb = rebuild3(), cm = camera3(rb), R = box3.getBoundingClientRect(), c0 = rb.cards.find((x) => x.l.id === lid);
+      const start = c0 && rayToCard(rb, cm, (e.clientX - R.left) / R.width, (e.clientY - R.top) / R.height, c0);   // on tient la carte la ou on l'a prise
+      v3drag = { card: true, alt: e.altKey, x: e.clientX, y: e.clientY, start, rb, cm, cards: rb.cards.filter((x) => v3sel.has(x.l.id)).map((x) => ({ c: x, X: x.X, Y: x.Y, z: x.z })), moved: false };
+      paint(); lanes(); props();
+      return;
+    }
+    if (!(e.ctrlKey || e.metaKey) && v3sel.size) { v3sel.clear(); paint(); }
     stop(); box3.setPointerCapture(e.pointerId);
     v3drag = { x: e.clientX, y: e.clientY, yaw: cam3.yaw, el: cam3.el || 0, crane: cam3.crane, pitch: cam3.pitch, shift: e.shiftKey };
     box3.style.cursor = "grabbing";
   });
   box3.addEventListener("pointermove", (e) => {
     if (!v3drag) return;
+    if (v3drag.card) {                                     // deplacer : sur son plan horizontal (Alt : en hauteur)
+      const d = v3drag, R = box3.getBoundingClientRect();
+      if (d.alt) {
+        const k = -(e.clientY - d.y) / R.height * 2;
+        for (const m of d.cards) placeCard(d.rb, m.c, m.X, Math.max(-0.5, m.Y + k), m.z);
+      } else {
+        if (!d.start) return;
+        const sx = (e.clientX - R.left) / R.width, sy = (e.clientY - R.top) / R.height, steep = Math.abs(d.start[1] - d.cm.C[1]) / Math.hypot(d.cm.C[0] - d.start[0], d.cm.C[2] - d.start[2]) > 0.2;
+        let dX, dZ;
+        if (steep) {                                         // camera au-dessus (ou au-dessous) : on glisse la carte sur son plan horizontal
+          const p = rayToY(d.rb, d.cm, sx, sy, d.start[1]);
+          if (!p) return;
+          dX = p[0] - d.start[0]; dZ = p[2] - d.start[2];
+        } else {                                             // camera a hauteur : de cote dans le plan de la carte, haut / bas = plus loin / plus pres
+          const c0 = d.cards[0].c, p = rayToCard(d.rb, d.cm, sx, sy, { X: d.cards[0].X, z: d.cards[0].z });
+          if (!p) return;
+          const nx = d.cm.C[0] - d.cards[0].X, nz = d.cm.C[2] - d.cards[0].z, nn = Math.hypot(nx, nz) || 1, k = -(e.clientY - d.y) / R.height * 3 * (c0.zc || 1);
+          dX = p[0] - d.start[0] - nx / nn * k; dZ = p[2] - d.start[2] - nz / nn * k;
+        }
+        dZ = clamp(dZ, -ZD * 4, ZD * 4);
+        for (const m of d.cards) placeCard(d.rb, m.c, m.X + dX, m.Y, Math.max(-D0 * 0.8, m.z + dZ));
+      }
+      d.moved = true; paint(); return;
+    }
     const dx = (e.clientX - v3drag.x) / box3.clientWidth, dy = (e.clientY - v3drag.y) / box3.clientHeight;
     cam3.yaw = ((v3drag.yaw - dx * 300) % 360 + 540) % 360 - 180;   // un tour complet autour de la scene
     if (v3drag.shift) { cam3.crane = clamp(v3drag.crane - dy * 0.8, -0.4, 1.5); }   // Maj : la camera monte sans tourner
     else cam3.el = clamp(v3drag.el + dy * 140, -15, 85);   // glisser vers le bas : la camera passe au-dessus des elements
     paint();
   });
-  box3.addEventListener("pointerup", () => { v3drag = null; box3.style.cursor = ""; });
+  box3.addEventListener("pointerup", () => { if (v3drag && v3drag.card && v3drag.moved) { hist.snap(); lanes(); props(); } v3drag = null; box3.style.cursor = ""; });
   box3.addEventListener("dblclick", () => { Object.assign(cam3, CAM3); paint(); });
   box3.addEventListener("wheel", (e) => { e.preventDefault(); cam3.dolly = clamp(cam3.dolly * Math.exp(e.deltaY * 0.0012), 0.35, 2.5); paint(); }, { passive: false });
   // l'atelier de dessin du fond (le meme que dans la planche) ; enregistre dans la copie de travail du montage
@@ -2359,7 +2460,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   // quatre vues : l'image, la profondeur (schema vu de dessus), l'isometrique, la 3D
   const VIEWS = [["image", tt("🖼 Image"), tt("L'image de la case, comme elle sera montrée")], ["depth", tt("⬒ Profondeur"), tt("Schéma vu de dessus : chaque élément est une carte, à glisser vers le fond ou vers la caméra")],
     ["iso", tt("◇ Isométrique"), tt("La scène sur son sol, vue d'en haut et de côté : glisser pour changer de point de vue, clic sur le sol pour la carte de sol")],
-    ["3d", tt("🧊 3D"), tt("La scène en vraie perspective : glisser de côté pour en faire le tour (360°), vers le bas pour passer au-dessus, Maj + glisser pour monter, molette pour avancer ; « Recalculer la perspective » ou « Generate View » pour le personnage choisi")]];
+    ["3d", tt("🧊 3D"), tt("La scène en vraie perspective : glisser de côté pour en faire le tour (360°), vers le bas pour passer au-dessus (clic droit + glisser : la caméra, même sur un élément), Maj + glisser pour monter, molette pour avancer. Clic sur un élément : le choisir (Ctrl : plusieurs) ; le glisser : le déplacer (Alt : en hauteur) ; « Stick to the ground », « Generate View »")]];
   const viewSeg = h("div.mt-views");
   const camLockBtn = h("button.mini.mt-camlock", { title: tt("Verrouillé : dans l'image, tout geste déplace le cadre de la caméra, même sur un personnage (touche C). Déverrouiller pour reprendre les personnages."),
     on: { click: () => setCamLock(!camLock) } }, tt("🎥 Bouger la caméra"));

@@ -303,6 +303,34 @@ def run_item_view(job, prov):
         shutil.rmtree(tmp, ignore_errors=True)
     key = "vue %d° · %d°" % (az, el)
     store.mutate_item(it["id"], lambda x: x.update(sheet=dict(x.get("sheet") or {}, **{key: rel}), sheet_t=int(time.time())))
+    job["result"] = {"view": key, "variant": view_pose(it["id"], key, job)}
+
+
+def view_pose(iid, key, job=None):
+    """Une vue de la planche devient une pose fixe (image detouree, sans tournette), a poser dans les cases : la variante
+    garde l'angle de la vue. Renvoie son identifiant."""
+    it = store.load_item(iid)
+    d = store.item_dir(iid)
+    rel = (it.get("sheet") or {}).get(key)
+    if not rel or not (d / rel).exists():
+        raise ValueError("vue introuvable : %s" % key)
+    label = key[:1].upper() + key[1:]
+    box = {}
+
+    def apply(x):
+        same = [k for k, v in x["variants"].items() if v.get("view") == key]
+        vid = same[0] if same else store.variant_id(x, label)
+        box["vid"] = vid
+        v = x["variants"].setdefault(vid, {"label": label, "pose": "", "ref": "v/%s/ref.png" % vid, "cut": None, "orbit": None})
+        v["view"], v["cut"], v["orbit"] = key, None, None
+    store.mutate_item(iid, apply)
+    vid = box["vid"]
+    (d / "v" / vid).mkdir(parents=True, exist_ok=True)
+    sprites.normalize(d / rel, d / ("v/%s/ref.png" % vid))
+    job = job or {}
+    SCHEDULER.add("item_cut", {"item": iid, "variant": vid}, "Détourage · %s · %s" % (it["name"], label),
+                  target=job.get("target", "auto"), _fal_key=job.get("_fal_key"), prio=job.get("prio", 1), own_key=bool(job.get("own_key")))
+    return vid
 
 
 def run_item_sheet(job, prov):

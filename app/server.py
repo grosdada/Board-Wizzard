@@ -766,6 +766,11 @@ class Handler(BaseHTTPRequestHandler):
             az = ((az + 180) % 360) - 180
             el = max(-30, min(89, el))
             return self.send_json({"job": S.add("item_view", {"item": iid, "az": az, "el": el}, "Vue %d° · %d° · %s" % (az, el, it["name"]), **opts)})
+        if act == "viewpose" and method == "POST":                  # une vue de la planche devient une pose fixe (detouree)
+            try:
+                return self.send_json({"variant": jobs.view_pose(iid, d.get("view", ""), dict(opts, target=opts.get("target", "auto")))})
+            except ValueError as e:
+                raise ApiError(str(e))
         if act == "sheet":                                          # planche de vues d'un personnage (dos, profil...)
             return self.send_json({"job": S.add("item_sheet", {"item": iid, "redo": bool(d.get("redo")), "gate": bool(d.get("gate"))},
                                                 "Planche de vues · %s" % it["name"], **opts)})

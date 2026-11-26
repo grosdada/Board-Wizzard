@@ -870,7 +870,12 @@ export class Bank {
           try { await post(`bank/${id}/sheet`, { redo: true, target: target() }); toast(tt("Planche de vues relancée.")); app.pollSoon(); }
           catch (err) { sent = 0; show(); toast(tt("Planche refusée : ") + err.message, "error"); }
         } } }, Object.keys(sh).length ? tt("↻ Refaire la planche") : tt("Faire la planche"));
-        const views = h("div.sheet-views", Object.entries(sh).map(([k, rel]) => h("figure", h("img", { src: `/bank/${id}/${rel}?t=${item.sheet_t || 0}`, loading: "lazy" }), h("figcaption", names[k] || k))));
+        const asPose = (k) => Object.values(item.variants || {}).some((vv) => vv.view === k);
+        const views = h("div.sheet-views", Object.entries(sh).map(([k, rel]) => h("figure", h("img", { src: `/bank/${id}/${rel}?t=${item.sheet_t || 0}`, loading: "lazy" }), h("figcaption", names[k] || k),
+          asPose(k) ? h("span.muted", { title: tt("Cette vue est déjà une pose : elle se choisit dans les poses de l'élément, dans la case") }, tt("✓ pose"))
+            : h("button.mini", { title: tt("Fait de cette vue une pose fixe (détourée, sans tournette), à choisir dans une case comme les autres poses"), on: { click: async () => {
+                try { await post(`bank/${id}/viewpose`, { view: k, target: target() }); toast(tt("Pose créée : détourage en cours. Elle se choisit dans les poses de l'élément.")); await this.reload(); app.pollSoon(); }
+                catch (err) { toast(err.message, "error"); } } } }, tt("➕ En faire une pose")))));
         const show = () => {
           const j = sheetJob(), wait = !j && sent && Date.now() - sent < 8000;   // juste envoyee : la file ne l'a pas encore montree
           if (j) sent = 0;
