@@ -207,6 +207,10 @@ export function thinMask(id, body, thin) { return thin > 0 ? `<mask id="${id}" m
 /** Epaisseur du trait affiche d'un dessin (celle du dessin, plus le reglage du calque), pour accorder ce qu'on lui ajoute. */
 export function lineWidth(sw, lw) { return sw > 0 ? Math.max(0.45, sw + thinMax(+lw || 0, sw)) : 0; }
 /** Couleur du trait d'un dessin en traces (l.ink) : noir par defaut. Tout ce qui est noir dans le dessin la prend. */
+/** Trait d'un decor en traces : couleur (pan.bgink, noir par defaut) et epaisseur (pan.bglw, de -12 a 6). Vers la gauche le
+ *  trait s'amincit jusqu'a effacer les plus fins ; l'aminci est un liseré blanc, comme le fond du dessin. */
+export function bgInk(pan) { return pan && /^#[0-9a-f]{6}$/i.test(pan.bgink || "") ? pan.bgink : "#111111"; }
+export function bgStroke(pan) { const t = Math.max(-12, Math.min(6, +(pan && pan.bglw) || 0)), ink = bgInk(pan); return { ink, color: t >= 0 ? ink : "#ffffff", width: Math.abs(t) }; }
 export function inkFill(l) { return l && /^#[0-9a-f]{6}$/i.test(l.ink || "") ? l.ink : "#111111"; }   // pas de contour de silhouette : il inventerait des traits la ou le dessin n'en a pas
 
 export function frameUrls(item, vid) {

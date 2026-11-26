@@ -1458,7 +1458,10 @@ class App {
       const ry = range(tt("Cadrage ↕"), pos("y"), -100, 100, 1, (x) => setPos("y", x), "pan");
       const sync = () => { for (const [r, a] of [[rx, "x"], [ry, "y"]]) { const t = travel(), free = (a === "x" ? t.mx : t.my) > 1e-4; r.querySelector("input").value = pos(a); r.querySelector("output").textContent = pos(a); r.querySelector("input").disabled = !free; r.classList.toggle("off", !free); } };
       this.syncPan = sync;
-      if (bg.vec) box.append(range(tt("Trait du fond"), pan.bglw || 0, -2, 6, 0.1, (x) => { pan.bglw = x; }, "bglw"),
+      if (bg.vec) box.append(h("div", { title: tt("Trait à 0 = celui du dessin ; vers la gauche plus fin, jusqu'à effacer les traits les plus fins ; vers la droite plus épais.") }, range(tt("Trait du fond ⓘ"), pan.bglw || 0, -12, 6, 0.1, (x) => { pan.bglw = x; }, "bglw")),
+        h("div.row.colrow", { title: tt("Tout ce qui est noir dans le décor prend cette couleur.") }, h("span", tt("Couleur du trait")),
+          swatch(pan.bgink || "#111111", (c) => { pan.bgink = c; this.editor.render(true); this.commitSoon("bgink"); }),
+          pan.bgink && pan.bgink.toLowerCase() !== "#111111" ? h("button.mini", { on: { click: () => { delete pan.bgink; this.commit("bgink"); this.editor.render(); this.refreshInspector(); } } }, tt("Noir")) : ""),
         range(tt("Tremblé du fond"), pan.bghand || 0, 0, 10, 0.1, (x) => { pan.bghand = x; }, "bghand"), range(tt("Ondulation du fond"), pan.bgwave ?? 4, 0.5, 12, 0.1, (x) => { pan.bgwave = x; }, "bghand"));
       {                                                    // colorize et colorimetrie du decor, comme pour un element
         const tn = pan.bgtint || {};

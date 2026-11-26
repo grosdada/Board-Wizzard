@@ -2272,7 +2272,10 @@
   "Page suivante": "Next page",
   "Voir toutes les pages": "See all pages",
   "Page {0} / {1}": "Page {0} / {1}",
-  "Page {0}": "Page {0}"
+  "Page {0}": "Page {0}",
+  "Trait à 0 = celui du dessin ; vers la gauche plus fin, jusqu'à effacer les traits les plus fins ; vers la droite plus épais.": "Line at 0 = the drawing's own; to the left thinner, until the finest lines disappear; to the right thicker.",
+  "Trait du fond ⓘ": "Background line ⓘ",
+  "Tout ce qui est noir dans le décor prend cette couleur.": "Everything black in the background takes this colour."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

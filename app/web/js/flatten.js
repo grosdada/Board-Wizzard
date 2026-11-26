@@ -5,7 +5,7 @@ import { loadImage } from "./api.js";
 import { groundSvg } from "./ground.js";
 import { drawImage } from "./draw.js";
 import { faceOps, headReady, opsCanvas } from "./face.js";
-import { frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, cmPixels, mouthFrame } from "./model.js";
+import { bgStroke, frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, cmPixels, mouthFrame } from "./model.js";
 import { exprCard } from "./lipsync.js";
 import { sprite, layerSp, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
@@ -46,12 +46,12 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
     const pl = placement(local, bg.w || 16, bg.h || 9, pan.view);
     const bvf = await vecReady(bg);
     if (bvf) {                                             // decor en traces
-      const st = inkStroke(pan.bglw), blur = sharp ? 0 : blurOf(pan, 1, bb), ink = new Path2D(bvf.ink);
+      const st = bgStroke(pan), blur = sharp ? 0 : blurOf(pan, 1, bb), ink = new Path2D(bvf.ink);
       ctx.save();
       ctx.filter = blur > 0.4 ? `blur(${(blur * kx).toFixed(2)}px)` : "none";
       ctx.scale(kx, ky); ctx.translate(pl.x, pl.y); ctx.scale(pl.w / bvf.w, pl.h / bvf.h);
       ctx.fillStyle = "#ffffff"; ctx.fill(new Path2D(bvf.body));
-      ctx.fillStyle = "#111111"; ctx.fill(ink, "evenodd");
+      ctx.fillStyle = st.ink; ctx.fill(ink, "evenodd");
       if (st.width > 0) { ctx.strokeStyle = st.color; ctx.lineWidth = st.width; ctx.lineJoin = "round"; ctx.stroke(ink); }
       ctx.restore();
     } else draw(await loadImage(bg.url), pl.x, pl.y, pl.w, pl.h, sharp ? 0 : blurOf(pan, 1, bb));

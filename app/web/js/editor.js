@@ -6,7 +6,7 @@ import { tt, tr } from "./i18n.js";
 import { compute, nodeAt, area } from "./geometry.js";
 import { h } from "./api.js";
 import { markShape, markOutline, thin } from "./marks.js";
-import { vecFrame, layerSp, inkStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
+import { vecFrame, layerSp, inkStroke, bgStroke, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
 import { frameToAngle, thinMask, lineWidth, frameT, markupReady, cmFilter, layerCM, bgCM } from "./model.js";
@@ -229,11 +229,11 @@ export class Editor {
           if (bcm) { grp = s("g", { filter: `url(#bcm-${g.id})` }); bgrp.append(grp); }
           const bvf = vecFrame(bg, () => this.render(true));
           if (bvf) {                                         // decor dessine, en traces : net au zoom, trait reglable
-            const st = inkStroke(pan.bglw), gb = s("g", { transform: `translate(${pl.x} ${pl.y}) scale(${pl.w / bvf.w} ${pl.h / bvf.h})`, filter: this.blur(defs, blur), "data-bg": g.id });
+            const st = bgStroke(pan), gb = s("g", { transform: `translate(${pl.x} ${pl.y}) scale(${pl.w / bvf.w} ${pl.h / bvf.h})`, filter: this.blur(defs, blur), "data-bg": g.id });
             gb.append(s("path", { d: bvf.body, fill: "#ffffff", "data-bg": g.id }));
             const bw = wiggleFilter("wgb-" + g.id, pan.bghand, pan.bgwave, bvf.w, bvf.h, 11);     // tremble du trait du decor
             if (bw) defs.insertAdjacentHTML("beforeend", bw);
-            gb.append(s("path", { d: bvf.ink, fill: "#111111", "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round", "pointer-events": "none", filter: bw ? `url(#wgb-${g.id})` : null }));
+            gb.append(s("path", { d: bvf.ink, fill: st.ink, "fill-rule": "evenodd", stroke: st.color, "stroke-width": st.width, "stroke-linejoin": "round", "pointer-events": "none", filter: bw ? `url(#wgb-${g.id})` : null }));
             grp.append(gb);
           } else
           grp.append(this.image("b:" + g.id, bg.url, { x: pl.x, y: pl.y, width: pl.w, height: pl.h, "data-bg": g.id,
