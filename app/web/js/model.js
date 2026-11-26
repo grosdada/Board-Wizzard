@@ -128,10 +128,11 @@ export function jitterFilter(id, amt, w, h, sw, seed = 7) {
   const base = sw > 0 ? sw : Math.max(w, h) / 400, r = (amt / 10) * base * 1.1, pad = r + 4, f = 9 / Math.max(60, Math.min(w, h));
   const m = (a, b) => `<feColorMatrix in="n" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ${a} 0 0 0 ${b}" result="${a > 0 ? "hi" : "lo"}"/>`;
   return `<filter id="${id}" filterUnits="userSpaceOnUse" x="${(-pad).toFixed(1)}" y="${(-pad).toFixed(1)}" width="${(w + 2 * pad).toFixed(1)}" height="${(h + 2 * pad).toFixed(1)}" color-interpolation-filters="sRGB">` +
-    `<feTurbulence type="fractalNoise" baseFrequency="${f.toFixed(5)}" numOctaves="1" seed="${seed}" result="n"/>` + m(30, -17) + m(-30, 13) +
-    `<feMorphology in="SourceGraphic" operator="dilate" radius="${r.toFixed(2)}" result="fat"/><feMorphology in="SourceGraphic" operator="erode" radius="${(r * 0.4).toFixed(2)}" result="slim"/>` +
+    `<feTurbulence type="fractalNoise" baseFrequency="${f.toFixed(5)}" numOctaves="1" seed="${seed}" result="n"/>` + m(12, -6.6) + m(-12, 5.4) +
+    `<feMorphology in="SourceGraphic" operator="dilate" radius="${r.toFixed(2)}" result="fat"/><feMorphology in="SourceGraphic" operator="erode" radius="${Math.min(r * 0.4, base * 0.22).toFixed(2)}" result="slim"/>` +
     `<feComposite in="SourceGraphic" in2="lo" operator="out" result="keep"/><feComposite in="slim" in2="lo" operator="in" result="thin"/><feComposite in="fat" in2="hi" operator="in" result="thick"/>` +
-    `<feMerge><feMergeNode in="keep"/><feMergeNode in="thin"/><feMergeNode in="thick"/></feMerge></filter>`;
+    `<feMerge><feMergeNode in="keep"/><feMergeNode in="thin"/><feMergeNode in="thick"/></feMerge>` +
+    `<feGaussianBlur stdDeviation="${(r * 0.2 + 0.3).toFixed(2)}"/><feComponentTransfer><feFuncA type="linear" slope="2.2" intercept="-0.45"/></feComponentTransfer></filter>`;
 }
 /** Couleur unie d'un dessin en traces (l.col) : blanc par defaut. */
 /** Cadrage de la case (pan.frame = { cx, cy, z, rot }, la camera de la 1re image du montage reportee sur la case) :

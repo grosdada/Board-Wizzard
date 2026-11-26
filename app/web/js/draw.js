@@ -92,7 +92,18 @@ export function fillOf(sh) {
 }
 const FORMS = { points: tt("Points"), lignes: tt("Lignes"), croix: tt("Croisillons"), triple: tt("Hachures en trois sens"), carres: tt("Carrés"),
                 cercles: tt("Cercles concentriques"), vagues: tt("Lignes ondulées"), grain: tt("Grain") };
-const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, col: "#ffffff",   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
+// epaisseur aleatoire du trait (sj, 0..10) : par plages le trait s'epaissit ou s'amincit, comme a la plume (bruit lent,
+// dilatation et erosion du trait la ou il tombe). r : demi-epaisseur ajoutee au plus, en unites du dessin.
+const jitterDef = (id, bx, r, seed, wd) => {   // wd : epaisseur du trait (l'aminci n'en mange qu'une part, sans trous)
+  const pad = r + 6, m = (a, b, out) => `<feColorMatrix in="n" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ${a} 0 0 0 ${b}" result="${out}"/>`;
+  return `<filter id="${id}" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">` +
+    `<feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="1" seed="${seed}" result="n"/>` + m(12, -6.6, "hi") + m(-12, 5.4, "lo") +
+    `<feMorphology in="SourceGraphic" operator="dilate" radius="${r.toFixed(2)}" result="fat"/><feMorphology in="SourceGraphic" operator="erode" radius="${Math.min(r * 0.4, wd * 0.22).toFixed(2)}" result="slim"/>` +
+    `<feComposite in="SourceGraphic" in2="lo" operator="out" result="keep"/><feComposite in="slim" in2="lo" operator="in" result="thin"/><feComposite in="fat" in2="hi" operator="in" result="thick"/>` +
+    `<feMerge><feMergeNode in="keep"/><feMergeNode in="thin"/><feMergeNode in="thick"/></feMerge>` +
+    `<feGaussianBlur stdDeviation="${(r * 0.2 + 0.3).toFixed(2)}"/><feComponentTransfer><feFuncA type="linear" slope="2.2" intercept="-0.45"/></feComponentTransfer></filter>`;
+};
+const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, sj: 0, col: "#ffffff",   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
               bsw: 2.5, tp: 0.3, sv: 0.6, pc: "#7d8c99", bw: 12, op: 0.55, soft: 0.3, ss: 25, gap: 0.3, ink: "clair", iop: 1,   // pinceaux (voir BRUSHES)
               hd: 8, hs: 5, hl: 5, hz: 0.6, hj: 25, ho: 90, hf: "poil" };
 // poils ou pointille le long d'un trace : semis au hasard mais toujours le meme pour une forme (graine = son identifiant)
@@ -308,6 +319,11 @@ function shapesSvg(shapes, H, pre, hrefs) {
         }
         one = `<g ${tag}>${uses}</g><path ${tag} d="${d}" fill="none" stroke="#000" stroke-opacity="0.001" stroke-width="${f1(sz)}"/>`;
       }
+      if (sh.sj > 0 && sh.t !== "img" && sh.t !== "erase" && sh.t !== "paint") {      // epaisseur aleatoire du pinceau
+        const seed = [...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
+        defs += jitterDef(`${id}j`, bx, (sh.sj / 10) * Math.max(2, (sh.bsw || sh.sw || 1) * 2.5), seed, Math.max(2, (sh.bsw || sh.sw || 1) * 2.5));
+        one = `<g filter="url(#${id}j)">${one}</g>`;
+      }
       if (sh.hand > 0 && sh.t !== "img") {
         const amp = sh.hand * 3, pad = amp + 40, seed = [...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
         defs += `<filter id="${id}h" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">` +
@@ -370,7 +386,14 @@ function shapesSvg(shapes, H, pre, hrefs) {
       }
       one += `<g ${tag} filter="url(#${th})" style="mix-blend-mode:multiply"><g clip-path="url(#${id}c)" style="isolation:isolate">${rect("#fff")}${cone}${rect(tone, ` opacity="0.5"`)}</g></g>`;
     }
-    if (sh.stroke !== "none" && sh.sw > 0) one += `<path ${tag} d="${d}" fill="none" stroke="${sh.stroke}" stroke-width="${f1(sh.sw * 4)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    if (sh.stroke !== "none" && sh.sw > 0) {
+      let jf = "";
+      if (sh.sj > 0) {                                     // epaisseur aleatoire : sur le trait seul, pas sur le remplissage
+        const seed = [...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
+        defs += jitterDef(`${id}j`, bx, (sh.sj / 10) * Math.max(2, sh.sw * 4) * 1.1, seed, sh.sw * 4); jf = ` filter="url(#${id}j)"`;
+      }
+      one += `<path ${tag} d="${d}" fill="none" stroke="${sh.stroke}" stroke-width="${f1(sh.sw * 4)}" stroke-linecap="round" stroke-linejoin="round"${jf}/>`;
+    }
     else if (open || !fl.on) one += `<path ${tag} d="${d}" fill="none" stroke="#111111" stroke-opacity="0.001" stroke-width="12"/>`;
     if (!open && !fl.on) one += `<path ${tag} d="${d}" fill="#000" fill-opacity="0.001"/>`;    // attrapable a la souris
     if (sh.hand > 0) {                                     // trait a la main : un bruit doux deplace le contour, propre a chaque forme
@@ -761,6 +784,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     }
     if (!SPECIAL.has(kind) && val("stroke") !== "none") side.append(range(tt("Épaisseur"), "sw", 0.2, 12, 0.1));
     if (kind !== "img" && kind !== "erase") side.append(h("h4", tt("Trait à la main")), range(tt("Tremblé"), "hand", 0, 10, 0.1), range(tt("Ondulation"), "hw", 0.5, 12, 0.1),
+      kind !== "paint" ? h("div", { title: tt("Épaisseur aléatoire : par endroits le trait s'épaissit, ailleurs il s'amincit, comme tracé à la plume. 0 : régulier.") }, range(tt("Épaisseur aléatoire ⓘ"), "sj", 0, 10, 0.1)) : "",
       h("p.muted", tt("Tremblé à 0 : trait net. Ondulation courte = trait nerveux, longue = lignes qui flottent.")));
     if (!open && kind !== "img") {
       const fl = fillOf(t || cur);
