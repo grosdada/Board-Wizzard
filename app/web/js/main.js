@@ -1246,55 +1246,27 @@ class App {
     const prompt = h("textarea", { rows: 9 }); prompt.value = localStorage.getItem("bw.sceneOrbit") || base;
     const rs = (this.info && this.info.settings && this.info.settings.render) || {};
     const seed = h("input", { type: "number", min: 1, step: 1, style: { width: "11em" }, placeholder: rs.seed ? tt`réglages (${rs.seed})` : tt("réglages") });
-    const go = async () => {
+    const go = async (tgt) => {
       const txt = prompt.value.trim();
       if (txt && txt !== base) localStorage.setItem("bw.sceneOrbit", txt); else localStorage.removeItem("bw.sceneOrbit");
       try {
         let flat;
         if (pan.show === "integrated" && pan.integrated) flat = pan.integrated;        // l'image integree tourne mieux qu'un collage
         else flat = await this.flat();
-        await post(`projects/${this.project.id}/orbit`, { panel: this.sel.panel, flat, prompt: txt, seed: +seed.value || 0, target: target() });
-        toast(tt("Orbite de la case lancée (≈ 3 min).")); this.pollSoon();
+        await post(`projects/${this.project.id}/orbit`, { panel: this.sel.panel, flat, prompt: txt, seed: +seed.value || 0, target: tgt });
+        toast(tgt === "fal" ? tt("Orbite de la case lancée sur fal (≈ 3 min).") : tt("Orbite de la case lancée sur les machines (≈ 7 min).")); this.pollSoon();
       } catch (e) { toast(tt("Orbite impossible : ") + e.message, "error"); return false; }
     };
-    // Sans generation : 72 images de la case aplatie, la camera tournant de 5 degres a chaque image. Les elements montrent
-    // l'image de leur tournette sous cet angle (orbitpersp.js) ; un decor 360 de la banque tourne du meme angle, comme
-    // enroule sur un cylindre autour de la scene (ses images se lisent a rebours : la camera part a droite, le decor
-    // defile vers la droite). Essaye sur p92 de zz-essais le 26/11/2026. Un decor en simple image reste fixe.
-    const goLocal = async () => {
-      const g = this.geo(this.sel.panel), pid = this.sel.panel, N = 72, opt = { glue: true, tele: 2 };
-      const base = pan.orbitBase || { layers: pan.layers || [], ground: pan.ground || null, bg: pan.bg || null, view: pan.view || null };
-      const src = Object.assign({}, pan, { layers: base.layers, ground: base.ground, bg: base.bg, view: base.view || pan.view, show: "layers" });
-      if (!g || !(src.layers || []).some((l) => { const it = this.bank.get(l.item), v = it && variantOf(it, l.v); return v && v.orbit && v.orbit.n > 1; }))
-        { toast(tt("Aucun élément de cette case n'a de tournette : rien ne tournerait."), "error"); return false; }
-      const bgIt = src.bg && src.bg.item && this.bank.get(src.bg.item), bgV = bgIt && variantOf(bgIt, src.bg.v || "base");
-      const turns = !!(bgV && bgV.orbit && bgV.orbit.n > 1), a0 = turns ? frameToAngle(bgV.orbit, src.bg.f || 0) : 0;
-      const run = Date.now();
-      toast(tt("Orbite sans génération : rendu des 72 images…"));
-      (async () => {
-        try {
-          let dir = "", w = 0, hh = 0;
-          for (let k = 0; k < N; k++) {
-            const yaw = k * 360 / N, r = orbitPerspective(src, g.bbox.h / g.bbox.w, this.bank, yaw, opt);
-            const by = new Map(r.out.map((x) => [x.l.id, x]));
-            const layers = src.layers.map((l, i) => { const x = by.get(l.id), c = Object.assign({}, l, l.d == null ? { d: depthOf(src, i) } : {});
-              return x ? Object.assign(c, { x: x.x, y: x.y, s: x.s, d: x.d }, x.f != null ? { f: x.f } : {}) : c; }).sort((p, q) => q.d - p.d);
-            const over = Object.assign({}, src, { layers });
-            if (turns) over.bg = Object.assign({}, src.bg, { f: angleToFrame(bgV.orbit, a0 - yaw) });
-            if (r.ground && src.ground) over.ground = Object.assign({}, src.ground, r.ground);
-            const blob = await flattenPanel(this, g, 1152, true, over, "image/webp");
-            if (!k) { const im = await createImageBitmap(blob); w = im.width; hh = im.height; }
-            dir = (await upload(`projects/${this.project.id}/orbit-frame/${pid}?run=${run}&k=${k}`, blob)).dir;
-          }
-          const tgt = this.project.pages.flatMap((pg) => (pg.panels[pid] ? [pg.panels[pid]] : []))[0];
-          if (!tgt) return;
-          tgt.orbit = { n: N, w, h: hh, ext: "webp", alpha: false, dir, frame: 0, local: opt };
-          tgt.show = "orbit";
-          this.commit("orbit-local"); this.editor.render(); this.refreshInspector();
-          toast(tt("Orbite sans génération prête.") + (turns ? "" : " " + tt("Le décor n'est pas un décor 360 : il reste fixe.")));
-        } catch (e) { toast(tt("Orbite impossible : ") + e.message, "error"); }
-      })();
-    };
+    // un seul bouton « Lancer l'orbite » : il deroule le choix. Sans generation, ou avec generation, et la le gratuit (les
+    // machines) ou le payant (fal, confirme avec son cout) : deux boutons cote a cote lancaient une generation par megarde.
+    let shut = null;
+    const pick = (fn) => async () => { if ((await fn()) !== false && shut) shut(); };
+    const line = (label, note, fn, cls) => h("button" + (cls || ""), { type: "button", style: { display: "block", width: "100%", textAlign: "left", margin: "3px 0" }, on: { click: pick(fn) } }, label, h("span.muted", " · " + note));
+    const choice = h("div", { style: { display: "none", border: "1px solid var(--line, #444)", borderRadius: "6px", padding: "8px", marginTop: "6px" } },
+      line(tt("⚡ Sans génération"), tt("gratuit : la vue 3D s'ouvre, règle la caméra puis « ⚡ Orbite de la case »"), () => { openMontage(this, this.sel.panel, { view: "3d" }); }, ".primary"),
+      h("div.muted", { style: { margin: "8px 0 2px" } }, tt("Avec génération (le décor et les personnages sont redessinés par H3)")),
+      this.noMachines() ? "" : line(tt("🖥 Sur les machines"), tt("gratuit, environ 7 minutes"), () => go("local")),
+      line(tt("💳 Sur fal"), tt("payant, environ 0,31 $ et 3 minutes"), () => (confirm(tt("Lancer l'orbite sur fal ? C'est payant : environ 0,31 $.")) ? go("fal") : false)));
     modal(tt("Orbite de la case"), h("div.form",
       h("p.muted", tt("La caméra fait le tour de la scène : le décor tourne avec les personnages, et ce qui était hors champ est inventé dans le même style. La consigne se modifie ; elle est gardée pour les prochaines orbites.")),
       h("label.col", tt("Consigne"), prompt),
@@ -1303,9 +1275,9 @@ class App {
         h("button.mini", { type: "button", title: tt("Tirer une autre graine"), on: { click: () => { seed.value = 1 + Math.floor(Math.random() * 999999); } } }, "🎲"),
         h("button.mini", { type: "button", title: tt("Revenir à la graine des réglages"), on: { click: () => { seed.value = ""; } } }, tt("Réglages"))),
       h("p.muted", tt("Même graine et même consigne donnent la même vidéo. Si le décor reste vide au demi-tour, relance avec une autre graine.")),
-      h("p.muted", tt("« ⚡ Sans génération » : immédiat et gratuit. Les éléments montrent leur tournette sous chaque angle et un décor 360 de la banque défile derrière eux ; un décor en simple image reste fixe."))),
-      [{ label: tt("Annuler") }, { label: tt("⚡ Sans génération"), title: tt("Immédiat et gratuit : les tournettes des éléments et le décor 360 de la banque, sans calcul"), click: goLocal },
-       { label: tt("↻ Lancer l'orbite"), primary: true, click: go }]).box.classList.add("wide");
+      h("p.muted", tt("« Sans génération » : gratuit, dans la vue 3D du montage. Les éléments montrent leur tournette sous chaque angle et le décor, enroulé sur un cylindre, défile derrière eux.")),
+      choice),
+      [{ label: tt("Annuler") }, { label: tt("↻ Lancer l'orbite ▾"), primary: true, click: (close) => { shut = close; choice.style.display = choice.style.display === "none" ? "" : "none"; if (choice.style.display !== "none") choice.scrollIntoView({ block: "nearest" }); return false; } }]).box.classList.add("wide");
   }
   // « Recalculer la perspective » depuis l'orbite de la case : les marionnettes de la case (pas une image calculee) se
   // calent sur l'angle ou l'orbite est arretee (orbitpersp.js, la meme reconstruction que la vue 3D du montage). Le calcul
@@ -1611,9 +1583,9 @@ class App {
       toast(tt("Moteur d'Integrate enregistré : ") + (v ? v.replace(/^fal:/, "fal · ") : tt("automatique")) + "."); this.refreshInspector();
     });
     box.append(h("h4", tt("Image finale")), h("label.row", tt("Rendu"), style), h("label.row", tt("Moteur"), this.noMachines() ? h("span.muted", tt("fal, avec ta clé")) : engine), extra,
+      h("div.row", h("button.photo-go", { title: tt("La case rendue en photo : GPT Image 2.6 et Seedream 5.5 à comparer (fal, payant)"), on: { click: () => this.casePhoto() } }, tt("📷 Générer photo"))),
       h("div.row", h("button.primary", { title: tt("Une seule image, lumière et ombres unifiées"), on: { click: () => this.integrate(style.value, extra.value.trim()) } }, tt("✦ Integrate")),
-        h("button", { title: tt("Orbite 360° de toute la case"), on: { click: () => this.panelOrbit() } }, tt("↻ Orbite de la case"))),
-      h("div.row", h("button.photo-go", { title: tt("La case rendue en photo : GPT Image 2.6 et Seedream 5.5 à comparer (fal, payant)"), on: { click: () => this.casePhoto() } }, tt("📷 Générer photo"))));
+        h("button", { title: tt("Orbite 360° de toute la case"), on: { click: () => this.panelOrbit() } }, tt("↻ Orbite de la case"))));
     if (pan.integrated || pan.orbit) {
       const modes = [["layers", tt("Calques")]]; if (pan.integrated) modes.push(["integrated", tt("Intégrée")]); if (pan.orbit) modes.push(["orbit", tt("Orbite")]);
       const oOn = pan.orbit && pan.show === "orbit";

@@ -42,7 +42,8 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
     main.save(); main.setTransform(1, 0, 0, 1, 0, 0); main.drawImage(oc, 0, 0); main.restore();
   };
   const bg = background(pan, app.bank, app.project.id);
-  if (bg) await graded(bgCM(pan), async () => {
+  if (pan.bgCanvas) await graded(bgCM(pan), async () => { ctx.drawImage(pan.bgCanvas, 0, 0, cv.width, cv.height); });   // decor deja rendu (cylindre de la vue 3D)
+  else if (bg) await graded(bgCM(pan), async () => {
     const pl = placement(local, bg.w || 16, bg.h || 9, pan.view);
     const bvf = await vecReady(bg);
     if (bvf) {                                             // decor en traces

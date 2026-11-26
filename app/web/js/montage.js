@@ -10,6 +10,7 @@
 // Sans cle, une piste garde ses valeurs de la case. Entre deux cles les valeurs sont interpolees.
 import { tt, tr } from "./i18n.js";
 import { h, modal, toast, history, upload, get, post, put, del } from "./api.js";
+import { flattenPanel } from "./flatten.js";
 import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime, segsOf, exprMarkup, exprGom, exprAt, exprName } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0, PLATE0, plateDefault, plateCorners, groundAt } from "./ground.js";
@@ -307,7 +308,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   return { H, anim, markup, stateOf, localOf, camAt, viewAt, nOf, itemOf, keysOf, angleOf, nullOf, nullLocal, nullWorld, xfOf, unDelta };
 }
 
-export function openMontage(app, pid) {
+export function openMontage(app, pid, opt = {}) {
   const pg = app.page(), src = pg.panels[pid] || {}, g = app.geo(pid);
   if (!g) return;
   const H = W * g.bbox.h / g.bbox.w, bb = { x0: 0, y0: 0, w: W, h: H };
@@ -678,6 +679,89 @@ export function openMontage(app, pid) {
   const camOf = (cm, p) => { const d = sub(p, cm.C); return [dot(cm.r, d), dot(cm.u, d), dot(cm.fw, d)]; };
   /** Point de l'espace -> place dans la case (fractions de largeur et de hauteur), et sa distance. */
   const proj3 = (cm, rb, p) => { const c = camOf(cm, p); return { x: 0.5 + c[0] * cm.f / c[2], y: rb.hz - c[1] * cm.f / c[2] / rb.hw, zc: c[2] }; };
+  // ---- le decor enroule sur un cylindre vertical autour de la scene (tous les decors, des l'entree dans la vue 3D).
+  // Le mur du fond reste ou etait le mur plat : a zW, a la taille qui redonne a peu pres l'image de la case. Un decor 360 de
+  // la banque (panorama v.pano, tools/decor360.py : la vue f commence a la colonne f x largeur / n) fait tout le tour ; son
+  // rayon est celui qui ferme la boucle a cette echelle, l'axe se place donc devant ou derriere la camera. Une simple image
+  // couvre un arc de 120 degres, le reste du cylindre est ouvert. On ne dessine que les facettes vues de l'interieur : la
+  // camera peut sortir du cylindre et regarder la scene a travers le mur proche.
+  const texs = new Map();
+  function tex3(url) {
+    let im = texs.get(url);
+    if (!im) { im = new Image(); im.onload = () => { if (v3) paint(); }; im.src = url; texs.set(url, im); }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  function cyl3(rb, bgI) {
+    const zW = Math.max(ZD * 1.05, ...rb.cards.map((c) => c.z + 0.15)), dist = zW + D0;
+    const pl = placement(bb, bgI.w || 16, bgI.h || 9, scene.viewAt(t));
+    const it = pan.bg && pan.bg.item && app.bank.get(pan.bg.item), vv = it && variantOf(it, pan.bg.v || "base");
+    const pano = !!(vv && vv.pano && vv.orbit && vv.orbit.n > 1);
+    const url = pano ? `/bank/${it.id}/${vv.pano}?t=${vv.orbit.t || 0}` : bgI.url, im = tex3(url);
+    if (!im) return null;
+    const pw = im.naturalWidth, across = pano ? im.naturalHeight * (bgI.w || 16) / (bgI.h || 9) : pw;   // colonnes de la texture sur la largeur de l'image du decor
+    const u0 = pano ? (((Math.round(pan.bg.f || 0) % vv.orbit.n) + vv.orbit.n) % vv.orbit.n) * pw / vv.orbit.n : 0;
+    const arc = pano ? 2 * Math.PI : 2 * Math.PI / 3;
+    const Rc = Math.max(0.3 * dist, (pl.w / W) / across * dist / D0 * pw / arc);
+    return { url, im, pw, full: pano, uc: u0 + (W / 2 - pl.x) / pl.w * across, k: arc / pw, Rc, ax: [0.5, zW - Rc], zW,
+             Ytop: rb.camY + (rb.hz - pl.y / H) * rb.hw * dist / D0, Hh: (pl.h / H) * rb.hw * dist / D0 };
+  }
+  /** Le decor du cylindre vu par une camera horizontale, peint colonne par colonne (orbite sans generation). */
+  function cylCanvas(rb, cm, cy, BW, BH) {
+    const bc = document.createElement("canvas"); bc.width = BW; bc.height = BH;
+    const bx = bc.getContext("2d"); bx.fillStyle = "#ffffff"; bx.fillRect(0, 0, BW, BH);
+    if (!cy) return bc;
+    const ox = cm.C[0] - cy.ax[0], oz = cm.C[2] - cy.ax[1], ih = cy.im.naturalHeight;
+    for (let x = 0; x < BW; x++) {
+      const a = ((x + 0.5) / BW - 0.5) / cm.f, dx = cm.r[0] * a + cm.fw[0], dz = cm.r[2] * a + cm.fw[2];
+      const A = dx * dx + dz * dz, B = 2 * (ox * dx + oz * dz), D = B * B - 4 * A * (ox * ox + oz * oz - cy.Rc * cy.Rc);
+      if (D < 0) continue;
+      const zc = (-B + Math.sqrt(D)) / (2 * A);              // le mur d'en face (la direction a 1 pour composante vers l'avant)
+      if (zc <= 0.02) continue;
+      let u = cy.uc + Math.atan2(cm.C[0] + dx * zc - cy.ax[0], cm.C[2] + dz * zc - cy.ax[1]) / cy.k;
+      if (cy.full) u = ((u % cy.pw) + cy.pw) % cy.pw; else if (u < 0 || u >= cy.pw) continue;
+      const du = Math.max(1, zc / (BW * cm.f) / (cy.Rc * cy.k));
+      bx.drawImage(cy.im, Math.max(0, Math.min(u - du / 2, cy.pw - du)), 0, du, ih, x, (rb.hz - (cy.Ytop - cm.C[1]) * cm.f / zc / rb.hw) * BH, 1.02, cy.Hh * cm.f / zc / rb.hw * BH);
+    }
+    return bc;
+  }
+  // « ⚡ Orbite de la case » : 72 images de ce que montre la vue 3D, la camera faisant le tour depuis son angle actuel (meme
+  // distance, meme hauteur, meme focale, regard horizontal). Rien n'est genere : tournettes et decor du cylindre.
+  let orbiting = false;
+  async function orbit3() {
+    if (orbiting) return;
+    const rb = rebuild3(), N = 72, keep = Object.assign({}, cam3), run = Date.now();
+    if (!rb.cards.length) return toast(tt("Aucun élément à faire tourner dans cette case."), "error");
+    const bgI = background(pan, app.bank, app.project.id);
+    let cy = bgI ? cyl3(rb, bgI) : null;
+    for (let i = 0; bgI && !cy && i < 20; i++) { await new Promise((r) => setTimeout(r, 200)); cy = cyl3(rb, bgI); }
+    orbiting = true; toast(tt("Orbite sans génération : rendu des 72 images…"));
+    try {
+      const BW = 1152, BH = Math.round(BW * H / W);
+      let dir = "", w = 0, hh = 0;
+      for (let k = 0; k < N; k++) {
+        Object.assign(cam3, keep, { el: 0, pitch: 0, yaw: keep.yaw + k * 360 / N });
+        const cm = camera3(rb), layers = [];
+        for (const c of rb.cards) {
+          const feet = proj3(cm, rb, [c.X, c.Y, c.z]), top = proj3(cm, rb, [c.X, c.Y + c.Hc, c.z]);
+          if (feet.zc < 0.05) continue;
+          const va = viewAngle(c, cm);
+          layers.push(Object.assign({}, c.l, { v: c.s.v, f: va.f != null ? va.f : c.s.f, x: feet.x, y: feet.y, s: Math.max(0.02, feet.y - top.y), d: clamp((feet.zc - D0) / ZD, 0, 1), zc: feet.zc }));
+        }
+        layers.sort((p, q) => q.zc - p.zc);
+        const over = Object.assign({}, pan, { layers, show: "layers", bgCanvas: cylCanvas(rb, cm, cy, BW, BH) });
+        delete over.frame; delete over.ground;
+        const blob = await flattenPanel(app, g, 1152, true, over, "image/webp");
+        if (!k) { const im = await createImageBitmap(blob); w = im.width; hh = im.height; }
+        dir = (await upload(`projects/${app.project.id}/orbit-frame/${pid}?run=${run}&k=${k}`, blob)).dir;
+      }
+      const o = { n: N, w, h: hh, ext: "webp", alpha: false, dir, frame: 0, local: { v3: true } };
+      pan.orbit = o; pan.show = "orbit";
+      const real = app.page().panels[pid];
+      if (real) { real.orbit = JSON.parse(JSON.stringify(o)); real.show = "orbit"; app.commit("orbit-local"); app.editor.render(); app.refreshInspector(); }
+      toast(tt("Orbite sans génération prête : elle est l'orbite de la case."));
+    } catch (e) { toast(tt("Orbite impossible : ") + e.message, "error"); }
+    finally { Object.assign(cam3, keep); orbiting = false; paint(); }
+  }
   function render3() {
     const vr = svg.parentElement.getBoundingClientRect(), ctm = svg.getScreenCTM();
     if (!ctm) return;
@@ -703,7 +787,18 @@ export function openMontage(app, pid) {
     const zW = Math.max(ZD * 1.05, ...rb.cards.map((c) => c.z + 0.15));
     // le sol va jusqu'au mur ; sans decor, presque jusqu'a l'horizon
     const zEnd = bgI ? zW : 40;
-    if (bgI) {
+    const cy = bgI ? cyl3(rb, bgI) : null;
+    if (cy) {                                                // le decor enroule sur son cylindre, en facettes
+      const N = cy.full ? 60 : 24, hpx = 500;
+      const at = (u) => { const a = (u - cy.uc) * cy.k; return [cy.ax[0] + cy.Rc * Math.sin(a), cy.Ytop, cy.ax[1] + cy.Rc * Math.cos(a)]; };
+      for (let i = 0; i < N; i++) {
+        const p0 = at(i * cy.pw / N), p1 = at((i + 1) * cy.pw / N), mx = (p0[0] + p1[0]) / 2, mz = (p0[2] + p1[2]) / 2;
+        if ((cm.C[0] - mx) * (cy.ax[0] - mx) + (cm.C[2] - mz) * (cy.ax[1] - mz) <= 0) continue;     // facette vue de dehors
+        const wpx = Math.max(2, Math.round(hpx * Math.hypot(p1[0] - p0[0], p1[2] - p0[2]) / cy.Hh));
+        const el = h("div", { style: { backgroundColor: "#fff", backgroundImage: `url("${cy.url}")`, backgroundRepeat: "no-repeat", backgroundSize: `${N * wpx}px ${hpx}px`, backgroundPosition: `${-i * wpx}px 0` } });
+        put(el, plane(p0, [(p1[0] - p0[0]) / wpx, 0, (p1[2] - p0[2]) / wpx], [0, -cy.Hh / hpx, 0], wpx + 0.6, hpx), wpx + 0.6, hpx);
+      }
+    } else if (bgI) {
       const zc = zW + D0, ww = zc / D0, hh = rb.hw * zc / D0, top = rb.camY + rb.hz * rb.hw * zc / D0;
       const pl = placement(bb, bgI.w || 16, bgI.h || 9, scene.viewAt(t)), el = h("div");
       el.innerHTML = `<svg viewBox="0 0 ${W} ${f1(H)}" width="400" height="${f1(400 * H / W)}" preserveAspectRatio="none" style="display:block"><rect width="${W}" height="${f1(H)}" fill="#fff"/><image href="${bgI.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/></svg>`;
@@ -832,6 +927,7 @@ export function openMontage(app, pid) {
       on: { input: (e) => { cam3.fov = +e.target.value; paint(); }, pointerdown: (e) => e.stopPropagation() } });
     return h("div.mt-3d-bar", { on: { pointerdown: (e) => e.stopPropagation(), wheel: (e) => e.stopPropagation() } },
       h("button.mini" + (moved ? ".star" : ""), { title: tt("Chaque carte prend la place, la taille et la profondeur vues par cette caméra, et l'image de sa tournette qui correspond à ce nouvel angle"), on: { click: recalc3 } }, tt("↻ Recalculer la perspective")),
+      h("button.mini.star", { title: tt("Sans génération : 72 images de ce que montre cette vue, la caméra faisant le tour de la scène depuis cet angle (même distance, même focale). Tournettes des éléments et décor du cylindre ; le résultat devient l'orbite de la case."), on: { click: orbit3 } }, tt("⚡ Orbite de la case")),
       h("button.mini", { title: tt("Revenir à la caméra de la case (double-clic dans la vue)"), on: { click: () => { Object.assign(cam3, CAM3); paint(); } } }, tt("⟲ Caméra de la case")),
       h("label.mt-3d-fov", tt("Focale"), fov, h("span", Math.round(cam3.fov) + "°")),
       pan.ground && pan.ground.on && layerOf(sel) ? h("button.mini" + (layerOf(sel).fly ? ".on" : ""), { title: tt("Avec une carte de sol, les éléments ont les pieds sur le sol. Coché : celui-ci vole, il garde sa profondeur."),
@@ -2567,6 +2663,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     paint();
   }
   viewSeg.append(...VIEWS.map(([k, n, title]) => h("button" + (k === "image" ? ".on" : ""), { "data-view": k, title, on: { click: () => setView(k) } }, n)));
+  if (opt.view) setTimeout(() => setView(opt.view), 0);     // ouvert depuis « Orbite de la case » : directement en 3D
   const save = () => {
     done();
     const real = pg.panels[pid] || (pg.panels[pid] = {});
