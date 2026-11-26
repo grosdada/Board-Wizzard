@@ -60,6 +60,7 @@ class App {
     if (list.find((p) => p.id === last)) await this.open(last);
     else if (list.length) await this.open(list[0].id);
     else await this.create(tt("Storyboard 1"));
+    window.addEventListener("beforeunload", () => this.savePos());
     this.keys();
     this.poll();
     this.pollWorkers();
@@ -116,12 +117,31 @@ class App {
     localStorage.setItem("bw.project", id);
     this.pageIndex = 0; this.sel = {}; this.undo = []; this.redo = [];
     this.last = this.snapshot();
+    let pos = null;                                        // F5 : retour a la page, a la case (et au montage) ou l'on en etait
+    try { pos = JSON.parse(localStorage.getItem("bw.pos." + id) || "null"); } catch (e) { pos = null; }
+    const pi = pos ? this.project.pages.findIndex((p) => p.id === pos.pg) : -1;
+    if (pi >= 0) this.pageIndex = pi;
+    this.restoring = true;
     this.refresh();
+    if (pos && pos.sel && pos.sel.panel && this.geo(pos.sel.panel)) {
+      this.sel = pos.sel;
+      if ((this.sel.layer && !this.layer()) || (this.sel.mark && !this.mark()) || (this.sel.bubble && !this.bubble())) this.sel = { panel: pos.sel.panel };
+      this.editor.render(); this.refreshInspector(); this.renderLeft();
+    }
+    this.restoring = false;
+    this.savePos();
+    if (pos && pos.mt && this.geo(pos.mt)) openMontage(this, pos.mt);
+  }
+  savePos() {
+    if (!this.project || this.restoring) return;
+    const pg = this.page();
+    try { localStorage.setItem("bw.pos." + this.project.id, JSON.stringify({ pg: pg && pg.id, sel: this.sel || {}, mt: this.montagePid || null })); } catch (e) { /* plein */ }
   }
 
   refresh() {
     this.el.title.textContent = this.project.name + " ▾";
     this.renderPages(); this.renderLeft(); this.editor.render(); this.refreshInspector();
+    this.savePos();
   }
 
   renderPages() {
@@ -1236,6 +1256,7 @@ class App {
 
   // ---------------------------------------------------------------- inspecteur
   refreshInspector() {
+    this.savePos();
     const box = this.el.insp; box.textContent = ""; this.syncLayer = null;
     const pan = this.curPanel(), l = this.layer(), b = this.bubble();
     const range = (label, val, min, max, step, fn, kind) => { const out = h("output", fmt(val));
@@ -1371,11 +1392,11 @@ class App {
         h("div.row.colrow", h("span", tt("Couleur")), swatch(mk.color || "#111111", (c) => { mk.color = c; this.editor.render(true); this.commitSoon("mark"); })),
         range(tt("Épaisseur"), mk.w || 1, 0.4, 4, 0.1, (x) => { mk.w = x; }, "mark"),
         h("label.row.check", h("input", { type: "checkbox", checked: mk.ol !== false, on: { change: (e) => { if (e.target.checked) delete mk.ol; else mk.ol = false; redo(); } } }), tt("Contour")),
-        mk.ol !== false ? [range(tt("Taille du contour"), mk.ow ?? 1, 0.2, 4, 0.1, (x) => { mk.ow = x; }, "mark"),
-          h("div.row.colrow", h("span", tt("Couleur du contour")), swatch(mk.oc || ((mk.color || "#111111") === "#ffffff" ? "#111111" : "#ffffff"), (c) => { mk.oc = c; this.editor.render(true); this.commitSoon("mark"); }))] : "",
-        mk.type === "turn" ? [range(tt("Perspective"), mk.pv || 0, 0, 85, 1, (x) => { mk.pv = x; }, "mark"),
+        ...(mk.ol !== false ? [range(tt("Taille du contour"), mk.ow ?? 1, 0.2, 4, 0.1, (x) => { mk.ow = x; }, "mark"),
+          h("div.row.colrow", h("span", tt("Couleur du contour")), swatch(mk.oc || ((mk.color || "#111111") === "#ffffff" ? "#111111" : "#ffffff"), (c) => { mk.oc = c; this.editor.render(true); this.commitSoon("mark"); }))] : []),
+        ...(mk.type === "turn" ? [range(tt("Perspective"), mk.pv || 0, 0, 85, 1, (x) => { mk.pv = x; }, "mark"),
           range(tt("Inclinaison"), mk.pa || 0, -90, 90, 1, (x) => { mk.pa = x; }, "mark"),
-          h("p.muted", tt("Perspective : la rotation se couche, comme vue en biais, pour montrer un objet qui tourne sur son axe. Inclinaison : l'axe penche."))] : "",
+          h("p.muted", tt("Perspective : la rotation se couche, comme vue en biais, pour montrer un objet qui tourne sur son axe. Inclinaison : l'axe penche."))] : []),
         h("div.row",
           h("button.mini" + ((mk.type === "frame" ? mk.dash !== false : mk.dash) ? ".on" : ""), { on: { click: () => { mk.dash = mk.type === "frame" ? mk.dash === false : !mk.dash; redo(); } } }, tt("Pointillés")),
           mk.type === "turn" ? h("button.mini", { on: { click: () => { mk.cw = mk.cw === false; redo(); } } }, tt("Inverser le sens"))

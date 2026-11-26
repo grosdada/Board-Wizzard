@@ -310,6 +310,7 @@ export function openMontage(app, pid) {
   const pg = app.page(), src = pg.panels[pid] || {}, g = app.geo(pid);
   if (!g) return;
   const H = W * g.bbox.h / g.bbox.w, bb = { x0: 0, y0: 0, w: W, h: H };
+  app.montagePid = pid; app.savePos?.();                   // F5 : le montage se rouvre sur cette case
   const pan = JSON.parse(JSON.stringify(src));            // copie de travail : rien ne change avant « Enregistrer »
   pan.layers = pan.layers || [];
   const anim = pan.anim = Object.assign({ dur: 4, tracks: {} }, pan.anim);
@@ -2436,6 +2437,6 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
   const guard = (e) => { e.stopImmediatePropagation(); e.preventDefault(); leave().then((go) => { if (go) { m.close(); window.removeEventListener("beforeunload", beforeUnload); } }); };
   m.box.querySelector("header button.icon").addEventListener("click", guard, true);
   m.box.parentNode.addEventListener("pointerdown", (e) => { if (e.target === m.box.parentNode) guard(e); }, true);
-  new MutationObserver((_, ob) => { if (!m.box.isConnected) { ob.disconnect(); window.removeEventListener("beforeunload", beforeUnload); } }).observe(document.body, { childList: true });
+  new MutationObserver((_, ob) => { if (!m.box.isConnected) { ob.disconnect(); window.removeEventListener("beforeunload", beforeUnload); if (app.montagePid === pid) { app.montagePid = null; app.savePos?.(); } } }).observe(document.body, { childList: true });
   return m;
 }
