@@ -2284,7 +2284,9 @@
   "✎ Renommer la feuille…": "✎ Rename the sheet…",
   "Nom de la page {0} (vide : sans nom) :": "Name of page {0} (empty: no name):",
   "Voir ses feuilles": "Show its sheets",
-  "sans nom": "no name"
+  "sans nom": "no name",
+  "Fusionner": "Merge",
+  "Fusionner : une forme qui touche ou passe l'axe ne fait qu'une avec son miroir (le contour d'un visage, un nez). Loin de l'axe, elle garde son jumeau (un œil).": "Merge: a shape that touches or crosses the axis becomes one with its mirror (a face outline, a nose). Away from the axis it keeps its twin (an eye)."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

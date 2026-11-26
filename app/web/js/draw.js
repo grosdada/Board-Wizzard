@@ -413,6 +413,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const allShapes = () => (layers ? layers.flatMap((l) => l.shapes) : shapes);
   let tool = "blob", prim = "rect", path = "blob", brushT = "brush", sel = null, drag = null, building = null, hover = null;
   let preK = "arbre";                                      // forme toute faite en cours (banque de formes, presets.js)
+  let symMerge = true;                                     // symetrie, coche « Fusionner » : une forme qui touche l'axe et son miroir n'en font qu'une
   let sym = false;                                         // symetrie : chaque forme tracee a son jumeau en miroir (tw), qui suit ses retouches
   let vz = 1, vc = null, zoomOut = null, pan = null, spaceDown = false;
   let liveCtl = null;                                         // croquis -> image en direct (fal, essai)
@@ -562,8 +563,46 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     for (const k of Object.keys(o)) delete o[k];
     Object.assign(o, c);
   }
+  // Fusion en symetrie : un trace ouvert dont un bout touche l'axe se prolonge de son miroir (un profil de visage donne le
+  // visage entier) ; une forme fermee qui passe l'axe garde sa moitie du cote ou elle est surtout, recousue a son miroir.
+  // Une forme loin de l'axe (un oeil) n'est pas fusionnee : elle garde son jumeau.
+  function mergeSym(t) {
+    const P = t.p, near = (q) => Math.abs(q[0] - 0.5) * W < 22, mir = (q) => [1 - q[0], q[1]];
+    if (!P || P.length < 2 || r0(t)) return false;
+    if (t.t === "free" || t.t === "line" || t.t === "polyline") {
+      let pts = P, pw = t.pw;
+      if (near(P[0]) && !near(P[P.length - 1])) { pts = P.slice().reverse(); pw = pw && pw.slice().reverse(); }
+      else if (!near(P[P.length - 1])) return false;
+      const end = [0.5, pts[pts.length - 1][1]], half = pts.slice(0, -1).concat([end]);
+      t.p = half.concat(half.slice(0, -1).reverse().map(mir));
+      if (pw) { const hw = pw.slice(0, half.length); t.pw = hw.concat(hw.slice(0, -1).reverse()); }
+      if (t.t === "line") t.t = "polyline";
+      return true;
+    }
+    if (t.t === "blob" || t.t === "poly") {
+      const L = P.filter((q) => q[0] < 0.5).length, R = P.length - L;
+      if (!L || !R) return false;                          // ne passe pas l'axe : deux formes
+      const left = L >= R, inside = (q) => (left ? q[0] <= 0.5 : q[0] >= 0.5), out = [];
+      for (let i = 0; i < P.length; i++) {                 // decoupe par la droite de l'axe (Sutherland-Hodgman)
+        const a = P[i], b = P[(i + 1) % P.length];
+        if (inside(a)) out.push(a);
+        if (inside(a) !== inside(b)) { const u = (0.5 - a[0]) / (b[0] - a[0]); out.push([0.5, a[1] + (b[1] - a[1]) * u]); }
+      }
+      const onAx = out.map((q) => Math.abs(q[0] - 0.5) < 1e-9), n = out.length;
+      const runs = out.reduce((c, _, i) => c + (onAx[i] && onAx[(i + 1) % n] ? 1 : 0), 0);
+      if (runs !== 1) return false;                        // forme trop decoupee par l'axe : on garde les deux
+      let s = out.findIndex((_, i) => onAx[i] && onAx[(i + 1) % n]);
+      const half = Array.from({ length: n }, (_, k) => out[(s + 1 + k) % n]);   // d'un point de l'axe a l'autre, par l'exterieur
+      t.p = half.concat(half.slice(1, -1).reverse().map(mir));
+      delete t.pw; t.ed = 1;
+      return true;
+    }
+    return false;
+  }
+  const r0 = (t) => !!(t.r && Math.abs(t.r) > 0.01);       // forme tournee : pas de fusion (ses points ne sont pas ceux affiches)
   function addTwin(t) {                                    // mode symetrie : le jumeau d'une forme qui vient d'etre tracee
     if (!sym || !t || t.tw) return;
+    if (symMerge && mergeSym(t)) return;
     const c = flipShape(JSON.parse(JSON.stringify(t)));
     c.id = uid(); c.tw = t.id; t.tw = c.id;
     shapes.splice(shapes.indexOf(t) + 1, 0, c);
@@ -913,6 +952,8 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       h("button.mini", { type: "button", title: tt("Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite"), on: { click: mirror } }, tt("⇋ Miroir")),
       h("button.mini" + (sym ? ".on" : ""), { type: "button", title: tt("Symétrie : chaque forme tracée a son jumeau en miroir de l'autre côté de l'axe. Déplacer, tourner, agrandir ou régler l'une fait suivre l'autre, en miroir (yeux, oreilles, visage)."),
         on: { click: () => { sym = !sym; zone(); tools(); paint(); toast(sym ? tt("Symétrie : ce que tu traces a son jumeau en face.") : tt("Symétrie coupée : les jumeaux déjà faits restent liés.")); } } }, sym ? tt("✓ Symétrie") : tt("⫼ Symétrie")),
+      h("label.row.check.draw-merge", { title: tt("Fusionner : une forme qui touche ou passe l'axe ne fait qu'une avec son miroir (le contour d'un visage, un nez). Loin de l'axe, elle garde son jumeau (un œil).") },
+        h("input", { type: "checkbox", checked: symMerge, on: { change: (e) => { symMerge = e.target.checked; } } }), tt("Fusionner")),
       h("button.mini" + (liveCtl ? ".on" : ""), { type: "button", title: tt("Croquis -> image en direct (essai, fal, payant) : le dessin part à mesure qu'on trace, l'image revient à côté"), on: { click: toggleLive } }, tt("⚡ En direct")),
       layers ? h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes du calque en cours"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout ce calque ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); hist.snap(); } } } }, tt("Effacer le calque"))
         : h("button.mini.danger", { type: "button", title: tt("Retirer toutes les formes"), on: { click: () => { if (shapes.length && confirm(tt("Effacer tout le dessin de ce fond ?"))) { building = null; shapes.length = 0; sel = null; paint(); props(); } } } }, tt("Tout effacer")));
