@@ -207,7 +207,10 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     }
     return tkLast.get(l.n) || null;
   };
+  // trait unifie : la meme epaisseur de trait (trait constant, l.tk) pour tous les elements, y compris ceux poses ensuite
+  let unifyOn = false, unifyV = 3;
   const paint = () => {
+    if (unifyOn) for (const l of layers) if (l.tk !== unifyV) l.tk = unifyV;
     // chaque coupe (ou couvre-chef) masque, au-dessus de son profil, tout ce qui est pose dessous : le crane ne depasse pas
     let acc = "", defs = "";
     for (const l of sorted()) {
@@ -913,6 +916,26 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
   const eraseRange = h("input", { type: "range", min: 4, max: 120, step: 1, value: eraseW, title: tt("Taille de la gomme"), on: { input: (e) => { eraseW = +e.target.value; eraseOut.textContent = String(eraseW); } } });
   const eraseClear = h("button.mini", { title: tt("Remet l'élément choisi entier : retire tous ses coups de gomme") , on: { click: () => { const l = layers.find((x) => x.n === sel); if (!l || !(l.er || []).length) return toast(tt("Rien à rétablir sur cet élément.")); delete l.er; paint(); hist.snap(); } } }, tt("↺ Dégommer"));
   const eraseBox = h("span.row.idk-erase", eraseBtn, eraseRange, eraseOut, eraseClear);
+  // « Unifier le trait » : tous les elements prennent la meme epaisseur de trait, reglable au curseur ; decocher la rend a chacun
+  const unifyOut = h("output", "");
+  const unifyRange = h("input", { type: "range", min: 0.5, max: 30, step: 0.5, value: unifyV, disabled: true, title: tt("Épaisseur du trait de tous les éléments (unités de la feuille)"),
+    on: { input: (e) => { unifyV = +e.target.value; unifyOut.textContent = unifyV.toFixed(1); paint(); props(); }, change: () => hist.snap() } });
+  const unifyCb = h("input", { type: "checkbox", on: { change: async (e) => {
+    unifyOn = e.target.checked;
+    if (unifyOn) {                                         // depart : l'epaisseur mediane des traits tels qu'ils sont affiches
+      const th = [];
+      for (const l of layers) { if (l.tk) { th.push(+l.tk); continue; } const im = await loadImg(url(l)), nat = await nativeInk(l); if (im && nat) th.push(nat * (l.w * l.kx) / (im.naturalWidth || 1)); }
+      th.sort((a, b) => a - b);
+      unifyV = th.length ? Math.max(0.5, Math.min(30, Math.round(2 * th[Math.floor(th.length / 2)]) / 2)) : 3;
+      unifyRange.value = unifyV; unifyOut.textContent = unifyV.toFixed(1);
+    } else { for (const l of layers) delete l.tk; unifyOut.textContent = ""; }
+    unifyRange.disabled = !unifyOn; paint(); props(); hist.snap();
+  } } });
+  const unifyBox = h("label.row.range.idk-unify", { title: tt("Unifier le trait : tous les éléments, déjà posés ou à venir, prennent la même épaisseur de trait, quelle que soit leur taille. Décocher rend à chacun son trait.") },
+    unifyCb, tt("〰 Unifier le trait"), unifyRange, unifyOut);
+  if (layers.length > 1 && layers.every((l) => l.tk && l.tk === layers[0].tk)) {   // composition rouverte, deja unifiee
+    unifyOn = true; unifyV = +layers[0].tk; unifyCb.checked = true; unifyRange.disabled = false; unifyRange.value = unifyV; unifyOut.textContent = unifyV.toFixed(1);
+  }
   eraseBtn.addEventListener("click", () => { erasing = !erasing; eraseBtn.classList.toggle("on", erasing); svg.style.cursor = erasing ? "crosshair" : ""; if (erasing) toast(tt("Gomme : glisse sur l'élément choisi.")); });
   zoomOut = h("output.idk-zoomval", "100 %");
   const zoomBar = h("div.idk-zoom", { title: tt("Loupe : Ctrl + molette (ou molette sans élément choisi) autour du pointeur ; se déplacer : bouton du milieu, ou Espace + glisser") },
@@ -990,7 +1013,7 @@ export async function openIdentikit(bankUI, edit = null, opts = {}) {
     h("div.idk-left", h("div.idk-stagewrap", svg, moveBtn, zoomBar), stageBgControl(() => paint()), bricksBox, h("div.row.wrap", h("button.mini", { title: BODYKIT ? tt("Tire un corps au hasard dans la banque ouverte") : tt("Tire un visage au hasard dans la banque"), on: { click: random } }, tt("🎲 Au hasard")),
       BODYKIT ? "" : h("button.mini", { title: tt("Reconstruit le visage d'une photo de face avec les éléments du portrait-robot. La photo reste dans ce navigateur : seuls les points du visage partent."), on: { click: () => fileIn.click() } }, tt("📷 Transposer un portrait…")), BODYKIT ? "" : fileIn,
       h("button.mini", { on: { click: () => { layers = []; sel = null; multi.clear(); paint(); props(); marks(); } } }, tt("Tout retirer")),
-      eraseBox,
+      eraseBox, unifyBox,
       h("button.mini", { title: tt("Télécharge le portrait tel qu'il est affiché, en pleine définition, sans les poignées"), on: { click: (e) => exportMenu(e) } }, tt("⬇ Exporter le portrait ▾")),
       h("button.mini", { title: tt("Rendu photoréaliste du portrait tel qu'il est, en gardant exactement la forme du dessin (GPT Image 2.6 Sunburst sur fal, payant)"), on: { click: () => realistic() } }, tt("✨ Generate (photo)"))), photoBox, knobs),
     h("div.idk-right", h("label.row", tt("Nom"), name), bankTabs, tabs, grid)),

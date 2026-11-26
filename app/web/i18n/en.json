@@ -2290,7 +2290,10 @@
   "Cache les points du tracé (la forme reste telle qu'elle est retouchée)": "Hides the path's points (the shape stays as edited)",
   "✓ Éditer les points": "✓ Edit points",
   "Épaisseur aléatoire : par endroits le trait s'épaissit, ailleurs il s'amincit, comme tracé à la plume. 0 : régulier.": "Random thickness: in places the line gets thicker, elsewhere thinner, as if drawn with a dip pen. 0: even.",
-  "Épaisseur aléatoire ⓘ": "Random thickness ⓘ"
+  "Épaisseur aléatoire ⓘ": "Random thickness ⓘ",
+  "Épaisseur du trait de tous les éléments (unités de la feuille)": "Line thickness of all elements (sheet units)",
+  "Unifier le trait : tous les éléments, déjà posés ou à venir, prennent la même épaisseur de trait, quelle que soit leur taille. Décocher rend à chacun son trait.": "Unify line: all elements, placed now or later, get the same line thickness whatever their size. Unchecking gives each its own line back.",
+  "〰 Unifier le trait": "〰 Unify line"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
