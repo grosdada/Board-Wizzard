@@ -34,6 +34,8 @@ export const BRUSHES = { brush: [tt("Pinceau en pointe"), "🖌"], paint: [tt("P
                          stamp: [tt("Pinceau-tampon (image importée)"), "✺"], hair: [tt("Poils / pointillé (barbe, cheveux)"), "✳"] };
 const OPEN = new Set(["line", "free", "polyline", "brush", "paint", "erase", "stamp", "hair"]);       // sans remplissage
 const MANY = new Set(["free", "blob", "poly", "polyline", "brush", "paint", "erase", "stamp", "hair"]);
+// points visibles d'un trace choisi : une forme point par point les montre sauf si on les a caches (ed: 0) ; les autres traces sur demande (ed: 1)
+const ptsOn = (t) => (t.t === "poly" || t.t === "polyline" ? t.ed !== 0 : !!t.ed);
 const SPECIAL = new Set(["brush", "paint", "erase", "stamp", "img", "hair"]);
 const BRUSH_KEYS = ["bsw", "tp", "sv", "pc", "bw", "op", "soft", "ss", "gap", "ink", "iop", "pw", "hd", "hs", "hl", "hz", "hj", "ho", "hf"];
 // pinceaux enregistres (bw.brushes) : { n : nom, t : type de pinceau, v : ses reglages }
@@ -594,7 +596,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       let s = out.findIndex((_, i) => onAx[i] && onAx[(i + 1) % n]);
       const half = Array.from({ length: n }, (_, k) => out[(s + 1 + k) % n]);   // d'un point de l'axe a l'autre, par l'exterieur
       t.p = half.concat(half.slice(1, -1).reverse().map(mir));
-      delete t.pw; t.ed = 1;
+      delete t.pw;
       return true;
     }
     return false;
@@ -649,7 +651,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const t = target();
     if (t && t !== building && !(drag && drag.kind === "new")) {   // pendant qu'on trace : pas de cadre, il revient au lacher
       const b = boxOf(t, H), top = b.y - 6;
-      const corners = MANY.has(t.t) && !(t.t === "poly" || t.t === "polyline" || t.ed) ? "" : t.p.map((p, i) => `<circle cx="${f1(p[0] * W)}" cy="${f1(p[1] * H)}" r="9" class="draw-pt" data-pt="${i}"/>`).join("");
+      const corners = MANY.has(t.t) && !ptsOn(t) ? "" : t.p.map((p, i) => `<circle cx="${f1(p[0] * W)}" cy="${f1(p[1] * H)}" r="9" class="draw-pt" data-pt="${i}"/>`).join("");
       // poignee de rotation : au-dessus de la forme, elle tourne avec elle
       o += `<g transform="rotate(${f1(t.r || 0)} ${f1(b.cx)} ${f1(b.cy)})"><rect x="${f1(b.x - 6)}" y="${f1(top)}" width="${f1(b.w + 12)}" height="${f1(b.h + 12)}" class="draw-sel"/>` +
         `<line x1="${f1(b.cx)}" y1="${f1(top)}" x2="${f1(b.cx)}" y2="${f1(top - 30)}" class="draw-sel"/>` +
@@ -726,7 +728,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     while (st.length) {
       const [a, b] = st.pop(), A = P[a], B = P[b], dx = B[0] - A[0], dy = B[1] - A[1], L = Math.hypot(dx, dy) || 1;
       let far = -1, fi = -1;
-      for (let i = a + 1; i < b; i++) { const d = Math.abs(dy * (P[i][0] - A[0]) - dx * (P[i][1] - A[1])) / L; if (d > far) { far = d; fi = i; } }
+      for (let i = a + 1; i < b; i++) { const d = Math.hypot(dx, dy) < 1e-6 ? Math.hypot(P[i][0] - A[0], P[i][1] - A[1]) : Math.abs(dy * (P[i][0] - A[0]) - dx * (P[i][1] - A[1])) / L; if (d > far) { far = d; fi = i; } }   // boucle fermee : distance au point de depart
       if (far > tol) { keep[fi] = 1; st.push([a, fi], [fi, b]); }
     }
     const ix = [...keep.keys()].filter((i) => keep[i]);
@@ -782,7 +784,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       const out = h("output.rot-out", Math.round(t.r || 0) + "°");
       side.append(h("label.row.range", tt("Rotation"), h("input.rot-in", { type: "range", min: -180, max: 180, step: 1, value: Math.round(t.r || 0), on: { input: (e) => { t.r = +e.target.value; out.textContent = e.target.value + "°"; paint(); } } }), out),
         t.t === "pre" || PRIMS[t.t] ? h("button.mini", { title: tt("Transforme la forme en points à tirer un par un (outil Sélection, ronds sur la forme)"), on: { click: () => editPoints(t) } }, tt("✎ Éditer les points"))
-          : MANY.has(t.t) && t.t !== "poly" && t.t !== "polyline" && !t.ed ? h("button.mini", { title: tt("Montre les points du tracé (allégé) : on les tire un par un pour retoucher la forme"), on: { click: () => pointsOf(t) } }, tt("✎ Éditer les points")) : "",
+          : MANY.has(t.t) ? (ptsOn(t)                      // meme bouton : il montre les points, puis les cache
+            ? h("button.mini.on", { title: tt("Cache les points du tracé (la forme reste telle qu'elle est retouchée)"), on: { click: () => { if (t.t === "poly" || t.t === "polyline") t.ed = 0; else delete t.ed; syncTwin(t); props(); paint(); hist.snap(); } } }, tt("✓ Éditer les points"))
+            : h("button.mini", { title: tt("Montre les points du tracé (allégé) : on les tire un par un pour retoucher la forme"), on: { click: () => { if (t.t === "poly" || t.t === "polyline") { delete t.ed; syncTwin(t); props(); paint(); hist.snap(); } else pointsOf(t); } } }, tt("✎ Éditer les points"))) : "",
         h("h4", tt("Ordre")), h("div.row.wrap",
         h("button.mini", { on: { click: () => { const i = shapes.indexOf(t); if (i < shapes.length - 1) { shapes.splice(i, 1); shapes.splice(i + 1, 0, t); paint(); } } } }, tt("Avancer")),
         h("button.mini", { on: { click: () => { const i = shapes.indexOf(t); if (i > 0) { shapes.splice(i, 1); shapes.splice(i - 1, 0, t); paint(); } } } }, tt("Reculer")),
@@ -1113,7 +1117,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (!t || tool !== "select" || t.t === "img") return;
     e.preventDefault();
     if (t.t === "pre" || PRIMS[t.t]) editPoints(t);
-    else if (MANY.has(t.t) && t.t !== "poly" && t.t !== "polyline" && !t.ed) pointsOf(t);
+    else if (MANY.has(t.t) && !ptsOn(t)) { if (t.t === "poly" || t.t === "polyline") { delete t.ed; props(); paint(); } else pointsOf(t); }
   });
   svg.addEventListener("contextmenu", (e) => {             // clic droit : dupliquer, copier, coller, ordre, supprimer
     e.preventDefault();
