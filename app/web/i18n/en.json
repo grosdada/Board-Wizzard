@@ -2457,7 +2457,11 @@
   "à": "to",
   "🚨 Clignoteur ⓘ": "🚨 Flasher ⓘ",
   "Coché : les personnages, les objets et le sol prennent aussi la couleur du clignoteur. Décoché : seul le décor clignote.": "Checked: characters, objects and the floor also take the flasher colour. Unchecked: only the background flashes.",
-  "Aussi les personnages et le sol": "Characters and floor too"
+  "Aussi les personnages et le sol": "Characters and floor too",
+  "<text x=\"{0}\" y=\"{1}\" font-size=\"{2}\" fill=\"#e2603a\">l'image d'origine</text>": "<text x=\"{0}\" y=\"{1}\" font-size=\"{2}\" fill=\"#e2603a\">original image</text>",
+  "Agrandit l'image de l'élément pour dessiner autour : des bras tendus sur les côtés, un chapeau au-dessus. Chaque clic ajoute 10 % ; Maj + clic retire. L'élément garde sa place et sa taille dans la case.": "Enlarges the element's image to draw around it: outstretched arms on the sides, a hat on top. Each click adds 10%; Shift + click removes. The element keeps its place and size in the panel.",
+  "image agrandie : {0} % × {1} %": "enlarged image: {0}% × {1}%",
+  "taille d'origine": "original size"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

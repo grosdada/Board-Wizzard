@@ -673,21 +673,30 @@ class App {
     const draw = { layers: [
       { id: uid(), name: tt("Élément"), shapes: [{ id: uid(), t: "img", href: sp.url, p: [[0, 0], [1, 1]], ink: "none", iop: 1, ar: ih / iw }] },
       { id: uid(), name: tt("Retouches"), shapes: [] }] };
-    openDrawEditor({ draw, ratio: ih / iw, backdrop: null, layers: true, kit: true,
+    openDrawEditor({ draw, ratio: ih / iw, backdrop: null, layers: true, kit: true, grow: true,
       title: tt`Dessiner sur : ${item.name} · ${v ? tr(v.label) : ""}${sp.orbit ? tt` · image ${sp.i + 1}/${sp.n}` : ""}`,
       saveLabel: tt("💾 Enregistrer comme pose…"),
       onSave: async (d) => {
         const name = (prompt(tt("Nom de la nouvelle pose (elle rejoint les cartes du personnage) :"), (v ? tr(v.label) : tt("Pose")) + tt(" retouchée")) || "").trim();
         if (!name) return false;
-        const k = Math.min(1, 1600 / Math.max(iw, ih)), wpx = Math.round(iw * k), hpx = Math.round(ih * k);
-        const pic = await drawImage(d, wpx, hpx);
+        // zone agrandie (bras tendus, chapeau) : l'image grandit d'autant, l'element garde sa place et sa taille dans la case
+        const e = Object.assign({ l: 0, r: 0, t: 0, b: 0 }, d.ext), kx = 1 + e.l + e.r, ky = 1 + e.t + e.b;
+        const k = Math.min(1, 1600 / Math.max(iw * kx, ih * ky)), wpx = Math.round(iw * k), hpx = Math.round(ih * k);
+        const pic = await drawImage(d, wpx, hpx, e);
         if (!pic) { toast(tt("Le dessin n'a pas pu être converti en image."), "error"); return false; }
-        const c = document.createElement("canvas"); c.width = wpx; c.height = hpx;
-        c.getContext("2d").drawImage(pic, 0, 0, wpx, hpx);
+        const c = document.createElement("canvas"); c.width = Math.round(wpx * kx); c.height = Math.round(hpx * ky);
+        c.getContext("2d").drawImage(pic, 0, 0, c.width, c.height);
         const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
         try {
           const r = await upload(`bank/${l.item}/drawnpose?${new URLSearchParams({ name, from: l.v })}`, blob);
           await this.bankUI.reload();
+          if (kx > 1 || ky > 1) {                           // meme dessin a la meme place : la boite grandit autour
+            const pid = Object.keys(this.page().panels).find((q) => (this.page().panels[q].layers || []).includes(l)), g = pid && this.geo(pid);
+            if (g) {
+              const bh = l.s * g.bbox.h, bw = bh * iw / ih, dx = (e.r - e.l) * bw / 2 * (l.flip ? -1 : 1);
+              l.x = +(l.x + dx / g.bbox.w).toFixed(4); l.y = +(l.y + e.b * l.s).toFixed(4); l.s = +(l.s * ky).toFixed(4);
+            }
+          }
           l.v = r.variant; l.f = 0;
           this.commit("pose"); this.editor.render(); this.refreshInspector();
           toast(tt`Pose « ${name} » ajoutée aux cartes de ${item.name}. Sa tournette se lance depuis sa fiche, comme pour les autres poses.`);

@@ -542,12 +542,14 @@ const inline = (href) => {
   return inlined.get(href);
 };
 /** Image (pour l'aplatissement) du fond dessine d'une case de wpx x hpx pixels. */
-export async function drawImage(draw, wpx, hpx) {
+//  ext = { l, r, t, b } : la zone agrandie comprise (en largeurs et hauteurs du cadre) ; l'image grandit d'autant
+export async function drawImage(draw, wpx, hpx, ext = null) {
   const all = ((draw && draw.layers) || []).flatMap((l) => l.shapes || []).concat((draw && draw.shapes) || []), hrefs = {};
   for (const s of all) if ((s.t === "img" || s.t === "stamp") && s.href && !hrefs[s.href]) hrefs[s.href] = await inline(s.href);
   const H = W * hpx / wpx, inner = drawSvg(draw, H, "f", { hrefs });
   if (!inner) return null;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(wpx)}" height="${Math.round(hpx)}" viewBox="0 0 ${W} ${f1(H)}">${inner}</svg>`;
+  const e = Object.assign({ l: 0, r: 0, t: 0, b: 0 }, ext), kx = 1 + e.l + e.r, ky = 1 + e.t + e.b;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(wpx * kx)}" height="${Math.round(hpx * ky)}" viewBox="${f1(-e.l * W)} ${f1(-e.t * H)} ${f1(W * kx)} ${f1(H * ky)}">${inner}</svg>`;
   return new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg); });
 }
 
@@ -555,7 +557,7 @@ export async function drawImage(draw, wpx, hpx) {
 /** Ouvre l'atelier de dessin pour une case. ratio = hauteur / largeur ; backdrop : url du decor a montrer dessous. */
 //  Atelier d'elements (portrait-robot, corps) : layers = calques ; kit = pinceaux, gomme, import d'image, pinceau-tampon ;
 //  extra = noeud ajoute sous la barre d'outils (reglages propres a l'appelant).
-export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = tt("Enregistrer le fond"), axis = false, under = null, layers: useLayers = false, kit = false, extra = null }) {
+export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = [], saveLabel = tt("Enregistrer le fond"), axis = false, under = null, layers: useLayers = false, kit = false, extra = null, grow: growOpt = false }) {
   const H = W * ratio;
   // calques : du dessous vers le dessus ; « shapes » est toujours le tableau du calque en cours
   let layers = useLayers ? JSON.parse(JSON.stringify(draw && Array.isArray(draw.layers) && draw.layers.length ? draw.layers
@@ -592,13 +594,13 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     svg.setAttribute("viewBox", `${f1(vc[0] - vw / 2)} ${f1(vc[1] - vh / 2)} ${f1(vw)} ${f1(vh)}`);
     if (zoomOut) zoomOut.textContent = Math.round(vz * 100) + " %";
     svg.classList.toggle("zoomed", vz > 1);
-    back.innerHTML = `<defs>${stagePattern(Math.max(8, W / 60))}</defs><rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(ww)}" height="${f1(hh)}" fill="${big ? "#ebe8e0" : stageFill()}"/><rect width="${W}" height="${f1(H)}" fill="${stageFill()}"/>` +
+    back.innerHTML = `<defs>${stagePattern(Math.max(8, W / 60))}</defs><rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(ww)}" height="${f1(hh)}" fill="${big && !kit ? "#ebe8e0" : stageFill()}"/><rect width="${W}" height="${f1(H)}" fill="${stageFill()}"/>` +
       (backdrop ? `<image href="${backdrop}" width="${W}" height="${f1(H)}" preserveAspectRatio="xMidYMid slice" opacity="0.35"/>` : "") +
       // retouche d'une image : elle est posee a sa place dans le cadre, pleinement visible, et on dessine par-dessus
       (under ? `<image href="${under.url}" x="${f1(under.x * W)}" y="${f1(under.y * H)}" width="${f1(under.w * W)}" height="${f1(under.h * H)}" preserveAspectRatio="none"/>` : "");
     const k = ww / W;                                       // le cadre de la case reste lisible quand on dezoome
     guide.innerHTML = (big ? `<rect width="${W}" height="${f1(H)}" fill="none" stroke="#e2603a" stroke-width="${f1(2.5 * k)}" stroke-dasharray="${f1(12 * k)} ${f1(8 * k)}"/>` +
-      tt`<text x="${f1(6 * k)}" y="${f1(-6 * k)}" font-size="${f1(15 * k)}" fill="#e2603a">la case</text>` : "") +
+      (kit ? tt`<text x="${f1(6 * k)}" y="${f1(-6 * k)}" font-size="${f1(15 * k)}" fill="#e2603a">l'image d'origine</text>` : tt`<text x="${f1(6 * k)}" y="${f1(-6 * k)}" font-size="${f1(15 * k)}" fill="#e2603a">la case</text>`) : "") +
       // element en paire (yeux, oreilles…) : l'axe du milieu, pour dessiner un cote puis « Miroir » ; il n'est pas enregistre
       (axis || sym ? `<line x1="${W / 2}" y1="0" x2="${W / 2}" y2="${f1(H)}" stroke="#2bb3a3" stroke-opacity="0.55" stroke-width="${f1(1.5 * k)}" stroke-dasharray="${f1(10 * k)} ${f1(8 * k)}"/>` : "");
   };
@@ -671,8 +673,10 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const up = (v) => Math.ceil(Math.max(0, v) * 4 - 1e-6) / 4;
     Object.assign(ext, { l: up(-x0), r: up(x1 - 1), t: up(-y0), b: up(y1 - 1) }); zone(); paint(); extInfo();
   };
+  const growImg = kit && growOpt;                          // dessin sur un element : la zone agrandie agrandit son image
   const extOut = h("span.muted", "");
-  const extInfo = () => { extOut.textContent = ext.l + ext.r + ext.t + ext.b > 0 ? tt`${(1 + ext.l + ext.r).toFixed(1)} × ${(1 + ext.t + ext.b).toFixed(1)} cases` : tt("taille de la case"); };
+  const extInfo = () => { extOut.textContent = growImg ? (ext.l + ext.r + ext.t + ext.b > 0 ? tt`image agrandie : ${Math.round((1 + ext.l + ext.r) * 100)} % × ${Math.round((1 + ext.t + ext.b) * 100)} %` : tt("taille d'origine"))
+    : ext.l + ext.r + ext.t + ext.b > 0 ? tt`${(1 + ext.l + ext.r).toFixed(1)} × ${(1 + ext.t + ext.b).toFixed(1)} cases` : tt("taille de la case"); };
   extInfo();
   // marge : la zone de dessin grandit du meme pourcentage de la case de tous les cotes (10 % par defaut)
   let marginPct = 10;
@@ -687,8 +691,9 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     setTimeout(() => { inp.focus(); inp.select(); }, 30);
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); m.box.querySelector("footer button.primary").click(); } });
   };
-  const gb = (label, side, title) => h("button.mini", { type: "button", title, on: { click: (e) => grow(side, e.shiftKey ? -0.5 : 0.5) } }, label);
-  const extBar = h("div.row.draw-ext", { title: tt("Agrandit la zone de dessin au-delà de la case, pour un long travelling : ce qui est hors du cadre orange n'apparaît que quand la caméra du montage s'y déplace. Maj + clic réduit.") },
+  const gb = (label, side, title) => h("button.mini", { type: "button", title, on: { click: (e) => grow(side, (e.shiftKey ? -1 : 1) * (growImg ? 0.1 : 0.5)) } }, label);
+  const extBar = h("div.row.draw-ext", { title: growImg ? tt("Agrandit l'image de l'élément pour dessiner autour : des bras tendus sur les côtés, un chapeau au-dessus. Chaque clic ajoute 10 % ; Maj + clic retire. L'élément garde sa place et sa taille dans la case.")
+    : tt("Agrandit la zone de dessin au-delà de la case, pour un long travelling : ce qui est hors du cadre orange n'apparaît que quand la caméra du montage s'y déplace. Maj + clic réduit.") },
     h("span", tt("Zone de dessin ⓘ")), gb("◀＋", "l", tt("Ajouter à gauche (Maj : retirer)")), gb("＋▶", "r", tt("Ajouter à droite (Maj : retirer)")), gb("▲＋", "t", tt("Ajouter en haut (Maj : retirer)")), gb("＋▼", "b", tt("Ajouter en bas (Maj : retirer)")),
     h("button.mini", { type: "button", title: tt("Ajoute une marge tout autour de l'image : la zone de dessin grandit du même pourcentage de chaque côté"), on: { click: addMargin } }, tt("⬚ Marge")),
     h("button.mini", { type: "button", title: tt("Réduit la zone à la case et aux formes déjà dessinées"), on: { click: fit } }, tt("Recadrer")), extOut);
@@ -1472,7 +1477,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   const done = () => { if (liveCtl) { liveCtl.close(); liveCtl = null; } document.removeEventListener("keyup", keyUp, true); document.removeEventListener("keydown", key, true); document.removeEventListener("click", away); };
   tools(); props(); paint();
   // un element (kit) n'a ni zone agrandie ni lignes d'effet : son cadre est celui de l'atelier
-  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, h("div.row.wrap", extra || "", stageBgControl(() => zone()), zoomBar), ghostBar, kit ? "" : extBar, h("div.draw-framerow", h("div.draw-frame", svg), liveSlot), kit ? "" : fxBox), side),
+  const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, h("div.row.wrap", extra || "", stageBgControl(() => zone()), zoomBar), ghostBar, kit && !growOpt ? "" : extBar, h("div.draw-framerow", h("div.draw-frame", svg), liveSlot), kit ? "" : fxBox), side),
     [{ label: tt("Annuler"), click: done },
      // onSave peut rendre false (nom refuse, envoi rate) : l'atelier reste ouvert, rien n'est perdu
      { label: saveLabel, primary: true, click: async () => { finish(true);
