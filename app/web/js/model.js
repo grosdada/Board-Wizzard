@@ -222,7 +222,14 @@ export function cmPixels(cv, M) {
   return cv;
 }
 /** Colorimetrie et colorize d'un element (calque) ou du decor d'une case. */
-export function layerCM(l, vec) { return colorMatrix(hslOf(l && l.hsl), vec ? null : tintOf(l)); }
+//  extra : une couleur de plus en produit (le clignoteur du montage, qui rougit aussi les personnages)
+export function layerCM(l, vec, extra) {
+  const own = vec ? null : tintOf(l);
+  return colorMatrix(hslOf(l && l.hsl), extra ? (own ? mulHex(own, extra) : extra) : own);
+}
+const mulHex = (a, b) => "#" + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * parseInt(b.slice(i, i + 2), 16) / 255).toString(16).padStart(2, "0")).join("");
+/** Le clignoteur sur les elements et le sol (anim.blink.chars, coche par defaut) : sa couleur a l'instant t, ou null. */
+export function blinkAll(pan, t) { const a = pan && pan.anim; return a && a.bgAnim && a.blink && a.blink.chars !== false ? blinkTint(a.blink, t) : null; }
 /** Clignoteur du colorize du decor (montage, anim.blink = { on, a, b, hz, soft }) : a l'instant t (secondes), la couleur
  *  va de a a b et revient, hz fois par seconde ; soft 0 = net (allume / eteint), 1 = en douceur. Commence sur b. */
 export function blinkTint(bl, t) {

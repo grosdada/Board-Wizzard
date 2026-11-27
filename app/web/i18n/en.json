@@ -2455,7 +2455,9 @@
   "De": "From",
   "Douceur": "Smoothness",
   "à": "to",
-  "🚨 Clignoteur ⓘ": "🚨 Flasher ⓘ"
+  "🚨 Clignoteur ⓘ": "🚨 Flasher ⓘ",
+  "Coché : les personnages, les objets et le sol prennent aussi la couleur du clignoteur. Décoché : seul le décor clignote.": "Checked: characters, objects and the floor also take the flasher colour. Unchecked: only the background flashes.",
+  "Aussi les personnages et le sol": "Characters and floor too"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

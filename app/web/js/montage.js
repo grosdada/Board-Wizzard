@@ -15,7 +15,7 @@ import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, uses
 import { swatch } from "./colors.js";
 import { groundSvg, groundFor, groundInFrame, frameVis, groundTile, groundMap, estimateHorizon, PATS, GROUND0, PLATE0, plateDefault, plateCorners, groundAt, plateGround, groundImg, toPlate, plateMap, composeGround } from "./ground.js";
 import { markupReady } from "./model.js";
-import { bgStroke, jitterFilter, sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM, CAM_BACK, perspOf } from "./model.js";
+import { bgStroke, jitterFilter, sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM, blinkAll, colorMatrix, CAM_BACK, perspOf } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
 import { PRESETS } from "./presets.js";
 import { faceFor, opsSvg } from "./face.js";
@@ -222,7 +222,8 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     // carte de sol (ground.js) : une plaque sous le decor, dans le cadrage mais pas au plan du decor (elle reste un sol
     // jusqu'au bas de l'image quand la camera recule) ; elle s'arrete au pied du decor, le decor est pose dessus
     const GR = groundNow(c);
-    if (GR) o += `<g${blur(1)}>` + groundSvg(GR, { x: 0, y: 0, w: W, h: H }, pre + "gr", frameVis(c, bb)) + "</g>"; }      // flou de profondeur : celui du decor
+    if (GR) { const bk = blinkAll(pan, t), gm = bk && colorMatrix(null, bk);             // le clignoteur rougit aussi le sol
+      o += (gm ? cmFilter(`${pre}grb`, gm) : "") + `<g${blur(1)}>` + (gm ? `<g filter="url(#${pre}grb)">` : "") + groundSvg(GR, { x: 0, y: 0, w: W, h: H }, pre + "gr", frameVis(c, bb)) + (gm ? "</g>" : "") + "</g>"; } }      // flou de profondeur : celui du decor
     const drawLayer = (l, li) => {
       const s = stateOf(l, t), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
       if (!sp) return;
@@ -281,7 +282,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
         }
       }
       if (egm && !gomDone) gomWrap(egm);                   // gomme de l'expression, sans lip sync
-      const cm = layerCM(l, !!vf);                         // colorize et colorimetrie : l'image et ses bouches prennent la meme couleur
+      const cm = layerCM(l, !!vf, blinkAll(pan, t));      // colorize et colorimetrie (clignoteur compris) : l'image et ses bouches prennent la meme couleur
       if (cm) o = o.slice(0, o1) + cmFilter(`${pre}tn-${l.id}`, cm) + `<g filter="url(#${pre}tn-${l.id})">` + o.slice(o1) + "</g>";
       if (rz) o = o.slice(0, o1) + `<g transform="rotate(${f1(rz)} ${f1(box.cx)} ${f1(box.y + box.h / 2)})">` + o.slice(o1) + "</g>";
       if (sel === l.id && !l.lock) {                       // poignees : les memes que dans les cases (handles.js)
@@ -1317,6 +1318,8 @@ export function openMontage(app, pid, opt = {}) {
         h("div.row.colrow", h("span", tt("De")), swatch(bl.a || "#ffffff", (c) => setBl("a", c), () => hist.snap()),
           h("span", tt("à")), swatch(bl.b || "#ff3b30", (c) => setBl("b", c), () => hist.snap())),
         rg(tt("Vitesse"), tt("Clignotements par seconde"), "hz", 1.5, 0.1, 8, 0.1, (x) => (+x).toFixed(1) + " /s"),
+        h("label.row.check", { title: tt("Coché : les personnages, les objets et le sol prennent aussi la couleur du clignoteur. Décoché : seul le décor clignote.") },
+          h("input", { type: "checkbox", checked: bl.chars !== false, on: { change: (e) => { setBl("chars", e.target.checked); hist.snap(); } } }), tt("Aussi les personnages et le sol")),
         rg(tt("Douceur"), tt("0 : passage net, comme un gyrophare qui s'allume et s'éteint ; 1 : la couleur monte et redescend en douceur"), "soft", 0.3, 0, 1, 0.01, (x) => Math.round(x * 100) + " %"),
         h("p.muted", tt("Blanc = couleurs d'origine. Lecture pour voir le rythme."))) : "");
   }
