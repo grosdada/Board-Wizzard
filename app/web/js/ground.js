@@ -5,7 +5,11 @@
 // Plaque de sol (« Make Ground ») : gr.ext = [u0, u1, v0, v1], ses bords sur le sol (u : de cote, v : devant la camera, les
 // deux divises par la hauteur de la camera, comme groundMap) ; sans ext le sol va jusqu'a l'horizon. gr.fill : couleur de
 // la plaque (pleine, sous le motif ; "none" : seulement le motif). gr.pm : repere de la plaque sur le sol (plateMap).
+// Pied du decor : gr.wv = distance sur le sol (meme unite que v) ou le mur du decor (cylindre ou plaque plate) touche le
+// sol. Le decor est pose sur la plaque : la plaque et le motif ne se voient que devant ce pied, jamais par-dessus le mur.
+// Sans gr.wv : le bord du fond de la plaque (le cylindre du decor est pose dessus, la vue 3D aussi).
 import { tt } from "./i18n.js";
+import { perspOf } from "./model.js";
 
 export const PATS = { damier: tt("Damier"), grille: tt("Grille"), points: tt("Points"), lignes: tt("Lignes (bandes)"), lavis: tt("Lavis (aquarelle)"), uni: tt("Uni") };
 export const GROUND0 = { on: true, pat: "damier", sc: 0.5, col: "#000000", a: 0.22 };
@@ -27,6 +31,39 @@ export function estimateHorizon(pan) {
 export function groundMap(gr, ratio) {
   if (Array.isArray(gr.m) && gr.m.length === 6) return gr.m;
   return [1, 0, 0, (1 - (gr.hz ?? 0.45)) * ratio, 0, 0];
+}
+/** Le sol pret a dessiner, pied du decor resolu (s'il y a un decor) : gr.wv s'il est regle, sinon le bord du fond de la
+ *  plaque (le decor est pose sur la plaque) ; un sol infini sans pied regle va jusqu'a l'horizon. */
+export function groundFor(pan) {
+  const gr = pan && pan.ground;
+  if (!gr || !gr.on || !pan.bg) return gr;
+  if (gr.wv > 0) return gr;
+  if (!Array.isArray(gr.ext)) return gr;
+  const far = Math.max(...plateGround(gr).map((q) => q[1]));
+  return far > 0.05 ? Object.assign({}, gr, { wv: +far.toFixed(4) }) : gr;
+}
+/** Le sol vu par la camera d'une case (pan.frame) : il reste un sol (horizon et motif recalcules), au lieu d'une image
+ *  plate reduite avec le decor. Il se dessine dans le cadrage (frameT m), hors du plan du decor : son horizon suit le decor
+ *  (plan d = 1 : grossissement k, parallaxe), il descend toujours jusqu'au bas de l'image. bb : la case. null : la camera a
+ *  depasse le decor. */
+export function groundInFrame(gr, f, bb) {
+  if (!gr || !f) return gr;
+  const k = perspOf(1, f.dz || 0);
+  if (!k) return null;
+  const cx = f.cx ?? 0.5, cy = f.cy ?? 0.5, par = (f.par || 0) * 0.5, ox = (cx - 0.5) * par, oy = (cy - 0.5) * par;
+  const b = -((cx - 0.5) * (1 - k) + ox), g2 = Object.assign({}, gr);
+  g2.m = composeGround(groundMap(gr, bb.h / bb.w), 1, b, 0, k, 0, 0);
+  if (Array.isArray(gr.ext)) g2.pm = composeGround(plateMap(gr), 1, b, 0, k, 0, 0);
+  g2.hz = +(cy + k * ((gr.hz ?? 0.45) - cy) + oy).toFixed(5);
+  if (gr.wv > 0) g2.wv = gr.wv / k;
+  return g2;
+}
+/** Ce que la camera de la case voit, dans le repere de la case : un cadre centre sur (cx, cy), de 1 / z de cote (un peu
+ *  plus, pour l'inclinaison). Le sol doit le couvrir jusqu'en bas, meme au-dela de la case d'origine. */
+export function frameVis(f, bb) {
+  const z = (f && f.z) || 1, a = Math.abs(((f && f.rot) || 0) * Math.PI / 180);
+  const hv = 0.5 / z * (1.04 + Math.sin(a) * 1.2), cx = f ? f.cx ?? 0.5 : 0.5, cy = f ? f.cy ?? 0.5 : 0.5;
+  return { x: bb.x0 + (cx - hv) * bb.w, y: bb.y0 + (cy - hv) * bb.h, w: 2 * hv * bb.w, h: 2 * hv * bb.h };
 }
 const inv2 = (m) => { const det = m[0] * m[3] - m[1] * m[2] || 1e-9; return [m[3] / det, -m[1] / det, -m[2] / det, m[0] / det]; };
 
@@ -150,11 +187,13 @@ export function groundSvg(gr, box, id = "gr", vis = box) {
     if (gr.fill !== "none") plate = `<g clip-path="url(#${id}-c)" style="pointer-events:none"><path d="${pd}" fill="${gr.fill || PLATE0}"/></g>`;
     body = `<g clip-path="url(#${id}-p)">${body}</g>`;
   }
+  // pied du decor : le sol s'arrete la ou le mur du decor le touche (le decor est pose sur la plaque)
+  const yTop = gr.wv > 0 ? Math.max(yH, yH + F / gr.wv) : yH;
   // vers l'horizon le motif s'efface (trop fin pour etre dessine)
   const yFar = yH + F / vF, yMid = yH + F / (vF / 4);
   return `<defs><linearGradient id="${id}-fade" gradientUnits="userSpaceOnUse" x1="0" y1="${f1(yFar)}" x2="0" y2="${f1(yMid)}"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="1"/></linearGradient>` +
     `<mask id="${id}-m" maskUnits="userSpaceOnUse" x="${f1(vis.x)}" y="${f1(yH)}" width="${f1(vis.w)}" height="${f1(yB - yH)}"><rect x="${f1(vis.x)}" y="${f1(yH)}" width="${f1(vis.w)}" height="${f1(yB - yH)}" fill="url(#${id}-fade)"/></mask>` +
-    `<clipPath id="${id}-c"><rect x="${f1(vis.x)}" y="${f1(yH)}" width="${f1(vis.w)}" height="${f1(yB - yH)}"/></clipPath>${pclip}</defs>` + plate +
+    `<clipPath id="${id}-c"><rect x="${f1(vis.x)}" y="${f1(yTop)}" width="${f1(vis.w)}" height="${f1(Math.max(0, yB - yTop))}"/></clipPath>${pclip}</defs>` + plate +
     `<g clip-path="url(#${id}-c)" mask="url(#${id}-m)" opacity="${a}" style="pointer-events:none">${body}</g>`;
 }
 

@@ -14,6 +14,7 @@ import { openMontage } from "./montage.js";
 import { photoDialog, openGenerations } from "./photo.js";
 import { openDeck, addClip } from "./deck.js";
 import { orbitPerspective } from "./orbitpersp.js";
+import { GROUND0, PATS, PLATE0, plateDefault, estimateHorizon, groundFor } from "./ground.js";
 import { sprite, layerSp, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox, pad3 } from "./model.js";
 
 const FORMATS = [
@@ -1620,6 +1621,35 @@ class App {
           if (camKeys.length === 1) Object.assign(camKeys[0], { cx: 0.5, cy: 0.5, z: 1, rot: 0, dz: 0 });
           this.commit("frame"); this.editor.render(); this.refreshInspector(); } } }, tt("Caméra au neutre")),
           camKeys.length > 1 ? h("span.muted", { title: tt("La caméra bouge dans le montage : ces réglages valent pour la case seulement. « ⤓ 1re image → case » dans le montage les remet sur sa première image.") }, tt("Animée dans le montage ⓘ")) : ""));
+    }
+    {                                                      // sol de la case (pan.ground) : la plaque sous le decor, reglable depuis la page
+      const g = this.geo(this.sel.panel), ratio = g ? g.bbox.h / g.bbox.w : 0.5625, gr = pan.ground;
+      const re = (kind = "ground") => { this.commit(kind); this.editor.render(); this.refreshInspector(); };
+      box.append(h("h4", { title: tt("Le sol de la case : une plaque posée sur le sol, vue en perspective, sous les personnages. Le décor est posé dessus : la plaque s'arrête au pied du décor, jamais par-dessus le mur. Mêmes réglages que dans le montage (piste Sol), où l'on tire la plaque à la main.") }, tt("▱ Sol ⓘ")));
+      if (!gr) box.append(h("button.mini", { title: tt("Une plaque de sol en perspective, sous le décor"), on: { click: () => {
+        const n = Object.assign({}, GROUND0, { hz: estimateHorizon(pan) }); n.ext = plateDefault(n, ratio); pan.ground = n; re(); } } }, tt("▱ Créer la plaque de sol")));
+      else {
+        const full = gr.fill !== "none", wall = pan.bg ? groundFor(pan).wv : 0, yw = wall > 0 ? (gr.hz ?? 0.45) + 1 / (ratio * wall) : 0;
+        box.append(h("label.row.check", h("input", { type: "checkbox", checked: !!gr.on, on: { change: (e) => { gr.on = e.target.checked; re(); } } }), tt("Sol dans la case")),
+          h("label.row", tt("Motif"), h("select", { on: { change: (e) => { gr.pat = e.target.value; re(); } } }, Object.entries(PATS).map(([k, n]) => h("option", { value: k, selected: (gr.pat === "taches" ? "lavis" : gr.pat || "damier") === k }, n)))),
+          range(tt("Taille du motif"), gr.sc ?? 0.5, 0.12, 2, 0.01, (x) => { gr.sc = x; }, "ground"),
+          range(tt("Opacité"), gr.a ?? 0.22, 0.03, 1, 0.01, (x) => { gr.a = x; }, "ground"),
+          h("div.row.colrow", tt("Couleur du motif"), swatch(gr.col || "#000000", (c) => { gr.col = c; this.editor.render(true); this.commitSoon("ground"); })),
+          range(tt("Horizon"), gr.hz ?? 0.45, -0.5, 0.95, 0.005, (x) => { gr.hz = x; }, "ground"));
+        if (Array.isArray(gr.ext)) box.append(
+          h("div.row.colrow", h("label.row.check", { title: tt("La plaque est peinte d'une couleur pleine, sous le motif ; décoché : seulement le motif") },
+            h("input", { type: "checkbox", checked: full, on: { change: (e) => { if (e.target.checked) delete gr.fill; else gr.fill = "none"; re(); } } }), tt("Plaque pleine")),
+            full ? swatch(gr.fill && gr.fill !== "none" ? gr.fill : PLATE0, (c) => { gr.fill = c; this.editor.render(true); this.commitSoon("ground"); }) : ""));
+        if (wall > 0) box.append(
+          h("div", { title: tt("Pied du décor : la ligne (hauteur dans la case) où le mur du décor touche le sol. La plaque s'arrête là, le décor est posé dessus. « Auto » : le bord du fond de la plaque.") },
+            range(tt("Pied du décor ⓘ"), +Math.min(1.6, yw).toFixed(3), +((gr.hz ?? 0.45) + 0.01).toFixed(3), 1.6, 0.005, (x) => { gr.wv = +(1 / (ratio * Math.max(0.002, x - (gr.hz ?? 0.45)))).toFixed(4); }, "ground"),
+            gr.wv > 0 ? h("button.mini", { on: { click: () => { delete gr.wv; re(); } } }, tt("Pied auto")) : h("span.muted", tt("(auto)"))));
+        box.append(h("div.row.wrap",
+          Array.isArray(gr.ext) ? h("button.mini", { title: tt("Remet la plaque à sa taille de départ"), on: { click: () => { gr.ext = plateDefault(gr, ratio); delete gr.pm; re(); } } }, tt("↺ Plaque de départ"))
+            : h("button.mini", { title: tt("Le sol devient une plaque, à tirer dans le montage"), on: { click: () => { gr.ext = plateDefault(gr, ratio); re(); } } }, tt("▱ Créer la plaque de sol")),
+          Array.isArray(gr.ext) ? h("button.mini", { title: tt("Le sol redevient infini, jusqu'à l'horizon (ou jusqu'au pied du décor)"), on: { click: () => { delete gr.ext; delete gr.fill; delete gr.pm; re(); } } }, tt("Sol infini")) : "",
+          h("button.mini.danger", { on: { click: () => { delete pan.ground; re(); } } }, tt("Retirer le sol"))));
+      }
     }
     box.append(h("h4", { title: tt("0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre).") }, tt("Profondeur de champ ⓘ")),
       h("label.row.check", h("input", { type: "checkbox", checked: dof.on, on: { change: (e) => { dof.on = e.target.checked; this.commit("dof"); this.editor.render(); } } }), tt("Flouter selon la profondeur")),

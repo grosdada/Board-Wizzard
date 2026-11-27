@@ -13,7 +13,7 @@ import { h, modal, toast, history, upload, get, post, put, del } from "./api.js"
 import { flattenPanel } from "./flatten.js";
 import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime, segsOf, exprMarkup, exprGom, exprAt, exprName } from "./lipsync.js";
 import { swatch } from "./colors.js";
-import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0, PLATE0, plateDefault, plateCorners, groundAt, plateGround, groundImg, toPlate, plateMap, composeGround } from "./ground.js";
+import { groundSvg, groundFor, groundInFrame, frameVis, groundTile, groundMap, estimateHorizon, PATS, GROUND0, PLATE0, plateDefault, plateCorners, groundAt, plateGround, groundImg, toPlate, plateMap, composeGround } from "./ground.js";
 import { markupReady } from "./model.js";
 import { bgStroke, jitterFilter, sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM, CAM_BACK, perspOf } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
@@ -182,6 +182,12 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   const shapeSvg = (sh, i) => { const key = i + JSON.stringify(sh, (k, v) => (k === "d" ? undefined : v)); let x = shapeCache.get(key); if (!x) { if (shapeCache.size > 300) shapeCache.clear(); x = drawSvg({ shapes: [sh] }, H, `${pre}d${i}`); shapeCache.set(key, x); } return x; };
   /** Balisage SVG de la case a l'instant t. sel : calque a encadrer. again : rappele quand des traces finissent de charger.
    *  px : pixels d'ecran par unite de l'image (taille des poignees). */
+  /** Le sol tel que l'image le dessine avec la camera c (camAt) : pied du decor resolu, recalcule pour la camera. */
+  function groundNow(c) {
+    const gr = groundFor(pan);
+    if (!gr || !gr.on) return null;
+    return groundInFrame(gr, { cx: c.cx, cy: c.cy, z: c.z, dz: c.dz, par: anim.parallax ? anim.pstr ?? 0.4 : 0 }, bb);
+  }
   function markup(t, sel, again, px) {
     const c = shaken(camAt(t), t), dofOn = !!(pan.dof && pan.dof.on), blurs = {};
     // profondeur de champ : plus un plan est loin de la mise au point, plus il est flou
@@ -211,12 +217,12 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const bcm = bgCM(pan);                               // colorimetrie et colorize du decor
       if (bcm) o = cmFilter(`${pre}bcm`, bcm) + `<g filter="url(#${pre}bcm)">` + o + "</g>";
     }
-    // carte de sol, en perspective (ground.js) ; la camera qui recule ou dezoome voit le sol au-dela des bords de la case
-    const kv = perspOf(1, c.dz) * (c.z || 1), hv = kv > 0 && kv < 1 ? 0.75 / kv : 0.5;
-    const gvis = hv > 0.5 ? { x: (c.cx - hv) * W, y: (c.cy - hv) * H, w: 2 * hv * W, h: 2 * hv * H } : { x: 0, y: 0, w: W, h: H };
-    o += groundSvg(pan.ground, { x: 0, y: 0, w: W, h: H }, pre + "gr", gvis);
     if (sel === "bg" && bgInfo) { const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, viewAt(t)); o += `<rect x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" fill="none" stroke="#e2603a" stroke-width="2" stroke-dasharray="10 6" vector-effect="non-scaling-stroke" pointer-events="none"/>`; }   // decor choisi : son cadre
-    bgIn = o; o = o0 + plane(1, bgIn); }
+    bgIn = o; o = o0 + plane(1, bgIn);
+    // carte de sol (ground.js) : une plaque sous le decor, dans le cadrage mais pas au plan du decor (elle reste un sol
+    // jusqu'au bas de l'image quand la camera recule) ; elle s'arrete au pied du decor, le decor est pose dessus
+    const GR = groundNow(c);
+    if (GR) o += groundSvg(GR, { x: 0, y: 0, w: W, h: H }, pre + "gr", frameVis(c, bb)); }
     const drawLayer = (l, li) => {
       const s = stateOf(l, t), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
       if (!sp) return;
@@ -321,7 +327,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     const neutral = Math.abs(f.z - 1) < 1e-3 && Math.abs(f.rot) < 0.01 && Math.abs(f.cx - 0.5) < 1e-4 && Math.abs(f.cy - 0.5) < 1e-4 && !f.dz && !f.view;
     return neutral ? null : f;
   };
-  return { H, anim, markup, stateOf, localOf, camAt, viewAt, frameAt, nOf, itemOf, keysOf, angleOf, nullOf, nullLocal, nullWorld, xfOf, unDelta };
+  return { H, anim, markup, stateOf, localOf, camAt, viewAt, frameAt, groundNow, nOf, itemOf, keysOf, angleOf, nullOf, nullLocal, nullWorld, xfOf, unDelta };
 }
 
 export function openMontage(app, pid, opt = {}) {
@@ -603,9 +609,18 @@ export function openMontage(app, pid, opt = {}) {
     const g = svg.querySelector('[mask="url(#mtgr-m)"]'), a = svg.getScreenCTM(), b = g && g.getScreenCTM();
     return a && b ? a.inverse().multiply(b) : new DOMMatrix();
   }
+  // pied du decor : la ligne ou le mur du decor touche le sol ; la plaque s'arrete la, le decor est pose dessus
+  function wallLine(gr, T, ln, yH) {
+    if (!(gr.wv > 0) || !pan.bg) return "";
+    const yw = yH + W / gr.wv, A = T([-W, yw]), B = T([2 * W, yw]), L = T([W * 0.08, yw]);
+    return ln(A, B, `stroke="#ff8a3d" stroke-width="2" stroke-dasharray="10 5"`) +
+      `<line x1="${f1(A[0])}" y1="${f1(A[1])}" x2="${f1(B[0])}" y2="${f1(B[1])}" stroke="#000" stroke-opacity="0.001" stroke-width="16" vector-effect="non-scaling-stroke" data-gh="wall" style="cursor:ns-resize"><title>${tt("Pied du décor : glisser jusqu'à la ligne où le mur du décor touche le sol. La plaque s'arrête là, le décor est posé dessus.")}</title></line>` +
+      `<rect x="${f1(L[0] - W * 0.065)}" y="${f1(L[1] - H * 0.022)}" width="${f1(W * 0.13)}" height="${f1(H * 0.044)}" rx="4" fill="#ff8a3d" data-gh="wall" style="cursor:ns-resize"/>` +
+      `<text x="${f1(L[0])}" y="${f1(L[1] + H * 0.012)}" font-size="${f1(H * 0.026)}" text-anchor="middle" fill="#1b1b1b" pointer-events="none" style="font-family:sans-serif">${tt("Pied du décor")}</text>`;
+  }
   function groundOverlay() {
-    const gr = pan.ground;
-    if (!gr || !Array.isArray(gr.ext)) return;
+    if (!pan.ground || !Array.isArray(pan.ground.ext)) return;
+    const gr = scene.groundNow(scene.camAt(t)) || pan.ground;      // le sol tel que l'image le montre (camera, pied du decor)
     const M = groundCTM(), T = (p) => { const q = new DOMPoint(p[0], p[1]).matrixTransform(M); return [q.x, q.y]; };
     const box = { x: 0, y: 0, w: W, h: H }, C = plateCorners(gr, box).map(T), yH = (gr.hz ?? 0.45) * H;
     const ln = (a, b, extra) => `<line x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(b[0])}" y2="${f1(b[1])}" vector-effect="non-scaling-stroke" ${extra}/>`;
@@ -621,7 +636,7 @@ export function openMontage(app, pid, opt = {}) {
       (C.length > 2 ? `<path d="M${C.map((q) => f1(q[0]) + " " + f1(q[1])).join("L")}Z" fill="#5fc4a8" fill-opacity="0.07" stroke="#5fc4a8" stroke-width="2" vector-effect="non-scaling-stroke" data-gp="1" style="cursor:move"><title>${tt("Glisser : déplacer la plaque sur le sol")}</title></path>` : "") +
       hd(at(Gc[0], Gc[1], 0.5), "n", tt("Bord de devant")) + hd(at(Gc[2], Gc[3], 0.5), "f", tt("Bord du fond")) + hd(at(Gc[0], Gc[3], 0.7), "l", tt("Bord gauche")) + hd(at(Gc[1], Gc[2], 0.7), "r", tt("Bord droit")) +
       `<rect x="${f1(hzH[0] - W * 0.045)}" y="${f1(hzH[1] - H * 0.022)}" width="${f1(W * 0.09)}" height="${f1(H * 0.044)}" rx="4" fill="#e0b84a" data-gh="hz" style="cursor:ns-resize"><title>${tt("Horizon : glisser pour le monter ou le descendre (les fuyantes suivent)")}</title></rect>` +
-      `<text x="${f1(hzH[0])}" y="${f1(hzH[1] + H * 0.012)}" font-size="${f1(H * 0.03)}" text-anchor="middle" fill="#1b1b1b" pointer-events="none" style="font-family:sans-serif">${tt("Horizon")}</text></g>`;
+      `<text x="${f1(hzH[0])}" y="${f1(hzH[1] + H * 0.012)}" font-size="${f1(H * 0.03)}" text-anchor="middle" fill="#1b1b1b" pointer-events="none" style="font-family:sans-serif">${tt("Horizon")}</text>` + wallLine(gr, T, ln, yH) + "</g>";
     svg.insertAdjacentHTML("beforeend", o);
   }
   function gbarFill() {
@@ -657,20 +672,23 @@ export function openMontage(app, pid, opt = {}) {
     if (keysOf("cam").length > 1) return null;
     const c = camAt(), z = c.z || 1, dz = c.dz || 0;
     if (Math.abs(c.cx - 0.5) < 1e-4 && Math.abs(c.cy - 0.5) < 1e-4 && Math.abs(z - 1) < 1e-4 && Math.abs(dz) < 1e-4) return null;
-    return { cx: c.cx, cy: c.cy, z, dz, K: (d) => perspOf(d, dz) * z };   // K : grossissement d'un plan a la profondeur d
+    // K : grossissement d'un plan a la profondeur d ; o : son glissement par la parallaxe (fractions de la case), comme la case
+    const par = anim.parallax ? anim.pstr ?? 0.4 : 0;
+    return { cx: c.cx, cy: c.cy, z, dz, K: (d) => perspOf(d, dz) * z, o: (d) => [z * (c.cx - 0.5) * par * (d - 0.5), z * (c.cy - 0.5) * par * (d - 0.5)] };
   }
   /** Le sol tel que l'image le montre avec la camera du montage (une copie ; le sol de la case n'est pas touche). */
   function viewGround(gr, V) {
     if (!gr || !V) return gr;
-    const K = V.K(1), b = -(0.5 - V.cx) * K, g2 = Object.assign({}, gr);   // le sol est dans le plan du decor (d = 1)
+    const K = V.K(1), o = V.o(1), b = -((0.5 - V.cx) * K + o[0]), g2 = Object.assign({}, gr);   // horizon et motif suivent le decor (d = 1)
     g2.m = composeGround(groundMap(gr, H / W), 1, b, 0, K, 0, 0);
     if (Array.isArray(gr.ext)) g2.pm = composeGround(plateMap(gr), 1, b, 0, K, 0, 0);
-    g2.hz = +(0.5 + ((gr.hz ?? 0.45) - V.cy) * K).toFixed(4);
+    if (gr.wv > 0) g2.wv = gr.wv / K;                       // pied du decor, dans le sol vu par cette camera
+    g2.hz = +(0.5 + ((gr.hz ?? 0.45) - V.cy) * K + o[1]).toFixed(4);
     return g2;
   }
   /** Place du decor dans l'image, camera du montage comprise. */
-  const plView = (pl, V) => { if (!V) return pl; const K = V.K(1); return Object.assign({}, pl, { x: W / 2 + (pl.x - V.cx * W) * K, y: H / 2 + (pl.y - V.cy * H) * K, w: pl.w * K, h: pl.h * K }); };
-  const hzOf = (V = viewCam()) => { const hz = pan.ground && pan.ground.hz != null ? pan.ground.hz : estimateHorizon(pan); return V ? 0.5 + (hz - V.cy) * V.K(1) : hz; };
+  const plView = (pl, V) => { if (!V) return pl; const K = V.K(1), o = V.o(1); return Object.assign({}, pl, { x: W / 2 + (pl.x - V.cx * W) * K + o[0] * W, y: H / 2 + (pl.y - V.cy * H) * K + o[1] * H, w: pl.w * K, h: pl.h * K }); };
+  const hzOf = (V = viewCam()) => { const hz = pan.ground && pan.ground.hz != null ? pan.ground.hz : estimateHorizon(pan); return V ? 0.5 + (hz - V.cy) * V.K(1) + V.o(1)[1] : hz; };
   /** Les cartes de la case dans l'espace (unites : largeur de la case). */
   function rebuild3() {
     const V = viewCam(), hw = H / W, hz = hzOf(V), cards = [];
@@ -681,7 +699,8 @@ export function openMontage(app, pid, opt = {}) {
       if (V) {                                             // l'element tel que l'image le montre (cadre, zoom, recul)
         const K = V.K(depthNow(l));
         if (!K) continue;                                  // la camera l'a depasse
-        s = Object.assign({}, s0, { x: 0.5 + (s0.x - V.cx) * K, y: 0.5 + (s0.y - V.cy) * K, s: (s0.s || 0.5) * K });
+        const o = V.o(depthNow(l));
+        s = Object.assign({}, s0, { x: 0.5 + (s0.x - V.cx) * K + o[0], y: 0.5 + (s0.y - V.cy) * K + o[1], s: (s0.s || 0.5) * K });
       }
       const z = depthNow(l) * ZD, zc = z + D0, Hc = (s.s || 0.5) * hw * zc / D0;
       cards.push({ l, s, sp, z, X: 0.5 + (s.x - 0.5) * zc / D0, Hc, Wc: Hc * (sp.w || 1) / (sp.h || 1), yf: s.y, zc });
@@ -700,7 +719,7 @@ export function openMontage(app, pid, opt = {}) {
       } else c.Y = camY - below * c.zc / D0;               // les pieds : la ou la case les montre
     }
     const zMid = cards.length ? cards.reduce((a, c) => a + c.z, 0) / cards.length : ZD / 2;
-    return { hw, hz, camY, zMid, cards, V, gr: viewGround(pan.ground, V) };
+    return { hw, hz, camY, zMid, cards, V, gr: viewGround(groundFor(pan), V) };
   }
   /** Camera deplacee : position, axes (droite, haut, avant), focale (en largeurs de case). */
   function camera3(rb) {
@@ -727,8 +746,11 @@ export function openMontage(app, pid, opt = {}) {
     if (!im) { im = new Image(); im.onload = () => { if (v3) paint(); }; im.src = url; texs.set(url, im); }
     return im.complete && im.naturalWidth ? im : null;
   }
+  /** Le mur du decor (cylindre ou plaque plate) : pose sur le sol au pied du decor (ground.js, gr.wv) ; sans sol, derriere
+   *  l'element le plus loin. */
+  const wallZ = (rb) => (pan.bg && rb.gr && rb.gr.on && rb.gr.wv > 0 ? Math.max(0.05, rb.gr.wv * rb.camY - D0) : Math.max(ZD * 1.05, ...rb.cards.map((c) => c.z + 0.15)));
   function cyl3(rb, bgI) {
-    const zW = Math.max(ZD * 1.05, ...rb.cards.map((c) => c.z + 0.15)), dist = zW + D0;
+    const zW = wallZ(rb), dist = zW + D0;
     const pl = plView(placement(bb, bgI.w || 16, bgI.h || 9, scene.viewAt(t)), rb.V);
     const it = pan.bg && pan.bg.item && app.bank.get(pan.bg.item), vv = it && variantOf(it, pan.bg.v || "base");
     const pano = !!(vv && vv.pano && vv.orbit && vv.orbit.n > 1);
@@ -823,7 +845,7 @@ export function openMontage(app, pid, opt = {}) {
     // le decor de la case : un mur au fond, a la taille qui redonne l'image depuis la camera de la case
     const bgI = background(pan, app.bank, app.project.id);
     // le mur passe derriere l'element le plus loin (colles au sol, certains peuvent etre plus loin que la profondeur 1)
-    const zW = Math.max(ZD * 1.05, ...rb.cards.map((c) => c.z + 0.15));
+    const zW = wallZ(rb);
     // le sol va jusqu'au mur ; sans decor, presque jusqu'a l'horizon
     const zEnd = bgI ? zW : 40;
     const cy = bgI ? cyl3(rb, bgI) : null;
@@ -849,8 +871,8 @@ export function openMontage(app, pid, opt = {}) {
     // plaque de sol : son contour sur le sol de la 3D (x = 0,5 + u x camY, z = v x camY - D0), sa couleur pleine
     const pw3 = plate ? plateGround(plate).map(([u, v]) => [0.5 + u * rb.camY, v * rb.camY - D0]) : null;
     const pfill = plate && plate.fill !== "none" ? plate.fill || PLATE0 : null;
-    // une plaque de sol va jusqu'a son bord du fond, meme au-dela du mur du decor (dans l'image, le sol est peint sur le decor)
-    const zG = pw3 ? Math.max(zEnd, ...pw3.map((q) => q[1])) : zEnd;
+    // le decor est pose sur la plaque : elle s'arrete a son mur (dans le cylindre, ou devant la plaque plate du decor)
+    const zG = pw3 && !bgI ? Math.max(zEnd, ...pw3.map((q) => q[1])) : zEnd;
     for (let gz = -1.5, TS = 0.25; gz < zG - 1e-6; gz += TS) {
       TS = 0.25 * Math.max(1, Math.round((gz + D0) / 1.5));
       const TZ = Math.min(TS, zG - gz), half = Math.max(2.5, 1.5 * (gz + TS + D0)), n = Math.ceil(half / TS);
@@ -865,7 +887,11 @@ export function openMontage(app, pid, opt = {}) {
         const id = `mt3g${Math.round(gx * 100)}_${Math.round(gz * 100)}`.replace(/-/g, "m");
         const el = h("div");
         const pc = pw3 ? `<defs><clipPath id="${id}c"><path d="M${pw3.map((q) => q[0].toFixed(4) + " " + q[1].toFixed(4)).join("L")}Z"/></clipPath></defs>` : "";
-        el.innerHTML = `<svg viewBox="${gx} ${gz} ${TS} ${TZ}" width="${TP}" height="${TP}" preserveAspectRatio="none" style="display:block">${pc}<g${pw3 ? ` clip-path="url(#${id}c)"` : ""}><rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="${pfill || "#d8d4cb"}"/>${gr ? groundTile(gr, { x0: gx, y0: gz, w: TS, hh: TZ, camY: rb.camY, ratio: H / W, id, px: 40 }) : ""}</g>` +
+        // dans le cylindre du decor (une simple image n'en couvre que le fond : devant son axe, rien ne cache le sol)
+        const open = cy && !cy.full;
+        if (cy && !(open && gz < cy.ax[1]) && Math.hypot(Math.max(Math.abs(gx + TS / 2 - cy.ax[0]) - TS / 2, 0), Math.max(Math.abs(gz + TZ / 2 - cy.ax[1]) - TZ / 2, 0)) > cy.Rc) continue;
+        const wc = cy ? `<defs><clipPath id="${id}w"><circle cx="${cy.ax[0].toFixed(4)}" cy="${cy.ax[1].toFixed(4)}" r="${cy.Rc.toFixed(4)}"/>${open ? `<rect x="-999" y="-999" width="1998" height="${(999 + cy.ax[1]).toFixed(4)}"/>` : ""}</clipPath></defs>` : "";
+        el.innerHTML = `<svg viewBox="${gx} ${gz} ${TS} ${TZ}" width="${TP}" height="${TP}" preserveAspectRatio="none" style="display:block">${pc}${wc}<g${cy ? ` clip-path="url(#${id}w)"` : ""}><g${pw3 ? ` clip-path="url(#${id}c)"` : ""}><rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="${pfill || "#d8d4cb"}"/>${gr ? groundTile(gr, { x0: gx, y0: gz, w: TS, hh: TZ, camY: rb.camY, ratio: H / W, id, px: 40 }) : ""}</g></g>` +
           (!pw3 && gx >= 0 && gx < 1 && gz >= 0 && gz < ZD ? `<rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="none" stroke="#5fc4a8" stroke-opacity=".35" stroke-width=".004"/>` : "") + "</svg>";
         put(el, tr, TP, TP);
       }
@@ -893,7 +919,7 @@ export function openMontage(app, pid, opt = {}) {
     const zc = Math.max(0.05, z + D0), below = (rb.camY - Y) * D0 / zc, d = clamp(z / ZD, 0, 1);
     let x = 0.5 + (X - 0.5) * D0 / zc, y = rb.hz + below / rb.hw, s = Math.max(0.02, c.Hc * D0 / (rb.hw * zc));
     const K = rb.V && rb.V.K(d);                           // vue avec la camera du montage : on revient a la case
-    if (K) { x = rb.V.cx + (x - 0.5) / K; y = rb.V.cy + (y - 0.5) / K; s /= K; }
+    if (K) { const o = rb.V.o(d); x = rb.V.cx + (x - 0.5 - o[0]) / K; y = rb.V.cy + (y - 0.5 - o[1]) / K; s /= K; }
     change(c.l.id, { x: f3(x), y: f3(y), s: f3(s) });
     setDepth(c.l, d);
   }
@@ -1016,7 +1042,8 @@ export function openMontage(app, pid, opt = {}) {
     if (rb.V) {                                             // le cadrage de la camera du montage passe dans la case : elle revient au neutre
       if (pan.bg) {
         const bgI = background(pan, app.bank, app.project.id) || {}, v = scene.viewAt(t), pl = placement(bb, bgI.w || 16, bgI.h || 9, v), K = rb.V.K(1);
-        change("bg", { zoom: f3((v.zoom || 1) * K), ox: f3((0.5 + pl.ox - rb.V.cx) * K), oy: f3((0.5 + pl.oy - rb.V.cy) * K) });
+        const o = rb.V.o(1);
+        change("bg", { zoom: f3((v.zoom || 1) * K), ox: f3((0.5 + pl.ox - rb.V.cx) * K + o[0]), oy: f3((0.5 + pl.oy - rb.V.cy) * K + o[1]) });
       }
       if (pan.ground) Object.assign(pan.ground, rb.gr);
       for (const k of keysOf("cam")) Object.assign(k, { cx: 0.5, cy: 0.5, z: 1, dz: 0 });
@@ -2567,10 +2594,17 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (!gdrag) return;
     e.stopImmediatePropagation();
     const gr = pan.ground, d = gdrag, p = d.at(e), box = { x: 0, y: 0, w: W, h: H }, x = gr.ext;
-    if (d.k === "hz") { gr.hz = f3(clamp(d.hz0 + (p[1] - d.p0[1]) / H, -1.5, 0.95)); paint(); return; }
-    const g1 = groundAt(gr, box, p[0], p[1]), g0 = groundAt(Object.assign({}, gr, { hz: d.hz0 }), box, d.p0[0], d.p0[1]);
+    // le sol dessine (camera du montage comprise) : k, grossissement du plan du decor ; on revient au sol de la case
+    const c = scene.camAt(t), k = perspOf(1, c.dz) || 1, gv = scene.groundNow(c) || gr;
+    if (d.k === "hz") { gr.hz = f3(clamp(d.hz0 + (p[1] - d.p0[1]) / H / k, -1.5, 0.95)); paint(); return; }
+    if (d.k === "wall") {                                  // pied du decor : sa ligne dans l'image -> sa distance sur le sol
+      const dy = p[1] - gv.hz * H;
+      if (dy > 0.5) { gr.wv = f3(clamp(W / dy * k, 0.05, 400)); paint(); }
+      return;
+    }
+    const g1 = groundAt(gv, box, p[0], p[1]), g0 = groundAt(gv, box, d.p0[0], d.p0[1]);
     if (!g1) return;
-    const q = toPlate(gr, g1[0], g1[1]), q0 = g0 && toPlate(gr, g0[0], g0[1]);   // dans le repere de la plaque (elle a pu tourner)
+    const q = toPlate(gv, g1[0], g1[1]), q0 = g0 && toPlate(gv, g0[0], g0[1]);   // dans le repere de la plaque (elle a pu tourner)
     if (d.k === "n") x[2] = f3(Math.min(q[1], x[3] - 0.05));
     else if (d.k === "f") x[3] = f3(clamp(q[1], x[2] + 0.05, 200));
     else if (d.k === "l") x[0] = f3(Math.min(q[0], x[1] - 0.05));

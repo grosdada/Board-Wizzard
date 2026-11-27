@@ -2,10 +2,10 @@
 // de case. Les bulles n'y sont pas : elles restent par-dessus. sharp : sans le flou de profondeur (le modele travaille
 // mieux sur une image nette ; le flou reste un reglage d'affichage).
 import { loadImage } from "./api.js";
-import { groundSvg } from "./ground.js";
+import { groundSvg, groundFor, groundInFrame, frameVis } from "./ground.js";
 import { drawImage } from "./draw.js";
 import { faceOps, headReady, opsCanvas } from "./face.js";
-import { bgStroke, frameToAngle, variantOf, lineWidth, frameT, groundVis, layerCM, bgCM, cmPixels, mouthFrame } from "./model.js";
+import { bgStroke, frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, cmPixels, mouthFrame } from "./model.js";
 import { exprCard } from "./lipsync.js";
 import { sprite, layerSp, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
@@ -67,12 +67,18 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
       ctx.restore();
     } else draw(await loadImage(bg.url), pl.x, pl.y, pl.w, pl.h, sharp ? 0 : blurOf(pan, 1, bb));
   });
-  if (bgOn && pan.ground && pan.ground.on) {             // carte de sol, en perspective (ground.js) ; la camera qui recule en voit plus
-    const v = FT ? groundVis(pan.frame, local) : { x: 0, y: 0, w: bb.w, h: bb.h };
-    const gs = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(v.w * kx)}" height="${Math.round(v.h * ky)}" viewBox="${v.x} ${v.y} ${v.w} ${v.h}">${groundSvg(pan.ground, { x: 0, y: 0, w: bb.w, h: bb.h }, "gr", v)}</svg>`;
+  ctx.restore();
+  // carte de sol : une vraie plaque sous le decor (ground.js), dans le cadrage mais pas au plan du decor ; elle s'arrete au
+  // pied du decor et, camera de la case comprise, descend toujours jusqu'au bas de l'image
+  const GR = FT ? groundInFrame(groundFor(pan), pan.frame, local) : groundFor(pan);
+  if (GR && GR.on && !pan.bgCanvas) {
+    const v = FT ? frameVis(pan.frame, local) : { x: 0, y: 0, w: bb.w, h: bb.h };
+    const gs = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(v.w * kx)}" height="${Math.round(v.h * ky)}" viewBox="${v.x} ${v.y} ${v.w} ${v.h}">${groundSvg(GR, { x: 0, y: 0, w: bb.w, h: bb.h }, "gr", v)}</svg>`;
     ctx.drawImage(await loadImage("data:image/svg+xml;charset=utf-8," + encodeURIComponent(gs)), v.x * kx, v.y * ky, v.w * kx, v.h * ky);
   }
-  if (bgOn && pan.draw && ((pan.draw.shapes || []).length || (pan.draw.fx && pan.draw.fx.on))) {        // fond dessine a la main, lignes d'effet
+  ctx.save();
+  const drOn = pan.bgCanvas || plane(1);
+  if (drOn && pan.draw && ((pan.draw.shapes || []).length || (pan.draw.fx && pan.draw.fx.on))) {        // fond dessine a la main, lignes d'effet
     const dim = await drawImage(pan.draw, cv.width, cv.height);
     if (dim) ctx.drawImage(dim, 0, 0, cv.width, cv.height);
   }

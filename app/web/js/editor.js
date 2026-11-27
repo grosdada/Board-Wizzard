@@ -9,13 +9,13 @@ import { markShape, markOutline, thin } from "./marks.js";
 import { vecFrame, layerSp, inkStroke, bgStroke, jitterFilter, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
-import { frameToAngle, thinMask, lineWidth, frameT, groundVis, markupReady, cmFilter, layerCM, bgCM } from "./model.js";
+import { frameToAngle, thinMask, lineWidth, frameT, markupReady, cmFilter, layerCM, bgCM } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
 import { voiceTime, exprMarkup, exprGom } from "./lipsync.js";
 import { mouthFrame } from "./model.js";
-import { groundSvg } from "./ground.js";
+import { groundSvg, groundFor, groundInFrame, frameVis } from "./ground.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const s = (tag, attrs = {}) => {
@@ -282,19 +282,6 @@ export class Editor {
                                                         preserveAspectRatio: "none", filter: this.blur(defs, blur) }));
           grp = bgrp;
         }
-        if (pan.ground && pan.ground.on) {                   // carte de sol, en perspective (ground.js)
-          const gg = s("g", { "pointer-events": "none" });
-          gg.innerHTML = groundSvg(pan.ground, { x: bb.x0, y: bb.y0, w: bb.w, h: bb.h }, "gr-" + g.id, FT0 ? groundVis(pan.frame, bb) : undefined);
-          grp.append(gg);
-        }
-        if (drawn) {                                         // fond dessine a la main : formes, traces, trames
-          const key = g.id + "|" + bb.w + "x" + bb.h + "|" + JSON.stringify(pan.draw);
-          let c = this.drawCache.get(g.id);
-          if (!c || c.key !== key) { c = { key, html: drawSvg(pan.draw, DRAW_W * bb.h / bb.w, "d" + g.id + "-") }; this.drawCache.set(g.id, c); }
-          const gd = s("g", { transform: `translate(${bb.x0} ${bb.y0}) scale(${bb.w / DRAW_W})`, "pointer-events": "none", filter: this.blur(defs, blurOf(pan, 0.9, bb)) });
-          gd.innerHTML = c.html;
-          grp.append(gd);
-        }
         const inPlane = (n1, d) => {                         // ce qui est dessine depuis n1 : dans le plan de profondeur d de la camera
           const tr = FT0 ? FT0.dm(d) : "";
           if (!tr && tr !== null) return;
@@ -303,6 +290,24 @@ export class Editor {
           grp.append(gp);
         };
         inPlane(n0, 1);
+        // carte de sol (ground.js) : une vraie plaque sous le decor, pas une image au plan du decor ; elle s'arrete au pied
+        // du decor (le decor est pose dessus) et, avec la camera de la case, reste un sol jusqu'au bas de l'image
+        const GR = FT0 ? groundInFrame(groundFor(pan), pan.frame, bb) : groundFor(pan);
+        if (GR && GR.on) {
+          const gg = s("g", { "pointer-events": "none", "data-ground": g.id });
+          gg.innerHTML = groundSvg(GR, { x: bb.x0, y: bb.y0, w: bb.w, h: bb.h }, "gr-" + g.id, FT0 ? frameVis(pan.frame, bb) : undefined);
+          grp.append(gg);
+        }
+        const n2 = grp.childNodes.length;
+        if (drawn) {                                         // fond dessine a la main : formes, traces, trames
+          const key = g.id + "|" + bb.w + "x" + bb.h + "|" + JSON.stringify(pan.draw);
+          let c = this.drawCache.get(g.id);
+          if (!c || c.key !== key) { c = { key, html: drawSvg(pan.draw, DRAW_W * bb.h / bb.w, "d" + g.id + "-") }; this.drawCache.set(g.id, c); }
+          const gd = s("g", { transform: `translate(${bb.x0} ${bb.y0}) scale(${bb.w / DRAW_W})`, "pointer-events": "none", filter: this.blur(defs, blurOf(pan, 0.9, bb)) });
+          gd.innerHTML = c.html;
+          grp.append(gd);
+        }
+        inPlane(n2, 1);
         // avec la camera du montage, les elements du plus loin au plus pres, comme dans le montage
         const order = (pan.layers || []).map((l, i) => i);
         if (FT0) order.sort((a, b) => depthOf(pan, b) - depthOf(pan, a) || a - b);

@@ -2373,7 +2373,20 @@
   "Trait coupé entre les deux points (le remplissage reste). Clic droit sur un point : « Recoller tout le trait ».": "Outline cut between the two points (the fill stays). Right-click a point: \"Rejoin the whole outline\".",
   "Il faut garder au moins ": "Keep at least ",
   " points.": " points.",
-  " Points affichés : clic ou rectangle pour en choisir plusieurs (Maj : ajouter), on les tire ensemble ; clic droit : Bézier, dur, couper le segment entre deux points.": " Shown points: click or drag a rectangle to pick several (Shift: add), drag them together; right-click: Bézier, hard, cut the segment between two points."
+  " Points affichés : clic ou rectangle pour en choisir plusieurs (Maj : ajouter), on les tire ensemble ; clic droit : Bézier, dur, couper le segment entre deux points.": " Shown points: click or drag a rectangle to pick several (Shift: add), drag them together; right-click: Bézier, hard, cut the segment between two points.",
+  "(auto)": "(auto)",
+  "Couleur du motif": "Pattern colour",
+  "Le sol de la case : une plaque posée sur le sol, vue en perspective, sous les personnages. Le décor est posé dessus : la plaque s'arrête au pied du décor, jamais par-dessus le mur. Mêmes réglages que dans le montage (piste Sol), où l'on tire la plaque à la main.": "The panel's ground: a plate on the floor, seen in perspective, under the characters. The set stands on it: the plate stops at the foot of the set, never over its wall. Same settings as in the animation editor (Ground track), where the plate is dragged by hand.",
+  "Le sol devient une plaque, à tirer dans le montage": "The ground becomes a plate, to drag in the animation editor",
+  "Le sol redevient infini, jusqu'à l'horizon (ou jusqu'au pied du décor)": "The ground becomes infinite again, up to the horizon (or to the foot of the set)",
+  "Pied auto": "Auto foot",
+  "Pied du décor": "Set foot",
+  "Pied du décor : glisser jusqu'à la ligne où le mur du décor touche le sol. La plaque s'arrête là, le décor est posé dessus.": "Set foot: drag to the line where the wall of the set meets the floor. The plate stops there, the set stands on it.",
+  "Pied du décor : la ligne (hauteur dans la case) où le mur du décor touche le sol. La plaque s'arrête là, le décor est posé dessus. « Auto » : le bord du fond de la plaque.": "Set foot: the line (height in the panel) where the wall of the set meets the floor. The plate stops there, the set stands on it. \"Auto\": the back edge of the plate.",
+  "Pied du décor ⓘ": "Set foot ⓘ",
+  "Sol dans la case": "Ground in the panel",
+  "Une plaque de sol en perspective, sous le décor": "A ground plate in perspective, under the set",
+  "▱ Sol ⓘ": "▱ Ground ⓘ"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
