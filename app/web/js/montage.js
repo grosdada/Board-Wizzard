@@ -13,7 +13,7 @@ import { h, modal, toast, history, upload, get, post, put, del } from "./api.js"
 import { flattenPanel } from "./flatten.js";
 import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime, segsOf, exprMarkup, exprGom, exprAt, exprName } from "./lipsync.js";
 import { swatch } from "./colors.js";
-import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0, PLATE0, plateDefault, plateCorners, groundAt } from "./ground.js";
+import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0, PLATE0, plateDefault, plateCorners, groundAt, plateGround, groundImg, toPlate, plateMap, composeGround } from "./ground.js";
 import { markupReady } from "./model.js";
 import { bgStroke, jitterFilter, sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
@@ -433,7 +433,7 @@ export function openMontage(app, pid, opt = {}) {
     const mk = isoView ? scene.markup(t, null, paint, (svg.getScreenCTM() || {}).a) : depthView ? topView() : v3 ? `<rect width="${W}" height="${f1(H)}" fill="#26292d"/>` : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
     if (!(playing && !markupReady(mk) && svg.firstChild)) svg.innerHTML = mk;   // en lecture, une image pas prete : on garde la precedente
     boxDot();
-    if (isoView) groundOverlay();
+    if (groundEdit() && !playing) groundOverlay();
     gbar.style.display = isoView ? "" : "none";
     if (isoView) gbarFill();
     if (v3) render3(); else box3.style.display = "none";
@@ -591,17 +591,19 @@ export function openMontage(app, pid, opt = {}) {
     const gr = pan.ground;
     if (!gr || !Array.isArray(gr.ext)) return;
     const M = groundCTM(), T = (p) => { const q = new DOMPoint(p[0], p[1]).matrixTransform(M); return [q.x, q.y]; };
-    const box = { x: 0, y: 0, w: W, h: H }, C = plateCorners(gr, box).map(T), yH = (gr.hz ?? 0.45) * H, vp = T([W / 2, yH]);
+    const box = { x: 0, y: 0, w: W, h: H }, C = plateCorners(gr, box).map(T), yH = (gr.hz ?? 0.45) * H;
     const ln = (a, b, extra) => `<line x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(b[0])}" y2="${f1(b[1])}" vector-effect="non-scaling-stroke" ${extra}/>`;
-    const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    const lerp = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];   // poignees des cotes : vers le fond, la ou elles se voient
-    const hd = (p, k, tip) => `<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${f1(W * 0.011)}" fill="#5fc4a8" stroke="#123" stroke-width="1.5" vector-effect="non-scaling-stroke" data-gh="${k}" style="cursor:${k === "n" || k === "f" ? "ns-resize" : "ew-resize"}"><title>${tip}</title></circle>`;
+    // poignees : au milieu de chaque bord, sur le sol (les cotes vers le fond, la ou ils se voient), si elles sont devant la camera
+    const Gc = plateGround(gr), at = (a, b, k) => { const q = groundImg(gr, box, a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k); return q && T(q); };
+    const hd = (p, k, tip) => (p ? `<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${f1(W * 0.011)}" fill="#5fc4a8" stroke="#123" stroke-width="1.5" vector-effect="non-scaling-stroke" data-gh="${k}" style="cursor:${k === "n" || k === "f" ? "ns-resize" : "ew-resize"}"><title>${tip}</title></circle>` : "");
+    // fuyantes : les cotes de la plaque prolonges jusqu'a leur point de fuite sur l'horizon
+    const dir = [Gc[3][0] - Gc[0][0], Gc[3][1] - Gc[0][1]], vp = dir[1] > 1e-6 ? T([W / 2 + W * dir[0] / dir[1], yH]) : null;
+    const fu = vp ? [0, 1].map((i) => { const q = groundImg(gr, box, Gc[i][0], Gc[i][1]); return q ? ln(T(q), vp, `stroke="#5fc4a8" stroke-opacity=".6" stroke-width="1" stroke-dasharray="4 4"`) : ""; }).join("") : "";
     const hzA = T([-W, yH]), hzB = T([2 * W, yH]), hzH = T([W * 0.94, yH]);
     const o = `<g class="mt-ground-edit">` +
-      ln(hzA, hzB, `stroke="#e0b84a" stroke-width="1.5" stroke-dasharray="8 5"`) +
-      [0, 1].map((i) => ln(C[i], vp, `stroke="#5fc4a8" stroke-opacity=".6" stroke-width="1" stroke-dasharray="4 4"`)).join("") +
-      `<path d="M${C.map((q) => f1(q[0]) + " " + f1(q[1])).join("L")}Z" fill="#5fc4a8" fill-opacity="0.07" stroke="#5fc4a8" stroke-width="2" vector-effect="non-scaling-stroke" data-gp="1" style="cursor:move"><title>${tt("Glisser : déplacer la plaque sur le sol")}</title></path>` +
-      hd(mid(C[0], C[1]), "n", tt("Bord de devant")) + hd(mid(C[2], C[3]), "f", tt("Bord du fond")) + hd(lerp(C[0], C[3], 0.7), "l", tt("Bord gauche")) + hd(lerp(C[1], C[2], 0.7), "r", tt("Bord droit")) +
+      ln(hzA, hzB, `stroke="#e0b84a" stroke-width="1.5" stroke-dasharray="8 5"`) + fu +
+      (C.length > 2 ? `<path d="M${C.map((q) => f1(q[0]) + " " + f1(q[1])).join("L")}Z" fill="#5fc4a8" fill-opacity="0.07" stroke="#5fc4a8" stroke-width="2" vector-effect="non-scaling-stroke" data-gp="1" style="cursor:move"><title>${tt("Glisser : déplacer la plaque sur le sol")}</title></path>` : "") +
+      hd(at(Gc[0], Gc[1], 0.5), "n", tt("Bord de devant")) + hd(at(Gc[2], Gc[3], 0.5), "f", tt("Bord du fond")) + hd(at(Gc[0], Gc[3], 0.7), "l", tt("Bord gauche")) + hd(at(Gc[1], Gc[2], 0.7), "r", tt("Bord droit")) +
       `<rect x="${f1(hzH[0] - W * 0.045)}" y="${f1(hzH[1] - H * 0.022)}" width="${f1(W * 0.09)}" height="${f1(H * 0.044)}" rx="4" fill="#e0b84a" data-gh="hz" style="cursor:ns-resize"><title>${tt("Horizon : glisser pour le monter ou le descendre (les fuyantes suivent)")}</title></rect>` +
       `<text x="${f1(hzH[0])}" y="${f1(hzH[1] + H * 0.012)}" font-size="${f1(H * 0.03)}" text-anchor="middle" fill="#1b1b1b" pointer-events="none" style="font-family:sans-serif">${tt("Horizon")}</text></g>`;
     svg.insertAdjacentHTML("beforeend", o);
@@ -806,22 +808,26 @@ export function openMontage(app, pid, opt = {}) {
     }
     // sol (devant le mur) : des dalles (celles qui passent derriere la camera sont omises), motif de la carte de sol s'il y en a une
     // dalles de plus en plus grandes vers le fond, sur une largeur qui suit le champ de la camera
-    const TP = 60, gr = pan.ground && pan.ground.on ? pan.ground : null;
+    const TP = 60, gr = pan.ground && pan.ground.on ? pan.ground : null, plate = gr && Array.isArray(gr.ext) ? gr : null;
+    // plaque de sol : son contour sur le sol de la 3D (x = 0,5 + u x camY, z = v x camY - D0), sa couleur pleine
+    const pw3 = plate ? plateGround(plate).map(([u, v]) => [0.5 + u * rb.camY, v * rb.camY - D0]) : null;
+    const pfill = plate && plate.fill !== "none" ? plate.fill || PLATE0 : null;
     for (let gz = -1.5, TS = 0.25; gz < zEnd - 1e-6; gz += TS) {
       TS = 0.25 * Math.max(1, Math.round((gz + D0) / 1.5));
       const TZ = Math.min(TS, zEnd - gz), half = Math.max(2.5, 1.5 * (gz + TS + D0)), n = Math.ceil(half / TS);
       for (let q = -n; q < n; q++) {
         const gx = 0.5 + q * TS;
-        if (gr && Array.isArray(gr.ext)) {                   // plaque de sol : seulement les dalles qui la touchent
-          const e = gr.ext, cy = rb.camY, u = (gx - 0.5) / cy, u2 = (gx + TS - 0.5) / cy, v = (gz + D0) / cy, v2 = (gz + TZ + D0) / cy;
-          if (u2 < e[0] || u > e[1] || v2 < e[2] || v > e[3]) continue;
+        if (pw3) {                                           // plaque de sol : seulement les dalles qui la touchent
+          const xs = pw3.map((q) => q[0]), zs = pw3.map((q) => q[1]);
+          if (gx + TS < Math.min(...xs) || gx > Math.max(...xs) || gz + TZ < Math.min(...zs) || gz > Math.max(...zs)) continue;
         }
         const tr = plane([gx, 0, gz], [TS / TP, 0, 0], [0, 0, TZ / TP], TP, TP);
         if (!tr) continue;
         const id = `mt3g${Math.round(gx * 100)}_${Math.round(gz * 100)}`.replace(/-/g, "m");
         const el = h("div");
-        el.innerHTML = `<svg viewBox="${gx} ${gz} ${TS} ${TZ}" width="${TP}" height="${TP}" preserveAspectRatio="none" style="display:block"><rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="#d8d4cb"/>${gr ? groundTile(gr, { x0: gx, y0: gz, w: TS, hh: TZ, camY: rb.camY, ratio: H / W, id, px: 40 }) : ""}` +
-          (gx >= 0 && gx < 1 && gz >= 0 && gz < ZD ? `<rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="none" stroke="#5fc4a8" stroke-opacity=".35" stroke-width=".004"/>` : "") + "</svg>";
+        const pc = pw3 ? `<defs><clipPath id="${id}c"><path d="M${pw3.map((q) => q[0].toFixed(4) + " " + q[1].toFixed(4)).join("L")}Z"/></clipPath></defs>` : "";
+        el.innerHTML = `<svg viewBox="${gx} ${gz} ${TS} ${TZ}" width="${TP}" height="${TP}" preserveAspectRatio="none" style="display:block">${pc}<g${pw3 ? ` clip-path="url(#${id}c)"` : ""}><rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="${pfill || "#d8d4cb"}"/>${gr ? groundTile(gr, { x0: gx, y0: gz, w: TS, hh: TZ, camY: rb.camY, ratio: H / W, id, px: 40 }) : ""}</g>` +
+          (!pw3 && gx >= 0 && gx < 1 && gz >= 0 && gz < ZD ? `<rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="none" stroke="#5fc4a8" stroke-opacity=".35" stroke-width=".004"/>` : "") + "</svg>";
         put(el, tr, TP, TP);
       }
     }
@@ -839,6 +845,8 @@ export function openMontage(app, pid, opt = {}) {
     }
     box3.textContent = "";
     box3.append(stage, bar3());
+    if (opt.orbit) box3.append(h("div.mt-3d-info", { style: { position: "absolute", left: "6px", right: "6px", bottom: "6px", zIndex: 2, fontSize: "13px", color: "#e8f6f1", textAlign: "center", pointerEvents: "none", background: "#000a", padding: "5px 10px", borderRadius: "6px" } },
+      tt("Orbite de la case : place d'abord les éléments dans l'espace (glisser un élément ; Alt : en hauteur ; « Stick to the ground » pose ses pieds au sol). Glisse de côté pour vérifier le tour, puis « ⚡ Orbite de la case ».")));
   }
   /** Pose une carte a un endroit de l'espace (X, Y = hauteur des pieds, z) en gardant sa taille reelle : place, taille et
    *  profondeur de l'element dans l'image de la case (l'inverse de rebuild3). */
@@ -928,6 +936,7 @@ export function openMontage(app, pid, opt = {}) {
     return h("div.mt-3d-bar", { on: { pointerdown: (e) => e.stopPropagation(), wheel: (e) => e.stopPropagation() } },
       h("button.mini" + (moved ? ".star" : ""), { title: tt("Chaque carte prend la place, la taille et la profondeur vues par cette caméra, et l'image de sa tournette qui correspond à ce nouvel angle"), on: { click: recalc3 } }, tt("↻ Recalculer la perspective")),
       h("button.mini.star", { title: tt("Sans génération : 72 images de ce que montre cette vue, la caméra faisant le tour de la scène depuis cet angle (même distance, même focale). Tournettes des éléments et décor du cylindre ; le résultat devient l'orbite de la case."), on: { click: orbit3 } }, tt("⚡ Orbite de la case")),
+      opt.orbit ? h("button.mini", { title: tt("L'orbite calculée par H3 : le décor et les personnages sont redessinés. Sur les machines (gratuit) ou sur fal (payant). Elle part de la case enregistrée, pas de cette vue."), on: { click: () => app.panelOrbitGen() } }, tt("✨ Avec génération…")) : "",
       h("button.mini", { title: tt("Revenir à la caméra de la case (double-clic dans la vue)"), on: { click: () => { Object.assign(cam3, CAM3); paint(); } } }, tt("⟲ Caméra de la case")),
       h("label.mt-3d-fov", tt("Focale"), fov, h("span", Math.round(cam3.fov) + "°")),
       pan.ground && pan.ground.on && layerOf(sel) ? h("button.mini" + (layerOf(sel).fly ? ".on" : ""), { title: tt("Avec une carte de sol, les éléments ont les pieds sur le sol. Coché : celui-ci vole, il garde sa profondeur."),
@@ -2408,32 +2417,39 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   };
   let vdrag = null;
   // vue isometrique : glisser = point de vue, clic sur le sol = carte de sol, molette = zoom
+  // la plaque se modifie dans Make Ground, et dans l'image quand le sol est choisi (piste « Sol »)
+  function groundEdit() { return isoView || (sel === "gr" && !depthView && !v3); }
   svg.addEventListener("pointerdown", (e) => {
-    if (!isoView) return;
-    const k = e.target.dataset && (e.target.dataset.gh || (e.target.dataset.gp ? "move" : null)), gr = pan.ground;
+    if (!groundEdit() || e.button !== 0) return;
+    const gr = pan.ground;
+    let k = e.target.dataset && (e.target.dataset.gh || (e.target.dataset.gp ? "move" : null));
+    if (!k && !isoView && gr && gr.ext && !e.target.closest("[data-layer]")) k = "move";   // sol choisi : glisser n'importe ou deplace la plaque
     if (!k || !gr || !gr.ext) return;
+    e.stopImmediatePropagation();
     stop(); try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
     const g = svg.querySelector('[mask="url(#mtgr-m)"]'), Mi = (g || svg).getScreenCTM().inverse();
     const at = (ev) => { const q = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(Mi); return [q.x, q.y]; };
     gdrag = { k, at, p0: at(e), ext0: gr.ext.slice(), hz0: gr.hz ?? 0.45 };
   });
   svg.addEventListener("pointermove", (e) => {
-    if (!isoView || !gdrag) return;
+    if (!gdrag) return;
+    e.stopImmediatePropagation();
     const gr = pan.ground, d = gdrag, p = d.at(e), box = { x: 0, y: 0, w: W, h: H }, x = gr.ext;
-    if (d.k === "hz") { gr.hz = f3(clamp(d.hz0 + (p[1] - d.p0[1]) / H, 0.02, 0.95)); paint(); return; }
-    const q = groundAt(gr, box, p[0], p[1]), q0 = groundAt(Object.assign({}, gr, { hz: d.hz0 }), box, d.p0[0], d.p0[1]);
-    if (!q) return;
-    if (d.k === "n") x[2] = f3(clamp(q[1], 0.05, x[3] - 0.05));
+    if (d.k === "hz") { gr.hz = f3(clamp(d.hz0 + (p[1] - d.p0[1]) / H, -1.5, 0.95)); paint(); return; }
+    const g1 = groundAt(gr, box, p[0], p[1]), g0 = groundAt(Object.assign({}, gr, { hz: d.hz0 }), box, d.p0[0], d.p0[1]);
+    if (!g1) return;
+    const q = toPlate(gr, g1[0], g1[1]), q0 = g0 && toPlate(gr, g0[0], g0[1]);   // dans le repere de la plaque (elle a pu tourner)
+    if (d.k === "n") x[2] = f3(Math.min(q[1], x[3] - 0.05));
     else if (d.k === "f") x[3] = f3(clamp(q[1], x[2] + 0.05, 200));
     else if (d.k === "l") x[0] = f3(Math.min(q[0], x[1] - 0.05));
     else if (d.k === "r") x[1] = f3(Math.max(q[0], x[0] + 0.05));
     else if (d.k === "move" && q0) {
-      const du = q[0] - q0[0], dv = q[1] - q0[1], v0 = Math.max(0.05, d.ext0[2] + dv), sh = v0 - d.ext0[2];
-      gr.ext = [d.ext0[0] + du, d.ext0[1] + du, v0, d.ext0[3] + sh].map(f3);
+      const du = q[0] - q0[0], dv = q[1] - q0[1];
+      gr.ext = [d.ext0[0] + du, d.ext0[1] + du, d.ext0[2] + dv, d.ext0[3] + dv].map(f3);
     }
     paint();
   });
-  svg.addEventListener("pointerup", () => { if (gdrag) { gdrag = null; hist.snap(); } });
+  svg.addEventListener("pointerup", (e) => { if (gdrag) { e.stopImmediatePropagation(); gdrag = null; hist.snap(); props(); } });
   svg.addEventListener("pointerdown", (e) => { if (!isoView || true) return; stop(); try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ } isoDrag = { x: e.clientX, y: e.clientY, yaw: iso.yaw, pitch: iso.pitch, ground: !!e.target.closest("[data-ground]"), moved: false }; svg.style.cursor = "grabbing"; });
   svg.addEventListener("pointermove", (e) => {
     if (!isoView || !isoDrag) return;

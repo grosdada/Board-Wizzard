@@ -1240,7 +1240,13 @@ class App {
     }
     toast(tt`${n} Integrate lancé(s).`); this.pollSoon();
   }
-  panelOrbit() {                                            // la camera tourne autour de toute la scene ; consigne modifiable
+  // « Orbite de la case » : on arrive dans la vue 3D du montage, invite a placer les elements dans l'espace ; de la,
+  // « ⚡ Orbite de la case » (sans generation) ou « Avec génération… » (panelOrbitGen)
+  panelOrbit() {
+    const pan = this.curPanel(); if (!pan) return toast(tt("Choisis d'abord une case."));
+    openMontage(this, this.sel.panel, { view: "3d", orbit: true });
+  }
+  panelOrbitGen() {                                         // la camera tourne autour de toute la scene ; consigne modifiable
     const pan = this.curPanel(); if (!pan) return toast(tt("Choisis d'abord une case."));
     const base = (this.info && this.info.sceneOrbit) || "";
     const prompt = h("textarea", { rows: 9 }); prompt.value = localStorage.getItem("bw.sceneOrbit") || base;
@@ -1263,11 +1269,9 @@ class App {
     const pick = (fn) => async () => { if ((await fn()) !== false && shut) shut(); };
     const line = (label, note, fn, cls) => h("button" + (cls || ""), { type: "button", style: { display: "block", width: "100%", textAlign: "left", margin: "3px 0" }, on: { click: pick(fn) } }, label, h("span.muted", " · " + note));
     const choice = h("div", { style: { display: "none", border: "1px solid var(--line, #444)", borderRadius: "6px", padding: "8px", marginTop: "6px" } },
-      line(tt("⚡ Sans génération"), tt("gratuit : la vue 3D s'ouvre, règle la caméra puis « ⚡ Orbite de la case »"), () => { openMontage(this, this.sel.panel, { view: "3d" }); }, ".primary"),
-      h("div.muted", { style: { margin: "8px 0 2px" } }, tt("Avec génération (le décor et les personnages sont redessinés par H3)")),
       this.noMachines() ? "" : line(tt("🖥 Sur les machines"), tt("gratuit, environ 7 minutes"), () => go("local")),
       line(tt("💳 Sur fal"), tt("payant, environ 0,31 $ et 3 minutes"), () => (confirm(tt("Lancer l'orbite sur fal ? C'est payant : environ 0,31 $.")) ? go("fal") : false)));
-    modal(tt("Orbite de la case"), h("div.form",
+    modal(tt("Orbite de la case, avec génération"), h("div.form",
       h("p.muted", tt("La caméra fait le tour de la scène : le décor tourne avec les personnages, et ce qui était hors champ est inventé dans le même style. La consigne se modifie ; elle est gardée pour les prochaines orbites.")),
       h("label.col", tt("Consigne"), prompt),
       h("button.mini", { type: "button", on: { click: () => { prompt.value = base; } } }, tt("Remettre la consigne d'origine")),
@@ -1275,7 +1279,6 @@ class App {
         h("button.mini", { type: "button", title: tt("Tirer une autre graine"), on: { click: () => { seed.value = 1 + Math.floor(Math.random() * 999999); } } }, "🎲"),
         h("button.mini", { type: "button", title: tt("Revenir à la graine des réglages"), on: { click: () => { seed.value = ""; } } }, tt("Réglages"))),
       h("p.muted", tt("Même graine et même consigne donnent la même vidéo. Si le décor reste vide au demi-tour, relance avec une autre graine.")),
-      h("p.muted", tt("« Sans génération » : gratuit, dans la vue 3D du montage. Les éléments montrent leur tournette sous chaque angle et le décor, enroulé sur un cylindre, défile derrière eux.")),
       choice),
       [{ label: tt("Annuler") }, { label: tt("↻ Lancer l'orbite ▾"), primary: true, click: (close) => { shut = close; choice.style.display = choice.style.display === "none" ? "" : "none"; if (choice.style.display !== "none") choice.scrollIntoView({ block: "nearest" }); return false; } }]).box.classList.add("wide");
   }
