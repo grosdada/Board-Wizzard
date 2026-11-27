@@ -107,7 +107,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
   const H = W * ratio, bb = { x0: 0, y0: 0, w: W, h: H };
   pan.layers = pan.layers || [];
   const anim = pan.anim || { dur: 4, tracks: {} };
-  const bgInfo = background(pan, app.bank, app.project.id);
+  let bgInfo = background(pan, app.bank, app.project.id), bgKey = pan.bg ? pan.bg.f || 0 : null;   // relu si le decor 360 a tourne
   for (const l of pan.layers) { const it = app.bank.get(l.item); if (it) preload(it, l.v); }
   const itemOf = (l) => app.bank.get(l.item);
   const nOf = (l, v) => { const it = itemOf(l), vv = it && variantOf(it, v || l.v); return vv && vv.orbit ? vv.orbit.n : 0; };
@@ -203,6 +203,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     };
     let bgIn = "";
     { const o0 = o; o = "";
+    if (pan.bg && (pan.bg.f || 0) !== bgKey) { bgInfo = background(pan, app.bank, app.project.id); bgKey = pan.bg.f || 0; }
     if (bgInfo) {
       const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, viewAt(t)), vf = vecFrame(bgInfo, again);
       if (vf) { const st = bgStroke(pan), bw = wiggleFilter(`${pre}wgb`, pan.bghand, pan.bgwave, vf.w, vf.h, 11); const bj = jitterFilter(`${pre}jtb`, pan.bglj, vf.w, vf.h, vf.sw, 11), ip = `<path d="${vf.ink}"${bj ? ` filter="url(#${pre}jtb)"` : ""} fill="${st.ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/>`;
@@ -211,7 +212,11 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       const bcm = bgCM(pan);                               // colorimetrie et colorize du decor
       if (bcm) o = cmFilter(`${pre}bcm`, bcm) + `<g filter="url(#${pre}bcm)">` + o + "</g>";
     }
-    o += groundSvg(pan.ground, { x: 0, y: 0, w: W, h: H }, pre + "gr");          // carte de sol, en perspective (ground.js)
+    // carte de sol, en perspective (ground.js) ; la camera qui recule ou dezoome voit le sol au-dela des bords de la case
+    const kv = perspOf(1, c.dz) * (c.z || 1), hv = kv > 0 && kv < 1 ? 0.75 / kv : 0.5;
+    const gvis = hv > 0.5 ? { x: (c.cx - hv) * W, y: (c.cy - hv) * H, w: 2 * hv * W, h: 2 * hv * H } : { x: 0, y: 0, w: W, h: H };
+    o += groundSvg(pan.ground, { x: 0, y: 0, w: W, h: H }, pre + "gr", gvis);
+    if (sel === "bg" && bgInfo) { const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, viewAt(t)); o += `<rect x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" fill="none" stroke="#e2603a" stroke-width="2" stroke-dasharray="10 6" vector-effect="non-scaling-stroke" pointer-events="none"/>`; }   // decor choisi : son cadre
     bgIn = o; o = o0 + plane(1, bgIn); }
     const drawLayer = (l, li) => {
       const s = stateOf(l, t), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
@@ -616,15 +621,7 @@ export function openMontage(app, pid, opt = {}) {
         gr && gr.on ? h("span.muted", tt("Le sol actuel va jusqu'à l'horizon.")) : "");
       return;
     }
-    const full = gr.fill !== "none";
-    gbar.append(
-      h("label.check", { title: tt("La plaque est peinte d'une couleur pleine, sous le motif ; décoché : seulement le motif") },
-        h("input", { type: "checkbox", checked: full, on: { change: (e) => { if (e.target.checked) delete gr.fill; else gr.fill = "none"; hist.snap(); paint(); } } }), tt("Plaque pleine")),
-      full ? h("input", { type: "color", value: gr.fill && gr.fill !== "none" ? gr.fill : PLATE0, title: tt("Couleur de la plaque"), on: { input: (e) => { gr.fill = e.target.value; paint(); }, change: () => hist.snap() } }) : "",
-      h("button.mini", { title: tt("Motif du sol (damier, grille, lavis…), sa taille, sa couleur"), on: { click: () => groundDialog() } }, tt("Motif…")),
-      h("button.mini", { title: tt("Remet la plaque à sa taille de départ"), on: { click: () => { gr.ext = plateDefault(gr, H / W); hist.snap(); paint(); } } }, tt("↺ Plaque de départ")),
-      h("button.mini", { title: tt("Le sol redevient infini, jusqu'à l'horizon"), on: { click: () => { delete gr.ext; delete gr.fill; hist.snap(); paint(); } } }, tt("Sol infini")),
-      h("button.mini.danger", { on: { click: () => { delete pan.ground; hist.snap(); paint(); } } }, tt("Retirer le sol")),
+    gbar.append(...groundCtl(),
       h("span.mt-ghelp", tt("Tire les ronds pour agrandir la plaque, glisse dedans pour la déplacer, la barre jaune règle l'horizon.")));
   }
   // ------------------------------------------------------------------------------------------ vue 3D
@@ -642,13 +639,39 @@ export function openMontage(app, pid, opt = {}) {
   const CAM3 = { yaw: 0, el: 0, crane: 0, pitch: 0, dolly: 1, fov: FOV0 };
   const cam3 = Object.assign({}, CAM3);
   const box3 = h("div.mt-3d", { style: { display: "none" } });
-  const hzOf = () => (pan.ground && pan.ground.hz != null ? pan.ground.hz : estimateHorizon(pan));
+  // La camera du montage (cadre, zoom, recul) appliquee a la case : la vue 3D part de l'image telle qu'on la voit, et
+  // « Recalculer la perspective » rend dans la case exactement le cadrage de la 3D (la camera du montage revient alors au
+  // neutre, son cadrage est dans la case). Camera animee (plusieurs cles) : la case sans la camera, qui bouge pendant le plan.
+  function viewCam() {
+    if (keysOf("cam").length > 1) return null;
+    const c = camAt(), z = c.z || 1, dz = c.dz || 0;
+    if (Math.abs(c.cx - 0.5) < 1e-4 && Math.abs(c.cy - 0.5) < 1e-4 && Math.abs(z - 1) < 1e-4 && Math.abs(dz) < 1e-4) return null;
+    return { cx: c.cx, cy: c.cy, z, dz, K: (d) => perspOf(d, dz) * z };   // K : grossissement d'un plan a la profondeur d
+  }
+  /** Le sol tel que l'image le montre avec la camera du montage (une copie ; le sol de la case n'est pas touche). */
+  function viewGround(gr, V) {
+    if (!gr || !V) return gr;
+    const K = V.K(1), b = -(0.5 - V.cx) * K, g2 = Object.assign({}, gr);   // le sol est dans le plan du decor (d = 1)
+    g2.m = composeGround(groundMap(gr, H / W), 1, b, 0, K, 0, 0);
+    if (Array.isArray(gr.ext)) g2.pm = composeGround(plateMap(gr), 1, b, 0, K, 0, 0);
+    g2.hz = +(0.5 + ((gr.hz ?? 0.45) - V.cy) * K).toFixed(4);
+    return g2;
+  }
+  /** Place du decor dans l'image, camera du montage comprise. */
+  const plView = (pl, V) => { if (!V) return pl; const K = V.K(1); return Object.assign({}, pl, { x: W / 2 + (pl.x - V.cx * W) * K, y: H / 2 + (pl.y - V.cy * H) * K, w: pl.w * K, h: pl.h * K }); };
+  const hzOf = (V = viewCam()) => { const hz = pan.ground && pan.ground.hz != null ? pan.ground.hz : estimateHorizon(pan); return V ? 0.5 + (hz - V.cy) * V.K(1) : hz; };
   /** Les cartes de la case dans l'espace (unites : largeur de la case). */
   function rebuild3() {
-    const hw = H / W, hz = hzOf(), cards = [];
+    const V = viewCam(), hw = H / W, hz = hzOf(V), cards = [];
     for (const l of pan.layers) {
-      const s = worldOf(l), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
+      const s0 = worldOf(l), it = itemOf(l), sp = it && sprite(it, s0.v, s0.f);
       if (!sp) continue;
+      let s = s0;
+      if (V) {                                             // l'element tel que l'image le montre (cadre, zoom, recul)
+        const K = V.K(depthNow(l));
+        if (!K) continue;                                  // la camera l'a depasse
+        s = Object.assign({}, s0, { x: 0.5 + (s0.x - V.cx) * K, y: 0.5 + (s0.y - V.cy) * K, s: (s0.s || 0.5) * K });
+      }
       const z = depthNow(l) * ZD, zc = z + D0, Hc = (s.s || 0.5) * hw * zc / D0;
       cards.push({ l, s, sp, z, X: 0.5 + (s.x - 0.5) * zc / D0, Hc, Wc: Hc * (sp.w || 1) / (sp.h || 1), yf: s.y, zc });
     }
@@ -666,7 +689,7 @@ export function openMontage(app, pid, opt = {}) {
       } else c.Y = camY - below * c.zc / D0;               // les pieds : la ou la case les montre
     }
     const zMid = cards.length ? cards.reduce((a, c) => a + c.z, 0) / cards.length : ZD / 2;
-    return { hw, hz, camY, zMid, cards };
+    return { hw, hz, camY, zMid, cards, V, gr: viewGround(pan.ground, V) };
   }
   /** Camera deplacee : position, axes (droite, haut, avant), focale (en largeurs de case). */
   function camera3(rb) {
@@ -695,7 +718,7 @@ export function openMontage(app, pid, opt = {}) {
   }
   function cyl3(rb, bgI) {
     const zW = Math.max(ZD * 1.05, ...rb.cards.map((c) => c.z + 0.15)), dist = zW + D0;
-    const pl = placement(bb, bgI.w || 16, bgI.h || 9, scene.viewAt(t));
+    const pl = plView(placement(bb, bgI.w || 16, bgI.h || 9, scene.viewAt(t)), rb.V);
     const it = pan.bg && pan.bg.item && app.bank.get(pan.bg.item), vv = it && variantOf(it, pan.bg.v || "base");
     const pano = !!(vv && vv.pano && vv.orbit && vv.orbit.n > 1);
     const url = pano ? `/bank/${it.id}/${vv.pano}?t=${vv.orbit.t || 0}` : bgI.url, im = tex3(url);
@@ -704,7 +727,7 @@ export function openMontage(app, pid, opt = {}) {
     const u0 = pano ? (((Math.round(pan.bg.f || 0) % vv.orbit.n) + vv.orbit.n) % vv.orbit.n) * pw / vv.orbit.n : 0;
     const arc = pano ? 2 * Math.PI : 2 * Math.PI / 3;
     const Rc = Math.max(0.3 * dist, (pl.w / W) / across * dist / D0 * pw / arc);
-    return { url, im, pw, full: pano, uc: u0 + (W / 2 - pl.x) / pl.w * across, k: arc / pw, Rc, ax: [0.5, zW - Rc], zW,
+    return { url, im, pw, across, full: pano, uc: u0 + (W / 2 - pl.x) / pl.w * across, k: arc / pw, Rc, ax: [0.5, zW - Rc], zW,
              Ytop: rb.camY + (rb.hz - pl.y / H) * rb.hw * dist / D0, Hh: (pl.h / H) * rb.hw * dist / D0 };
   }
   /** Le decor du cylindre vu par une camera horizontale, peint colonne par colonne (orbite sans generation). */
@@ -782,7 +805,10 @@ export function openMontage(app, pid, opt = {}) {
       const nx = a[1] * b[2] - a[2] * b[1], ny = a[2] * b[0] - a[0] * b[2], nz = a[0] * b[1] - a[1] * b[0], nn = Math.hypot(nx, ny, nz) || 1;
       return `matrix3d(${[a[0], a[1], a[2], 0, b[0], b[1], b[2], 0, nx / nn, ny / nn, nz / nn, 0, k[0] * Wp, -k[1] * Wp, P - k[2] * Wp, 1].map((v) => +v.toFixed(5)).join(",")})`;
     };
-    const put = (el, tr, w, hh) => { if (!tr) return; Object.assign(el.style, { width: w + "px", height: hh + "px", transform: tr }); el.classList.add("w3"); stage.append(el); };
+    // l'origine des plans est a la hauteur de l'horizon, comme celle de la perspective (avec top: 0, tout montait de la
+    // hauteur de l'horizon : la vue 3D ne montrait pas ce que « Recalculer la perspective » met dans la case)
+    const top0 = (rb.hz * 100).toFixed(3) + "%";
+    const put = (el, tr, w, hh) => { if (!tr) return; Object.assign(el.style, { width: w + "px", height: hh + "px", transform: tr, top: top0 }); el.classList.add("w3"); stage.append(el); };
     // le decor de la case : un mur au fond, a la taille qui redonne l'image depuis la camera de la case
     const bgI = background(pan, app.bank, app.project.id);
     // le mur passe derriere l'element le plus loin (colles au sol, certains peuvent etre plus loin que la profondeur 1)
@@ -802,19 +828,21 @@ export function openMontage(app, pid, opt = {}) {
       }
     } else if (bgI) {
       const zc = zW + D0, ww = zc / D0, hh = rb.hw * zc / D0, top = rb.camY + rb.hz * rb.hw * zc / D0;
-      const pl = placement(bb, bgI.w || 16, bgI.h || 9, scene.viewAt(t)), el = h("div");
+      const pl = plView(placement(bb, bgI.w || 16, bgI.h || 9, scene.viewAt(t)), rb.V), el = h("div");
       el.innerHTML = `<svg viewBox="0 0 ${W} ${f1(H)}" width="400" height="${f1(400 * H / W)}" preserveAspectRatio="none" style="display:block"><rect width="${W}" height="${f1(H)}" fill="#fff"/><image href="${bgI.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/></svg>`;
       put(el, plane([0.5 - ww / 2, top, zW], [ww / 400, 0, 0], [0, -hh / (400 * H / W), 0], 400, 400 * H / W), 400, 400 * H / W);
     }
     // sol (devant le mur) : des dalles (celles qui passent derriere la camera sont omises), motif de la carte de sol s'il y en a une
     // dalles de plus en plus grandes vers le fond, sur une largeur qui suit le champ de la camera
-    const TP = 60, gr = pan.ground && pan.ground.on ? pan.ground : null, plate = gr && Array.isArray(gr.ext) ? gr : null;
+    const TP = 60, gr = rb.gr && rb.gr.on ? rb.gr : null, plate = gr && Array.isArray(gr.ext) ? gr : null;
     // plaque de sol : son contour sur le sol de la 3D (x = 0,5 + u x camY, z = v x camY - D0), sa couleur pleine
     const pw3 = plate ? plateGround(plate).map(([u, v]) => [0.5 + u * rb.camY, v * rb.camY - D0]) : null;
     const pfill = plate && plate.fill !== "none" ? plate.fill || PLATE0 : null;
-    for (let gz = -1.5, TS = 0.25; gz < zEnd - 1e-6; gz += TS) {
+    // une plaque de sol va jusqu'a son bord du fond, meme au-dela du mur du decor (dans l'image, le sol est peint sur le decor)
+    const zG = pw3 ? Math.max(zEnd, ...pw3.map((q) => q[1])) : zEnd;
+    for (let gz = -1.5, TS = 0.25; gz < zG - 1e-6; gz += TS) {
       TS = 0.25 * Math.max(1, Math.round((gz + D0) / 1.5));
-      const TZ = Math.min(TS, zEnd - gz), half = Math.max(2.5, 1.5 * (gz + TS + D0)), n = Math.ceil(half / TS);
+      const TZ = Math.min(TS, zG - gz), half = Math.max(2.5, 1.5 * (gz + TS + D0)), n = Math.ceil(half / TS);
       for (let q = -n; q < n; q++) {
         const gx = 0.5 + q * TS;
         if (pw3) {                                           // plaque de sol : seulement les dalles qui la touchent
@@ -851,9 +879,12 @@ export function openMontage(app, pid, opt = {}) {
   /** Pose une carte a un endroit de l'espace (X, Y = hauteur des pieds, z) en gardant sa taille reelle : place, taille et
    *  profondeur de l'element dans l'image de la case (l'inverse de rebuild3). */
   function placeCard(rb, c, X, Y, z) {
-    const zc = Math.max(0.05, z + D0), below = (rb.camY - Y) * D0 / zc;
-    change(c.l.id, { x: f3(0.5 + (X - 0.5) * D0 / zc), y: f3(rb.hz + below / rb.hw), s: f3(Math.max(0.02, c.Hc * D0 / (rb.hw * zc))) });
-    setDepth(c.l, clamp(z / ZD, 0, 1));
+    const zc = Math.max(0.05, z + D0), below = (rb.camY - Y) * D0 / zc, d = clamp(z / ZD, 0, 1);
+    let x = 0.5 + (X - 0.5) * D0 / zc, y = rb.hz + below / rb.hw, s = Math.max(0.02, c.Hc * D0 / (rb.hw * zc));
+    const K = rb.V && rb.V.K(d);                           // vue avec la camera du montage : on revient a la case
+    if (K) { x = rb.V.cx + (x - 0.5) / K; y = rb.V.cy + (y - 0.5) / K; s /= K; }
+    change(c.l.id, { x: f3(x), y: f3(y), s: f3(s) });
+    setDepth(c.l, d);
   }
   /** Rayon de la camera par un point de la vue (fractions de la largeur et de la hauteur) coupe le plan horizontal Y. */
   const rayDir = (rb, cm, sx, sy) => { const a = (sx - 0.5) / cm.f, b = (rb.hz - sy) * rb.hw / cm.f;
@@ -970,23 +1001,67 @@ export function openMontage(app, pid, opt = {}) {
       setDepth(c.l, clamp((feet.zc - D0) / ZD, 0, 1));
       n++;
     }
+    const hit = decorHit(rb, cm);                           // avant de toucher au decor
+    if (rb.V) {                                             // le cadrage de la camera du montage passe dans la case : elle revient au neutre
+      if (pan.bg) {
+        const bgI = background(pan, app.bank, app.project.id) || {}, v = scene.viewAt(t), pl = placement(bb, bgI.w || 16, bgI.h || 9, v), K = rb.V.K(1);
+        change("bg", { zoom: f3((v.zoom || 1) * K), ox: f3((0.5 + pl.ox - rb.V.cx) * K), oy: f3((0.5 + pl.oy - rb.V.cy) * K) });
+      }
+      if (pan.ground) Object.assign(pan.ground, rb.gr);
+      for (const k of keysOf("cam")) Object.assign(k, { cx: 0.5, cy: 0.5, z: 1, dz: 0 });
+      delete pan.frame;
+    }
     if (pan.ground) groundRecalc(rb, cm);
-    Object.assign(cam3, CAM3);                               // la case montre maintenant ce que voyait la camera : elle redevient la reference
+    decorApply(hit);
+    Object.assign(cam3, CAM3);                              // la case montre maintenant ce que voyait la camera : elle redevient la reference
     hist.snap(); paint(); lanes(); props();
-    toast(tt`Perspective recalculée : ${n} élément(s), place, taille, profondeur et image de tournette.`);
+    toast(tt`Perspective recalculée : ${n} élément(s), place, taille, profondeur et image de tournette.` + (rb.V ? " " + tt("Le cadrage de la caméra est maintenant dans la case (caméra remise au neutre).") : ""));
   }
   /** La carte de sol vue par la nouvelle camera. Le motif est pose sur le sol (Y = 0) ; gr.m le relie aux coordonnees du sol
    *  vues de la camera de la case, divisees par sa hauteur (ground.js) : on y compose le passage a la nouvelle camera
    *  (orbite, hauteur, distance, focale). La plongee deplace l'horizon. */
   function groundRecalc(rb, cm) {
-    const gr = pan.ground, m0 = groundMap(gr, H / W), ya = cam3.yaw * Math.PI / 180, cy = Math.cos(ya), sy = Math.sin(ya);
-    const hc = Math.max(0.02, cm.C[1]), f = cm.f / D0, k = hc / rb.camY;
-    // sol de la nouvelle camera (u', v') -> sol de l'ancienne (u, v) : u = a*u' + b*v' + e, v = c*u' + d*v' + g
-    const a = k * cy, b = -k * sy * f, c = k * sy, d = k * cy * f, e = (cm.C[0] - 0.5) / rb.camY, g = (cm.C[2] + D0) / rb.camY;
-    const [A, B, C, Dd, E, G] = m0;                         // motif = (A*u + B*v + E, C*u + Dd*v + G)
-    gr.m = [A * a + B * c, A * b + B * d, C * a + Dd * c, C * b + Dd * d, A * e + B * g + E, C * e + Dd * g + G].map((x) => +x.toFixed(5));
-    const pt = cam3.pitch + (cam3.el || 0);
-    gr.hz = f3(clamp(rb.hz - (pt ? cm.f * Math.tan(Math.min(80, pt) * Math.PI / 180) / rb.hw : 0), 0.02, 0.95));
+    const gr = pan.ground, ya = cam3.yaw * Math.PI / 180, cy = Math.cos(ya), sy = Math.sin(ya);
+    // plongee p : un sol vu d'en haut reste un sol de la forme de groundSvg (horizon plus haut, u et v mis a l'echelle)
+    const p = clamp(cam3.pitch + (cam3.el || 0), -60, 80) * Math.PI / 180, cp = Math.cos(p), spn = Math.sin(p);
+    const hc = Math.max(0.02, cm.C[1]), f = cm.f / D0;
+    // sol de la nouvelle camera (u', v') : ecart s = u' hc / cos p, distance a plat w = (v' f hc / cos p - hc sin p) / cos p ;
+    // puis le sol de l'ancienne (u, v) : u = a*u' + b*v' + e, v = c*u' + d*v' + g
+    const A1 = hc / cp, B1 = f * hc / (cp * cp), B0 = -hc * spn / cp, Y = rb.camY;
+    const a = cy * A1 / Y, b = -sy * B1 / Y, c = sy * A1 / Y, d = cy * B1 / Y;
+    const e = (cm.C[0] - 0.5 - sy * B0) / Y, g = (cm.C[2] + D0 + cy * B0) / Y;
+    gr.m = composeGround(groundMap(gr, H / W), a, b, c, d, e, g);   // le motif reste au meme endroit du sol
+    if (Array.isArray(gr.ext)) gr.pm = composeGround(plateMap(gr), a, b, c, d, e, g);   // la plaque aussi
+    gr.hz = f3(clamp(rb.hz - cm.f * Math.tan(p) / rb.hw, -1.5, 0.95));
+  }
+  /** Un decor 360 de la banque tourne avec la camera. decorHit (avant de toucher a la case) : la colonne du panorama que
+   *  vise le centre de la vue 3D, sur le cylindre ; decorApply (apres) : l'image du decor centree sur cette colonne. */
+  function decorHit(rb, cm) {
+    const it = pan.bg && pan.bg.item && app.bank.get(pan.bg.item), vv = it && variantOf(it, pan.bg.v || "base");
+    if (!(vv && vv.pano && vv.orbit && vv.orbit.n > 1)) return null;
+    const bgI = background(pan, app.bank, app.project.id), cy = bgI && cyl3(rb, bgI);
+    if (!cy || !cy.full) return { n: vv.orbit.n, yaw: cam3.yaw };   // panorama pas encore charge : on tourne de l'angle de la camera
+    const dx = cm.fw[0], dz = cm.fw[2], ox = cm.C[0] - cy.ax[0], oz = cm.C[2] - cy.ax[1];
+    const A = dx * dx + dz * dz, B = 2 * (ox * dx + oz * dz), D = B * B - 4 * A * (ox * ox + oz * oz - cy.Rc * cy.Rc);
+    if (A < 1e-9 || D < 0) return { n: vv.orbit.n, yaw: cam3.yaw };
+    const zc = (-B + Math.sqrt(D)) / (2 * A);
+    // la colonne visee, la hauteur du decor vue de la camera (fraction de la hauteur de la case) et la ligne du decor au centre
+    return { n: vv.orbit.n, u: cy.uc + Math.atan2(cm.C[0] + dx * zc - cy.ax[0], cm.C[2] + dz * zc - cy.ax[1]) / cy.k, pw: cy.pw, across: cy.across, bgI,
+             dh: cy.Hh * cm.f / zc / rb.hw, r: (cy.Ytop - (cm.C[1] + cm.fw[1] * zc)) / cy.Hh };
+  }
+  function decorApply(hit) {
+    if (!hit) return;
+    const n = hit.n;
+    let f;
+    if (hit.u == null) f = (pan.bg.f || 0) - (hit.yaw || 0) * n / 360;
+    else {                                                 // l'image centree sur la colonne visee, a la taille et a la hauteur vues en 3D
+      const iw = hit.bgI.w || 16, ih = hit.bgI.h || 9, zoom = Math.max(0.25, hit.dh * H / (ih * Math.max(W / iw, H / ih))), dw = iw * Math.max(W / iw, H / ih) * zoom, dh = dw * ih / iw;
+      const fr = Math.round(hit.u * n / hit.pw - (dw / 2) / dw * hit.across * n / hit.pw);
+      const ox = (dw / 2 - (hit.u - fr * hit.pw / n) * dw / hit.across) / W, oy = (0.5 - hit.r) * dh / H;
+      change("bg", { zoom: f3(zoom), ox: f3(ox), oy: f3(oy) });
+      f = fr;
+    }
+    pan.bg.f = ((Math.round(f) % n) + n) % n;
   }
   box3.addEventListener("contextmenu", (e) => e.preventDefault());
   box3.addEventListener("pointerdown", (e) => {
@@ -1139,7 +1214,7 @@ export function openMontage(app, pid, opt = {}) {
     else if (id === "fx") pan.draw.fx.force = patch.fx;
     else if (id !== "cam") Object.assign(layerOf(id) || nullOf(id), patch);
     else setKey(id, patch);
-    if (CAMS[id] && CAMS[sel] && sel !== id) { sel = id; keyBar(); }      // camera, mise au point, flou : la piste reglee devient la piste choisie
+    if (CAMS[id] && id !== "bg" && CAMS[sel] && sel !== "bg" && sel !== id) { sel = id; keyBar(); }      // camera, mise au point, flou : la piste reglee devient la piste choisie
     paint(); lanes(); syncProps();
   }
 
@@ -1149,8 +1224,71 @@ export function openMontage(app, pid, opt = {}) {
   const folds = { sh: true, gs: true, voice: true, mouth: true, lipt: false, lipm: false, tts: false, wig: false };
   const fold = (key, label, ...rows) => h("details.fold", { open: !!folds[key], on: { toggle: (e) => { folds[key] = e.target.open; } } }, h("summary", label), ...rows);
                     // depliants ouverts ou fermes
+  /** Taille et place du decor de la case (rows : les mises a jour du panneau) */
+  function decorBox(rows) {                                     // taille et place du decor ; animables (piste « Décor ») quand c'est coche
+      const bgI = background(pan, app.bank, app.project.id) || {};
+      // course du decor de chaque cote : la reglette le pousse dans son sens (100 = a fond vers la droite / le bas)
+      const travel = (v) => { const pl = placement(bb, bgI.w || 16, bgI.h || 9, v); return { mx: Math.abs(pl.w - W) / (2 * W), my: Math.abs(pl.h - H) / (2 * H), pl }; };
+      const pos = (a) => { const v = scene.viewAt(t), tr = travel(v), m = a === "x" ? tr.mx : tr.my, o = a === "x" ? tr.pl.ox : tr.pl.oy; return m > 1e-4 ? Math.round(o / m * 100) : 0; };
+      const setPos = (a, x) => { const tr = travel(scene.viewAt(t)); change("bg", a === "x" ? { ox: f3(x / 100 * tr.mx) } : { oy: f3(x / 100 * tr.my) }); };
+      const rg = (label, title, get, min, max, step, set, fmt) => {
+        const out = h("output", fmt(get())), inp = h("input", { type: "range", min, max, step, value: get(), on: { input: (e) => { set(+e.target.value); out.textContent = fmt(+e.target.value); }, change: () => hist.snap() } });
+        rows.push(() => { const v = get(), tr = travel(scene.viewAt(t)), free = label === "z" || (label === "x" ? tr.mx : tr.my) > 1e-4; if (document.activeElement !== inp) inp.value = v; out.textContent = fmt(v); inp.disabled = !free; });
+        return h("label.row.range", { title }, label === "z" ? tt("Taille du décor") : label === "x" ? tt("Position ↔") : tt("Position ↕"), inp, out);
+      };
+      return h("div",
+        rg("z", tt("Agrandir ou rétrécir le décor de la case (1 : il remplit juste la case ; moins : plus petit que la case)"), () => scene.viewAt(t).zoom, 0.25, 6, 0.01, (x) => change("bg", { zoom: x }), (x) => (+x).toFixed(2)),
+        rg("x", tt("Pousser le décor vers la gauche ou vers la droite (-100 / 100 : à fond). Il faut qu'il soit plus grand ou plus petit que la case pour pouvoir bouger."), () => pos("x"), -100, 100, 1, (x) => setPos("x", x), (x) => String(Math.round(x))),
+        rg("y", tt("Pousser le décor vers le haut ou vers le bas (-100 / 100 : à fond). Il faut qu'il soit plus grand ou plus petit que la case pour pouvoir bouger."), () => pos("y"), -100, 100, 1, (x) => setPos("y", x), (x) => String(Math.round(x))),
+        h("label.row.check", { title: tt("Coché : la taille et la place du décor se posent en clés sur la piste « Décor » de la timeline (zoom, glissement du fond). Décoché : le décor reste fixe, ses clés sont gardées.") },
+          h("input", { type: "checkbox", checked: !!anim.bgAnim, on: { change: (e) => { if (e.target.checked) anim.bgAnim = true; else delete anim.bgAnim; hist.snap(); paint(); lanes(); props(); } } }), tt("Animer le décor ⓘ")),
+        h("button.mini", { title: tt("Taille 1, décor centré"), on: { click: () => { change("bg", { zoom: 1, ox: 0, oy: 0 }); hist.snap(); paint(); props(); } } }, tt("Recentrer le décor")));
+  }
+  // en haut du panneau : de quoi choisir a tout moment la camera, le decor, le sol (sinon on ne sait pas ou les trouver)
+  function pickBar() {
+    const b = (id, label, title) => h("button.mini" + (sel === id ? ".on" : ""), { title, on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, label);
+    return h("div.row.wrap.mt-pick",
+      b("cam", tt("🎥 Caméra"), tt("Le cadre, le zoom, les mouvements de caméra")),
+      pan.bg ? b("bg", tt("🖼 Décor"), tt("Le décor de la case : glisser dans l'image pour le déplacer, molette pour sa taille")) : "",
+      pan.ground ? b("gr", tt("▱ Sol"), tt("Le sol de la case : glisser dans l'image pour déplacer la plaque, tirer ses ronds pour l'agrandir, la barre jaune règle l'horizon")) : "");
+  }
+  /** Les reglages du sol (plaque, couleur, motif) ; dans la barre de Make Ground et dans le panneau du sol. */
+  function groundCtl() {
+    const gr = pan.ground, re = () => { hist.snap(); paint(); props(); };
+    if (!gr || !Array.isArray(gr.ext))
+      return [h("button.mini.star", { on: { click: () => { ensureGround(); re(); } } }, tt("▱ Créer la plaque de sol")), gr && gr.on ? h("span.muted", tt("Le sol actuel va jusqu'à l'horizon.")) : ""];
+    const full = gr.fill !== "none";
+    return [
+      h("label.check", { title: tt("La plaque est peinte d'une couleur pleine, sous le motif ; décoché : seulement le motif") },
+        h("input", { type: "checkbox", checked: full, on: { change: (e) => { if (e.target.checked) delete gr.fill; else gr.fill = "none"; re(); } } }), tt("Plaque pleine")),
+      full ? h("input", { type: "color", value: gr.fill && gr.fill !== "none" ? gr.fill : PLATE0, title: tt("Couleur de la plaque"), on: { input: (e) => { gr.fill = e.target.value; paint(); }, change: () => hist.snap() } }) : "",
+      h("button.mini", { title: tt("Motif du sol (damier, grille, lavis…), sa taille, sa couleur"), on: { click: () => groundDialog() } }, tt("Motif…")),
+      h("button.mini", { title: tt("Remet la plaque à sa taille de départ"), on: { click: () => { gr.ext = plateDefault(gr, H / W); delete gr.pm; re(); } } }, tt("↺ Plaque de départ")),
+      h("button.mini", { title: tt("Le sol redevient infini, jusqu'à l'horizon"), on: { click: () => { delete gr.ext; delete gr.fill; delete gr.pm; re(); } } }, tt("Sol infini")),
+      h("button.mini.danger", { on: { click: () => { delete pan.ground; if (sel === "gr") sel = "cam"; hist.snap(); paint(); lanes(); props(); } } }, tt("Retirer le sol"))];
+  }
   function props() {
     side.textContent = "";
+    side.append(pickBar());
+    if (sel === "bg" && pan.bg) {                          // le decor : sa taille, sa place ; glisser dans l'image le deplace
+      const rows = [];
+      side.append(h("h4", tt("🖼 Décor")), decorBox(rows),
+        h("p.muted", tt("Dans l'image : glisser déplace le décor, la molette change sa taille. Il faut qu'il soit plus grand (ou plus petit) que la case pour pouvoir glisser.")),
+        h("button.mini", { title: tt("Ouvre l'atelier de dessin du fond de cette case : formes simples, tracés, gris en trame, lignes d'effet (touche Q)"), on: { click: drawDecor } }, pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond")));
+      syncProps = () => rows.forEach((f) => f());
+      keyBar();
+      return;
+    }
+    if (sel === "gr" && pan.ground) {                      // le sol : la plaque se deplace dans l'image, ses reglages ici
+      const gr = pan.ground, hzOut = h("output", (gr.hz ?? 0.45).toFixed(2));
+      side.append(h("h4", tt("▱ Sol")), h("div.row.wrap", ...groundCtl()),
+        h("label.row.range", { title: tt("La ligne d'horizon (fraction de la hauteur de la case) : les fuyantes du sol y convergent") }, tt("Horizon"),
+          h("input", { type: "range", min: -0.5, max: 0.95, step: 0.005, value: gr.hz ?? 0.45, on: { input: (e) => { gr.hz = +e.target.value; hzOut.textContent = gr.hz.toFixed(2); paint(); }, change: () => hist.snap() } }), hzOut),
+        h("p.muted", gr.ext ? tt("Dans l'image : glisser déplace la plaque sur le sol, les ronds l'agrandissent, la barre jaune règle l'horizon. « ↻ Recalculer la perspective » (vue 3D) la garde au même endroit du sol.") : tt("Le sol va jusqu'à l'horizon : « Créer la plaque de sol » pour en faire une plaque à déplacer.")));
+      syncProps = () => { hzOut.textContent = (gr.hz ?? 0.45).toFixed(2); };
+      keyBox.textContent = ""; keyBox.append(h("span.muted", tt("Le sol se règle sans clés.")));
+      return;
+    }
     const shp = shapeOf(sel);
     if (shp) {                                             // forme du decor : seule sa profondeur se regle ici
       const inp = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: shp.d ?? 1, on: { input: (e) => { shp.d = +e.target.value; out.textContent = shp.d.toFixed(2); paint(); } } }), out = h("output", (shp.d ?? 1).toFixed(2));
@@ -1224,25 +1362,7 @@ export function openMontage(app, pid, opt = {}) {
         ...(anim.shake && anim.shake.on ? [[tt("Amplitude"), "a", 0, 5, 0.05, tt("Ampleur du tremblé, en % de la largeur de l'image")], [tt("Vitesse"), "v", 0.1, 4, 0.05, tt("Lent : on respire ; rapide : on court")], [tt("Roulis"), "r", 0, 4, 0.05, tt("Inclinaison qui oscille, en degrés")]].map(([lab, k, min, max, step, title]) =>
           h("label.row.range", { title }, lab, h("input", { type: "range", min, max, step, value: anim.shake[k] ?? 1, on: { input: (e) => { anim.shake[k] = +e.target.value; e.target.nextSibling.textContent = (+e.target.value).toFixed(2); paint(); } } }), h("output", (+(anim.shake[k] ?? 1)).toFixed(2)))) : []),
         h("h4", tt("Décor")),
-        pan.bg ? (() => {                                     // taille et place du decor ; animables (piste « Décor ») quand c'est coche
-          const bgI = background(pan, app.bank, app.project.id) || {};
-          // course du decor de chaque cote : la reglette le pousse dans son sens (100 = a fond vers la droite / le bas)
-          const travel = (v) => { const pl = placement(bb, bgI.w || 16, bgI.h || 9, v); return { mx: Math.abs(pl.w - W) / (2 * W), my: Math.abs(pl.h - H) / (2 * H), pl }; };
-          const pos = (a) => { const v = scene.viewAt(t), tr = travel(v), m = a === "x" ? tr.mx : tr.my, o = a === "x" ? tr.pl.ox : tr.pl.oy; return m > 1e-4 ? Math.round(o / m * 100) : 0; };
-          const setPos = (a, x) => { const tr = travel(scene.viewAt(t)); change("bg", a === "x" ? { ox: f3(x / 100 * tr.mx) } : { oy: f3(x / 100 * tr.my) }); };
-          const rg = (label, title, get, min, max, step, set, fmt) => {
-            const out = h("output", fmt(get())), inp = h("input", { type: "range", min, max, step, value: get(), on: { input: (e) => { set(+e.target.value); out.textContent = fmt(+e.target.value); }, change: () => hist.snap() } });
-            rows.push(() => { const v = get(), tr = travel(scene.viewAt(t)), free = label === "z" || (label === "x" ? tr.mx : tr.my) > 1e-4; if (document.activeElement !== inp) inp.value = v; out.textContent = fmt(v); inp.disabled = !free; });
-            return h("label.row.range", { title }, label === "z" ? tt("Taille du décor") : label === "x" ? tt("Position ↔") : tt("Position ↕"), inp, out);
-          };
-          return h("div",
-            rg("z", tt("Agrandir ou rétrécir le décor de la case (1 : il remplit juste la case ; moins : plus petit que la case)"), () => scene.viewAt(t).zoom, 0.25, 6, 0.01, (x) => change("bg", { zoom: x }), (x) => (+x).toFixed(2)),
-            rg("x", tt("Pousser le décor vers la gauche ou vers la droite (-100 / 100 : à fond). Il faut qu'il soit plus grand ou plus petit que la case pour pouvoir bouger."), () => pos("x"), -100, 100, 1, (x) => setPos("x", x), (x) => String(Math.round(x))),
-            rg("y", tt("Pousser le décor vers le haut ou vers le bas (-100 / 100 : à fond). Il faut qu'il soit plus grand ou plus petit que la case pour pouvoir bouger."), () => pos("y"), -100, 100, 1, (x) => setPos("y", x), (x) => String(Math.round(x))),
-            h("label.row.check", { title: tt("Coché : la taille et la place du décor se posent en clés sur la piste « Décor » de la timeline (zoom, glissement du fond). Décoché : le décor reste fixe, ses clés sont gardées.") },
-              h("input", { type: "checkbox", checked: !!anim.bgAnim, on: { change: (e) => { if (e.target.checked) anim.bgAnim = true; else delete anim.bgAnim; if (!anim.bgAnim && sel === "bg") sel = "cam"; hist.snap(); paint(); lanes(); props(); } } }), tt("Animer le décor ⓘ")),
-            h("button.mini", { title: tt("Taille 1, décor centré"), on: { click: () => { change("bg", { zoom: 1, ox: 0, oy: 0 }); hist.snap(); paint(); props(); } } }, tt("Recentrer le décor")));
-        })() : "",
+        pan.bg ? decorBox(rows) : "",
         h("button.mini", { title: tt("Ouvre l'atelier de dessin du fond de cette case : formes simples, tracés, gris en trame, lignes d'effet (touche Q)"), on: { click: drawDecor } }, pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond")));
     } else {
       const it = itemOf(l), n = nOf(l, cur().v);
@@ -2234,7 +2354,8 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     for (const n of anim.nulls || []) { row(n.id, n.name, "✛"); chanRows(n.id); }
     if (dof.on) { row("fo", tt("Mise au point"), "◎"); row("bl", tt("Flou"), "◌"); }
     if (fxAnim()) row("fx", tt("Lignes d'effet"), "⚡");
-    if (anim.bgAnim && pan.bg) { row("bg", tt("Décor"), "🖼"); chanRows("bg"); }
+    if (pan.bg) { row("bg", tt("Décor"), "🖼"); if (anim.bgAnim) chanRows("bg"); }   // toujours la : le decor se choisit ici (clic sur son nom)
+    if (pan.ground) row("gr", tt("Sol"), "▱");
     for (const l of [...pan.layers].reverse()) {
       const name = itemOf(l) ? itemOf(l).name : tt("élément");
       const pn = parentOf(l.id);
@@ -2404,7 +2525,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     }
     lanes(); props();
   });
-  tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; t = timeAt(e, lane); const c = lane.dataset.ch; setKey(sel, c ? { [c]: (sel === "cam" ? camAt() : sel === "bg" ? scene.viewAt(t) : layerOf(sel) ? stateOf(layerOf(sel)) : nullOf(sel) ? scene.nullLocal(nullOf(sel), t) : {})[c] } : {}); paint(); lanes(); props(); } });
+  tl.addEventListener("dblclick", (e) => { const lane = e.target.closest(".mt-lane"); if (lane && lane.dataset.lane !== "ruler" && !e.target.__key) { sel = lane.dataset.lane; if (sel === "gr" || (sel === "bg" && !anim.bgAnim)) { paint(); lanes(); props(); return; } t = timeAt(e, lane); const c = lane.dataset.ch; setKey(sel, c ? { [c]: (sel === "cam" ? camAt() : sel === "bg" ? scene.viewAt(t) : layerOf(sel) ? stateOf(layerOf(sel)) : nullOf(sel) ? scene.nullLocal(nullOf(sel), t) : {})[c] } : {}); paint(); lanes(); props(); } });
 
   // ------------------------------------------------------------------------------------------ gestes dans l'image
   // point de la souris en fraction de l'image. On passe par la matrice du SVG : son cadre a l'ecran peut etre plus grand
@@ -2489,6 +2610,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     const id0 = lockCam ? null : e.target.dataset.layer || (e.target.closest("[data-layer]") || {}).dataset?.layer;
     const id = id0 && e.button !== 2 && (layerOf(id0) || {}).lock ? null : id0;   // verrouille : on ne le prend pas (clic droit : son menu)
     const shId = id || lockCam ? null : (e.target.closest("[data-shape]") || {}).dataset?.shape, shp = shId ? shapeOf("s:" + shId) : null;
+    const bgPick = !id && sel === "bg" && !!pan.bg && e.button === 0;   // decor choisi : on le garde (clic sur un element : on le prend)
     sel = id || (shp ? "s:" + shId : "cam"); selKey = null;
     const p = ptOf(e), c = camAt();
     if (e.button === 2) { vdrag = null; paint(); lanes(); props(); return; }       // clic droit : on choisit, le menu s'ouvre (contextmenu)
@@ -2498,6 +2620,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     else if (id && hk === "corner") vdrag = { id, p, s: stateOf(layerOf(id)), corner: +hEl.dataset.c };
     else if (id) { const s = stateOf(layerOf(id)); vdrag = { id, p, s, turn: !depthView && e.button === 0 && (hk === "turn" || (e.altKey && !hk)) && nOf(layerOf(id), s.v) > 0, sx: e.clientX, z: depthView ? 1 : c.z, d: depthNow(layerOf(id)) }; }
     else if (shp && depthView) vdrag = { id: sel, shape: shp, p, d: shp.d ?? 1, p0: shp.p.map((q) => q.slice()) };   // carte d'une forme : en profondeur, et de gauche a droite
+    else if (bgPick && !depthView) { sel = "bg"; vdrag = { id: "bg", bg: true, p, v: Object.assign({ zoom: 1, ox: 0, oy: 0 }, scene.viewAt(t)), z: c.z }; }   // decor choisi : glisser dans l'image le deplace   // carte d'une forme : en profondeur, et de gauche a droite
     else vdrag = { id: "cam", p, c };                      // dans le vide (ou sur une forme du decor, dans l'image) : on deplace le cadre de la camera
     paint(); lanes(); props();
     if (vdrag) vdrag.p = ptOf(e);                          // le panneau de droite vient de changer : l'image a pu bouger a l'ecran
@@ -2517,6 +2640,10 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (!vdrag) return;
     const p = ptOf(e), dx = p[0] - vdrag.p[0], dy = p[1] - vdrag.p[1];
     if (vdrag.focus) { change("fo", { fo: f3(clamp(vdrag.fo - dy / (DY0 - DY1), 0, 1)) }); return; }
+    if (vdrag.bg) {                                         // dans sa course : au-dela, il ne bougerait plus en revenant
+      const bgI = background(pan, app.bank, app.project.id) || {}, pl = placement(bb, bgI.w || 16, bgI.h || 9, Object.assign({}, vdrag.v, { ox: vdrag.v.ox + dx / vdrag.z, oy: vdrag.v.oy + dy / vdrag.z }));
+      change("bg", { ox: f3(pl.ox), oy: f3(pl.oy) }); syncProps(); return;
+    }
     if (vdrag.shape) {                                      // haut / bas : sa profondeur ; gauche / droite : sa place en travers
       vdrag.shape.d = f3(clamp(vdrag.d - dy / (DY0 - DY1), 0, 1));
       vdrag.shape.p = vdrag.p0.map(([x, y]) => [+(x + dx).toFixed(4), y]);
@@ -2560,6 +2687,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     const k = Math.exp(-e.deltaY * 0.0015);
     if (e.altKey || (depthView && CAMS[sel])) change("cam", { dz: f3(clamp((camAt().dz || 0) - e.deltaY * 0.0012, -2, 1.95)) });   // Alt + molette : la camera avance ou recule
     else if (sel === "cam") change("cam", { z: f3(clamp(camAt().z * k, 0.4, 5)) });
+    else if (sel === "bg" && pan.bg) { change("bg", { zoom: f3(clamp(scene.viewAt(t).zoom * k, 0.25, 6)) }); syncProps(); }
     else if (layerOf(sel)) change(sel, { s: f3(clamp(stateOf(layerOf(sel)).s * k, 0.05, 6)) });
   }, { passive: false });
 
@@ -2617,15 +2745,18 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     toast(tt`Action enregistrée : ${(t1 - r.t0).toFixed(2)} s, ${r.keys.size} clés.`);
   }
   // Ctrl+Z / Ctrl+Y : les 5 dernieres actions (elements, cles, camera, profondeur de champ)
-  const hist = history(() => ({ layers: pan.layers, anim, dof, draw: pan.draw || null, ground: pan.ground || null }), (st) => {
+  const hist = history(() => ({ layers: pan.layers, anim, dof, draw: pan.draw || null, ground: pan.ground || null, bg: pan.bg || null, view: pan.view || null, frame: pan.frame || null }), (st) => {
     if (st.draw) pan.draw = st.draw;
     if (st.ground) pan.ground = st.ground; else delete pan.ground;
+    if (st.bg) pan.bg = st.bg;
+    if (st.view) pan.view = st.view; else delete pan.view;
+    if (st.frame) pan.frame = st.frame; else delete pan.frame;
     pan.layers = st.layers;
     for (const k of Object.keys(anim)) delete anim[k];
     Object.assign(anim, st.anim);
     Object.assign(dof, st.dof);
     selKey = null; drag = null; vdrag = null; picked.clear(); t = Math.min(t, anim.dur);
-    if (!CAMS[sel] && !layerOf(sel) && !shapeOf(sel)) sel = "cam";
+    if (!CAMS[sel] && !layerOf(sel) && !shapeOf(sel) && !(sel === "gr" && pan.ground)) sel = "cam";
     dur.value = anim.dur;
     paint(); lanes(); props();
   });
@@ -2689,6 +2820,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
     if (pan.ground) real.ground = pan.ground; else delete real.ground;   // carte de sol : gardee dans la case
     if (pan.frame) real.frame = pan.frame; else delete real.frame;       // cadrage de la case (« 1re image → case »)
     if (pan.view) real.view = pan.view; else delete real.view;           // taille et place du decor
+    if (pan.bg && real.bg && pan.bg.f !== real.bg.f) real.bg = Object.assign({}, real.bg, { f: pan.bg.f });   // decor 360 tourne par « Recalculer la perspective »
     for (const id of Object.keys(anim.tracks)) if (!anim.tracks[id].length) delete anim.tracks[id];
     real.anim = anim;
     app.commit("montage"); app.editor.render(); app.refreshInspector();

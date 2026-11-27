@@ -4,7 +4,7 @@
 // la case, au montage (image, isometrique, 3D) et dans l'image aplatie.
 // Plaque de sol (« Make Ground ») : gr.ext = [u0, u1, v0, v1], ses bords sur le sol (u : de cote, v : devant la camera, les
 // deux divises par la hauteur de la camera, comme groundMap) ; sans ext le sol va jusqu'a l'horizon. gr.fill : couleur de
-// la plaque (pleine, sous le motif ; "none" : seulement le motif).
+// la plaque (pleine, sous le motif ; "none" : seulement le motif). gr.pm : repere de la plaque sur le sol (plateMap).
 import { tt } from "./i18n.js";
 
 export const PATS = { damier: tt("Damier"), grille: tt("Grille"), points: tt("Points"), lignes: tt("Lignes (bandes)"), lavis: tt("Lavis (aquarelle)"), uni: tt("Uni") };
@@ -88,21 +88,21 @@ function lavisImage(key, gr, wpx, hpx, at) {
 const lavisKey = (gr, m, extra) => JSON.stringify([m, gr.sc, gr.ts, gr.dn, gr.sf, gr.seed, gr.col, extra]);
 
 /** Sol en perspective dans une boite {x, y, w, h} (unites de la case). id : prefixe unique pour les degrades. */
-export function groundSvg(gr, box, id = "gr") {
+export function groundSvg(gr, box, id = "gr", vis = box) {
   if (!gr || !gr.on) return "";
   const hz = gr.hz ?? 0.45, sc = Math.max(0.1, gr.sc ?? 0.5), col = gr.col || "#000000", a = gr.a ?? 0.22, pat = patOf(gr);
-  const yH = box.y + hz * box.h, yB = box.y + box.h, F = box.w, cx = box.x + box.w / 2;
+  const yH = box.y + hz * box.h, yB = Math.max(box.y + box.h, vis.y + vis.h), F = box.w, cx = box.x + box.w / 2;
   const m = groundMap(gr, box.h / box.w), mi = inv2(m);
   const vN = F / Math.max(1e-6, yB - yH), vF = vN * 14;      // du bas de la case a loin vers l'horizon
   const img = (u, v) => [cx + F * u / v, yH + F / v];
   const toUV = (px, pz) => { const dx = px - m[4], dz = pz - m[5]; return [mi[0] * dx + mi[1] * dz, mi[2] * dx + mi[3] * dz]; };
   const sx = Math.hypot(m[0], m[2]) || 1;                  // unites du motif par unite de u
   let d = "", body = "";
-  if (pat === "uni") d = `M${f1(box.x)} ${f1(yH)}H${f1(box.x + box.w)}V${f1(yB)}H${f1(box.x)}Z`;
+  if (pat === "uni") d = `M${f1(vis.x)} ${f1(yH)}H${f1(vis.x + vis.w)}V${f1(yB)}H${f1(vis.x)}Z`;
   else if (pat === "lavis") {
-    const wpx = Math.round(clamp(box.w, 200, 640)), s = box.w / wpx, hpx = Math.max(1, Math.ceil((yB - yH) / s));
-    const url = lavisImage(lavisKey(gr, m, [box.w, box.h, hz, wpx]), gr, wpx, hpx, (i, j) => {
-      const x = box.x + i * s, dy = j * s;
+    const wpx = Math.round(clamp(vis.w, 200, 640)), s = vis.w / wpx, hpx = Math.max(1, Math.ceil((yB - yH) / s));
+    const url = lavisImage(lavisKey(gr, m, [box.w, box.h, hz, wpx, vis.x, vis.w, yB]), gr, wpx, hpx, (i, j) => {
+      const x = vis.x + i * s, dy = j * s;
       if (dy < 0.3 * s) return null;
       const v = F / dy, u = (x - cx) / dy;
       if (v > vF * 1.2) return null;
@@ -110,10 +110,10 @@ export function groundSvg(gr, box, id = "gr") {
       const fp = Math.max(Math.hypot(m[0] * du, m[2] * du), Math.hypot(m[0] * duy + m[1] * dv, m[2] * duy + m[3] * dv));
       return [m[0] * u + m[1] * v + m[4], m[2] * u + m[3] * v + m[5], fp];
     });
-    body = `<image href="${url}" x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(hpx * s)}" preserveAspectRatio="none"/>`;
+    body = `<image href="${url}" x="${f1(vis.x)}" y="${f1(yH)}" width="${f1(vis.w)}" height="${f1(hpx * s)}" preserveAspectRatio="none"/>`;
   } else {
     // les cases du motif qui touchent la partie visible du sol
-    const uw = (v) => (box.w / 2 + 4) * v / F, ps = [[-uw(vN), vN], [uw(vN), vN], [-uw(vF), vF], [uw(vF), vF]].map(([u, v]) => [m[0] * u + m[1] * v + m[4], m[2] * u + m[3] * v + m[5]]);
+    const uw = (v) => (Math.max(cx - vis.x, vis.x + vis.w - cx) + 4) * v / F, ps = [[-uw(vN), vN], [uw(vN), vN], [-uw(vF), vF], [uw(vF), vF]].map(([u, v]) => [m[0] * u + m[1] * v + m[4], m[2] * u + m[3] * v + m[5]]);
     const i0 = Math.floor(Math.min(...ps.map((p) => p[0])) / sc) - 1, i1 = Math.ceil(Math.max(...ps.map((p) => p[0])) / sc) + 1;
     const j0 = Math.floor(Math.min(...ps.map((p) => p[1])) / sc) - 1, j1 = Math.ceil(Math.max(...ps.map((p) => p[1])) / sc) + 1;
     const step = Math.max(1, Math.ceil(Math.sqrt(((i1 - i0) * (j1 - j0)) / 60000)));   // garde-fou : jamais plus de ~60 000 cases
@@ -126,13 +126,13 @@ export function groundSvg(gr, box, id = "gr") {
       if (pat === "points") {
         if (!a1) continue;
         const r = Math.max(0.4, 0.012 * F / toUV(i * sc, j * sc)[1] / sx);
-        if (a1[0] < box.x - r || a1[0] > box.x + box.w + r || a1[1] > yB + r) continue;
+        if (a1[0] < vis.x - r || a1[0] > vis.x + vis.w + r || a1[1] > yB + r) continue;
         d += `M${f1(a1[0] - r)} ${f1(a1[1])}a${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(2 * r).toFixed(2)} 0a${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(-2 * r).toFixed(2)} 0Z`;
         continue;
       }
       if (!a1 || !b1 || !c1 || !d1) continue;
       const xs = [a1[0], b1[0], c1[0], d1[0]], ys = [a1[1], b1[1], c1[1], d1[1]];
-      if (Math.max(...xs) < box.x || Math.min(...xs) > box.x + box.w || Math.min(...ys) > yB) continue;
+      if (Math.max(...xs) < vis.x || Math.min(...xs) > vis.x + vis.w || Math.min(...ys) > yB) continue;
       if (pat === "grille") { d += `M${f1(d1[0])} ${f1(d1[1])}L${f1(a1[0])} ${f1(a1[1])}L${f1(b1[0])} ${f1(b1[1])}`; continue; }
       const on = pat === "lignes" ? (((j / step) % 2) + 2) % 2 === 0 : ((((i + j) / step) % 2) + 2) % 2 === 0;
       if (on) d += `M${f1(a1[0])} ${f1(a1[1])}L${f1(b1[0])} ${f1(b1[1])}L${f1(c1[0])} ${f1(c1[1])}L${f1(d1[0])} ${f1(d1[1])}Z`;
@@ -144,6 +144,7 @@ export function groundSvg(gr, box, id = "gr") {
   let plate = "", pclip = "";
   if (Array.isArray(gr.ext) && gr.ext.length === 4) {
     const P = plateCorners(gr, box);
+    if (P.length < 3) return "";                           // la plaque est toute entiere derriere la camera
     const pd = "M" + P.map((q) => f1(q[0]) + " " + f1(q[1])).join("L") + "Z";
     pclip = `<clipPath id="${id}-p"><path d="${pd}"/></clipPath>`;
     if (gr.fill !== "none") plate = `<g clip-path="url(#${id}-c)" style="pointer-events:none"><path d="${pd}" fill="${gr.fill || PLATE0}"/></g>`;
@@ -152,8 +153,8 @@ export function groundSvg(gr, box, id = "gr") {
   // vers l'horizon le motif s'efface (trop fin pour etre dessine)
   const yFar = yH + F / vF, yMid = yH + F / (vF / 4);
   return `<defs><linearGradient id="${id}-fade" gradientUnits="userSpaceOnUse" x1="0" y1="${f1(yFar)}" x2="0" y2="${f1(yMid)}"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="1"/></linearGradient>` +
-    `<mask id="${id}-m" maskUnits="userSpaceOnUse" x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(yB - yH)}"><rect x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(yB - yH)}" fill="url(#${id}-fade)"/></mask>` +
-    `<clipPath id="${id}-c"><rect x="${f1(box.x)}" y="${f1(yH)}" width="${f1(box.w)}" height="${f1(yB - yH)}"/></clipPath>${pclip}</defs>` + plate +
+    `<mask id="${id}-m" maskUnits="userSpaceOnUse" x="${f1(vis.x)}" y="${f1(yH)}" width="${f1(vis.w)}" height="${f1(yB - yH)}"><rect x="${f1(vis.x)}" y="${f1(yH)}" width="${f1(vis.w)}" height="${f1(yB - yH)}" fill="url(#${id}-fade)"/></mask>` +
+    `<clipPath id="${id}-c"><rect x="${f1(vis.x)}" y="${f1(yH)}" width="${f1(vis.w)}" height="${f1(yB - yH)}"/></clipPath>${pclip}</defs>` + plate +
     `<g clip-path="url(#${id}-c)" mask="url(#${id}-m)" opacity="${a}" style="pointer-events:none">${body}</g>`;
 }
 
@@ -163,12 +164,44 @@ export function plateDefault(gr, ratio) {
   const vN = 1 / Math.max(0.05, (1 - (gr.hz ?? 0.45)) * ratio);
   return [-vN * 0.42, vN * 0.42, vN * 0.95, vN * 4].map((x) => +x.toFixed(3));
 }
-/** Les quatre coins de la plaque dans la boite (pres gauche, pres droit, loin droit, loin gauche). */
+/** Repere de la plaque : gr.pm = [a, b, c, d, e, g] fait passer du sol vu de la camera de la case (u, v) aux coordonnees
+ *  de la plaque (p, q) = (a u + b v + e, c u + d v + g) ; gr.ext y est un rectangle. Sans pm (plaque jamais recalculee) :
+ *  les memes coordonnees. Quand la camera change (« Recalculer la perspective »), pm suit : la plaque reste au meme endroit
+ *  du sol, elle peut alors etre tournee, et passer en partie derriere la camera. */
+export function plateMap(gr) { return Array.isArray(gr.pm) && gr.pm.length === 6 ? gr.pm : [1, 0, 0, 1, 0, 0]; }
+export function toPlate(gr, u, v) { const m = plateMap(gr); return [m[0] * u + m[1] * v + m[4], m[2] * u + m[3] * v + m[5]]; }
+export function fromPlate(gr, p, q) {
+  const m = plateMap(gr), mi = inv2(m), dp = p - m[4], dq = q - m[5];
+  return [mi[0] * dp + mi[1] * dq, mi[2] * dp + mi[3] * dq];
+}
+/** Les quatre coins de la plaque sur le sol (u, v) : pres gauche, pres droit, loin droit, loin gauche (dans son repere). */
+export function plateGround(gr) {
+  const [u0, u1, v0, v1] = gr.ext;
+  return [[u0, v0], [u1, v0], [u1, v1], [u0, v1]].map(([p, q]) => fromPlate(gr, p, q));
+}
+const VMIN = 0.03;                                         // plus pres que ca, le sol passe derriere la camera : on coupe
+/** Contour de la plaque dans la boite, coupe la ou il passe derriere la camera (3 a 8 points, ou aucun). */
 export function plateCorners(gr, box) {
   const hz = gr.hz ?? 0.45, yH = box.y + hz * box.h, F = box.w, cx = box.x + box.w / 2;
-  const [u0, u1, v0, v1] = gr.ext, n = Math.max(0.05, v0), f = Math.max(n + 0.01, v1);
-  const img = (u, v) => [cx + F * u / v, yH + F / v];
-  return [img(u0, n), img(u1, n), img(u1, f), img(u0, f)];
+  const G = plateGround(gr), out = [];
+  for (let i = 0; i < G.length; i++) {
+    const a = G[i], b = G[(i + 1) % G.length], ina = a[1] >= VMIN, inb = b[1] >= VMIN;
+    if (ina) out.push(a);
+    if (ina !== inb) { const k = (VMIN - a[1]) / (b[1] - a[1]); out.push([a[0] + (b[0] - a[0]) * k, VMIN]); }
+  }
+  return out.map(([u, v]) => [cx + F * u / v, yH + F / v]);
+}
+/** Point du sol (u, v) -> point de la boite ; null s'il est derriere la camera. */
+export function groundImg(gr, box, u, v) {
+  if (v < VMIN) return null;
+  const hz = gr.hz ?? 0.45;
+  return [box.x + box.w / 2 + box.w * u / v, box.y + hz * box.h + box.w / v];
+}
+/** Composer un repere du sol (m, comme groundMap ou plateMap) avec le passage nouveau sol -> ancien sol
+ *  (u = a u' + b v' + e, v = c u' + d v' + g). */
+export function composeGround(m, a, b, c, d, e, g) {
+  const [A, B, C, Dd, E, G] = m;
+  return [A * a + B * c, A * b + B * d, C * a + Dd * c, C * b + Dd * d, A * e + B * g + E, C * e + Dd * g + G].map((x) => +x.toFixed(5));
 }
 /** Point de la boite -> point du sol (u, v) ; null au-dessus de l'horizon. */
 export function groundAt(gr, box, x, y) {

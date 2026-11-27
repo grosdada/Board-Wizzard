@@ -2336,7 +2336,19 @@
   "Retirer le sol": "Remove the ground",
   "Tire les ronds pour agrandir la plaque, glisse dedans pour la déplacer, la barre jaune règle l'horizon.": "Drag the dots to enlarge the plate, drag inside to move it, the yellow bar sets the horizon.",
   "▱ Make Ground": "▱ Make Ground",
-  "Une plaque de sol en fausse 3D dans l'image : tirer ses bords pour l'agrandir, glisser dedans pour la déplacer, régler l'horizon et les fuyantes ; motif et couleur": "A fake-3D ground plate in the image: drag its edges to enlarge it, drag inside to move it, set the horizon and vanishing lines; pattern and colour"
+  "Une plaque de sol en fausse 3D dans l'image : tirer ses bords pour l'agrandir, glisser dedans pour la déplacer, régler l'horizon et les fuyantes ; motif et couleur": "A fake-3D ground plate in the image: drag its edges to enlarge it, drag inside to move it, set the horizon and vanishing lines; pattern and colour",
+  "Dans l'image : glisser déplace la plaque sur le sol, les ronds l'agrandissent, la barre jaune règle l'horizon. « ↻ Recalculer la perspective » (vue 3D) la garde au même endroit du sol.": "In the image: drag to move the plate on the ground, the dots enlarge it, the yellow bar sets the horizon. “↻ Recompute perspective” (3D view) keeps it at the same place on the ground.",
+  "Dans l'image : glisser déplace le décor, la molette change sa taille. Il faut qu'il soit plus grand (ou plus petit) que la case pour pouvoir glisser.": "In the image: drag to move the background, the wheel changes its size. It must be larger (or smaller) than the panel to slide.",
+  "La ligne d'horizon (fraction de la hauteur de la case) : les fuyantes du sol y convergent": "The horizon line (fraction of the panel height): the ground's vanishing lines meet there",
+  "Le cadrage de la caméra est maintenant dans la case (caméra remise au neutre).": "The camera framing is now in the panel (camera reset to neutral).",
+  "Le cadre, le zoom, les mouvements de caméra": "Framing, zoom, camera moves",
+  "Le décor de la case : glisser dans l'image pour le déplacer, molette pour sa taille": "The panel background: drag in the image to move it, wheel for its size",
+  "Le sol de la case : glisser dans l'image pour déplacer la plaque, tirer ses ronds pour l'agrandir, la barre jaune règle l'horizon": "The panel ground: drag in the image to move the plate, pull its dots to enlarge it, the yellow bar sets the horizon",
+  "Le sol se règle sans clés.": "The ground is set without keys.",
+  "Le sol va jusqu'à l'horizon : « Créer la plaque de sol » pour en faire une plaque à déplacer.": "The ground goes to the horizon: “Create the ground plate” to make a movable plate.",
+  "Sol": "Ground",
+  "▱ Sol": "▱ Ground",
+  "🖼 Décor": "🖼 Background"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
