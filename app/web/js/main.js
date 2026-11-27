@@ -701,17 +701,28 @@ class App {
     this.commit("pose"); this.editor.render(); this.refreshInspector();
   }
   /** « Remplacer par… » : un autre element de la banque prend la place du calque (meme place, meme hauteur, meme miroir,
-   *  meme axe si les deux tournent). */
+   *  meme axe si les deux tournent). Dans la case (par defaut), la page ou tout le storyboard : partout ou l'element est pose. */
   async replaceLayer(l) {
     const old = this.bank.get(l.item);
-    const pick = await this.bankUI.pickItem(old ? old.kind : "character", tt`Remplacer « ${old ? old.name : "?"} » par…`);
-    if (!pick || pick.id === l.item && pick.v === l.v) return;
-    const a = variantOf(old, l.v), it = this.bank.get(pick.id), b = variantOf(it, pick.v);
-    const ang = a && a.orbit ? frameToAngle(a.orbit, l.f || 0) : 0;
-    l.item = pick.id; l.v = pick.v; l.f = b && b.orbit ? angleToFrame(b.orbit, ang) : 0;
-    delete l.exk;                                            // les expressions sont celles de l'ancien personnage
+    const pick = await this.bankUI.pickItem(old ? old.kind : "character", tt`Remplacer « ${old ? old.name : "?"} » par…`, true);
+    if (!pick || pick.id === l.item && pick.v === l.v && pick.scope === "case") return;
+    const it = this.bank.get(pick.id), b = variantOf(it, pick.v), from = l.item;
+    const swap = (x) => {
+      const a = variantOf(old, x.v), ang = a && a.orbit ? frameToAngle(a.orbit, x.f || 0) : 0;
+      x.item = pick.id; x.v = pick.v; x.f = b && b.orbit ? angleToFrame(b.orbit, ang) : 0;
+      delete x.exk;                                          // les expressions sont celles de l'ancien personnage
+    };
+    const pages = pick.scope === "projet" ? this.project.pages : [this.page()];
+    let n = 0, cases = 0;
+    for (const pg of pages) for (const pan of Object.values(pg.panels || {})) {
+      const ls = pan.layers || [];
+      if (pick.scope === "case" && !ls.includes(l)) continue;
+      const hit = ls.filter((x) => x.item === from);
+      hit.forEach(swap); n += hit.length; if (hit.length) cases++;
+    }
+    if (!n) { swap(l); n = 1; cases = 1; }
     this.commit("replace"); this.editor.render(); this.refreshInspector();
-    toast(tt`« ${old ? old.name : "?"} » remplacé par « ${it.name} ».`);
+    toast(n > 1 ? tt`« ${old ? old.name : "?"} » remplacé par « ${it.name} » : ${n} fois, dans ${cases} case(s).` : tt`« ${old ? old.name : "?"} » remplacé par « ${it.name} ».`);
   }
   // ---------------------------------------------------------------- cases enregistrees (onglet Cases)
   saveCase(pid) {

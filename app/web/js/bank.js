@@ -358,10 +358,10 @@ export class Bank {
         h("button.mini.danger", { title: tt("Retirer de l'onglet Cases (les storyboards où elle est posée ne changent pas)"), on: { click: async () => { if (!confirm(tt`Retirer « ${c.name} » de l'onglet Cases ?`)) return; await del("cases/" + c.id); this.reload(); } } }, "🗑")));
   }
   /** Choisir un element de la banque (« Remplacer par… ») : onglets Personnages, Decors, Assets, dossiers, recherche.
-   *  Rend { id, v } ou null. */
-  pickItem(kind = "character", title = tt("Remplacer par…")) {
+   *  Rend { id, v } ou null ; avec scopes, aussi scope : ou remplacer (case, page, projet ; la case par defaut). */
+  pickItem(kind = "character", title = tt("Remplacer par…"), scopes = false) {
     return new Promise((done) => {
-      let tab = ["character", "decor", "asset"].includes(kind) ? kind : "character", folder = (this.folderBy || {})[tab] || "", q = "", m = null, ended = false;
+      let tab = ["character", "decor", "asset"].includes(kind) ? kind : "character", folder = (this.folderBy || {})[tab] || "", q = "", m = null, ended = false, scope = "case";
       const end = (x) => { if (ended) return; ended = true; if (m) m.close(); done(x); };
       const body = h("div.item-pick");
       const paint = () => {
@@ -375,10 +375,12 @@ export class Bank {
           h("option", { value: "·", selected: folder === "·" }, tt("Sans dossier")));
         const search = h("input.search", { type: "search", placeholder: tt("Chercher…"), value: q, on: { input: (e) => { q = e.target.value.toLowerCase(); const pos = e.target.selectionStart; paint(); const s = body.querySelector("input.search"); s.focus(); s.setSelectionRange(pos, pos); } } });
         body.textContent = "";
+        if (scopes) body.append(h("div.row.wrap.pick-scope", h("b", tt("Remplacer :")), [["case", tt("dans la case")], ["page", tt("dans la page")], ["projet", tt("dans tout le storyboard")]].map(([k, label]) =>
+          h("label.row.check", h("input", { type: "radio", name: "pick-scope", checked: scope === k, on: { change: () => { scope = k; } } }), label))));
         body.append(h("div.tabs", [["character", tt("Personnages")], ["decor", tt("Décors")], ["asset", tt("Assets")]].map(([k, label]) =>
           h("button" + (k === tab ? ".on" : ""), { on: { click: () => { tab = k; folder = (this.folderBy || {})[k] || ""; paint(); } } }, label))),
           h("div.bank-bar", sel, search),
-          h("div.bank-grid.pick-grid", list.length ? list.map((it) => h("div.card." + it.kind, { title: it.name, on: { click: () => end({ id: it.id, v: this.cover(it) }) } },
+          h("div.bank-grid.pick-grid", list.length ? list.map((it) => h("div.card." + it.kind, { title: it.name, on: { click: () => end({ id: it.id, v: this.cover(it), scope }) } },
             it.face ? portraitThumb(h("div.card-svg"), it) : h("img", { src: this.thumb(it, this.cover(it)), loading: "lazy", draggable: false, alt: "" }),
             h("div.card-name", it.name))) : h("p.muted", tt("Rien dans ce dossier."))));
       };

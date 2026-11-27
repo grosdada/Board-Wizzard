@@ -2442,7 +2442,20 @@
   "🗑 Vider": "🗑 Clear",
   "🗑 Vider la zone": "🗑 Clear the area",
   "🪣 Remplir": "🪣 Fill",
-  "🪣 Remplir la zone": "🪣 Fill the area"
+  "🪣 Remplir la zone": "🪣 Fill the area",
+  "« {0} » remplacé par « {1} » : {2} fois, dans {3} case(s).": "\"{0}\" replaced by \"{1}\": {2} time(s), in {3} panel(s).",
+  "Remplacer :": "Replace:",
+  "dans la case": "in the panel",
+  "dans la page": "in the page",
+  "dans tout le storyboard": "in the whole storyboard",
+  "0 : passage net, comme un gyrophare qui s'allume et s'éteint ; 1 : la couleur monte et redescend en douceur": "0: sharp switch, like a beacon turning on and off; 1: the colour rises and falls smoothly",
+  "Blanc = couleurs d'origine. Lecture pour voir le rythme.": "White = original colours. Play to see the rhythm.",
+  "Clignotements par seconde": "Flashes per second",
+  "Clignoteur : la couleur du décor passe d'une couleur à l'autre en rythme, pendant toute la lecture (une alarme rouge dans une salle des machines). Il remplace le colorize fixe.": "Flasher: the background colour goes from one colour to the other in rhythm, all through playback (a red alarm in an engine room). It replaces the fixed colorize.",
+  "De": "From",
+  "Douceur": "Smoothness",
+  "à": "to",
+  "🚨 Clignoteur ⓘ": "🚨 Flasher ⓘ"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

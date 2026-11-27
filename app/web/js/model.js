@@ -223,7 +223,20 @@ export function cmPixels(cv, M) {
 }
 /** Colorimetrie et colorize d'un element (calque) ou du decor d'une case. */
 export function layerCM(l, vec) { return colorMatrix(hslOf(l && l.hsl), vec ? null : tintOf(l)); }
-export function bgCM(pan) { return colorMatrix(hslOf(pan && pan.bghsl), tintOf(pan && { tint: pan.bgtint })); }
+/** Clignoteur du colorize du decor (montage, anim.blink = { on, a, b, hz, soft }) : a l'instant t (secondes), la couleur
+ *  va de a a b et revient, hz fois par seconde ; soft 0 = net (allume / eteint), 1 = en douceur. Commence sur b. */
+export function blinkTint(bl, t) {
+  if (!bl || !bl.on || t == null) return null;
+  const hx = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : d), A = hx(bl.a, "#ffffff"), B = hx(bl.b, "#ff3b30");
+  const ph = ((t * Math.max(0.05, +bl.hz || 1.5)) % 1 + 1) % 1, soft = clamp(+bl.soft || 0, 0, 1);
+  const k = soft * (0.5 + 0.5 * Math.cos(2 * Math.PI * ph)) + (1 - soft) * (ph < 0.5 ? 1 : 0);
+  return "#" + [1, 3, 5].map((i) => Math.round(parseInt(A.slice(i, i + 2), 16) * (1 - k) + parseInt(B.slice(i, i + 2), 16) * k).toString(16).padStart(2, "0")).join("");
+}
+/** t : instant du montage ; le clignoteur du decor y remplace le colorize fixe quand le decor est anime. */
+export function bgCM(pan, t) {
+  const bl = pan && pan.anim && pan.anim.bgAnim ? blinkTint(pan.anim.blink, t) : null;
+  return colorMatrix(hslOf(pan && pan.bghsl), bl || tintOf(pan && { tint: pan.bgtint }));
+}
 /** Ombre d'un dessin : la couleur du corps assombrie (un gris sur un corps blanc), decalee vers la lumiere. */
 export function shadeOf(sh, h, col = "#ffffff", ink = "#111111") {
   if (!sh || !sh.on) return null;

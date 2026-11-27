@@ -214,7 +214,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
       if (vf) { const st = bgStroke(pan), bw = wiggleFilter(`${pre}wgb`, pan.bghand, pan.bgwave, vf.w, vf.h, 11); const bj = jitterFilter(`${pre}jtb`, pan.bglj, vf.w, vf.h, vf.sw, 11), ip = `<path d="${vf.ink}"${bj ? ` filter="url(#${pre}jtb)"` : ""} fill="${st.ink}" fill-rule="evenodd" stroke="${st.color}" stroke-width="${st.width}"/>`;
         o += `<g transform="translate(${f1(pl.x)} ${f1(pl.y)}) scale(${f3(pl.w / vf.w)} ${f3(pl.h / vf.h)})">${bw}${bj}<path d="${vf.body}" fill="#fff"/>${bw ? `<g filter="url(#${pre}wgb)">${ip}</g>` : ip}</g>`; }
       else o += `<image href="${bgInfo.url}" x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" preserveAspectRatio="none"/>`;
-      const bcm = bgCM(pan);                               // colorimetrie et colorize du decor
+      const bcm = bgCM(pan, t);                            // colorimetrie et colorize du decor (clignoteur compris)
       if (bcm) o = cmFilter(`${pre}bcm`, bcm) + `<g filter="url(#${pre}bcm)">` + o + "</g>";
     }
     if (sel === "bg" && bgInfo) { const pl = placement(bb, bgInfo.w || 16, bgInfo.h || 9, viewAt(t)); o += `<rect x="${f1(pl.x)}" y="${f1(pl.y)}" width="${f1(pl.w)}" height="${f1(pl.h)}" fill="none" stroke="#e2603a" stroke-width="2" stroke-dasharray="10 6" vector-effect="non-scaling-stroke" pointer-events="none"/>`; }   // decor choisi : son cadre
@@ -1293,7 +1293,32 @@ export function openMontage(app, pid, opt = {}) {
         rg("y", tt("Pousser le décor vers le haut ou vers le bas (-100 / 100 : à fond). Il faut qu'il soit plus grand ou plus petit que la case pour pouvoir bouger."), () => pos("y"), -100, 100, 1, (x) => setPos("y", x), (x) => String(Math.round(x))),
         h("label.row.check", { title: tt("Coché : la taille et la place du décor se posent en clés sur la piste « Décor » de la timeline (zoom, glissement du fond). Décoché : le décor reste fixe, ses clés sont gardées.") },
           h("input", { type: "checkbox", checked: !!anim.bgAnim, on: { change: (e) => { if (e.target.checked) anim.bgAnim = true; else delete anim.bgAnim; hist.snap(); paint(); lanes(); props(); } } }), tt("Animer le décor ⓘ")),
+        anim.bgAnim ? colorizeBox() : "",
         h("button.mini", { title: tt("Taille 1, décor centré"), on: { click: () => { change("bg", { zoom: 1, ox: 0, oy: 0 }); hist.snap(); paint(); props(); } } }, tt("Recentrer le décor")));
+  }
+  /** Colorize du decor dans le montage : la couleur fixe, et le clignoteur (une alarme rouge qui clignote) qui la fait
+   *  aller d'une couleur a l'autre en rythme ; vitesse en clignotements par seconde, douceur du passage. */
+  function colorizeBox() {
+    const tn = pan.bgtint || {}, bl = anim.blink || {};
+    const re = () => { paint(); };
+    const setBl = (k, v) => { anim.blink = Object.assign({ on: true, a: "#ffffff", b: "#ff3b30", hz: 1.5, soft: 0.3 }, anim.blink, { [k]: v }); re(); };
+    const rg = (label, title, k, def, min, max, step, fmt) => {
+      const out = h("output", fmt(bl[k] ?? def));
+      return h("label.row.range", { title }, label, h("input", { type: "range", min, max, step, value: bl[k] ?? def,
+        on: { input: (e) => { setBl(k, +e.target.value); out.textContent = fmt(+e.target.value); }, change: () => hist.snap() } }), out);
+    };
+    return h("div.mt-colorize",
+      h("div.row.colrow", { title: tt("Pose une couleur en produit sur tout le décor : le blanc prend la couleur, les traits et la peinture restent visibles.") },
+        h("label.row.check", h("input", { type: "checkbox", checked: !!tn.on, on: { change: (e) => { pan.bgtint = Object.assign({ c: "#e9b98f" }, pan.bgtint, { on: e.target.checked }); hist.snap(); re(); } } }), tt("Colorize ⓘ")),
+        swatch(tn.c || "#e9b98f", (c) => { pan.bgtint = { on: true, c }; re(); }, () => hist.snap())),
+      h("label.row.check", { title: tt("Clignoteur : la couleur du décor passe d'une couleur à l'autre en rythme, pendant toute la lecture (une alarme rouge dans une salle des machines). Il remplace le colorize fixe.") },
+        h("input", { type: "checkbox", checked: !!bl.on, on: { change: (e) => { setBl("on", e.target.checked); if (!e.target.checked) anim.blink.on = false; hist.snap(); props(); } } }), tt("🚨 Clignoteur ⓘ")),
+      bl.on ? h("div",
+        h("div.row.colrow", h("span", tt("De")), swatch(bl.a || "#ffffff", (c) => setBl("a", c), () => hist.snap()),
+          h("span", tt("à")), swatch(bl.b || "#ff3b30", (c) => setBl("b", c), () => hist.snap())),
+        rg(tt("Vitesse"), tt("Clignotements par seconde"), "hz", 1.5, 0.1, 8, 0.1, (x) => (+x).toFixed(1) + " /s"),
+        rg(tt("Douceur"), tt("0 : passage net, comme un gyrophare qui s'allume et s'éteint ; 1 : la couleur monte et redescend en douceur"), "soft", 0.3, 0, 1, 0.01, (x) => Math.round(x * 100) + " %"),
+        h("p.muted", tt("Blanc = couleurs d'origine. Lecture pour voir le rythme."))) : "");
   }
   // en haut du panneau : de quoi choisir a tout moment la camera, le decor, le sol (sinon on ne sait pas ou les trouver)
   function pickBar() {
