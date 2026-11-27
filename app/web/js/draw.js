@@ -165,9 +165,56 @@ function inkFilter(id, ink, c) {
   return `<filter id="${id}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${rgb} ${A}" result="a"/><feComposite in="a" in2="SourceAlpha" operator="in"/></filter>`;
 }
 
+// Points reglables (clic droit sur un point) : sh.pm[i] = 1 Bezier (arrondi), 0 dur (coin net), absent = selon le type
+// (poly / polyline : durs ; forme libre : bouts durs, le reste arrondi ; trace libre : arrondi). sh.cut : segments
+// (du point k au suivant) ou le trait est coupe ; le remplissage reste entier. Sans pm ni cut, le trace d'avant.
+export const PT_TYPES = new Set(["blob", "poly", "free", "polyline"]);
+const CLOSED_T = new Set(["blob", "poly"]);
+function segGeom(sh, H) {
+  const P = sh.p.map(([x, y]) => [x * W, y * H]), n = P.length, closed = CLOSED_T.has(sh.t);
+  const pm = sh.pm || [], wrap = (k) => (k + n) % n;
+  const hard = (k) => {
+    if (!closed && (k === 0 || k === n - 1)) return true;
+    if (pm[k] === 0) return true;
+    if (pm[k] === 1) return false;
+    return sh.t === "poly" || sh.t === "polyline" || (sh.t === "blob" && (k === 0 || k === n - 1));
+  };
+  const mid = (a, b) => [(P[a][0] + P[b][0]) / 2, (P[a][1] + P[b][1]) / 2];
+  const E = (k) => { if (hard(k)) return P[k]; if (!closed && k === 0) return P[0]; const p = wrap(k - 1); return hard(p) ? P[p] : mid(p, k); };
+  const X = (k) => { if (hard(k)) return P[k]; if (!closed && k === n - 1) return P[k]; return mid(k, wrap(k + 1)); };
+  const B = (k) => { if (hard(k)) return P[k]; const e = E(k), x = X(k); return [0.25 * e[0] + 0.5 * P[k][0] + 0.25 * x[0], 0.25 * e[1] + 0.5 * P[k][1] + 0.25 * x[1]]; };
+  const pt = (q) => `${f1(q[0])} ${f1(q[1])}`;
+  const seg = (k) => {                                     // de B(k) a B(k+1) : demi-courbe, liaison, demi-courbe
+    const j = wrap(k + 1);
+    let d = "";
+    if (!hard(k)) { const x = X(k); d += `Q${pt([(P[k][0] + x[0]) / 2, (P[k][1] + x[1]) / 2])} ${pt(x)}`; }
+    const x = X(k), e = E(j);
+    if (Math.abs(x[0] - e[0]) > 0.01 || Math.abs(x[1] - e[1]) > 0.01) d += `L${pt(e)}`;
+    if (!hard(j)) d += `Q${pt([(e[0] + P[j][0]) / 2, (e[1] + P[j][1]) / 2])} ${pt(B(j))}`;
+    return d;
+  };
+  const count = closed ? n : n - 1;
+  return { n, count, closed, B, seg, pt };
+}
+function pointsPath(sh, H, stroke) {
+  const g = segGeom(sh, H), cut = new Set(stroke ? (sh.cut || []) : []);
+  if (!cut.size) return `M${g.pt(g.B(0))}` + Array.from({ length: g.count }, (_, k) => g.seg(k)).join("") + (g.closed ? "Z" : "");
+  let k0 = 0;                                              // forme fermee : on part juste apres une coupure, le trait s'enchaine
+  if (g.closed) { for (let k = 0; k < g.count; k++) if (cut.has(k)) k0 = (k + 1) % g.count; }
+  let d = "", on = false;
+  for (let s = 0; s < g.count; s++) {
+    const k = (k0 + s) % g.count;
+    if (cut.has(k)) { on = false; continue; }
+    if (!on) { d += `M${g.pt(g.B(k))}`; on = true; }
+    d += g.seg(k);
+  }
+  return d || "M0 0";
+}
+export function strokeGeom(sh, H) { return PT_TYPES.has(sh.t) && (sh.cut || []).length && sh.p.length > 1 ? pointsPath(sh, H, true) : geom(sh, H); }
 function geom(sh, H) {
   const P = sh.p.map(([x, y]) => [x * W, y * H]);
   if (P.length < 2) return "";
+  if (PT_TYPES.has(sh.t) && (sh.pm || sh.cut)) return pointsPath(sh, H, false);
   const pts = (list) => "M" + list.map(([x, y]) => `${f1(x)} ${f1(y)}`).join("L") + "Z";
   if (sh.t === "line") return `M${f1(P[0][0])} ${f1(P[0][1])}L${f1(P[1][0])} ${f1(P[1][1])}`;
   if (sh.t === "poly") return pts(P);
@@ -392,7 +439,7 @@ function shapesSvg(shapes, H, pre, hrefs) {
         const seed = [...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
         defs += jitterDef(`${id}j`, bx, (sh.sj / 10) * Math.max(2, sh.sw * 4) * 1.1, seed, sh.sw * 4); jf = ` filter="url(#${id}j)"`;
       }
-      one += `<path ${tag} d="${d}" fill="none" stroke="${sh.stroke}" stroke-width="${f1(sh.sw * 4)}" stroke-linecap="round" stroke-linejoin="round"${jf}/>`;
+      one += `<path ${tag} d="${(sh.cut || []).length ? strokeGeom(sh, H) : d}" fill="none" stroke="${sh.stroke}" stroke-width="${f1(sh.sw * 4)}" stroke-linecap="round" stroke-linejoin="round"${jf}/>`;
     }
     else if (open || !fl.on) one += `<path ${tag} d="${d}" fill="none" stroke="#111111" stroke-opacity="0.001" stroke-width="12"/>`;
     if (!open && !fl.on) one += `<path ${tag} d="${d}" fill="#000" fill-opacity="0.001"/>`;    // attrapable a la souris
@@ -444,6 +491,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   let liveCtl = null;                                         // croquis -> image en direct (fal, essai)
   const liveSlot = h("div.draw-liveslot");   // zoom de l'espace de dessin, centre de la vue, deplacement en cours
   let multi = [];                                          // formes choisies ensemble (rectangle de selection, Maj+clic)
+  let psel = new Set(), pselOf = null;                     // points choisis de la forme en cours (clic, Maj+clic, rectangle)
   const cur = Object.assign({}, DEF);
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -593,7 +641,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   // Une forme loin de l'axe (un oeil) n'est pas fusionnee : elle garde son jumeau.
   function mergeSym(t) {
     const P = t.p, near = (q) => Math.abs(q[0] - 0.5) * W < 22, mir = (q) => [1 - q[0], q[1]];
-    if (!P || P.length < 2 || r0(t)) return false;
+    if (!P || P.length < 2 || r0(t) || t.pm || t.cut) return false;   // points reglés à la main : on ne les renumérote pas
     if (t.t === "free" || t.t === "line" || t.t === "polyline") {
       let pts = P, pw = t.pw;
       if (near(P[0]) && !near(P[P.length - 1])) { pts = P.slice().reverse(); pw = pw && pw.slice().reverse(); }
@@ -674,7 +722,12 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const t = target();
     if (t && t !== building && !(drag && drag.kind === "new")) {   // pendant qu'on trace : pas de cadre, il revient au lacher
       const b = boxOf(t, H), top = b.y - 6;
-      const corners = MANY.has(t.t) && !ptsOn(t) ? "" : t.p.map((p, i) => `<circle cx="${f1(p[0] * W)}" cy="${f1(p[1] * H)}" r="9" class="draw-pt" data-pt="${i}"/>`).join("");
+      const ps = pselOf === t.id ? psel : new Set(), pm = t.pm || [];
+      const corners = MANY.has(t.t) && !ptsOn(t) ? "" : t.p.map((p, i) => {
+        const cls = "draw-pt" + (ps.has(i) ? " on" : "") + (PT_TYPES.has(t.t) && pm[i] != null ? (pm[i] ? " smooth" : " hard") : "");
+        return pm[i] === 0 && PT_TYPES.has(t.t) ? `<rect x="${f1(p[0] * W - 8)}" y="${f1(p[1] * H - 8)}" width="16" height="16" class="${cls}" data-pt="${i}"/>`   // point dur : un carre
+          : `<circle cx="${f1(p[0] * W)}" cy="${f1(p[1] * H)}" r="9" class="${cls}" data-pt="${i}"/>`;
+      }).join("");
       // poignee de rotation : au-dessus de la forme, elle tourne avec elle
       o += `<g transform="rotate(${f1(t.r || 0)} ${f1(b.cx)} ${f1(b.cy)})"><rect x="${f1(b.x - 6)}" y="${f1(top)}" width="${f1(b.w + 12)}" height="${f1(b.h + 12)}" class="draw-sel"/>` +
         `<line x1="${f1(b.cx)}" y1="${f1(top)}" x2="${f1(b.cx)}" y2="${f1(top - 30)}" class="draw-sel"/>` +
@@ -757,9 +810,40 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const ix = [...keep.keys()].filter((i) => keep[i]);
     hist.snap();
     if (t.pw) t.pw = ix.map((i) => t.pw[i] ?? 1);
-    t.p = ix.map((i) => t.p[i]); t.ed = 1;
+    t.p = ix.map((i) => t.p[i]); t.ed = 1; delete t.pm; delete t.cut;
     syncTwin(t); tool = "select"; sel = t.id; tools(); props(); paint(); hist.snap();
     toast(tt`${ix.length} points : tire les ronds pour retoucher la forme.`);
+  }
+  // ---- points choisis : mode Bezier / dur, trait coupe entre deux points, suppression
+  function ptMode(t, ids, v) {
+    const pm = Array.from({ length: t.p.length }, (_, k) => (t.pm && t.pm[k] != null ? t.pm[k] : null));
+    for (const i of ids) pm[i] = v;
+    t.pm = pm; syncTwin(t); paint(); hist.snap();
+  }
+  function cutSeg(t, a, b) {                               // le trait s'ouvre entre a et b (forme fermee : par le plus court des deux cotes)
+    const n = t.p.length, closed = t.t === "blob" || t.t === "poly";
+    let segs = Array.from({ length: b - a }, (_, k) => a + k);
+    if (closed && n - (b - a) < b - a) segs = Array.from({ length: n - (b - a) }, (_, k) => (b + k) % n);
+    const cut = new Set(t.cut || []);
+    segs.forEach((k) => cut.add(k));
+    const all = closed ? n : n - 1;
+    if (cut.size >= all) return toast(tt("Il ne resterait plus de trait."), "error");
+    t.cut = [...cut].sort((x, y) => x - y); syncTwin(t); paint(); hist.snap();
+    toast(tt("Trait coupé entre les deux points (le remplissage reste). Clic droit sur un point : « Recoller tout le trait »."));
+  }
+  function delPoints(t, ids) {
+    const n = t.p.length, closed = t.t === "blob" || t.t === "poly", gone = new Set(ids);
+    if (n - gone.size < (closed ? 3 : 2)) return toast(tt("Il faut garder au moins ") + (closed ? 3 : 2) + tt(" points."), "error");
+    const keep = [...Array(n).keys()].filter((k) => !gone.has(k));
+    t.p = keep.map((k) => t.p[k]);
+    if (t.pw) t.pw = keep.map((k) => t.pw[k] ?? 1);
+    if (t.pm) t.pm = keep.map((k) => (t.pm[k] != null ? t.pm[k] : null));
+    if (t.cut) {                                           // un segment reste coupe s'il relie deux points gardes voisins
+      const cut = new Set(t.cut), m = closed ? keep.length : keep.length - 1, out = [];
+      for (let j = 0; j < m; j++) { const a = keep[j], b = keep[(j + 1) % keep.length]; let c = false; for (let k = a; k !== b; k = (k + 1) % n) if (cut.has(k)) c = true; if (c) out.push(j); }
+      if (out.length && out.length < m) t.cut = out; else delete t.cut;
+    }
+    psel = new Set(); syncTwin(t); paint(); props(); hist.snap();
   }
   function finish(keep) {                                  // termine la forme point par point
     const b = building; building = null; hover = null;
@@ -818,7 +902,8 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
         h("button.mini.danger", { on: { click: () => { shapes.splice(shapes.indexOf(t), 1); sel = null; paint(); props(); } } }, tt("Supprimer"))));
     }
     const tip = tool === "poly" || tool === "polyline" ? tt("Clique pour poser chaque point. Double-clic, Entrée ou clic sur le premier point : la forme se termine") + (tool === "poly" ? tt(" et se ferme toute seule.") : ".") + tt(" Échap annule.")
-      : (MANY.has(tool) && tool !== "poly" && tool !== "polyline" ? tt("Main levée : Ctrl enfoncé trace une droite depuis le dernier point ; Ctrl relâché, on repart à main levée. ") : "") + tt("Choisis un outil puis glisse dans le cadre. « Sélection » : clic sur une forme pour la régler, glisser pour la déplacer, carré ⤡ du coin pour l'agrandir, points ronds pour l'étirer, poignée ↻ pour la tourner (Maj : par crans de 15°). Suppr efface.");
+      : (MANY.has(tool) && tool !== "poly" && tool !== "polyline" ? tt("Main levée : Ctrl enfoncé trace une droite depuis le dernier point ; Ctrl relâché, on repart à main levée. ") : "") + tt("Choisis un outil puis glisse dans le cadre. « Sélection » : clic sur une forme pour la régler, glisser pour la déplacer, carré ⤡ du coin pour l'agrandir, points ronds pour l'étirer, poignée ↻ pour la tourner (Maj : par crans de 15°). Suppr efface.") +
+        tt(" Points affichés : clic ou rectangle pour en choisir plusieurs (Maj : ajouter), on les tire ensemble ; clic droit : Bézier, dur, couper le segment entre deux points.");
     side.append(h("p.muted", BRUSHES[tool] ? brushTip(tool) + " " + tip : tip));
     if (layers) { side.append(layBox); layUi(); }
   }
@@ -1033,9 +1118,21 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       const t0 = target();
       if (e.target.dataset.rot && t0) { drag = { kind: "rot", c: centerOf(t0) }; return; }
       if (e.target.dataset.scale && t0) { const c = centerOf(t0); drag = { kind: "scale", c, pts: t0.p.map((q) => q.slice()), d0: Math.hypot((p[0] - c[0]) * W, (p[1] - c[1]) * H) || 1 }; return; }
-      if (e.target.dataset.pt != null && t0) { drag = { kind: "pt", i: +e.target.dataset.pt, c: centerOf(t0) }; return; }
+      if (e.target.dataset.pt != null && t0) {             // un point : il se choisit (Maj : s'ajoute ou se retire), les points choisis bougent ensemble
+        const i = +e.target.dataset.pt;
+        if (pselOf !== t0.id) { psel = new Set(); pselOf = t0.id; }
+        if (e.shiftKey) { if (psel.has(i)) psel.delete(i); else psel.add(i); }
+        else if (!psel.has(i)) psel = new Set([i]);
+        const c = centerOf(t0);
+        drag = psel.has(i) ? { kind: "pts", c, start: local(t0, p, c), pts: t0.p.map((q) => q.slice()), ids: [...psel] } : { kind: "noop" };
+        paint(); return;
+      }
       const id = e.target.dataset.shape || (e.target.closest("[data-shape]") || {}).dataset?.shape;
-      if (!id) { sel = null; multi = []; drag = { kind: "band", a: p, b: p }; props(); paint(); return; }   // dans le vide : rectangle de selection
+      if (!id && t0 && PT_TYPES.has(t0.t) && (!MANY.has(t0.t) || ptsOn(t0))) {   // points visibles : le rectangle choisit des points
+        drag = { kind: "band", a: p, b: p, ptsOf: t0, add: e.shiftKey }; return;
+      }
+      if (!id) { sel = null; multi = []; psel = new Set(); drag = { kind: "band", a: p, b: p }; props(); paint(); return; }   // dans le vide : rectangle de selection
+      if (id !== pselOf) psel = new Set();
       if (e.shiftKey) multi = multi.includes(id) ? multi.filter((x) => x !== id) : [...new Set([...multi, sel, id].filter(Boolean))];
       else if (!multi.includes(id)) multi = [id];
       sel = id; props(); paint();
@@ -1100,6 +1197,10 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     } else if (drag.kind === "scale") {
       const k = Math.max(0.03, Math.hypot((p[0] - drag.c[0]) * W, (p[1] - drag.c[1]) * H) / drag.d0), kx = e.altKey ? 1 : k, ky = e.shiftKey ? 1 : k;
       t.p = drag.pts.map((q) => [drag.c[0] + (q[0] - drag.c[0]) * kx, drag.c[1] + (q[1] - drag.c[1]) * ky]);
+    } else if (drag.kind === "noop") return;
+    else if (drag.kind === "pts") {
+      const q = local(t, p, drag.c), dx = q[0] - drag.start[0], dy = q[1] - drag.start[1];
+      for (const i of drag.ids) if (drag.pts[i]) t.p[i] = [drag.pts[i][0] + dx, drag.pts[i][1] + dy];
     } else if (drag.kind === "pt") t.p[drag.i] = local(t, p, drag.c);
     else {
       const dx = p[0] - drag.start[0], dy = p[1] - drag.start[1];
@@ -1116,6 +1217,13 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const d = drag; drag = null;
     if (d && d.kind === "band") {                          // les formes touchees par le rectangle
       const x0 = Math.min(d.a[0], d.b[0]) * W, x1 = Math.max(d.a[0], d.b[0]) * W, y0 = Math.min(d.a[1], d.b[1]) * H, y1 = Math.max(d.a[1], d.b[1]) * H;
+      if (d.ptsOf) {                                       // points visibles : les points de la forme dans le rectangle (tels qu'affiches, rotation comprise)
+        const t = d.ptsOf, b = boxOf(t, H), hit = [];
+        t.p.forEach((q, i) => { const s = t.r ? rotPt([q[0] * W, q[1] * H], [b.cx, b.cy], t.r) : [q[0] * W, q[1] * H]; if (s[0] >= x0 && s[0] <= x1 && s[1] >= y0 && s[1] <= y1) hit.push(i); });
+        if (hit.length) { if (pselOf !== t.id || !d.add) psel = new Set(); pselOf = t.id; hit.forEach((i) => psel.add(i)); paint(); return; }
+        psel = new Set(); sel = null;                      // rien attrape : comme avant, on quitte la forme
+        if (x1 - x0 <= 3 && y1 - y0 <= 3) { multi = []; props(); paint(); return; }
+      }
       if (x1 - x0 > 3 || y1 - y0 > 3) multi = shapes.filter((s) => { const b = boxOf(s, H); return b.x < x1 && b.x + b.w > x0 && b.y < y1 && b.y + b.h > y0; }).map((s) => s.id);
       sel = multi[0] || null; props(); paint(); return;
     }
@@ -1146,6 +1254,20 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   svg.addEventListener("contextmenu", (e) => {             // clic droit : dupliquer, copier, coller, ordre, supprimer
     e.preventDefault();
     if (building) return;
+    const tp = target();
+    if (e.target.dataset.pt != null && tp && PT_TYPES.has(tp.t)) {   // clic droit sur un point : son mode, couper le trait
+      const i = +e.target.dataset.pt;
+      if (pselOf !== tp.id || !psel.has(i)) { psel = new Set([i]); pselOf = tp.id; }
+      paint();
+      const ids = [...psel].sort((a, b) => a - b), many = ids.length > 1, items = [
+        { label: many ? tt`Points Bézier (arrondis) · ${ids.length}` : tt("Point Bézier (arrondi)"), click: () => ptMode(tp, ids, 1) },
+        { label: many ? tt`Points durs (coins nets) · ${ids.length}` : tt("Point dur (coin net)"), click: () => ptMode(tp, ids, 0) }];
+      if (ids.length === 2) items.push({ label: tt("✂ Couper le segment"), click: () => cutSeg(tp, ids[0], ids[1]) });
+      if ((tp.cut || []).length) items.push({ label: tt("Recoller tout le trait"), click: () => { delete tp.cut; syncTwin(tp); paint(); hist.snap(); } });
+      items.push({ label: many ? tt`Supprimer les ${ids.length} points` : tt("Supprimer le point"), danger: true, click: () => delPoints(tp, ids) });
+      ctxMenu(e, items);
+      return;
+    }
     const id = e.target.dataset.shape || (e.target.closest("[data-shape]") || {}).dataset?.shape;
     if (id && !chosen().some((s) => s.id === id)) { multi = [id]; sel = id; }
     if (id && tool !== "select") { tool = "select"; tools(); }
@@ -1173,6 +1295,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (building && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); return finish(true); }
     if (building && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return finish(false); }
+    if ((e.key === "Delete" || e.key === "Backspace") && target() && pselOf === sel && psel.size) { e.preventDefault(); e.stopPropagation(); delPoints(target(), [...psel]); return; }   // des points choisis : eux seuls partent
     if ((e.key === "Delete" || e.key === "Backspace") && chosen().length) { e.preventDefault(); e.stopPropagation(); removeShapes(chosen()); return; }
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === "c" && chosen().length) { e.preventDefault(); e.stopPropagation(); copyShapes(); return; }

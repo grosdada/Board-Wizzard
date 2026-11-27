@@ -305,6 +305,7 @@ body.eyedrop, body.eyedrop * { cursor: crosshair !important; }
 .draw-side h4 { margin: 10px 0 6px; }
 .draw-sel { fill: none; stroke: #2bb3a3; stroke-width: 2; stroke-dasharray: 8 6; pointer-events: none; }
 .draw-pt { fill: #8fd0c4; stroke: #0e1b19; stroke-width: 2; cursor: move; }
+.draw-pt.on { fill: #ff7a3d; stroke: #fff; stroke-width: 3; }   /* points choisis (clic, Maj+clic, rectangle) */
 .menu .mnote { width: 100%; font-size: 11px; color: var(--muted); padding: 2px 8px 5px; }
 .draw-drop { position: relative; display: inline-flex; }
 .draw-drop .main { border-top-right-radius: 0; border-bottom-right-radius: 0; }

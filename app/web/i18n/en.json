@@ -2360,7 +2360,20 @@
   "Mode réorganiser : on attrape une case à la main et on la pose à la place d'une autre ; les cases entre les deux se décalent d'un cran. Seul le contenu change de place, le découpage reste.": "Reorganize mode: grab a panel with the hand and drop it in place of another; the panels in between shift by one. Only the content moves, the layout stays.",
   "Attrape une case et pose-la sur une autre : elle prend sa place, les autres se décalent.": "Grab a panel and drop it on another: it takes its place, the others shift.",
   "Un calcul est en cours sur une de ces cases : attends qu'il soit fini pour les réorganiser.": "A computation is running on one of these panels: wait until it is done to reorganize them.",
-  "Case déplacée en {0}. Ctrl+Z pour revenir.": "Panel moved to {0}. Ctrl+Z to undo."
+  "Case déplacée en {0}. Ctrl+Z pour revenir.": "Panel moved to {0}. Ctrl+Z to undo.",
+  "Points Bézier (arrondis) · {0}": "Bézier points (smooth) · {0}",
+  "Point Bézier (arrondi)": "Bézier point (smooth)",
+  "Points durs (coins nets) · {0}": "Hard points (sharp corners) · {0}",
+  "Point dur (coin net)": "Hard point (sharp corner)",
+  "✂ Couper le segment": "✂ Cut segment",
+  "Recoller tout le trait": "Rejoin the whole outline",
+  "Supprimer les {0} points": "Delete the {0} points",
+  "Supprimer le point": "Delete the point",
+  "Il ne resterait plus de trait.": "No outline would be left.",
+  "Trait coupé entre les deux points (le remplissage reste). Clic droit sur un point : « Recoller tout le trait ».": "Outline cut between the two points (the fill stays). Right-click a point: \"Rejoin the whole outline\".",
+  "Il faut garder au moins ": "Keep at least ",
+  " points.": " points.",
+  " Points affichés : clic ou rectangle pour en choisir plusieurs (Maj : ajouter), on les tire ensemble ; clic droit : Bézier, dur, couper le segment entre deux points.": " Shown points: click or drag a rectangle to pick several (Shift: add), drag them together; right-click: Bézier, hard, cut the segment between two points."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
