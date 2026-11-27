@@ -32,14 +32,16 @@ export const PATHS = { blob: [tt("Forme libre"), "⬟"], line: [tt("Ligne"), "�
 //          desordre hj (degres), direction ho (degres par rapport au trace : 0 = le long, 90 = en travers)
 export const BRUSHES = { brush: [tt("Pinceau en pointe"), "🖌"], paint: [tt("Pinceau de fond (aplat, lavis)"), "🎨"], erase: [tt("Gomme"), "⌫"],
                          stamp: [tt("Pinceau-tampon (image importée)"), "✺"], hair: [tt("Poils / pointillé (barbe, cheveux)"), "✳"] };
-const OPEN = new Set(["line", "free", "polyline", "brush", "paint", "erase", "stamp", "hair"]);       // sans remplissage
-const MANY = new Set(["free", "blob", "poly", "polyline", "brush", "paint", "erase", "stamp", "hair"]);
+// bande des pinceaux : le pinceau (en pointe ou de fond, au deroulant), puis gomme, tampon, SFX et lasso en boutons
+const PENS = { brush: [tt("Pinceau en pointe"), "🖌"], paint: [tt("Pinceau de fond (aplat, lavis)"), "🎨"] };
+const OPEN = new Set(["line", "free", "polyline", "brush", "paint", "erase", "stamp", "hair", "lfill"]);       // sans remplissage
+const MANY = new Set(["free", "blob", "poly", "polyline", "brush", "paint", "erase", "stamp", "hair", "lfill"]);
 // points visibles d'un trace choisi : une forme point par point les montre sauf si on les a caches (ed: 0) ; les autres traces sur demande (ed: 1)
 const ptsOn = (t) => (t.t === "poly" || t.t === "polyline" ? t.ed !== 0 : !!t.ed);
-const SPECIAL = new Set(["brush", "paint", "erase", "stamp", "img", "hair"]);
-const BRUSH_KEYS = ["bsw", "tp", "sv", "pc", "bw", "op", "soft", "gr", "wet", "ss", "gap", "ink", "iop", "pw", "hd", "hs", "hl", "hz", "hj", "ho", "hf"];
+const SPECIAL = new Set(["brush", "paint", "erase", "stamp", "img", "hair", "lfill"]);
+const BRUSH_KEYS = ["bsw", "bo", "tp", "sv", "pc", "bw", "op", "soft", "gr", "wet", "ss", "gap", "ink", "iop", "pw", "hd", "hs", "hl", "hz", "hj", "ho", "hf", "lc", "lo", "lz", "g", "eg", "go"];
 // pinceaux enregistres (bw.brushes) : { n : nom, t : type de pinceau, v : ses reglages }
-const BRUSH_SAVE = { brush: ["stroke", "bsw", "tp", "sv", "gr"], paint: ["pc", "bw", "op", "soft", "gr", "wet"], stamp: ["href", "ar", "ss", "gap", "ink", "stroke"],
+const BRUSH_SAVE = { brush: ["stroke", "bsw", "bo", "tp", "sv", "gr"], paint: ["pc", "bw", "op", "soft", "gr", "wet"], stamp: ["href", "ar", "ss", "gap", "ink", "stroke"],
                      hair: ["stroke", "hd", "hs", "hl", "hz", "hj", "ho", "hf"], erase: ["bw"] };
 // formes semees par le pinceau a poils (hf) : contours pleins de rayon 1, tournes et poses a chaque point du semis
 const ring0 = (n, f) => Array.from({ length: n }, (_, i) => f(i / n * 2 * Math.PI, i));
@@ -149,7 +151,7 @@ const jitterDef = (id, bx, r, seed, wd) => {   // wd : epaisseur du trait (l'ami
 };
 const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, sj: 0, col: "#ffffff",   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
               bsw: 2.5, tp: 0.3, sv: 0.6, pc: "#7d8c99", bw: 12, op: 0.55, soft: 0.3, gr: 0, wet: 0, ss: 25, gap: 0.3, ink: "clair", iop: 1,   // pinceaux (voir BRUSHES)
-              hd: 8, hs: 5, hl: 5, hz: 0.6, hj: 25, ho: 90, hf: "poil" };
+              hd: 8, hs: 5, hl: 5, hz: 0.6, hj: 25, ho: 90, hf: "poil", bo: 1, lc: "#111111", lo: 1 };
 // poils ou pointille le long d'un trace : semis au hasard mais toujours le meme pour une forme (graine = son identifiant)
 function hairSvg(sh, H, tag, d) {
   const P = sh.p.map(([x, y]) => [x * W, y * H]);
@@ -255,6 +257,8 @@ function pointsPath(sh, H, stroke) {
   return d || "M0 0";
 }
 export function strokeGeom(sh, H) { return PT_TYPES.has(sh.t) && (sh.cut || []).length && sh.p.length > 1 ? pointsPath(sh, H, true) : geom(sh, H); }
+// zone du lasso : polygone ferme par ses points
+const polyD = (sh, H) => "M" + sh.p.map(([x, y]) => `${f1(x * W)} ${f1(y * H)}`).join("L") + "Z";
 function geom(sh, H) {
   const P = sh.p.map(([x, y]) => [x * W, y * H]);
   if (P.length < 2) return "";
@@ -362,30 +366,43 @@ export function drawSvg(draw, H, pre, opt = {}) {
 function shapesSvg(shapes, H, pre, hrefs) {
   let defs = `<filter id="${pre}th" color-interpolation-filters="sRGB" x="-5%" y="-5%" width="110%" height="110%"><feComponentTransfer>` +
     ["R", "G", "B"].map((c) => `<feFunc${c} type="linear" slope="26" intercept="-12.5"/>`).join("") + `</feComponentTransfer></filter>`;
-  let body = "";
+  // morceaux deja dessines : g = etiquette de calque verse (fusion), go = son opacite ; une gomme ne masque que ceux de son calque d'origine (eg)
+  const pcs = [], put = (sh, s) => pcs.push({ g: sh.g || "", go: sh.go, s });
+  const join = (list) => { let out = "", run = null, acc = "";
+    const flush = () => { if (acc) out += run != null && run < 1 ? `<g opacity="${(+run).toFixed(3)}">${acc}</g>` : acc; acc = ""; };
+    for (const q of list) { if (q.go !== run) { flush(); run = q.go; } acc += q.s; }
+    flush(); return out; };
   shapes.forEach((raw, i) => {
     const sh = Object.assign({}, DEF, raw), d = sh.t === "img" ? "M0 0" : geom(sh, H), id = pre + "s" + i, tag = `data-shape="${sh.id}"`;
     if (!d) return;
     const open = OPEN.has(sh.t), bx = boxOf(sh, H), fl = fillOf(raw);
     let one = "";
     const rot = (s) => (sh.r ? `<g transform="rotate(${f1(sh.r)} ${f1(bx.cx)} ${f1(bx.cy)})">${s}</g>` : s);
-    if (sh.t === "erase") {                                // gomme : masque tout ce qui est deja dessine dans ce calque
-      const B = 8 * Math.max(W, H), w = f1(Math.max(1, sh.bw) * 4);
+    if (sh.t === "erase") {                                // gomme : masque ce qui est deja dessine dans ce calque (lz : la zone du lasso, pleine)
+      const B = 8 * Math.max(W, H), w = f1(Math.max(1, sh.bw) * 4), zd = sh.lz ? polyD(sh, H) : "";
       defs += `<mask id="${id}m" maskUnits="userSpaceOnUse" x="${-B}" y="${-B}" width="${2 * B}" height="${2 * B}"><rect x="${-B}" y="${-B}" width="${2 * B}" height="${2 * B}" fill="#fff"/>` +
-        rot(`<path d="${d}" fill="none" stroke="#000" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`) + `</mask>`;
-      body = `<g mask="url(#${id}m)">${body}</g>` + rot(`<path ${tag} d="${d}" fill="none" stroke="#000" stroke-opacity="0.001" stroke-width="${w}" stroke-linecap="round"/>`);
+        rot(sh.lz ? `<path d="${zd}" fill="#000"/>` : `<path d="${d}" fill="none" stroke="#000" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`) + `</mask>`;
+      // eg : gomme venue d'un calque verse dans un autre, elle n'efface que ce qui venait du meme calque
+      const eg = sh.eg || "";
+      let k = eg ? pcs.findIndex((q) => q.g.startsWith(eg)) : 0;
+      if (k < 0) k = pcs.length;
+      const inner = join(pcs.splice(k));
+      if (inner) pcs.push({ g: eg, s: `<g mask="url(#${id}m)">${inner}</g>` });
+      put(sh, rot(sh.lz ? `<path ${tag} d="${zd}" fill="none" stroke="#000" stroke-opacity="0.001" stroke-width="6"/>`
+        : `<path ${tag} d="${d}" fill="none" stroke="#000" stroke-opacity="0.001" stroke-width="${w}" stroke-linecap="round"/>`));
       return;
     }
     if (SPECIAL.has(sh.t)) {
       const gr = Math.max(0, Math.min(1, +sh.gr || 0));
       if (sh.t === "brush") {
-        one = `<path ${tag} d="${brushPath(sh, H)}" fill="${hex6(sh.stroke, "#111111")}"/>`;
+        one = `<path ${tag} d="${brushPath(sh, H)}" fill="${hex6(sh.stroke, "#111111")}"${sh.bo != null && sh.bo < 1 ? ` fill-opacity="${Math.max(0.03, +sh.bo).toFixed(2)}"` : ""}/>`;
         if (gr > 0) {                                      // crayon : le grain du papier dans le trait
           const pad = Math.max(0.3, sh.bsw) * 8 + 8;
           defs += `<filter id="${id}g" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">${grainSteps(gr, "SourceGraphic")}</filter>`;
           one = `<g filter="url(#${id}g)">${one}</g>`;
         }
       } else if (sh.t === "hair") one = hairSvg(sh, H, tag, d);
+      else if (sh.t === "lfill") one = `<path ${tag} d="${polyD(sh, H)}" fill="${hex6(sh.lc, "#111111")}" fill-opacity="${Math.max(0.02, Math.min(1, sh.lo ?? 1))}"/>`;   // zone du lasso remplie
       else if (sh.t === "paint") {
         const w = Math.max(1, sh.bw) * 4, soft = Math.max(0, Math.min(1, sh.soft)), wet = Math.max(0, Math.min(1, +sh.wet || 0)), pad = w * 2;
         let flt = "";
@@ -440,7 +457,7 @@ function shapesSvg(shapes, H, pre, hrefs) {
           `<feTurbulence type="fractalNoise" baseFrequency="${(0.06 / Math.max(0.5, sh.hw)).toFixed(4)}" numOctaves="2" seed="${seed}"/><feDisplacementMap in="SourceGraphic" scale="${f1(amp)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
         one = `<g filter="url(#${id}h)">${one}</g>`;
       }
-      body += rot(one);
+      put(sh, rot(one));
       return;
     }
     if (!open && fl.on) one += `<path ${tag} d="${d}" fill="${fl.col}"/>`;          // la couleur, puis la trame par-dessus
@@ -512,9 +529,9 @@ function shapesSvg(shapes, H, pre, hrefs) {
         `<feTurbulence type="fractalNoise" baseFrequency="${(0.06 / Math.max(0.5, sh.hw)).toFixed(4)}" numOctaves="2" seed="${seed}"/><feDisplacementMap in="SourceGraphic" scale="${f1(amp)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
       one = `<g filter="url(#${id}h)">${one}</g>`;
     }
-    body += sh.r ? `<g transform="rotate(${f1(sh.r)} ${f1(bx.cx)} ${f1(bx.cy)})">${one}</g>` : one;
+    put(sh, sh.r ? `<g transform="rotate(${f1(sh.r)} ${f1(bx.cx)} ${f1(bx.cy)})">${one}</g>` : one);
   });
-  return `<defs>${defs}</defs>${body}`;
+  return `<defs>${defs}</defs>${join(pcs)}`;
 }
 
 // une image chargee par un SVG lui-meme charge comme image ne va pas chercher ses images : on les met dedans (data:)
@@ -547,6 +564,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   let shapes = layers ? layers[cl].shapes : JSON.parse(JSON.stringify((draw && draw.shapes) || []));
   const allShapes = () => (layers ? layers.flatMap((l) => l.shapes) : shapes);
   let tool = "blob", prim = "rect", path = "blob", brushT = "brush", sel = null, drag = null, building = null, hover = null;
+  let lasso = null, adj = null, noCtx = false;           // zone du lasso (points) ; reglage a la souris (Ctrl/Alt + clic droit glisse)
   let preK = "arbre";                                      // forme toute faite en cours (banque de formes, presets.js)
   let symMerge = true;                                     // symetrie, coche « Fusionner » : une forme qui touche l'axe et son miroir n'en font qu'une
   let sym = false;                                         // symetrie : chaque forme tracee a son jumeau en miroir (tw), qui suit ses retouches
@@ -676,6 +694,14 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     h("button.mini", { type: "button", title: tt("Réduit la zone à la case et aux formes déjà dessinées"), on: { click: fit } }, tt("Recadrer")), extOut);
   const side = h("div.draw-side"), bar = h("div.draw-tools");
   const target = () => (sel ? shapes.find((s) => s.id === sel) : null);
+  // Ctrl + clic droit glisse : la taille ; Alt : l'intensite. Sur la forme choisie si c'est un pinceau, sinon sur l'outil en cours
+  const adjOf = (alt) => {
+    const t = target(), kind = t && SPECIAL.has(t.t) ? t.t : tool;
+    const size = { brush: ["bsw", 0.3, 30, tt("Épaisseur")], paint: ["bw", 1, 80, tt("Largeur")], erase: ["bw", 1, 80, tt("Largeur")], hair: ["hs", 0, 40, tt("Étalement")], stamp: ["ss", 1, 60, tt("Taille")] };
+    const force = { brush: ["bo", 0.03, 1, tt("Opacité")], paint: ["op", 0.03, 1, tt("Opacité")], hair: ["hd", 0.5, 60, tt("Densité")], lasso: ["lo", 0.03, 1, tt("Opacité")], lfill: ["lo", 0.03, 1, tt("Opacité")], img: ["iop", 0.05, 1, tt("Opacité")] };
+    const r = (alt ? force : size)[kind];
+    return r ? { k: r[0], min: r[1], max: r[2], n: r[3], mul: !alt || r[0] === "hd" } : null;
+  };
   const val = (k) => { const t = target(); return t && t[k] !== undefined ? t[k] : cur[k]; };
   const chosen = () => { const t = target(), ids = new Set(multi); if (t) ids.add(t.id); return shapes.filter((s) => ids.has(s.id)); };
   const set = (k, v) => { for (const t of chosen()) { t[k] = v; syncTwin(t); } cur[k] = v; paint(); if (ringP) ringAt(ringP); };
@@ -807,6 +833,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       const x0 = Math.min(drag.a[0], drag.b[0]) * W, y0 = Math.min(drag.a[1], drag.b[1]) * H;
       o += `<rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(Math.abs(drag.b[0] - drag.a[0]) * W)}" height="${f1(Math.abs(drag.b[1] - drag.a[1]) * H)}" class="draw-band"/>`;
     }
+    if (lasso && lasso.length > 1) o += `<path d="M${lasso.map((q) => f1(q[0] * W) + " " + f1(q[1] * H)).join("L")}${drag && drag.kind === "lasso" ? "" : "Z"}" class="draw-lasso"/>`;
     if (building) {                                        // forme point par point en cours
       const P = building.p.map(([x, y]) => [x * W, y * H]), last = hover ? [hover[0] * W, hover[1] * H] : P[P.length - 1];
       o += `<path d="M${P.map((p) => f1(p[0]) + " " + f1(p[1])).join("L")}L${f1(last[0])} ${f1(last[1])}" class="draw-build"/>` +
@@ -921,6 +948,17 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const range = (label, k, min, max, step) => { const out = h("output", String(val(k) ?? 0));
       return h("label.row.range", label, h("input", { type: "range", min, max, step, value: val(k) ?? 0, on: { input: (e) => { set(k, +e.target.value); out.textContent = e.target.value; } } }), out); };
     const pick = (label, k, opts) => h("label.row", label, h("select", { on: { change: (e) => { set(k, e.target.value); props(); } } }, Object.entries(opts).map(([v, n]) => h("option", { value: v, selected: val(k) === v }, n))));
+    if (!t && tool === "lasso") {                         // lasso : la couleur du remplissage et les deux gestes
+      side.append(h("h4", tt("Lasso")),
+        h("p.muted", tt("Entoure une zone en glissant. Puis « Vider » (ou Suppr) l'efface dans le calque en cours, image comprise ; « Remplir » la couvre de la couleur ci-dessous. Échap : quitter la zone.")),
+        h("span.row.colrow", tt("Couleur du remplissage"), swatch(val("lc") || "#111111", (c) => set("lc", c))),
+        range(tt("Opacité"), "lo", 0.03, 1, 0.01),
+        h("div.row.wrap", h("button.mini.danger", { type: "button", disabled: !lasso, on: { click: () => lassoDo(false) } }, tt("🗑 Vider la zone")),
+          h("button.mini", { type: "button", disabled: !lasso, on: { click: () => lassoDo(true) } }, tt("🪣 Remplir la zone"))),
+        h("p.muted", tt("Alt + clic droit glissé : opacité.")));
+      if (layers) { side.append(layBox); layUi(); }
+      return;
+    }
     side.append(h("h4", t ? tt("Forme choisie") : tt("Prochaine forme")));
     if (SPECIAL.has(kind)) specialProps(kind, range, pick);
     else {                                                 // contour : une coche (avec ou sans) et sa couleur, au nuancier
@@ -967,7 +1005,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const tip = tool === "poly" || tool === "polyline" ? tt("Clique pour poser chaque point. Double-clic, Entrée ou clic sur le premier point : la forme se termine") + (tool === "poly" ? tt(" et se ferme toute seule.") : ".") + tt(" Échap annule.")
       : (MANY.has(tool) && tool !== "poly" && tool !== "polyline" ? tt("Main levée : Ctrl enfoncé trace une droite depuis le dernier point ; Ctrl relâché, on repart à main levée. ") : "") + tt("Choisis un outil puis glisse dans le cadre. « Sélection » : clic sur une forme pour la régler, glisser pour la déplacer, carré ⤡ du coin pour l'agrandir, points ronds pour l'étirer, poignée ↻ pour la tourner (Maj : par crans de 15°). Suppr efface.") +
         tt(" Points affichés : clic ou rectangle pour en choisir plusieurs (Maj : ajouter), on les tire ensemble ; clic droit : Bézier, dur, couper le segment entre deux points.");
-    side.append(h("p.muted", BRUSHES[tool] ? brushTip(tool) + " " + tip : tip));
+    side.append(h("p.muted", BRUSHES[tool] ? brushTip(tool) + " " + tt("Ctrl + clic droit glissé : taille du pinceau ; Alt + clic droit glissé : intensité (opacité).") + " " + tip : tip));
     if (layers) { side.append(layBox); layUi(); }
   }
   // reglages des pinceaux et de l'image importee
@@ -980,7 +1018,8 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
         on: { click: () => { for (const [k, x] of Object.entries(v)) set(k, x); hist.snap(); props(); } } }, n)));
       side.append(h("h4", kind === "brush" ? tt("Crayons, mines et plumes") : tt("Lavis et pinceaux de fond")), box);
     }
-    if (kind === "brush") side.append(col(tt("Couleur"), "stroke", "#111111"), range(tt("Épaisseur"), "bsw", 0.3, 30, 0.1),
+    if (kind === "lfill") side.append(col(tt("Couleur"), "lc", "#111111"), range(tt("Opacité"), "lo", 0.03, 1, 0.01));
+    if (kind === "brush") side.append(col(tt("Couleur"), "stroke", "#111111"), range(tt("Épaisseur"), "bsw", 0.3, 30, 0.1), range(tt("Opacité"), "bo", 0.03, 1, 0.01),
       range(tt("Pointes"), "tp", 0, 0.5, 0.01), range(tt("Sensibilité à la vitesse"), "sv", 0, 1, 0.01),
       range(tt("Grain (dent du papier)"), "gr", 0, 1, 0.01));
     if (kind === "paint") side.append(col(tt("Couleur"), "pc", "#7d8c99"), range(tt("Largeur"), "bw", 1, 80, 0.5), range(tt("Opacité"), "op", 0.03, 1, 0.01),
@@ -1009,7 +1048,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (kind === "img") {
       const t = target();
       side.append(range(tt("Opacité"), "iop", 0.05, 1, 0.01));
-      if (t) side.append(h("button.mini", { type: "button", title: tt("Cette image devient la pointe du pinceau-tampon"), on: { click: () => { cur.href = t.href; cur.ar = t.ar || 1; brushT = "stamp"; tool = "stamp"; sel = null; toast(tt("Image prise comme pointe du pinceau-tampon.")); tools(); props(); paint(); } } }, tt("✺ Pointe du tampon")));
+      if (t) side.append(h("button.mini", { type: "button", title: tt("Cette image devient la pointe du pinceau-tampon"), on: { click: () => { cur.href = t.href; cur.ar = t.ar || 1; tool = "stamp"; sel = null; toast(tt("Image prise comme pointe du pinceau-tampon.")); tools(); props(); paint(); } } }, tt("✺ Pointe du tampon")));
     }
     if (kind === "stamp") {
       const src = val("href");
@@ -1041,8 +1080,20 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       h("button.mini.danger", { type: "button", title: tt("Supprimer ce calque"), disabled: layers.length < 2, on: { click: (e) => { e.stopPropagation(); if (l.shapes.length && !confirm(tt`Supprimer le calque « ${l.name} » et ce qu'il contient ?`)) return; layers.splice(i, 1); hist.snap(); setLayer(Math.min(cl, layers.length - 1)); } } }, "✕"))),
       h("div.row.wrap", h("button.mini", { type: "button", title: tt("Nouveau calque au-dessus du calque en cours"), on: { click: () => { layers.splice(cl + 1, 0, { id: uid(), name: tt`Calque ${layers.length + 1}`, shapes: [] }); hist.snap(); setLayer(cl + 1); } } }, tt("＋ Calque")),
         h("button.mini", { type: "button", title: tt("Copie du calque en cours, juste au-dessus"), on: { click: () => { const c = JSON.parse(JSON.stringify(layers[cl])); c.id = uid(); c.name += tt(" (copie)"); c.shapes.forEach((x) => { x.id = uid(); }); layers.splice(cl + 1, 0, c); hist.snap(); setLayer(cl + 1); } } }, tt("Dupliquer")),
-        cl > 0 ? h("button.mini", { type: "button", title: tt("Verse le calque en cours dans celui du dessous"), on: { click: () => { const up = layers[cl], dn = layers[cl - 1]; dn.shapes.push(...up.shapes); layers.splice(cl, 1); hist.snap(); setLayer(cl - 1); } } }, tt("Fusionner vers le bas")) : ""));
+        cl > 0 ? h("button.mini", { type: "button", title: tt("Verse le calque en cours dans celui du dessous"), on: { click: () => mergeDown() } }, tt("Fusionner vers le bas")) : ""));
   }
+  // fusionner vers le bas : les formes du calque passent dans celui du dessous, etiquetees (g) ; ses gommes n'effacent
+  // toujours que ce qui venait de lui (eg), et son opacite se garde (go). Avant : la gomme mangeait le dessin du dessous.
+  const mergeDown = () => {
+    if (cl < 1) return;
+    const up = layers[cl], dn = layers[cl - 1], tag = uid() + "/", op = up.op == null ? 1 : +up.op;
+    for (const s of up.shapes) {
+      s.g = tag + (s.g || "");
+      if (s.t === "erase") s.eg = tag + (s.eg || "");
+      if (op < 1) s.go = +((s.go ?? 1) * op).toFixed(3);
+    }
+    dn.shapes.push(...up.shapes); layers.splice(cl, 1); hist.snap(); setLayer(cl - 1);
+  };
   const moveLayer = (i, d) => { const j = i + d; if (j < 0 || j >= layers.length) return; const [l] = layers.splice(i, 1); layers.splice(j, 0, l); if (cl === i) cl = j; else if (cl === j) cl = i; shapes = layers[cl].shapes; paint(); layUi(); hist.snap(); };
   // ---- image importee (crayon scanne, forme a reprendre) : envoyee au serveur, posee au milieu ; ou pointe du tampon
   const fileIn = h("input", { type: "file", accept: "image/*", style: { display: "none" } });
@@ -1088,7 +1139,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     let r;
     try { r = await upload("parts/assets", f); } catch (e) { return toast(tt("Image refusée : ") + e.message, "error"); }
     const ar = r.h / Math.max(1, r.w);
-    if (asTip) { cur.href = r.url; cur.ar = ar; brushT = "stamp"; tool = "stamp"; sel = null; tools(); props(); return; }
+    if (asTip) { cur.href = r.url; cur.ar = ar; tool = "stamp"; sel = null; tools(); props(); return; }
     finish(true); hist.snap();
     const bw = Math.min(0.6 * W, 0.6 * H / ar), bh = bw * ar, cx = W / 2, cy = H / 2;
     const sh = { id: uid(), t: "img", href: r.url, ar, ink: "clair", iop: 1, stroke: "#111111", p: [[(cx - bw / 2) / W, (cy - bh / 2) / H], [(cx + bw / 2) / W, (cy + bh / 2) / H]] };
@@ -1118,9 +1169,18 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       h("button.mini.caret", { type: "button", title: tt("Choisir une forme dans la banque (une centaine : objets, nature, ville, véhicules, êtres, signes, formes abstraites)"), on: { click: (e) => { e.stopPropagation(); const was = wrap.classList.contains("open"); bar.querySelectorAll(".draw-drop.open").forEach((x) => x.classList.remove("open")); wrap.classList.toggle("open", !was); } } }, tt("Formes ▾")), menu);
     return wrap;
   }
+  // lasso : la zone entouree est videe (une gomme pleine) ou remplie, dans le calque en cours
+  function lassoDo(fill) {
+    if (!lasso || lasso.length < 3) { toast(tt("Entoure d'abord une zone avec le lasso.")); return; }
+    if (layers && layers[cl].hidden) layers[cl].hidden = false;
+    const p = lasso.map((q) => q.slice());
+    shapes.push(fill ? { id: uid(), t: "lfill", p, lc: cur.lc, lo: cur.lo } : { id: uid(), t: "erase", lz: 1, p, bw: 1 });
+    paint(); props(); hist.snap();
+  }
   function tools() {
     bar.textContent = "";
-    const pickTool = (k) => { finish(false); tool = k; if (PRIMS[k]) prim = k; if (PATHS[k]) path = k; if (BRUSHES[k]) brushT = k; if (k !== "select") sel = null; tools(); props(); paint(); };
+    const pickTool = (k) => { finish(false); tool = k; if (PRIMS[k]) prim = k; if (PATHS[k]) path = k; if (PENS[k]) brushT = k; if (k !== "select") sel = null; if (k !== "lasso") lasso = null; tools(); props(); paint(); };
+    const one = (k, ico, name, title) => h("button.mini" + (tool === k ? ".on" : ""), { type: "button", title, on: { click: () => pickTool(k) } }, `${ico} ${name}`);
     const drop = (label, list, current) => {              // bouton en deux moities : l'outil en cours, et la liste
       const [name, ico] = list[current];
       const wrap = h("div.draw-drop" + (tool === current ? ".on" : ""));
@@ -1130,7 +1190,14 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       return wrap;
     };
     bar.append(h("button.mini" + (tool === "select" ? ".on" : ""), { type: "button", title: tt("Choisir, déplacer, étirer, tourner"), on: { click: () => pickTool("select") } }, tt("↖ Sélection")),
-      drop(tt("Primitives"), PRIMS, prim), presetDrop(), drop(tt("Tracés"), PATHS, path), drop(tt("Pinceaux"), BRUSHES, brushT),
+      drop(tt("Primitives"), PRIMS, prim), presetDrop(), drop(tt("Tracés"), PATHS, path),
+      h("div.row.draw-strip", drop(tt("Pinceaux"), PENS, brushT),
+        one("erase", "⌫", tt("Gomme"), tt("Gomme : efface ce qui est déjà dessiné dans le calque en cours")),
+        one("stamp", "✺", tt("Tampon"), tt("Pinceau-tampon : une image importée posée tout le long du tracé")),
+        one("hair", "✳", tt("SFX"), tt("SFX : poils, pointillé, étoiles, scintillements semés le long du tracé")),
+        one("lasso", "➰", tt("Lasso"), tt("Lasso : entoure une zone, puis Vider (Suppr) ou Remplir")),
+        tool === "lasso" && lasso ? h("button.mini.danger", { type: "button", title: tt("Efface la zone entourée dans le calque en cours (Suppr)"), on: { click: () => lassoDo(false) } }, tt("🗑 Vider")) : "",
+        tool === "lasso" && lasso ? h("button.mini", { type: "button", title: tt("Remplit la zone entourée de la couleur choisie à droite"), on: { click: () => lassoDo(true) } }, tt("🪣 Remplir")) : ""),
       kit ? h("button.mini", { type: "button", title: tt("Importer une image (crayon scanné, forme, texture) : elle se pose au milieu, à déplacer et étirer avec la Sélection ; le blanc du papier devient transparent"), on: { click: () => importImg(false) } }, tt("🖼 Importer une image…")) : "", kit ? fileIn : "",
       h("button.mini", { type: "button", title: tt("Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite"), on: { click: mirror } }, tt("⇋ Miroir")),
       h("button.mini" + (sym ? ".on" : ""), { type: "button", title: tt("Symétrie : chaque forme tracée a son jumeau en miroir de l'autre côté de l'axe. Déplacer, tourner, agrandir ou régler l'une fait suivre l'autre, en miroir (yeux, oreilles, visage)."),
@@ -1173,6 +1240,14 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       return;
     }
     if (fxAim) { const q = at(e); fx.cx = +q[0].toFixed(3); fx.cy = +q[1].toFixed(3); fxDrag = true; try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ } fxPaint(); return; }
+    if (e.button === 2 && (e.ctrlKey || e.altKey)) {       // Ctrl + clic droit glisse : taille ; Alt : intensite (opacite)
+      e.preventDefault(); noCtx = true;
+      const a = adjOf(e.altKey);
+      if (!a) { toast(e.altKey ? tt("Cet outil n'a pas d'intensité à régler.") : tt("Cet outil n'a pas de taille à régler.")); return; }
+      adj = Object.assign(a, { v0: +(val(a.k) ?? DEF[a.k]), x: e.clientX, p: at(e) });
+      try { svg.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+      return;
+    }
     if (e.button !== 0) return;
     const p = at(e);
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* pointeur deja relache */ }
@@ -1184,6 +1259,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       if (Math.hypot((p[0] - l[0]) * W, (p[1] - l[1]) * H) > 3) building.p.push(p);
       return paint();
     }
+    if (tool === "lasso") { lasso = [p]; drag = { kind: "lasso" }; tools(); return paint(); }
     if (tool === "select") {
       const t0 = target();
       if (e.target.dataset.rot && t0) { drag = { kind: "rot", c: centerOf(t0) }; return; }
@@ -1223,12 +1299,22 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   });
   svg.addEventListener("pointermove", (e) => {
     if (pan) { vc = [pan.c[0] - (e.clientX - pan.x) / pan.k, pan.c[1] - (e.clientY - pan.y) / pan.k]; zone(); return; }
+    if (adj) {                                              // glisser a droite : plus grand, plus fort
+      const dx = e.clientX - adj.x;
+      let v = adj.mul ? adj.v0 * Math.exp(dx / 140) : adj.v0 + dx / 300 * (adj.max - adj.min);
+      v = Math.max(adj.min, Math.min(adj.max, v));
+      set(adj.k, +v.toFixed(adj.max > 2 ? 1 : 2));
+      ringAt(adj.p);
+      ring.insertAdjacentHTML("beforeend", `<text x="${f1(adj.p[0] * W + 14)}" y="${f1(adj.p[1] * H - 14)}" class="draw-adj">${adj.n} ${adj.max > 2 ? v.toFixed(1) : Math.round(v * 100) + " %"}</text>`);
+      return;
+    }
     const p = at(e);
     ringAt(fxAim ? null : p);
     if (fxAim) { if (fxDrag) { fx.cx = +p[0].toFixed(3); fx.cy = +p[1].toFixed(3); fxPaint(); } return; }
     if (building) { hover = p; return paint(); }
     if (!drag) return;
     if (drag.kind === "band") { drag.b = p; return paint(); }
+    if (drag.kind === "lasso") { const l = lasso[lasso.length - 1]; if (Math.hypot((p[0] - l[0]) * W, (p[1] - l[1]) * H) > 3) lasso.push(p); return paint(); }
     const t = target();
     if (!t) return;
     if (drag.kind === "new") {
@@ -1283,8 +1369,10 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   });
   svg.addEventListener("pointerup", () => {
     if (pan) { pan = null; return; }
+    if (adj) { adj = null; props(); hist.snap(); return; }
     fxDrag = false;
     const d = drag; drag = null;
+    if (d && d.kind === "lasso") { if (lasso.length < 3) lasso = null; tools(); props(); paint(); return; }
     if (d && d.kind === "band") {                          // les formes touchees par le rectangle
       const x0 = Math.min(d.a[0], d.b[0]) * W, x1 = Math.max(d.a[0], d.b[0]) * W, y0 = Math.min(d.a[1], d.b[1]) * H, y1 = Math.max(d.a[1], d.b[1]) * H;
       if (d.ptsOf) {                                       // points visibles : les points de la forme dans le rectangle (tels qu'affiches, rotation comprise)
@@ -1323,6 +1411,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   });
   svg.addEventListener("contextmenu", (e) => {             // clic droit : dupliquer, copier, coller, ordre, supprimer
     e.preventDefault();
+    if (noCtx || e.ctrlKey || e.altKey) { noCtx = false; return; }   // c'etait un reglage a la souris
     if (building) return;
     const tp = target();
     if (e.target.dataset.pt != null && tp && PT_TYPES.has(tp.t)) {   // clic droit sur un point : son mode, couper le trait
@@ -1365,6 +1454,8 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (building && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); return finish(true); }
     if (building && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return finish(false); }
+    if (tool === "lasso" && lasso && (e.key === "Delete" || e.key === "Backspace")) { e.preventDefault(); e.stopPropagation(); lassoDo(false); return; }
+    if (tool === "lasso" && lasso && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); lasso = null; tools(); props(); paint(); return; }
     if ((e.key === "Delete" || e.key === "Backspace") && target() && pselOf === sel && psel.size) { e.preventDefault(); e.stopPropagation(); delPoints(target(), [...psel]); return; }   // des points choisis : eux seuls partent
     if ((e.key === "Delete" || e.key === "Backspace") && chosen().length) { e.preventDefault(); e.stopPropagation(); removeShapes(chosen()); return; }
     const k = e.key.toLowerCase();

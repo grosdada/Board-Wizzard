@@ -75,6 +75,10 @@ aside.right { border-left: 1px solid var(--line); padding: 0; display: flex; fle
 .idk-tobody { font-size: 15px; font-weight: 700; padding: 9px 18px; background: #e2603a; color: #fff; border: 0; border-radius: 8px; }
 .idk-tobody:hover { background: #f07246; }
 .idk-zoom { position: absolute; top: 6px; left: 6px; display: flex; gap: 3px; align-items: center; opacity: 0.85; } .idk-zoomval { font-size: 11px; min-width: 38px; text-align: center; color: #333; background: #fffc; border-radius: 4px; }
+.draw-lasso { fill: rgba(43,179,163,.10); stroke: #2bb3a3; stroke-width: 1.6; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; pointer-events: none; animation: draw-ants .6s linear infinite; }
+@keyframes draw-ants { to { stroke-dashoffset: -10; } }
+.draw-adj { font: 600 15px system-ui, sans-serif; fill: #111; paint-order: stroke; stroke: #fff; stroke-width: 4px; vector-effect: non-scaling-stroke; }
+.draw-strip { gap: 2px; padding: 2px 4px; border: 1px solid var(--line, #444); border-radius: 8px; }
 .draw-band { fill: rgba(43,179,163,.08); stroke: #2bb3a3; stroke-width: 1.5; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; pointer-events: none; }
 /* cadres de texte de la page : titres, annotations sous les cases */
 .bnote { position: absolute; pointer-events: auto; box-sizing: border-box; padding: .25em .45em; color: #111; cursor: move; overflow: hidden;
