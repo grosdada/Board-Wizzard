@@ -8,6 +8,7 @@ Les taches en attente survivent a un redemarrage (data/jobs.json) ; la cle fal d
 
 import json
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -461,7 +462,21 @@ def run_item_orbit(job, prov):
     best = None
     refs = None
     keyed = it.get("key") if v.get("keyimg") and (d / v["keyimg"]).exists() else None
-    if keyed:                                                   # fond de couleur : ses propres vues, jamais celles sur papier blanc
+    # une pose dessinee par-dessus une vue (« Dessiner sur l'élément ») garde l'angle de sa vue d'origine
+    view = v.get("view") or (it["variants"].get(v.get("from") or "") or {}).get("view") or ""
+    m = re.match(r"vue (-?\d+)° · (-?\d+)°", view)
+    tilt = int(m.group(2)) if m else 0
+    subject = poses.orbit_subject(it["kind"], it["name"])
+    if abs(tilt) >= 12 and not keyed:
+        # vue plongeante (ou contre-plongee) : la planche de vues, a hauteur d'yeux, ramene la camera a hauteur d'yeux en
+        # cours de tour (essais du 27/11/2026, data/qa/vue-haute). La vue seule en reference, et la camera tenue a sa hauteur.
+        refs = {"character": [d / v["ref"]]}
+        subject += (" The camera stays at the same %s elevation for the whole orbit, %s the character exactly like the "
+                    "starting image, and never returns to eye level. The orbit is a perfect horizontal circle around the "
+                    "vertical axis that passes through the character: the character stands on the same spot, feet fixed. "
+                    "The character is a rigid statue turning on its own vertical axis." %
+                    (("high", "looking down at") if tilt > 0 else ("low", "looking up at")))
+    elif keyed:                                                   # fond de couleur : ses propres vues, jamais celles sur papier blanc
         vs = v.get("sheet") or {}
         views = [d / vs[k] for k, _ in poses.SHEET_VIEWS if k in vs and (d / vs[k]).exists()]
         if views and not p.get("no_sheet"):
@@ -488,7 +503,7 @@ def run_item_orbit(job, prov):
                 job["progress"] = "orbite sur fond de studio"
             if it["kind"] == "asset" and not (attempt or p.get("studio")):   # objet : de la marge, pour qu'il tienne au profil
                 start = sprites.pad_subject(start, tmp / "marge.png") or start
-            rgb, mat = prov.orbit(start, length, _seed(job, attempt), poses.orbit_subject(it["kind"], it["name"]),
+            rgb, mat = prov.orbit(start, length, _seed(job, attempt), subject,
                                   mp, not decor and not keyed, tmp, refs=refs)
             job["progress"] = "découpe des images"
             rel = "v/%s/o%d_%d" % (p["variant"], int(time.time()), attempt)
