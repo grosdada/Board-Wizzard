@@ -5,7 +5,7 @@ import { loadImage } from "./api.js";
 import { groundSvg } from "./ground.js";
 import { drawImage } from "./draw.js";
 import { faceOps, headReady, opsCanvas } from "./face.js";
-import { bgStroke, frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, cmPixels, mouthFrame } from "./model.js";
+import { bgStroke, frameToAngle, variantOf, lineWidth, frameT, groundVis, layerCM, bgCM, cmPixels, mouthFrame } from "./model.js";
 import { exprCard } from "./lipsync.js";
 import { sprite, layerSp, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
@@ -23,6 +23,14 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
   ctx.imageSmoothingQuality = "high";
   const FT = frameT(pan, local);                           // cadrage de la case (1re image du montage) : tout le contenu
   if (FT) { ctx.translate(FT.C[0] * kx, FT.C[1] * ky); ctx.scale(FT.z, FT.z); ctx.rotate(-FT.rot * Math.PI / 180); ctx.translate(-FT.c[0] * kx, -FT.c[1] * ky); }
+  // plan a la profondeur d de la camera de la case (avancee, parallaxe), comme le montage ; faux : la camera l'a depasse
+  const plane = (d) => {
+    if (!FT) return true;
+    const q = FT.dep(d);
+    if (!q.k) return false;
+    ctx.translate((FT.c[0] + q.ox) * kx, (FT.c[1] + q.oy) * ky); ctx.scale(q.k, q.k); ctx.translate(-FT.c[0] * kx, -FT.c[1] * ky);
+    return true;
+  };
   const draw = (im, x, y, w, h, blur, flip, rz) => {
     ctx.save();
     ctx.filter = blur > 0.4 ? `blur(${(blur * kx).toFixed(2)}px)` : "none";
@@ -43,8 +51,10 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
   };
   const bg = background(pan, app.bank, app.project.id);
   if (pan.bgCanvas) await graded(bgCM(pan), async () => { ctx.drawImage(pan.bgCanvas, 0, 0, cv.width, cv.height); });   // decor deja rendu (cylindre de la vue 3D)
-  else if (bg) await graded(bgCM(pan), async () => {
-    const pl = placement(local, bg.w || 16, bg.h || 9, pan.view);
+  ctx.save();
+  const bgOn = pan.bgCanvas || plane(1);                   // decor, sol et fond dessine : au plan du decor
+  if (bg && bgOn && !pan.bgCanvas) await graded(bgCM(pan), async () => {
+    const pl = placement(local, bg.w || 16, bg.h || 9, (FT && FT.view) || pan.view);
     const bvf = await vecReady(bg);
     if (bvf) {                                             // decor en traces
       const st = bgStroke(pan), blur = sharp ? 0 : blurOf(pan, 1, bb), ink = new Path2D(bvf.ink);
@@ -57,14 +67,16 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
       ctx.restore();
     } else draw(await loadImage(bg.url), pl.x, pl.y, pl.w, pl.h, sharp ? 0 : blurOf(pan, 1, bb));
   });
-  if (pan.ground && pan.ground.on) {                     // carte de sol, en perspective (ground.js)
-    const gs = `<svg xmlns="http://www.w3.org/2000/svg" width="${cv.width}" height="${cv.height}" viewBox="0 0 ${bb.w} ${bb.h}">${groundSvg(pan.ground, { x: 0, y: 0, w: bb.w, h: bb.h })}</svg>`;
-    ctx.drawImage(await loadImage("data:image/svg+xml;charset=utf-8," + encodeURIComponent(gs)), 0, 0, cv.width, cv.height);
+  if (bgOn && pan.ground && pan.ground.on) {             // carte de sol, en perspective (ground.js) ; la camera qui recule en voit plus
+    const v = FT ? groundVis(pan.frame, local) : { x: 0, y: 0, w: bb.w, h: bb.h };
+    const gs = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(v.w * kx)}" height="${Math.round(v.h * ky)}" viewBox="${v.x} ${v.y} ${v.w} ${v.h}">${groundSvg(pan.ground, { x: 0, y: 0, w: bb.w, h: bb.h }, "gr", v)}</svg>`;
+    ctx.drawImage(await loadImage("data:image/svg+xml;charset=utf-8," + encodeURIComponent(gs)), v.x * kx, v.y * ky, v.w * kx, v.h * ky);
   }
-  if (pan.draw && ((pan.draw.shapes || []).length || (pan.draw.fx && pan.draw.fx.on))) {        // fond dessine a la main, lignes d'effet
+  if (bgOn && pan.draw && ((pan.draw.shapes || []).length || (pan.draw.fx && pan.draw.fx.on))) {        // fond dessine a la main, lignes d'effet
     const dim = await drawImage(pan.draw, cv.width, cv.height);
     if (dim) ctx.drawImage(dim, 0, 0, cv.width, cv.height);
   }
+  ctx.restore();
   const layers = pan.layers || [];
   const cast = (l, box) => {                               // ombre portee : tache floue aux pieds, sous l'element
     const q = groundShadow(l, box);
@@ -107,9 +119,15 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
     exprPut(og, e, l, box, gimg);
     main.save(); main.setTransform(1, 0, 0, 1, 0, 0); main.drawImage(oc, 0, 0); main.restore();
   };
-  for (let i = 0; i < layers.length; i++) {
+  const order = layers.map((l, i) => i);                   // avec la camera du montage : du plus loin au plus pres, comme lui
+  if (FT) order.sort((a, b) => depthOf(pan, b) - depthOf(pan, a) || a - b);
+  for (const i of order) {
+    ctx.save();
+    try { if (plane(depthOf(pan, i))) await oneLayer(i); } finally { ctx.restore(); }
+  }
+  async function oneLayer(i) {
     const l = layers[i], item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
-    if (!sp) continue;
+    if (!sp) return;
     const vf = await vecReady(layerSp(sp, l));
     if (vf) {                                              // dessin en traces : dessine en vectoriel, a la taille du canvas
       const box = layerBox(local, l, { w: vf.w, h: vf.h }), sc = Math.min(box.w / vf.w, box.h / vf.h);
@@ -146,7 +164,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
       ctx.restore();
       }));
       await exprDraw(l, sp, box);
-      continue;
+      return;
     }
     let im = await loadImage(sp.url);
     const box = layerBox(local, l, { w: im.naturalWidth, h: im.naturalHeight });

@@ -2348,7 +2348,13 @@
   "Le sol va jusqu'à l'horizon : « Créer la plaque de sol » pour en faire une plaque à déplacer.": "The ground goes to the horizon: “Create the ground plate” to make a movable plate.",
   "Sol": "Ground",
   "▱ Sol": "▱ Ground",
-  "🖼 Décor": "🖼 Background"
+  "🖼 Décor": "🖼 Background",
+  "🎥 Caméra ⓘ": "🎥 Camera ⓘ",
+  "La caméra de la case : cadre, zoom, inclinaison, et « Avancer » qui entre dans la profondeur (le premier plan grossit plus vite que le décor). C'est la caméra du montage : « 1re image → case » la règle sur la première image, et le montage part de celle-ci quand sa caméra n'a pas de clé. La case la montre, l'impression et Integrate aussi.": "The panel camera: frame, zoom, tilt, and « Move in » which goes into depth (the foreground grows faster than the set). It is the edit's camera: « 1st frame → panel » sets it to the first frame, and the edit starts from it when its camera has no key. The panel shows it, and so do printing and Integrate.",
+  "Cadre centré, zoom 1, sans inclinaison ni avancée": "Centred frame, zoom 1, no tilt or move-in",
+  "Caméra au neutre": "Neutral camera",
+  "La caméra bouge dans le montage : ces réglages valent pour la case seulement. « ⤓ 1re image → case » dans le montage les remet sur sa première image.": "The camera moves in the edit: these settings apply to the panel only. « ⤓ 1st frame → panel » in the edit sets them back to its first frame.",
+  "Animée dans le montage ⓘ": "Animated in the edit ⓘ"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

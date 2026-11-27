@@ -15,7 +15,7 @@ import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, uses
 import { swatch } from "./colors.js";
 import { groundSvg, groundTile, groundMap, estimateHorizon, PATS, GROUND0, PLATE0, plateDefault, plateCorners, groundAt, plateGround, groundImg, toPlate, plateMap, composeGround } from "./ground.js";
 import { markupReady } from "./model.js";
-import { bgStroke, jitterFilter, sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM } from "./model.js";
+import { bgStroke, jitterFilter, sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM, CAM_BACK, perspOf } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
 import { PRESETS } from "./presets.js";
 import { faceFor, opsSvg } from "./face.js";
@@ -23,11 +23,8 @@ import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js"
 
 const f1 = (n) => (+n).toFixed(1), f3 = (n) => +(+n).toFixed(3);
 const CAM0 = { cx: 0.5, cy: 0.5, z: 1, rot: 0, dz: 0 };
-// Camera dans la profondeur : au repos elle est a CAM_BACK devant le premier plan (profondeur 0). dz l'avance : a 1 elle
-// atteint le premier plan, a 2 le decor. Un plan a la profondeur d grossit de (d + CAM_BACK) / (d + CAM_BACK - dz) :
-// ce qui est pres grossit plus vite que le fond, et ce que la camera a depasse disparait.
-export const CAM_BACK = 1;
-export const perspOf = (d, dz) => { const den = d + CAM_BACK - (dz || 0); return den <= 0.04 ? 0 : Math.min(60, (d + CAM_BACK) / den); };
+// Camera dans la profondeur (CAM_BACK, perspOf) : model.js, la case s'en sert aussi
+export { CAM_BACK, perspOf };
 // doux : depart et arrivee amortis · lin : vitesse reguliere · fixe : pas d'intermediaire, on saute a la cle (paliers)
 export const EASES = { doux: tt("En douceur"), lin: tt("Régulière"), fixe: tt("Fixe (par paliers, sans intermédiaire)") };
 const ease = (u, e) => (e === "fixe" ? 0 : e === "lin" ? u : u * u * (3 - 2 * u));
@@ -157,8 +154,10 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     const q = valueAt(keysOf("bg"), base, tm("bg", t), 0);
     return { zoom: q.zoom, ox: q.ox, oy: q.oy };
   };
+  // sans cle de camera, la camera est celle de la case (pan.frame : « 1re image → case », ou reglee dans la planche)
+  const camBase = () => { const f = pan.frame; return f && !keysOf("cam").length ? { cx: f.cx ?? 0.5, cy: f.cy ?? 0.5, z: f.z || 1, rot: f.rot || 0, dz: f.dz || 0 } : CAM0; };
   const camAt = (t) => {
-    const d = pan.dof || {}, c = valueAt(keysOf("cam"), CAM0, tm("cam", t), 0);
+    const d = pan.dof || {}, c = valueAt(keysOf("cam"), camBase(), tm("cam", t), 0);
     c.fo = valueAt(keysOf("fo"), { fo: c.fo ?? d.focus ?? 0.3 }, tm("fo", t), 0).fo;
     c.bl = valueAt(keysOf("bl"), { bl: c.bl ?? d.amount ?? 12 }, tm("bl", t), 0).bl;
     const fx = pan.draw && pan.draw.fx;                      // lignes d'effet du fond : leur force, animable
@@ -310,7 +309,19 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     }
     return o + `</g></g><defs>${Object.values(blurs).join("")}</defs><rect width="${W}" height="${f1(H)}" class="mt-frame"/>`;
   }
-  return { H, anim, markup, stateOf, localOf, camAt, viewAt, nOf, itemOf, keysOf, angleOf, nullOf, nullLocal, nullWorld, xfOf, unDelta };
+  /** Cadrage de la case (pan.frame) que montre l'image a l'instant t : camera (secousse comprise), avancee, parallaxe,
+   *  place du decor quand elle est animee. null : camera au neutre. */
+  const frameAt = (t) => {
+    // la secousse seulement sur une camera a cles : sans cle, la camera EST pan.frame, la secousse s'y ajouterait a chaque report
+    const c = keysOf("cam").length ? shaken(camAt(t), t) : camAt(t), par = anim.parallax ? (anim.pstr ?? 0.4) : 0;
+    const f = { cx: f3(c.cx), cy: f3(c.cy), z: f3(c.z), rot: f3(c.rot || 0) };
+    if (Math.abs(c.dz || 0) > 1e-3) f.dz = f3(c.dz);
+    if (par) f.par = f3(par);
+    if (anim.bgAnim && keysOf("bg").length) { const v = viewAt(t); f.view = { zoom: f3(v.zoom), ox: f3(v.ox), oy: f3(v.oy) }; }
+    const neutral = Math.abs(f.z - 1) < 1e-3 && Math.abs(f.rot) < 0.01 && Math.abs(f.cx - 0.5) < 1e-4 && Math.abs(f.cy - 0.5) < 1e-4 && !f.dz && !f.view;
+    return neutral ? null : f;
+  };
+  return { H, anim, markup, stateOf, localOf, camAt, viewAt, frameAt, nOf, itemOf, keysOf, angleOf, nullOf, nullLocal, nullWorld, xfOf, unDelta };
 }
 
 export function openMontage(app, pid, opt = {}) {
@@ -2845,12 +2856,12 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
     h("button.mini", { title: tt("La case de la planche prend la pose, la place, la taille et l'orientation de chaque élément à la première image du montage, et le cadrage de la caméra. L'animation ne change pas."), on: { click: () => {
       stop(); hist.snap();
       let n = 0;
-      const c0 = scene.camAt(0);                           // le cadrage de la camera a la 1re image : la case le garde (pan.frame)
-      if (Math.abs(c0.z - 1) > 1e-3 || Math.abs(c0.rot || 0) > 0.01 || Math.abs(c0.cx - 0.5) > 1e-4 || Math.abs(c0.cy - 0.5) > 1e-4) pan.frame = { cx: f3(c0.cx), cy: f3(c0.cy), z: f3(c0.z), rot: f3(c0.rot || 0) };
-      else delete pan.frame;
+      // la camera a la 1re image (avancee dans la profondeur, parallaxe, secousse, place du decor) : la case la garde (pan.frame)
+      const f0 = scene.frameAt(0);
+      if (f0) pan.frame = f0; else delete pan.frame;
       for (const l of pan.layers) {
         if (!keysOf(l.id).length) continue;
-        const st = scene.localOf(l, 0);
+        const st = scene.stateOf(l, 0);                    // a l'image, null parent compris : la case n'a pas de null
         for (const k of ["x", "y", "s", "rz", "f", "v", "lw"]) if (st[k] != null) l[k] = st[k];
         if (l.sh || st.shg !== 0.72 || st.shw !== 5 || st.sha !== 135) l.sh = Object.assign({}, l.sh, { g: st.shg, w: st.shw, a: st.sha });
         n++;
@@ -2860,8 +2871,8 @@ ${n} clé${n > 1 ? "s" : ""} sur ${Object.keys(anim.tracks).filter((k) => anim.t
     } } }, tt("⤓ 1re image → case")),
     h("button.mini.photo-go", { title: tt("L'image à la tête de lecture (poses, places, cadrage de la caméra) rendue en photo : GPT Image 2.6 et Seedream 5.5 à comparer (fal, payant)"), on: { click: () => {
       stop();
-      const o = JSON.parse(JSON.stringify(pan)), c = scene.camAt(t);
-      if (Math.abs(c.z - 1) > 1e-3 || Math.abs(c.rot || 0) > 0.01 || Math.abs(c.cx - 0.5) > 1e-4 || Math.abs(c.cy - 0.5) > 1e-4) o.frame = { cx: f3(c.cx), cy: f3(c.cy), z: f3(c.z), rot: f3(c.rot || 0) }; else delete o.frame;
+      const o = JSON.parse(JSON.stringify(pan)), fr = scene.frameAt(t);
+      if (fr) o.frame = fr; else delete o.frame;
       pan.layers.forEach((l, i) => { const st = scene.stateOf(l, t), q = o.layers[i];
         for (const k of ["x", "y", "s", "rz", "f", "v", "lw"]) if (st[k] != null) q[k] = st[k];
         if (l.sh || st.shg !== 0.72 || st.shw !== 5 || st.sha !== 135) q.sh = Object.assign({}, l.sh, { g: st.shg, w: st.shw, a: st.sha }); });

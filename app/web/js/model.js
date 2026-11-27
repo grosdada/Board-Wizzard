@@ -135,19 +135,44 @@ export function jitterFilter(id, amt, w, h, sw, seed = 7) {
     `<feGaussianBlur stdDeviation="${(r * 0.2 + 0.3).toFixed(2)}"/><feComponentTransfer><feFuncA type="linear" slope="2.2" intercept="-0.45"/></feComponentTransfer></filter>`;
 }
 /** Couleur unie d'un dessin en traces (l.col) : blanc par defaut. */
-/** Cadrage de la case (pan.frame = { cx, cy, z, rot }, la camera de la 1re image du montage reportee sur la case) :
- *  { m (transform SVG du contenu), z, rot, fwd (point du contenu -> point de la page), inv (l'inverse) } ou null. */
+// Camera dans la profondeur : au repos elle est a CAM_BACK devant le premier plan (profondeur 0). dz l'avance : a 1 elle
+// atteint le premier plan, a 2 le decor. Un plan a la profondeur d grossit de (d + CAM_BACK) / (d + CAM_BACK - dz) :
+// ce qui est pres grossit plus vite que le fond, et ce que la camera a depasse disparait (0).
+export const CAM_BACK = 1;
+export const perspOf = (d, dz) => { const den = d + CAM_BACK - (dz || 0); return den <= 0.04 ? 0 : Math.min(60, (d + CAM_BACK) / den); };
+/** Cadrage de la case (pan.frame = { cx, cy, z, rot, dz, par, view }) : la camera du montage reportee sur la case (« 1re image
+ *  → case ») ou reglee dans la planche. dz : la camera avance dans la profondeur ; par : force de la parallaxe (0 : sans) ;
+ *  view : place du decor quand elle est animee dans le montage. Rend { m (transform SVG du contenu), z, rot, fwd (point du
+ *  contenu -> point de la page), inv (l'inverse), dm(d) (transform SVG d'un plan a la profondeur d, comme dans le montage ;
+ *  "" : rien a faire, null : la camera l'a depasse), k(d), at(d) ({ z, inv } d'un plan : page -> repere du plan) } ou null. */
 export function frameT(pan, bb) {
   const f = pan && pan.frame;
   if (!f) return null;
-  const z = f.z || 1, rot = f.rot || 0, cx = f.cx ?? 0.5, cy = f.cy ?? 0.5;
-  if (Math.abs(z - 1) < 1e-3 && Math.abs(rot) < 0.01 && Math.abs(cx - 0.5) < 1e-4 && Math.abs(cy - 0.5) < 1e-4) return null;
+  const z = f.z || 1, rot = f.rot || 0, cx = f.cx ?? 0.5, cy = f.cy ?? 0.5, dz = f.dz || 0, ps = f.par || 0;
+  const centred = Math.abs(cx - 0.5) < 1e-4 && Math.abs(cy - 0.5) < 1e-4;
+  if (Math.abs(z - 1) < 1e-3 && Math.abs(rot) < 0.01 && centred && Math.abs(dz) < 1e-3 && !f.view) return null;
   const a = rot * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
   const C = [bb.x0 + bb.w / 2, bb.y0 + bb.h / 2], c = [bb.x0 + cx * bb.w, bb.y0 + cy * bb.h];
-  return { z, rot, C, c,
+  const inv = (p) => { const dx = (p.x - C[0]) / z, dy = (p.y - C[1]) / z; return { x: c[0] + dx * cs - dy * sn, y: c[1] + dx * sn + dy * cs }; };
+  // plan a la profondeur d : point du plan q -> c + k (q - c) + o (avancee de la camera, parallaxe), comme montage.js
+  const dep = (d) => { const par = ps * (d - 0.5); return { k: perspOf(d, dz), ox: (cx - 0.5) * par * bb.w, oy: (cy - 0.5) * par * bb.h }; };
+  const dm = (d) => {
+    const q = dep(d);
+    if (!q.k) return null;
+    if (Math.abs(q.k - 1) < 1e-5 && Math.abs(q.ox) < 1e-4 && Math.abs(q.oy) < 1e-4) return "";
+    return `translate(${(c[0] + q.ox).toFixed(3)} ${(c[1] + q.oy).toFixed(3)}) scale(${q.k.toFixed(5)}) translate(${(-c[0]).toFixed(3)} ${(-c[1]).toFixed(3)})`;
+  };
+  const at = (d) => { const q = dep(d), k = q.k || 1; return { z: z * k, inv: (p) => { const r = inv(p); return { x: c[0] + (r.x - c[0] - q.ox) / k, y: c[1] + (r.y - c[1] - q.oy) / k }; } }; };
+  return { z, rot, C, c, dep, dm, at, k: (d) => dep(d).k, view: f.view || null,
     m: `translate(${C[0].toFixed(3)} ${C[1].toFixed(3)}) scale(${z.toFixed(5)}) rotate(${(-rot).toFixed(3)}) translate(${(-c[0]).toFixed(3)} ${(-c[1]).toFixed(3)})`,
     fwd: (p) => { const dx = p.x - c[0], dy = p.y - c[1]; return { x: C[0] + z * (dx * cs + dy * sn), y: C[1] + z * (-dx * sn + dy * cs) }; },
-    inv: (p) => { const dx = (p.x - C[0]) / z, dy = (p.y - C[1]) / z; return { x: c[0] + dx * cs - dy * sn, y: c[1] + dx * sn + dy * cs }; } };
+    inv };
+}
+/** Sol vu par la camera d'une case : la partie visible quand la camera recule ou dezoome (bb : la case), comme le montage. */
+export function groundVis(f, bb) {
+  const z = (f && f.z) || 1, kv = perspOf(1, (f && f.dz) || 0) * z, hv = kv > 0 && kv < 1 ? 0.75 / kv : 0.5;
+  const cx = f ? f.cx ?? 0.5 : 0.5, cy = f ? f.cy ?? 0.5 : 0.5;
+  return hv > 0.5 ? { x: bb.x0 + (cx - hv) * bb.w, y: bb.y0 + (cy - hv) * bb.h, w: 2 * hv * bb.w, h: 2 * hv * bb.h } : { x: bb.x0, y: bb.y0, w: bb.w, h: bb.h };
 }
 export function bodyFill(l) { return l && /^#[0-9a-f]{6}$/i.test(l.col || "") ? l.col : "#ffffff"; }
 /** Colorize d'une image (l.tint = { on, c }) : la couleur posee en produit dans la decoupe ; le blanc la prend,

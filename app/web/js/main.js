@@ -1561,8 +1561,27 @@ class App {
     } else this.syncPan = null;
     box.append(h("button", { title: tt("Vue de dessus de la case : la caméra en bas, le décor en haut, chaque élément posé à sa profondeur. Glisser une carte : haut / bas = sa profondeur, gauche / droite = sa place. C'est la même position que dans le montage."), on: { click: () => this.depthDialog(this.sel.panel) } }, tt("⬒ Profondeur (vue de dessus)")),
       h("button.danger", { title: tt("Vide entièrement la case : décor, éléments, bulles, indications, fond dessiné, montage, rendus. Une alerte demande confirmation."), on: { click: () => this.restorePanel(this.sel.panel) } }, tt("🧹 Restore case")));
-    if (pan.frame) box.append(h("div.row", h("span.muted", { title: tt("Le cadrage de la caméra à la première image du montage (« 1re image → case »). La case le montre, l'impression et Integrate aussi.") }, tt`Cadrage du montage : zoom ${(+pan.frame.z).toFixed(2)} ⓘ`),
-      h("button.mini", { on: { click: () => { delete pan.frame; this.commit("frame"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer le cadrage"))));
+    {                                                      // camera de la case (pan.frame) : la meme que celle du montage
+      const fr = pan.frame || {}, camKeys = (pan.anim && pan.anim.tracks && pan.anim.tracks.cam) || [];
+      const setF = (k, x) => {
+        const f = Object.assign({ cx: 0.5, cy: 0.5, z: 1, rot: 0 }, pan.frame, { [k]: x });
+        if (pan.anim && pan.anim.parallax) f.par = pan.anim.pstr ?? 0.4; else delete f.par;
+        if (!f.dz) delete f.dz;
+        pan.frame = f;
+        if (camKeys.length === 1) camKeys[0][k] = x;       // camera fixe du montage (une seule cle) : elle suit
+      };
+      box.append(h("h4", { title: tt("La caméra de la case : cadre, zoom, inclinaison, et « Avancer » qui entre dans la profondeur (le premier plan grossit plus vite que le décor). C'est la caméra du montage : « 1re image → case » la règle sur la première image, et le montage part de celle-ci quand sa caméra n'a pas de clé. La case la montre, l'impression et Integrate aussi.") }, tt("🎥 Caméra ⓘ")),
+        range(tt("Cadre ↔"), fr.cx ?? 0.5, 0, 1, 0.005, (x) => setF("cx", x), "frame"),
+        range(tt("Cadre ↕"), fr.cy ?? 0.5, 0, 1, 0.005, (x) => setF("cy", x), "frame"),
+        range(tt("Zoom"), fr.z || 1, 0.4, 5, 0.01, (x) => setF("z", x), "frame"),
+        range(tt("Inclinaison"), fr.rot || 0, -45, 45, 0.5, (x) => setF("rot", x), "frame"),
+        range(tt("Avancer"), fr.dz || 0, -2, 1.9, 0.01, (x) => setF("dz", x), "frame"),
+        h("div.row", h("button.mini", { title: tt("Cadre centré, zoom 1, sans inclinaison ni avancée"), on: { click: () => {
+          delete pan.frame;
+          if (camKeys.length === 1) Object.assign(camKeys[0], { cx: 0.5, cy: 0.5, z: 1, rot: 0, dz: 0 });
+          this.commit("frame"); this.editor.render(); this.refreshInspector(); } } }, tt("Caméra au neutre")),
+          camKeys.length > 1 ? h("span.muted", { title: tt("La caméra bouge dans le montage : ces réglages valent pour la case seulement. « ⤓ 1re image → case » dans le montage les remet sur sa première image.") }, tt("Animée dans le montage ⓘ")) : ""));
+    }
     box.append(h("h4", { title: tt("0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre).") }, tt("Profondeur de champ ⓘ")),
       h("label.row.check", h("input", { type: "checkbox", checked: dof.on, on: { change: (e) => { dof.on = e.target.checked; this.commit("dof"); this.editor.render(); } } }), tt("Flouter selon la profondeur")),
       (() => { const r = range(tt("Mise au point"), dof.focus, 0, 1, 0.01, (x) => { dof.focus = x; dof.on = true; }, "dof");

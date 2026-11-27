@@ -9,7 +9,7 @@ import { markShape, markOutline, thin } from "./marks.js";
 import { vecFrame, layerSp, inkStroke, bgStroke, jitterFilter, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
-import { frameToAngle, thinMask, lineWidth, frameT, markupReady, cmFilter, layerCM, bgCM } from "./model.js";
+import { frameToAngle, thinMask, lineWidth, frameT, groundVis, markupReady, cmFilter, layerCM, bgCM } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
@@ -96,11 +96,11 @@ export class Editor {
     svg.querySelectorAll(":scope > g.lh").forEach((x) => { if (!x.classList.contains("mh")) x.remove(); });
     const hs = this.hs, l = this.app.layer();
     if (!hs || !l || l.lock) return;                       // element verrouille : pas de poignees
-    const { box, sp, g } = hs, bb = g.bbox, FT = frameT(this.panel(g.id), bb), u = 1 / (this.scale() || 1) / (FT ? FT.z : 1);      // u : unites de page par pixel d'ecran
+    const { box, sp, g } = hs, bb = g.bbox, F0 = frameT(this.panel(g.id), bb), FT = F0 && F0.at(hs.d ?? 0), u = 1 / (this.scale() || 1) / (FT ? FT.z : 1);      // u : unites de page par pixel d'ecran ; FT : repere du plan de l'element
     this.rotCenter = { x: box.cx, y: box.y + box.h / 2 };
     const gh = s("g");
     gh.innerHTML = handlesSvg({ box, rz: l.rz || 0, u, view: FT ? { x0: FT.inv({ x: bb.x0, y: bb.y0 }).x, y0: FT.inv({ x: bb.x0, y: bb.y0 }).y, x1: FT.inv({ x: bb.x0 + bb.w, y: bb.y0 + bb.h }).x, y1: FT.inv({ x: bb.x0 + bb.w, y: bb.y0 + bb.h }).y } : bb, bounds: { x0: 0, y0: 0, x1: this.pg.page.width, y1: this.pg.page.height }, orbit: !!(sp && sp.orbit) });
-    if (FT) gh.firstChild.setAttribute("transform", FT.m + " " + (gh.firstChild.getAttribute("transform") || ""));   // cadrage de la case
+    if (FT) gh.firstChild.setAttribute("transform", F0.m + " " + (F0.dm(hs.d ?? 0) || "") + " " + (gh.firstChild.getAttribute("transform") || ""));   // cadrage de la case
     svg.append(gh.firstChild);
   }
   /** Case animee (mode montage) : un petit bouton lecture dans la gouttiere, sous le milieu de la case, a taille fixe a
@@ -219,9 +219,10 @@ export class Editor {
         const o = pan.orbit, f = (((o.frame || 0) % o.n) + o.n) % o.n;
         grp.append(this.image("o:" + g.id, `/projects/${app.project.id}/${o.dir}/${pad3(f)}.webp`, cover));
       } else {
+        const FT0 = frameT(pan, bb), n0 = grp.childNodes.length;     // camera de la case : decor, sol et fond dessine au plan du decor
         const bg = background(pan, app.bank, app.project.id);
         if (bg) {
-          const pl = placement(bb, bg.w || 16, bg.h || 9, pan.view);
+          const pl = placement(bb, bg.w || 16, bg.h || 9, (FT0 && FT0.view) || pan.view);
           const blur = blurOf(pan, 1, bb);
           const bcm = bgCM(pan);                             // colorimetrie et colorize du decor
           if (bcm) defs.insertAdjacentHTML("beforeend", cmFilter("bcm-" + g.id, bcm));
@@ -245,7 +246,7 @@ export class Editor {
         }
         if (pan.ground && pan.ground.on) {                   // carte de sol, en perspective (ground.js)
           const gg = s("g", { "pointer-events": "none" });
-          gg.innerHTML = groundSvg(pan.ground, { x: bb.x0, y: bb.y0, w: bb.w, h: bb.h }, "gr-" + g.id);
+          gg.innerHTML = groundSvg(pan.ground, { x: bb.x0, y: bb.y0, w: bb.w, h: bb.h }, "gr-" + g.id, FT0 ? groundVis(pan.frame, bb) : undefined);
           grp.append(gg);
         }
         if (drawn) {                                         // fond dessine a la main : formes, traces, trames
@@ -256,7 +257,19 @@ export class Editor {
           gd.innerHTML = c.html;
           grp.append(gd);
         }
-        (pan.layers || []).forEach((l, i) => {
+        const inPlane = (n1, d) => {                         // ce qui est dessine depuis n1 : dans le plan de profondeur d de la camera
+          const tr = FT0 ? FT0.dm(d) : "";
+          if (!tr && tr !== null) return;
+          const gp = s("g", { transform: tr || "scale(0)" });
+          while (grp.childNodes.length > n1) gp.append(grp.childNodes[n1]);
+          grp.append(gp);
+        };
+        inPlane(n0, 1);
+        // avec la camera du montage, les elements du plus loin au plus pres, comme dans le montage
+        const order = (pan.layers || []).map((l, i) => i);
+        if (FT0) order.sort((a, b) => depthOf(pan, b) - depthOf(pan, a) || a - b);
+        order.forEach((i) => { const n1 = grp.childNodes.length; drawLayer.call(this, pan.layers[i], i); inPlane(n1, depthOf(pan, i)); });
+        function drawLayer(l, i) {
           const item = app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
           if (!sp) return;
           const box = layerBox(bb, l, sp);
@@ -306,7 +319,7 @@ export class Editor {
             if (vcm) { defs.insertAdjacentHTML("beforeend", cmFilter("cm-" + g.id + "-" + l.id, vcm)); const gc = s("g", { filter: `url(#cm-${g.id}-${l.id})` }); gc.append(gv); grp.append(gc); }
             else grp.append(gv);
             this.exprLayer(grp, l, sp, box, defs, g.id);
-            if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };
+            if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g, d: depthOf(pan, i) };
             return;
           }
           const im = this.image("l:" + g.id + ":" + l.id, sp.url, {
@@ -321,8 +334,8 @@ export class Editor {
             gt.append(im); grp.append(gt);
           } else grp.append(im);
           this.exprLayer(grp, l, sp, box, defs, g.id);
-          if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g };
-        });
+          if (sel.panel === g.id && sel.layer === l.id) handles = { box, sp, g, d: depthOf(pan, i) };
+        }
       }
       const FT = show === "layers" ? frameT(pan, bb) : null;
       if (FT) {                                            // cadrage de la case (1re image du montage) : le contenu, pas les indications
@@ -569,12 +582,14 @@ export class Editor {
       e.preventDefault();
       return;
     }
-    const inPanel = (pid, g) => {                          // cadrage de la case : le point dans le repere de son contenu
-      const F = g && frameT(this.panel(pid), g.bbox);
+    const inPanel = (pid, g, d = null) => {                // cadrage de la case : le point dans le repere de son contenu (d : du plan a cette profondeur)
+      let F = g && frameT(this.panel(pid), g.bbox);
+      if (F && d != null) F = F.at(d);
       return F ? [F.inv(pt), F] : [pt, null];
     };
+    const depthIn = (pid, id) => { const p = this.panel(pid), i = (p.layers || []).findIndex((x) => x.id === id); return i < 0 ? null : depthOf(p, i); };
     if (t.dataset && t.dataset.h) {                        // poignee du calque choisi
-      const g0 = this.geom.panels.find((x) => x.id === app.sel.panel), [pt, F] = inPanel(app.sel.panel, g0);
+      const g0 = this.geom.panels.find((x) => x.id === app.sel.panel), [pt, F] = inPanel(app.sel.panel, g0, depthIn(app.sel.panel, app.sel.layer));
       const g = g0, l = app.layer();
       const item = l && app.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
       if (g && l && t.dataset.h === "rot") { const c = this.rotCenter || { x: pt.x, y: pt.y + 1 }; this.drag = { kind: "lrot", l, c, a0: Math.atan2(pt.y - c.y, pt.x - c.x), rz: l.rz || 0 }; }
@@ -590,7 +605,7 @@ export class Editor {
     }
     // element verrouille : le clic passe a travers, comme sur la case (clic droit : son menu, pour le deverrouiller)
     if (t.dataset && t.dataset.layer && !((this.panel(t.dataset.panel).layers || []).find((x) => x.id === t.dataset.layer) || {}).lock) {
-      const pid = t.dataset.panel, g = this.geom.panels.find((x) => x.id === pid), [pt, F] = inPanel(pid, g);
+      const pid = t.dataset.panel, g = this.geom.panels.find((x) => x.id === pid), [pt, F] = inPanel(pid, g, depthIn(pid, t.dataset.layer));
       const l = (this.panel(pid).layers || []).find((x) => x.id === t.dataset.layer);
       if (!l || !g) return;
       if (app.focusPick) { app.focusOn(pid, l); e.preventDefault(); return; }      // cible : la mise au point se fait sur lui
@@ -616,7 +631,7 @@ export class Editor {
         preload(bg.item, pan.bg.v || "base");
         this.drag = { kind: "bturn", bg: pan.bg, sx: e.clientX, f: pan.bg.f || 0, n: bg.n };
       } else {
-        const pl = placement(g.bbox, bg.w, bg.h, pan.view), [p1, F] = inPanel(g.id, g);
+        const pl = placement(g.bbox, bg.w, bg.h, pan.view), [p1, F] = inPanel(g.id, g, 1);
         this.drag = { kind: "pan", pan, bg, bb: g.bbox, start: p1, ox: pl.ox, oy: pl.oy, F };
       }
     }
