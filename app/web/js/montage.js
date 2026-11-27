@@ -222,7 +222,7 @@ export function makeScene(app, pg, pan, ratio, pre = "mt") {
     // carte de sol (ground.js) : une plaque sous le decor, dans le cadrage mais pas au plan du decor (elle reste un sol
     // jusqu'au bas de l'image quand la camera recule) ; elle s'arrete au pied du decor, le decor est pose dessus
     const GR = groundNow(c);
-    if (GR) o += groundSvg(GR, { x: 0, y: 0, w: W, h: H }, pre + "gr", frameVis(c, bb)); }
+    if (GR) o += `<g${blur(1)}>` + groundSvg(GR, { x: 0, y: 0, w: W, h: H }, pre + "gr", frameVis(c, bb)) + "</g>"; }      // flou de profondeur : celui du decor
     const drawLayer = (l, li) => {
       const s = stateOf(l, t), it = itemOf(l), sp = it && sprite(it, s.v, s.f);
       if (!sp) return;
@@ -634,9 +634,10 @@ export function openMontage(app, pid, opt = {}) {
     const o = `<g class="mt-ground-edit">` +
       ln(hzA, hzB, `stroke="#e0b84a" stroke-width="1.5" stroke-dasharray="8 5"`) + fu +
       (C.length > 2 ? `<path d="M${C.map((q) => f1(q[0]) + " " + f1(q[1])).join("L")}Z" fill="#5fc4a8" fill-opacity="0.07" stroke="#5fc4a8" stroke-width="2" vector-effect="non-scaling-stroke" data-gp="1" style="cursor:move"><title>${tt("Glisser : déplacer la plaque sur le sol")}</title></path>` : "") +
+      wallLine(gr, T, ln, yH) +                         // sous les poignees : le bord du fond reste attrapable
       hd(at(Gc[0], Gc[1], 0.5), "n", tt("Bord de devant")) + hd(at(Gc[2], Gc[3], 0.5), "f", tt("Bord du fond")) + hd(at(Gc[0], Gc[3], 0.7), "l", tt("Bord gauche")) + hd(at(Gc[1], Gc[2], 0.7), "r", tt("Bord droit")) +
       `<rect x="${f1(hzH[0] - W * 0.045)}" y="${f1(hzH[1] - H * 0.022)}" width="${f1(W * 0.09)}" height="${f1(H * 0.044)}" rx="4" fill="#e0b84a" data-gh="hz" style="cursor:ns-resize"><title>${tt("Horizon : glisser pour le monter ou le descendre (les fuyantes suivent)")}</title></rect>` +
-      `<text x="${f1(hzH[0])}" y="${f1(hzH[1] + H * 0.012)}" font-size="${f1(H * 0.03)}" text-anchor="middle" fill="#1b1b1b" pointer-events="none" style="font-family:sans-serif">${tt("Horizon")}</text>` + wallLine(gr, T, ln, yH) + "</g>";
+      `<text x="${f1(hzH[0])}" y="${f1(hzH[1] + H * 0.012)}" font-size="${f1(H * 0.03)}" text-anchor="middle" fill="#1b1b1b" pointer-events="none" style="font-family:sans-serif">${tt("Horizon")}</text></g>`;
     svg.insertAdjacentHTML("beforeend", o);
   }
   function gbarFill() {
@@ -873,6 +874,14 @@ export function openMontage(app, pid, opt = {}) {
     const pfill = plate && plate.fill !== "none" ? plate.fill || PLATE0 : null;
     // le decor est pose sur la plaque : elle s'arrete a son mur (dans le cylindre, ou devant la plaque plate du decor)
     const zG = pw3 && !bgI ? Math.max(zEnd, ...pw3.map((q) => q[1])) : zEnd;
+    // cote camera du cylindre : demi-plan avant l'axe, vu de la camera (wn : de la camera vers l'axe, a plat)
+    let wn = [0, 1], wallIn = false, wallHalf = "";
+    if (cy) {
+      const dx = cy.ax[0] - cm.C[0], dz = cy.ax[1] - cm.C[2], dn = Math.hypot(dx, dz) || 1, L = 999;
+      wn = [dx / dn, dz / dn]; wallIn = cy.full && dn < cy.Rc;
+      const pp = [-wn[1], wn[0]], P4 = [[1, 0], [-1, 0], [-1, -1], [1, -1]].map(([s, t]) => [cy.ax[0] + pp[0] * s * L + wn[0] * t * L, cy.ax[1] + pp[1] * s * L + wn[1] * t * L]);
+      wallHalf = "M" + P4.map((q) => q[0].toFixed(3) + " " + q[1].toFixed(3)).join("L") + "Z";
+    }
     for (let gz = -1.5, TS = 0.25; gz < zG - 1e-6; gz += TS) {
       TS = 0.25 * Math.max(1, Math.round((gz + D0) / 1.5));
       const TZ = Math.min(TS, zG - gz), half = Math.max(2.5, 1.5 * (gz + TS + D0)), n = Math.ceil(half / TS);
@@ -887,10 +896,11 @@ export function openMontage(app, pid, opt = {}) {
         const id = `mt3g${Math.round(gx * 100)}_${Math.round(gz * 100)}`.replace(/-/g, "m");
         const el = h("div");
         const pc = pw3 ? `<defs><clipPath id="${id}c"><path d="M${pw3.map((q) => q[0].toFixed(4) + " " + q[1].toFixed(4)).join("L")}Z"/></clipPath></defs>` : "";
-        // dans le cylindre du decor (une simple image n'en couvre que le fond : devant son axe, rien ne cache le sol)
-        const open = cy && !cy.full;
-        if (cy && !(open && gz < cy.ax[1]) && Math.hypot(Math.max(Math.abs(gx + TS / 2 - cy.ax[0]) - TS / 2, 0), Math.max(Math.abs(gz + TZ / 2 - cy.ax[1]) - TZ / 2, 0)) > cy.Rc) continue;
-        const wc = cy ? `<defs><clipPath id="${id}w"><circle cx="${cy.ax[0].toFixed(4)}" cy="${cy.ax[1].toFixed(4)}" r="${cy.Rc.toFixed(4)}"/>${open ? `<rect x="-999" y="-999" width="1998" height="${(999 + cy.ax[1]).toFixed(4)}"/>` : ""}</clipPath></defs>` : "";
+        // le mur du decor cache le sol qui est derriere lui : on garde le dedans du cylindre et, sauf camera dans un decor qui
+        // fait tout le tour, le cote de la camera (une simple image n'est qu'un arc au fond ; camera dehors : le sol devant)
+        const outD = cy && Math.hypot(Math.max(Math.abs(gx + TS / 2 - cy.ax[0]) - TS / 2, 0), Math.max(Math.abs(gz + TZ / 2 - cy.ax[1]) - TZ / 2, 0)) > cy.Rc;
+        if (outD && (wallIn || [[gx, gz], [gx + TS, gz], [gx, gz + TZ], [gx + TS, gz + TZ]].every(([x, z]) => (x - cy.ax[0]) * wn[0] + (z - cy.ax[1]) * wn[1] > 0))) continue;
+        const wc = cy ? `<defs><clipPath id="${id}w"><circle cx="${cy.ax[0].toFixed(4)}" cy="${cy.ax[1].toFixed(4)}" r="${cy.Rc.toFixed(4)}"/>${wallIn ? "" : `<path d="${wallHalf}"/>`}</clipPath></defs>` : "";
         el.innerHTML = `<svg viewBox="${gx} ${gz} ${TS} ${TZ}" width="${TP}" height="${TP}" preserveAspectRatio="none" style="display:block">${pc}${wc}<g${cy ? ` clip-path="url(#${id}w)"` : ""}><g${pw3 ? ` clip-path="url(#${id}c)"` : ""}><rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="${pfill || "#d8d4cb"}"/>${gr ? groundTile(gr, { x0: gx, y0: gz, w: TS, hh: TZ, camY: rb.camY, ratio: H / W, id, px: 40 }) : ""}</g></g>` +
           (!pw3 && gx >= 0 && gx < 1 && gz >= 0 && gz < ZD ? `<rect x="${gx}" y="${gz}" width="${TS}" height="${TZ}" fill="none" stroke="#5fc4a8" stroke-opacity=".35" stroke-width=".004"/>` : "") + "</svg>";
         put(el, tr, TP, TP);
@@ -1045,7 +1055,7 @@ export function openMontage(app, pid, opt = {}) {
         const o = rb.V.o(1);
         change("bg", { zoom: f3((v.zoom || 1) * K), ox: f3((0.5 + pl.ox - rb.V.cx) * K + o[0]), oy: f3((0.5 + pl.oy - rb.V.cy) * K + o[1]) });
       }
-      if (pan.ground) Object.assign(pan.ground, rb.gr);
+      if (pan.ground) { const auto = !(pan.ground.wv > 0); Object.assign(pan.ground, rb.gr); if (auto) delete pan.ground.wv; }   // pied en auto : il le reste
       for (const k of keysOf("cam")) Object.assign(k, { cx: 0.5, cy: 0.5, z: 1, dz: 0 });
       delete pan.frame;
     }
@@ -1070,6 +1080,9 @@ export function openMontage(app, pid, opt = {}) {
     const e = (cm.C[0] - 0.5 - sy * B0) / Y, g = (cm.C[2] + D0 + cy * B0) / Y;
     gr.m = composeGround(groundMap(gr, H / W), a, b, c, d, e, g);   // le motif reste au meme endroit du sol
     if (Array.isArray(gr.ext)) gr.pm = composeGround(plateMap(gr), a, b, c, d, e, g);   // la plaque aussi
+    // pied du decor regle a la main : sa distance vue de la nouvelle camera, droit devant (u' = 0 ; une camera tournee le
+    // voit en biais, une seule distance ne le decrit qu'au centre) ; en auto, il reste le bord du fond de la plaque
+    if (gr.wv > 0 && d > 1e-6) { const w2 = (gr.wv - g) / d; if (w2 > 0.05) gr.wv = f3(w2); else delete gr.wv; }
     gr.hz = f3(clamp(rb.hz - cm.f * Math.tan(p) / rb.hw, -1.5, 0.95));
   }
   /** Un decor 360 de la banque tourne avec la camera. decorHit (avant de toucher a la case) : la colonne du panorama que
