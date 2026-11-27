@@ -566,7 +566,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   let shapes = layers ? layers[cl].shapes : JSON.parse(JSON.stringify((draw && draw.shapes) || []));
   const allShapes = () => (layers ? layers.flatMap((l) => l.shapes) : shapes);
   let tool = "blob", prim = "rect", path = "blob", brushT = "brush", sel = null, drag = null, building = null, hover = null;
-  let lasso = null, adj = null, noCtx = false;           // zone du lasso (points) ; reglage a la souris (Ctrl/Alt + clic droit glisse)
+  let lasso = null, adj = null, noCtx = false;           // zones du lasso (une liste de polygones : Maj en ajoute) ; reglage a la souris (Ctrl/Alt + clic droit glisse)
   let preK = "arbre";                                      // forme toute faite en cours (banque de formes, presets.js)
   let symMerge = true;                                     // symetrie, coche « Fusionner » : une forme qui touche l'axe et son miroir n'en font qu'une
   let sym = false;                                         // symetrie : chaque forme tracee a son jumeau en miroir (tw), qui suit ses retouches
@@ -838,7 +838,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       const x0 = Math.min(drag.a[0], drag.b[0]) * W, y0 = Math.min(drag.a[1], drag.b[1]) * H;
       o += `<rect x="${f1(x0)}" y="${f1(y0)}" width="${f1(Math.abs(drag.b[0] - drag.a[0]) * W)}" height="${f1(Math.abs(drag.b[1] - drag.a[1]) * H)}" class="draw-band"/>`;
     }
-    if (lasso && lasso.length > 1) o += `<path d="M${lasso.map((q) => f1(q[0] * W) + " " + f1(q[1] * H)).join("L")}${drag && drag.kind === "lasso" ? "" : "Z"}" class="draw-lasso"/>`;
+    if (lasso) lasso.forEach((poly, i) => { if (poly.length > 1) o += `<path d="M${poly.map((q) => f1(q[0] * W) + " " + f1(q[1] * H)).join("L")}${drag && drag.kind === "lasso" && i === lasso.length - 1 ? "" : "Z"}" class="draw-lasso"/>`; });
     if (building) {                                        // forme point par point en cours
       const P = building.p.map(([x, y]) => [x * W, y * H]), last = hover ? [hover[0] * W, hover[1] * H] : P[P.length - 1];
       o += `<path d="M${P.map((p) => f1(p[0]) + " " + f1(p[1])).join("L")}L${f1(last[0])} ${f1(last[1])}" class="draw-build"/>` +
@@ -955,11 +955,16 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     const pick = (label, k, opts) => h("label.row", label, h("select", { on: { change: (e) => { set(k, e.target.value); props(); } } }, Object.entries(opts).map(([v, n]) => h("option", { value: v, selected: val(k) === v }, n))));
     if (!t && tool === "lasso") {                         // lasso : la couleur du remplissage et les deux gestes
       side.append(h("h4", tt("Lasso")),
-        h("p.muted", tt("Entoure une zone en glissant. Puis « Vider » (ou Suppr) l'efface dans le calque en cours, image comprise ; « Remplir » la couvre de la couleur ci-dessous. Échap : quitter la zone.")),
+        h("p.muted", tt("Entoure une zone en glissant (Maj : une zone de plus, autant de fois que tu veux). Puis « Vider » (ou Suppr) l'efface dans le calque en cours, image comprise ; « Remplir » la couvre de la couleur ci-dessous. Échap : quitter la zone.")),
         h("span.row.colrow", tt("Couleur du remplissage"), swatch(val("lc") || "#111111", (c) => set("lc", c))),
         range(tt("Opacité"), "lo", 0.03, 1, 0.01),
         h("div.row.wrap", h("button.mini.danger", { type: "button", disabled: !lasso, on: { click: () => lassoDo(false) } }, tt("🗑 Vider la zone")),
           h("button.mini", { type: "button", disabled: !lasso, on: { click: () => lassoDo(true) } }, tt("🪣 Remplir la zone"))),
+        h("div.row.wrap", h("button.mini", { type: "button", disabled: !lasso, on: { click: () => lassoGrab("move") } }, tt("✥ Déplacer / tourner")),
+          h("button.mini", { type: "button", disabled: !lasso, on: { click: () => lassoGrab("copy") } }, tt("⧉ Copier")),
+          h("button.mini", { type: "button", disabled: !lasso, on: { click: () => lassoGrab("cut") } }, tt("✂ Couper")),
+          h("button.mini", { type: "button", disabled: !clip, on: { click: () => pasteShapes() } }, tt("📋 Coller"))),
+        h("p.muted", tt("Déplacer / tourner : la zone se détache et passe à la Sélection (glisser, poignée ↻, carré du coin). Ctrl+C, Ctrl+X, Ctrl+V marchent aussi.")),
         h("p.muted", tt("Alt + clic droit glissé : opacité.")));
       if (layers) { side.append(layBox); layUi(); }
       return;
@@ -1176,11 +1181,50 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   }
   // lasso : la zone entouree est videe (une gomme pleine) ou remplie, dans le calque en cours
   function lassoDo(fill) {
-    if (!lasso || lasso.length < 3) { toast(tt("Entoure d'abord une zone avec le lasso.")); return; }
+    if (!lasso || !lasso.length) { toast(tt("Entoure d'abord une zone avec le lasso.")); return; }
     if (layers && layers[cl].hidden) layers[cl].hidden = false;
-    const p = lasso.map((q) => q.slice());
-    shapes.push(fill ? { id: uid(), t: "lfill", p, lc: cur.lc, lo: cur.lo } : { id: uid(), t: "erase", lz: 1, p, bw: 1 });
+    for (const poly of lasso) {
+      const p = poly.map((q) => q.slice());
+      shapes.push(fill ? { id: uid(), t: "lfill", p, lc: cur.lc, lo: cur.lo } : { id: uid(), t: "erase", lz: 1, p, bw: 1 });
+    }
     paint(); props(); hist.snap();
+  }
+  // lasso comme selection : la zone du calque en cours devient une image (copier, couper), ou se detache pour etre
+  // deplacee, tournee, agrandie avec la Selection (move). Couper et deplacer la vident a sa place d'origine.
+  async function lassoGrab(mode) {
+    if (!lasso || !lasso.length) { toast(tt("Entoure d'abord une zone avec le lasso.")); return; }
+    const polys = lasso.map((poly) => poly.map((q) => q.slice())), all = polys.flat(), xs = all.map((q) => q[0]), ys = all.map((q) => q[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const e = { l: ext.l, r: ext.r, t: ext.t, b: ext.b }, kx = 1 + e.l + e.r, ky = 1 + e.t + e.b;
+    const k = Math.min(1.6, 2400 / (W * kx), 2400 / (H * ky)), wpx = W * k, hpx = H * k;
+    const one = { layers: [Object.assign({}, layers ? layers[cl] : { shapes }, { hidden: false, op: 1 })] };
+    const im = await drawImage(one, wpx, hpx, e);
+    if (!im) { toast(tt("Rien à prendre dans ce calque."), "error"); return; }
+    const px = (x) => (x + e.l) * wpx, py = (y) => (y + e.t) * hpx;
+    const cw = Math.max(1, Math.round(px(x1) - px(x0))), ch = Math.max(1, Math.round(py(y1) - py(y0)));
+    const c = document.createElement("canvas"); c.width = cw; c.height = ch;
+    const g = c.getContext("2d");
+    g.fillStyle = "#fff";                                    // les zones en masque (leur reunion), puis le dessin dedans
+    for (const P of polys) { g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(px(x) - px(x0), py(y) - py(y0)) : g.moveTo(px(x) - px(x0), py(y) - py(y0)))); g.closePath(); g.fill(); }
+    g.globalCompositeOperation = "source-in";
+    g.drawImage(im, -px(x0), -py(y0), Math.round(wpx * kx), Math.round(hpx * ky));
+    const a = g.getImageData(0, 0, cw, ch).data; let any = false;
+    for (let i = 3; i < a.length; i += 16) if (a[i] > 8) { any = true; break; }
+    if (!any) { toast(tt("La zone est vide dans le calque en cours."), "error"); return; }
+    const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
+    let r;
+    try { r = await upload("parts/assets", new File([blob], "lasso.png", { type: "image/png" })); } catch (err) { toast(tt("Zone refusée : ") + err.message, "error"); return; }
+    const sh = { id: uid(), t: "img", href: r.url, ar: (y1 - y0) * H / Math.max(1e-6, (x1 - x0) * W), ink: "none", iop: 1, stroke: "#111111", p: [[x0, y0], [x1, y1]] };
+    clip = [sh];
+    if (mode === "copy") { toast(tt("Zone copiée : Ctrl+V la colle, dans ce calque ou un autre.")); return; }
+    if (layers && layers[cl].hidden) layers[cl].hidden = false;
+    for (const P of polys) shapes.push({ id: uid(), t: "erase", lz: 1, p: P, bw: 1 });
+    if (mode === "move") {
+      shapes.push(JSON.parse(JSON.stringify(sh)));
+      lasso = null; tool = "select"; sel = shapes[shapes.length - 1].id; multi = [sel];
+      toast(tt("Zone détachée : glisse-la pour la déplacer, poignée ↻ pour la tourner, carré du coin pour l'agrandir."));
+    } else toast(tt("Zone coupée : Ctrl+V la colle, dans ce calque ou un autre."));
+    tools(); props(); paint(); hist.snap();
   }
   function tools() {
     bar.textContent = "";
@@ -1202,7 +1246,10 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
         one("hair", "✳", tt("SFX"), tt("SFX : poils, pointillé, étoiles, scintillements semés le long du tracé")),
         one("lasso", "➰", tt("Lasso"), tt("Lasso : entoure une zone, puis Vider (Suppr) ou Remplir")),
         tool === "lasso" && lasso ? h("button.mini.danger", { type: "button", title: tt("Efface la zone entourée dans le calque en cours (Suppr)"), on: { click: () => lassoDo(false) } }, tt("🗑 Vider")) : "",
-        tool === "lasso" && lasso ? h("button.mini", { type: "button", title: tt("Remplit la zone entourée de la couleur choisie à droite"), on: { click: () => lassoDo(true) } }, tt("🪣 Remplir")) : ""),
+        tool === "lasso" && lasso ? h("button.mini", { type: "button", title: tt("Remplit la zone entourée de la couleur choisie à droite"), on: { click: () => lassoDo(true) } }, tt("🪣 Remplir")) : "",
+        tool === "lasso" && lasso ? h("button.mini", { type: "button", title: tt("Détache la zone : elle se déplace, se tourne et s'agrandit avec la Sélection"), on: { click: () => lassoGrab("move") } }, tt("✥ Déplacer / tourner")) : "",
+        tool === "lasso" && lasso ? h("button.mini", { type: "button", title: tt("Copie la zone (Ctrl+C) ; Ctrl+V la colle"), on: { click: () => lassoGrab("copy") } }, tt("⧉ Copier")) : "",
+        tool === "lasso" && lasso ? h("button.mini", { type: "button", title: tt("Coupe la zone (Ctrl+X) ; Ctrl+V la colle"), on: { click: () => lassoGrab("cut") } }, tt("✂ Couper")) : ""),
       kit ? h("button.mini", { type: "button", title: tt("Importer une image (crayon scanné, forme, texture) : elle se pose au milieu, à déplacer et étirer avec la Sélection ; le blanc du papier devient transparent"), on: { click: () => importImg(false) } }, tt("🖼 Importer une image…")) : "", kit ? fileIn : "",
       h("button.mini", { type: "button", title: tt("Ajoute une copie en miroir gauche-droite (par rapport au milieu du cadre) de tout le dessin, ou seulement de la forme choisie avec l'outil Sélection : un œil dessiné à gauche donne son jumeau à droite"), on: { click: mirror } }, tt("⇋ Miroir")),
       h("button.mini" + (sym ? ".on" : ""), { type: "button", title: tt("Symétrie : chaque forme tracée a son jumeau en miroir de l'autre côté de l'axe. Déplacer, tourner, agrandir ou régler l'une fait suivre l'autre, en miroir (yeux, oreilles, visage)."),
@@ -1264,7 +1311,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
       if (Math.hypot((p[0] - l[0]) * W, (p[1] - l[1]) * H) > 3) building.p.push(p);
       return paint();
     }
-    if (tool === "lasso") { lasso = [p]; drag = { kind: "lasso" }; tools(); return paint(); }
+    if (tool === "lasso") { if (e.shiftKey && lasso) lasso.push([p]); else lasso = [[p]]; drag = { kind: "lasso" }; tools(); return paint(); }   // Maj : une zone de plus
     if (tool === "select") {
       const t0 = target();
       if (e.target.dataset.rot && t0) { drag = { kind: "rot", c: centerOf(t0) }; return; }
@@ -1319,7 +1366,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (building) { hover = p; return paint(); }
     if (!drag) return;
     if (drag.kind === "band") { drag.b = p; return paint(); }
-    if (drag.kind === "lasso") { const l = lasso[lasso.length - 1]; if (Math.hypot((p[0] - l[0]) * W, (p[1] - l[1]) * H) > 3) lasso.push(p); return paint(); }
+    if (drag.kind === "lasso") { const poly = lasso[lasso.length - 1], l = poly[poly.length - 1]; if (Math.hypot((p[0] - l[0]) * W, (p[1] - l[1]) * H) > 3) poly.push(p); return paint(); }
     const t = target();
     if (!t) return;
     if (drag.kind === "new") {
@@ -1377,7 +1424,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (adj) { adj = null; props(); hist.snap(); return; }
     fxDrag = false;
     const d = drag; drag = null;
-    if (d && d.kind === "lasso") { if (lasso.length < 3) lasso = null; tools(); props(); paint(); return; }
+    if (d && d.kind === "lasso") { if (lasso[lasso.length - 1].length < 3) lasso.pop(); if (!lasso.length) lasso = null; tools(); props(); paint(); return; }
     if (d && d.kind === "band") {                          // les formes touchees par le rectangle
       const x0 = Math.min(d.a[0], d.b[0]) * W, x1 = Math.max(d.a[0], d.b[0]) * W, y0 = Math.min(d.a[1], d.b[1]) * H, y1 = Math.max(d.a[1], d.b[1]) * H;
       if (d.ptsOf) {                                       // points visibles : les points de la forme dans le rectangle (tels qu'affiches, rotation comprise)
@@ -1460,6 +1507,7 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
     if (building && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); return finish(true); }
     if (building && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return finish(false); }
     if (tool === "lasso" && lasso && (e.key === "Delete" || e.key === "Backspace")) { e.preventDefault(); e.stopPropagation(); lassoDo(false); return; }
+    if (tool === "lasso" && lasso && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "x")) { e.preventDefault(); e.stopPropagation(); lassoGrab(e.key.toLowerCase() === "c" ? "copy" : "cut"); return; }
     if (tool === "lasso" && lasso && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); lasso = null; tools(); props(); paint(); return; }
     if ((e.key === "Delete" || e.key === "Backspace") && target() && pselOf === sel && psel.size) { e.preventDefault(); e.stopPropagation(); delPoints(target(), [...psel]); return; }   // des points choisis : eux seuls partent
     if ((e.key === "Delete" || e.key === "Backspace") && chosen().length) { e.preventDefault(); e.stopPropagation(); removeShapes(chosen()); return; }

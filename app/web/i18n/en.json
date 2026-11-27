@@ -2461,7 +2461,22 @@
   "<text x=\"{0}\" y=\"{1}\" font-size=\"{2}\" fill=\"#e2603a\">l'image d'origine</text>": "<text x=\"{0}\" y=\"{1}\" font-size=\"{2}\" fill=\"#e2603a\">original image</text>",
   "Agrandit l'image de l'élément pour dessiner autour : des bras tendus sur les côtés, un chapeau au-dessus. Chaque clic ajoute 10 % ; Maj + clic retire. L'élément garde sa place et sa taille dans la case.": "Enlarges the element's image to draw around it: outstretched arms on the sides, a hat on top. Each click adds 10%; Shift + click removes. The element keeps its place and size in the panel.",
   "image agrandie : {0} % × {1} %": "enlarged image: {0}% × {1}%",
-  "taille d'origine": "original size"
+  "taille d'origine": "original size",
+  "Copie la zone (Ctrl+C) ; Ctrl+V la colle": "Copies the area (Ctrl+C); Ctrl+V pastes it",
+  "Coupe la zone (Ctrl+X) ; Ctrl+V la colle": "Cuts the area (Ctrl+X); Ctrl+V pastes it",
+  "Déplacer / tourner : la zone se détache et passe à la Sélection (glisser, poignée ↻, carré du coin). Ctrl+C, Ctrl+X, Ctrl+V marchent aussi.": "Move / rotate: the area comes loose and switches to Selection (drag, ↻ handle, corner square). Ctrl+C, Ctrl+X, Ctrl+V work too.",
+  "Détache la zone : elle se déplace, se tourne et s'agrandit avec la Sélection": "Detaches the area: move, rotate and scale it with Selection",
+  "Entoure une zone en glissant (Maj : une zone de plus, autant de fois que tu veux). Puis « Vider » (ou Suppr) l'efface dans le calque en cours, image comprise ; « Remplir » la couvre de la couleur ci-dessous. Échap : quitter la zone.": "Circle an area by dragging (Shift: one more area, as many times as you like). Then \"Clear\" (or Del) erases it in the current layer, image included; \"Fill\" covers it with the colour below. Esc: drop the area.",
+  "La zone est vide dans le calque en cours.": "The area is empty in the current layer.",
+  "Rien à prendre dans ce calque.": "Nothing to take in this layer.",
+  "Zone copiée : Ctrl+V la colle, dans ce calque ou un autre.": "Area copied: Ctrl+V pastes it, in this layer or another.",
+  "Zone coupée : Ctrl+V la colle, dans ce calque ou un autre.": "Area cut: Ctrl+V pastes it, in this layer or another.",
+  "Zone détachée : glisse-la pour la déplacer, poignée ↻ pour la tourner, carré du coin pour l'agrandir.": "Area detached: drag to move it, ↻ handle to rotate, corner square to scale.",
+  "Zone refusée : ": "Area refused: ",
+  "✂ Couper": "✂ Cut",
+  "✥ Déplacer / tourner": "✥ Move / rotate",
+  "⧉ Copier": "⧉ Copy",
+  "📋 Coller": "📋 Paste"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
