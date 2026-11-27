@@ -661,6 +661,39 @@ class App {
   }
 
   // ---------------------------------------------------------------- calques
+  /** « Dessiner sur l'élément » : l'image que montre le calque (cette image de l'orbite) s'ouvre dans l'atelier de dessin,
+   *  posee dans le premier calque : la gomme l'efface, les pinceaux dessinent dessus ou dans d'autres calques.
+   *  « Enregistrer comme pose » en fait une nouvelle pose de l'element (dans ses cartes), que le calque prend aussitot. */
+  async drawOnLayer(l) {
+    const item = this.bank.get(l.item), sp = item && sprite(item, l.v, l.f);
+    if (!sp) return toast(tt("Cet élément n'a pas encore d'image."), "error");
+    const im = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = sp.url; });
+    if (!im) return toast(tt("L'image de l'élément n'a pas pu être chargée."), "error");
+    const iw = im.naturalWidth, ih = im.naturalHeight, v = variantOf(item, l.v);
+    const draw = { layers: [
+      { id: uid(), name: tt("Élément"), shapes: [{ id: uid(), t: "img", href: sp.url, p: [[0, 0], [1, 1]], ink: "none", iop: 1, ar: ih / iw }] },
+      { id: uid(), name: tt("Retouches"), shapes: [] }] };
+    openDrawEditor({ draw, ratio: ih / iw, backdrop: null, layers: true, kit: true,
+      title: tt`Dessiner sur : ${item.name} · ${v ? tr(v.label) : ""}${sp.orbit ? tt` · image ${sp.i + 1}/${sp.n}` : ""}`,
+      saveLabel: tt("💾 Enregistrer comme pose…"),
+      onSave: async (d) => {
+        const name = (prompt(tt("Nom de la nouvelle pose (elle rejoint les cartes du personnage) :"), (v ? tr(v.label) : tt("Pose")) + tt(" retouchée")) || "").trim();
+        if (!name) return false;
+        const k = Math.min(1, 1600 / Math.max(iw, ih)), wpx = Math.round(iw * k), hpx = Math.round(ih * k);
+        const pic = await drawImage(d, wpx, hpx);
+        if (!pic) { toast(tt("Le dessin n'a pas pu être converti en image."), "error"); return false; }
+        const c = document.createElement("canvas"); c.width = wpx; c.height = hpx;
+        c.getContext("2d").drawImage(pic, 0, 0, wpx, hpx);
+        const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
+        try {
+          const r = await upload(`bank/${l.item}/drawnpose?${new URLSearchParams({ name, from: l.v })}`, blob);
+          await this.bankUI.reload();
+          l.v = r.variant; l.f = 0;
+          this.commit("pose"); this.editor.render(); this.refreshInspector();
+          toast(tt`Pose « ${name} » ajoutée aux cartes de ${item.name}. Sa tournette se lance depuis sa fiche, comme pour les autres poses.`);
+        } catch (e) { toast(tt("Enregistrement refusé : ") + e.message, "error"); return false; }
+      } });
+  }
   setPose(l, vid) {                    // change de pose en gardant le meme axe
     const item = this.bank.get(l.item), a = variantOf(item, l.v), b = variantOf(item, vid);
     const ang = a && a.orbit ? frameToAngle(a.orbit, l.f || 0) : 0;
@@ -793,6 +826,7 @@ class App {
     // en haut, les gestes directs ; puis un sous-menu par theme (Pose, Expression, Axe, Calque), ouvert au survol
     const item = this.bank.get(l.item), v = variantOf(item, l.v), items = [{ label: tt("🎬 Montage (animer la case)… (Tab)"), star: true, click: () => openMontage(this, this.sel.panel) },
       { label: tt("✎ Dessiner le fond… (Q)"), star: "blue", click: () => this.drawBackground(this.sel.panel) },
+      { label: tt("🖌 Dessiner sur l'élément (gommer, retoucher)…"), click: () => this.drawOnLayer(l) },
       { label: tt("📍 Montrer dans la banque"), click: () => this.bankUI.reveal(l.item) },
       { label: tt("🔄 Remplacer par…"), click: () => this.replaceLayer(l) },
       { label: l.lock ? tt("🔓 Déverrouiller l'élément") : tt("🔒 Verrouiller l'élément"), click: () => this.toggleLock(l) },

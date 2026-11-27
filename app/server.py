@@ -661,6 +661,8 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError("ce personnage est un assemblage : les poses et les orbites se calculent sur son corps (« %s »)" % it["body"])
         if act == "rebase" and method == "POST":                    # portrait-robot reedite : nouvelle image de base (corps brut)
             return self.send_json(self._rebase(iid, body))
+        if act == "drawnpose" and method == "POST":                 # retouche dessinee d'une image (atelier) : une pose de plus
+            return self.send_json(self._drawn_pose(iid, body, q.get("name", ""), q.get("from", "")))
         if act == "zones":                                          # zones suspectes d'une orbite (vides remplis a tort ?)
             return self.send_json(retouch.zones(iid, q.get("variant", "base")))
         if act == "punch" and method == "POST":                     # vider une zone remplie a tort (sous un bras)
@@ -1148,6 +1150,41 @@ class Handler(BaseHTTPRequestHandler):
             b = x["variants"]["base"]
             b.update({"cut": None, "orbit": None, "t": int(time.time())})
         return store.resolve(store.mutate_item(iid, apply))
+
+    def _drawn_pose(self, iid, raw, name, src):
+        """Image retouchee dans l'atelier (« Dessiner sur l'élément ») : PNG transparent, deja detoure. Elle devient une
+        nouvelle pose de l'element (image fixe, detourage pret), dont on peut ensuite faire la tournette comme des autres."""
+        if not raw:
+            raise ApiError("image manquante")
+        name = (name or "").strip()[:60] or "Pose dessinée"
+        d = store.item_dir(iid)
+        tmp = settings.DATA / "tmp" / ("drawn_%d.png" % (time.time() * 1000))
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_bytes(raw)
+        box = {}
+
+        def apply(x):
+            vid = store.variant_id(x, name)
+            box["vid"] = vid
+            x["variants"][vid] = {"label": name, "pose": "", "ref": "v/%s/ref.png" % vid, "cut": None, "orbit": None,
+                                  "drawn": True, "from": src if src in x["variants"] else ""}
+        try:
+            store.mutate_item(iid, apply)
+            vid = box["vid"]
+            sprites.normalize(tmp, d / ("v/%s/ref.png" % vid))
+            rel = "v/%s/cut.webp" % vid
+            # pas de rognage : l'image garde le cadre de l'image retouchee (celui de l'orbite), le calque ne change ni
+            # de taille ni de place quand il passe a la nouvelle pose
+            from PIL import Image
+            im = Image.open(tmp).convert("RGBA")
+            if im.height > 1024:
+                im = im.resize((max(1, round(im.width * 1024 / im.height)), 1024), Image.LANCZOS)
+            im.save(d / rel, quality=90, method=4)
+            w, h = im.size
+        finally:
+            tmp.unlink(missing_ok=True)
+        it = store.mutate_item(iid, lambda x: x["variants"][vid].update({"cut": rel, "cw": w, "ch": h, "t": int(time.time())}))
+        return {"variant": vid, "item": store.resolve(it)}
 
     def _compose(self, raw, nom):
         """Personnage entier : la tete envoyee par l'atelier sur le corps `nom` (bodydraw), fond blanc. Rend le PNG."""

@@ -37,9 +37,9 @@ const MANY = new Set(["free", "blob", "poly", "polyline", "brush", "paint", "era
 // points visibles d'un trace choisi : une forme point par point les montre sauf si on les a caches (ed: 0) ; les autres traces sur demande (ed: 1)
 const ptsOn = (t) => (t.t === "poly" || t.t === "polyline" ? t.ed !== 0 : !!t.ed);
 const SPECIAL = new Set(["brush", "paint", "erase", "stamp", "img", "hair"]);
-const BRUSH_KEYS = ["bsw", "tp", "sv", "pc", "bw", "op", "soft", "ss", "gap", "ink", "iop", "pw", "hd", "hs", "hl", "hz", "hj", "ho", "hf"];
+const BRUSH_KEYS = ["bsw", "tp", "sv", "pc", "bw", "op", "soft", "gr", "wet", "ss", "gap", "ink", "iop", "pw", "hd", "hs", "hl", "hz", "hj", "ho", "hf"];
 // pinceaux enregistres (bw.brushes) : { n : nom, t : type de pinceau, v : ses reglages }
-const BRUSH_SAVE = { brush: ["stroke", "bsw", "tp", "sv"], paint: ["pc", "bw", "op", "soft"], stamp: ["href", "ar", "ss", "gap", "ink", "stroke"],
+const BRUSH_SAVE = { brush: ["stroke", "bsw", "tp", "sv", "gr"], paint: ["pc", "bw", "op", "soft", "gr", "wet"], stamp: ["href", "ar", "ss", "gap", "ink", "stroke"],
                      hair: ["stroke", "hd", "hs", "hl", "hz", "hj", "ho", "hf"], erase: ["bw"] };
 // formes semees par le pinceau a poils (hf) : contours pleins de rayon 1, tournes et poses a chaque point du semis
 const ring0 = (n, f) => Array.from({ length: n }, (_, i) => f(i / n * 2 * Math.PI, i));
@@ -74,6 +74,50 @@ const HAIR_PRESETS = [
   [tt("Herbe (tracer de gauche à droite)"), { hd: 14, hs: 2, hl: 9, hz: 0.8, ho: -85, hj: 20 }],
   [tt("Pluie (tracer vers le bas)"), { hd: 3, hs: 40, hl: 8, hz: 0.3, ho: 0, hj: 3 }],
 ];
+// boite a crayons : prereglages des pinceaux (gr = grain, la dent du papier qui laisse des blancs ; wet = bords du lavis,
+// le pigment qui s'accumule au bord en sechant). Le lavis gris est celui des personnages dessines de la banque.
+const BRUSH_PRESETS = {
+  brush: [
+    [tt("Mine fine 0,3"), { stroke: "#4a4a4a", bsw: 0.3, tp: 0.1, sv: 0.2, gr: 0.3 }],
+    [tt("Crayon HB"), { stroke: "#3c3c3c", bsw: 0.6, tp: 0.2, sv: 0.3, gr: 0.5 }],
+    [tt("Crayon 2B"), { stroke: "#262626", bsw: 1, tp: 0.15, sv: 0.3, gr: 0.45 }],
+    [tt("Crayon gras 6B"), { stroke: "#151515", bsw: 2.2, tp: 0.1, sv: 0.25, gr: 0.6 }],
+    [tt("Fusain"), { stroke: "#1b1b1b", bsw: 4.5, tp: 0.05, sv: 0.2, gr: 0.8 }],
+    [tt("Crayon bleu (construction)"), { stroke: "#6f9fd8", bsw: 0.7, tp: 0.2, sv: 0.3, gr: 0.5 }],
+    [tt("Craie blanche"), { stroke: "#ffffff", bsw: 2, tp: 0.1, sv: 0.2, gr: 0.7 }],
+    [tt("Plume très fine"), { stroke: "#111111", bsw: 0.35, tp: 0.45, sv: 0.8, gr: 0 }],
+    [tt("Plume"), { stroke: "#111111", bsw: 1.2, tp: 0.4, sv: 0.75, gr: 0 }],
+    [tt("Feutre fin"), { stroke: "#111111", bsw: 0.8, tp: 0, sv: 0, gr: 0 }],
+    [tt("Pinceau à encre"), { stroke: "#111111", bsw: 4, tp: 0.45, sv: 0.9, gr: 0 }],
+    [tt("Pinceau sec"), { stroke: "#1a1a1a", bsw: 3.5, tp: 0.3, sv: 0.6, gr: 0.75 }],
+  ],
+  paint: [
+    [tt("Lavis gris (comme les personnages)"), { pc: "#8b9097", bw: 14, op: 0.32, soft: 0.45, gr: 0.3, wet: 0.6 }],
+    [tt("Lavis léger"), { pc: "#a8adb3", bw: 22, op: 0.2, soft: 0.65, gr: 0.25, wet: 0.45 }],
+    [tt("Lavis foncé (ombres)"), { pc: "#50565d", bw: 10, op: 0.45, soft: 0.4, gr: 0.3, wet: 0.7 }],
+    [tt("Lavis bleuté"), { pc: "#7d8c99", bw: 16, op: 0.3, soft: 0.5, gr: 0.3, wet: 0.55 }],
+    [tt("Aquarelle sépia"), { pc: "#8c6a48", bw: 16, op: 0.3, soft: 0.55, gr: 0.4, wet: 0.65 }],
+    [tt("Brosse sèche"), { pc: "#333333", bw: 9, op: 0.7, soft: 0.15, gr: 0.85, wet: 0 }],
+    [tt("Aplat net"), { pc: "#7d8c99", bw: 12, op: 1, soft: 0, gr: 0, wet: 0 }],
+    [tt("Blanc couvrant (retouche)"), { pc: "#ffffff", bw: 12, op: 1, soft: 0, gr: 0, wet: 0 }],
+  ],
+};
+// dent du papier : un bruit fin, le meme pour toutes les formes (graine fixe), qui retire de la matiere au trait
+const grainSteps = (g, inp) => {
+  const S = 1.2 + 4 * g, B = -S * 0.5 + 1.2 - 0.6 * g;
+  return `<feTurbulence type="fractalNoise" baseFrequency="0.3" numOctaves="3" seed="11" result="gn"/>` +
+    `<feColorMatrix in="gn" type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 ${S.toFixed(3)} 0 0 0 ${B.toFixed(3)}" result="ga"/>` +
+    `<feComposite in="${inp}" in2="ga" operator="in"/>`;
+};
+// granulation du lavis : le pigment se depose en taches lentes (et un peu de dent), sans trouer la couche
+const granSteps = (g, inp) => {
+  const S = 2.4 * g, B = 1 - 1.1 * g;
+  return `<feTurbulence type="fractalNoise" baseFrequency="0.07" numOctaves="3" seed="23" result="gt"/>` +
+    `<feTurbulence type="fractalNoise" baseFrequency="0.35" numOctaves="2" seed="11" result="gp"/>` +
+    `<feComposite in="gt" in2="gp" operator="arithmetic" k2="0.7" k3="0.3" result="gm"/>` +
+    `<feColorMatrix in="gm" type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 ${S.toFixed(3)} 0 0 0 ${B.toFixed(3)}" result="ga"/>` +
+    `<feComposite in="${inp}" in2="ga" operator="in"/>`;
+};
 const savedBrushes = () => { try { return JSON.parse(localStorage.getItem("bw.brushes") || "[]") || []; } catch (e) { return []; } };
 const storeBrushes = (l) => localStorage.setItem("bw.brushes", JSON.stringify(l.slice(0, 60)));
 let clip = null;                                           // formes copiees (Ctrl+C), gardees d'un atelier a l'autre
@@ -104,7 +148,7 @@ const jitterDef = (id, bx, r, seed, wd) => {   // wd : epaisseur du trait (l'ami
     `<feGaussianBlur stdDeviation="${(r * 0.2 + 0.3).toFixed(2)}"/><feComponentTransfer><feFuncA type="linear" slope="2.2" intercept="-0.45"/></feComponentTransfer></filter>`;
 };
 const DEF = { stroke: "#111111", sw: 1, fon: true, tr: "none", tone: 0.4, tone2: 0.9, ga: 90, dot: 14, form: "points", ha: 45, hand: 0, hw: 4, sj: 0, col: "#ffffff",   // hand : tremble du trait a la main (0 = net), hw : longueur des ondulations
-              bsw: 2.5, tp: 0.3, sv: 0.6, pc: "#7d8c99", bw: 12, op: 0.55, soft: 0.3, ss: 25, gap: 0.3, ink: "clair", iop: 1,   // pinceaux (voir BRUSHES)
+              bsw: 2.5, tp: 0.3, sv: 0.6, pc: "#7d8c99", bw: 12, op: 0.55, soft: 0.3, gr: 0, wet: 0, ss: 25, gap: 0.3, ink: "clair", iop: 1,   // pinceaux (voir BRUSHES)
               hd: 8, hs: 5, hl: 5, hz: 0.6, hj: 25, ho: 90, hf: "poil" };
 // poils ou pointille le long d'un trace : semis au hasard mais toujours le meme pour une forme (graine = son identifiant)
 function hairSvg(sh, H, tag, d) {
@@ -333,15 +377,34 @@ function shapesSvg(shapes, H, pre, hrefs) {
       return;
     }
     if (SPECIAL.has(sh.t)) {
-      if (sh.t === "brush") one = `<path ${tag} d="${brushPath(sh, H)}" fill="${hex6(sh.stroke, "#111111")}"/>`;
-      else if (sh.t === "hair") one = hairSvg(sh, H, tag, d);
+      const gr = Math.max(0, Math.min(1, +sh.gr || 0));
+      if (sh.t === "brush") {
+        one = `<path ${tag} d="${brushPath(sh, H)}" fill="${hex6(sh.stroke, "#111111")}"/>`;
+        if (gr > 0) {                                      // crayon : le grain du papier dans le trait
+          const pad = Math.max(0.3, sh.bsw) * 8 + 8;
+          defs += `<filter id="${id}g" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">${grainSteps(gr, "SourceGraphic")}</filter>`;
+          one = `<g filter="url(#${id}g)">${one}</g>`;
+        }
+      } else if (sh.t === "hair") one = hairSvg(sh, H, tag, d);
       else if (sh.t === "paint") {
-        const w = Math.max(1, sh.bw) * 4, soft = Math.max(0, Math.min(1, sh.soft)), pad = w * 2;
+        const w = Math.max(1, sh.bw) * 4, soft = Math.max(0, Math.min(1, sh.soft)), wet = Math.max(0, Math.min(1, +sh.wet || 0)), pad = w * 2;
         let flt = "";
-        if (soft > 0) {                                    // lavis : bord irregulier puis flou
-          defs += `<filter id="${id}w" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">` +
-            `<feTurbulence type="fractalNoise" baseFrequency="${(1.2 / w).toFixed(4)}" numOctaves="2" seed="${[...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7)}"/>` +
-            `<feDisplacementMap in="SourceGraphic" scale="${f1(soft * w * 0.6)}" xChannelSelector="R" yChannelSelector="G"/><feGaussianBlur stdDeviation="${f1(soft * w * 0.18)}"/></filter>`;
+        if (soft > 0 || wet > 0 || gr > 0) {               // lavis : bord irregulier puis flou ; bords plus fonces ; grain
+          let f = "";
+          if (soft > 0) f += `<feTurbulence type="fractalNoise" baseFrequency="${(1.2 / w).toFixed(4)}" numOctaves="2" seed="${[...String(sh.id || i)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7)}" result="wt"/>` +
+            `<feDisplacementMap in="SourceGraphic" in2="wt" scale="${f1(soft * w * 0.6)}" xChannelSelector="R" yChannelSelector="G" result="wd"/><feGaussianBlur in="wd" stdDeviation="${f1(soft * w * 0.18)}" result="wb"/>`;
+          else f += `<feOffset in="SourceGraphic" dx="0" dy="0" result="wb"/>`;
+          let last = "wb";
+          if (wet > 0) {                                   // le pigment s'accumule au bord en sechant : un liseré plus fonce
+            const sharp = soft > 0 ? "wd" : "SourceGraphic";   // le liseré se prend sur la forme nette, pas sur le flou
+            f += `<feMorphology in="${sharp}" operator="erode" radius="${f1(Math.max(0.8, w * 0.07 + w * 0.06 * wet))}" result="we"/>` +
+              `<feComposite in="${sharp}" in2="we" operator="out" result="wr"/><feGaussianBlur in="wr" stdDeviation="${f1(Math.max(0.5, w * 0.025 + soft * w * 0.04))}" result="wr2"/>` +
+              `<feComponentTransfer in="wr2" result="wr3"><feFuncA type="linear" slope="${(0.6 + 1.6 * wet).toFixed(2)}"/></feComponentTransfer>` +
+              `<feMerge result="wm"><feMergeNode in="wb"/><feMergeNode in="wr3"/></feMerge>`;
+            last = "wm";
+          }
+          if (gr > 0) f += granSteps(gr, last);
+          defs += `<filter id="${id}w" filterUnits="userSpaceOnUse" x="${f1(bx.x - pad)}" y="${f1(bx.y - pad)}" width="${f1(bx.w + 2 * pad)}" height="${f1(bx.h + 2 * pad)}" color-interpolation-filters="sRGB">${f}</filter>`;
           flt = ` filter="url(#${id}w)"`;
         }
         one = `<path ${tag} d="${d}" fill="none" stroke="${hex6(sh.pc, "#7d8c99")}" stroke-opacity="${Math.max(0.02, Math.min(1, sh.op))}" stroke-width="${f1(w)}" stroke-linecap="round" stroke-linejoin="round"${flt}/>`;
@@ -911,10 +974,17 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   function specialProps(kind, range, pick) {
     const col = (label, k, def, title) => h("span.row.colrow", { title: title || "" }, label, swatch(val(k) || def, (c) => set(k, c), () => hist.snap()));
     const inkPick = () => pick(tt("Blanc du papier"), "ink", { none: tt("Gardé (image telle quelle)"), clair: tt("Transparent (le trait reste)"), encre: tt("Transparent, trait recoloré") });
+    if (BRUSH_PRESETS[kind]) {                             // boite a crayons : un clic prend le crayon, le pinceau
+      const box = h("div.row.wrap.draw-presets");
+      box.append(...BRUSH_PRESETS[kind].map(([n, v]) => h("button.mini", { type: "button", title: tt("Prendre ce pinceau (ses réglages restent modifiables ci-dessous)"),
+        on: { click: () => { for (const [k, x] of Object.entries(v)) set(k, x); hist.snap(); props(); } } }, n)));
+      side.append(h("h4", kind === "brush" ? tt("Crayons, mines et plumes") : tt("Lavis et pinceaux de fond")), box);
+    }
     if (kind === "brush") side.append(col(tt("Couleur"), "stroke", "#111111"), range(tt("Épaisseur"), "bsw", 0.3, 30, 0.1),
-      range(tt("Pointes"), "tp", 0, 0.5, 0.01), range(tt("Sensibilité à la vitesse"), "sv", 0, 1, 0.01));
+      range(tt("Pointes"), "tp", 0, 0.5, 0.01), range(tt("Sensibilité à la vitesse"), "sv", 0, 1, 0.01),
+      range(tt("Grain (dent du papier)"), "gr", 0, 1, 0.01));
     if (kind === "paint") side.append(col(tt("Couleur"), "pc", "#7d8c99"), range(tt("Largeur"), "bw", 1, 80, 0.5), range(tt("Opacité"), "op", 0.03, 1, 0.01),
-      range(tt("Lavis"), "soft", 0, 1, 0.01));
+      range(tt("Lavis"), "soft", 0, 1, 0.01), range(tt("Bords du lavis (pigment)"), "wet", 0, 1, 0.01), range(tt("Grain (dent du papier)"), "gr", 0, 1, 0.01));
     if (kind === "erase") side.append(range(tt("Largeur"), "bw", 1, 80, 0.5));
     if (kind === "hair") side.append(col(tt("Couleur"), "stroke", "#111111"), range(tt("Densité"), "hd", 0.5, 60, 0.5), range(tt("Étalement"), "hs", 0, 40, 0.5),
       range(tt("Longueur (0 = points)"), "hl", 0, 30, 0.5), range(tt("Épaisseur"), "hz", 0.2, 6, 0.1), range(tt("Direction (°)"), "ho", -90, 90, 1), range(tt("Désordre (°)"), "hj", 0, 90, 1));
@@ -1313,9 +1383,11 @@ export function openDrawEditor({ draw, ratio, backdrop, title, onSave, ghosts = 
   // un element (kit) n'a ni zone agrandie ni lignes d'effet : son cadre est celui de l'atelier
   const m = modal(title || tt("Dessiner le fond"), h("div.draw-editor", h("div.draw-main", bar, h("div.row.wrap", extra || "", stageBgControl(() => zone()), zoomBar), ghostBar, kit ? "" : extBar, h("div.draw-framerow", h("div.draw-frame", svg), liveSlot), kit ? "" : fxBox), side),
     [{ label: tt("Annuler"), click: done },
-     { label: saveLabel, primary: true, click: () => { finish(true); done();
+     // onSave peut rendre false (nom refuse, envoi rate) : l'atelier reste ouvert, rien n'est perdu
+     { label: saveLabel, primary: true, click: async () => { finish(true);
        const out = layers ? { shapes: layers.filter((l) => !l.hidden).flatMap((l) => l.shapes), layers } : { shapes };
-       onSave(Object.assign(out, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null)); if (saveLabel === tt("Enregistrer le fond")) toast(tt("Fond dessiné enregistré.")); } }]);   // ailleurs, l'appelant dit lui-meme ce qui est fait
+       if ((await onSave(Object.assign(out, ext.l + ext.r + ext.t + ext.b > 0 ? { ext } : null, fx.on ? { fx } : null))) === false) return false;
+       done(); if (saveLabel === tt("Enregistrer le fond")) toast(tt("Fond dessiné enregistré.")); } }]);   // ailleurs, l'appelant dit lui-meme ce qui est fait
 
   m.box.classList.add("modal-wide");
   hist.watch(m.box);
