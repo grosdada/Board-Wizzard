@@ -5,7 +5,9 @@ import { loadImage } from "./api.js";
 import { groundSvg, groundFor, groundInFrame, frameVis } from "./ground.js";
 import { drawImage } from "./draw.js";
 import { faceOps, headReady, opsCanvas } from "./face.js";
-import { bgStroke, frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, cmPixels, mouthFrame } from "./model.js";
+import { bgStroke, frameToAngle, variantOf, lineWidth, frameT, layerCM, bgCM, blinkAll, colorMatrix, cmFilter, cmPixels, mouthFrame } from "./model.js";
+// clignoteur du montage : le sol prend aussi sa couleur de la 1re image
+const blinkGround = (pan, svg) => { const bk = blinkAll(pan, 0), gm = bk && colorMatrix(null, bk); return gm ? cmFilter("grb", gm) + `<g filter="url(#grb)">${svg}</g>` : svg; };
 import { exprCard } from "./lipsync.js";
 import { sprite, layerSp, placement, layerBox, depthOf, blurOf, groundShadow, bodyFill, inkFill, background, vecReady, inkStroke, shadeOf, shadeShapes } from "./model.js";
 
@@ -50,10 +52,10 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
     main.save(); main.setTransform(1, 0, 0, 1, 0, 0); main.drawImage(oc, 0, 0); main.restore();
   };
   const bg = background(pan, app.bank, app.project.id);
-  if (pan.bgCanvas) await graded(bgCM(pan), async () => { ctx.drawImage(pan.bgCanvas, 0, 0, cv.width, cv.height); });   // decor deja rendu (cylindre de la vue 3D)
+  if (pan.bgCanvas) await graded(bgCM(pan, 0), async () => { ctx.drawImage(pan.bgCanvas, 0, 0, cv.width, cv.height); });   // decor deja rendu (cylindre de la vue 3D)
   ctx.save();
   const bgOn = pan.bgCanvas || plane(1);                   // decor, sol et fond dessine : au plan du decor
-  if (bg && bgOn && !pan.bgCanvas) await graded(bgCM(pan), async () => {
+  if (bg && bgOn && !pan.bgCanvas) await graded(bgCM(pan, 0), async () => {
     const pl = placement(local, bg.w || 16, bg.h || 9, (FT && FT.view) || pan.view);
     const bvf = await vecReady(bg);
     if (bvf) {                                             // decor en traces
@@ -73,7 +75,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
   const GR = FT ? groundInFrame(groundFor(pan), pan.frame, local) : groundFor(pan);
   if (GR && GR.on && !pan.bgCanvas) {
     const v = FT ? frameVis(pan.frame, local) : { x: 0, y: 0, w: bb.w, h: bb.h };
-    const gs = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(v.w * kx)}" height="${Math.round(v.h * ky)}" viewBox="${v.x} ${v.y} ${v.w} ${v.h}">${groundSvg(GR, { x: 0, y: 0, w: bb.w, h: bb.h }, "gr", v)}</svg>`;
+    const gs = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(v.w * kx)}" height="${Math.round(v.h * ky)}" viewBox="${v.x} ${v.y} ${v.w} ${v.h}">${blinkGround(pan, groundSvg(GR, { x: 0, y: 0, w: bb.w, h: bb.h }, "gr", v))}</svg>`;
     ctx.drawImage(await loadImage("data:image/svg+xml;charset=utf-8," + encodeURIComponent(gs)), v.x * kx, v.y * ky, v.w * kx, v.h * ky);
   }
   ctx.save();
@@ -140,7 +142,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
       const tx = box.x + (box.w - vf.w * sc) / 2, ty = box.y + box.h - vf.h * sc, col = bodyFill(l), inkc = inkFill(l), st = inkStroke(l.lw, col, inkc, vf.sw), blur = sharp ? 0 : blurOf(pan, depthOf(pan, i), bb);
       const body = new Path2D(vf.body), ink = new Path2D(vf.ink);
       cast(l, box);
-      await withGom(l, sp, box, () => graded(layerCM(l, true), async () => {
+      await withGom(l, sp, box, () => graded(layerCM(l, true, blinkAll(pan, 0)), async () => {
       ctx.save();
       ctx.filter = blur > 0.4 ? `blur(${(blur * kx).toFixed(2)}px)` : "none";
       ctx.scale(kx, ky);
@@ -174,7 +176,7 @@ export async function flattenPanel(app, g, longSide = 1344, sharp = true, over =
     }
     let im = await loadImage(sp.url);
     const box = layerBox(local, l, { w: im.naturalWidth, h: im.naturalHeight });
-    const cm = layerCM(l, false);
+    const cm = layerCM(l, false, blinkAll(pan, 0));
     if (cm) {                                              // colorize et colorimetrie : la matrice sur les pixels, la decoupe gardee
       const tcv = document.createElement("canvas");
       tcv.width = im.naturalWidth; tcv.height = im.naturalHeight;

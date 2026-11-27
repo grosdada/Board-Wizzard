@@ -9,7 +9,7 @@ import { markShape, markOutline, thin } from "./marks.js";
 import { vecFrame, layerSp, inkStroke, bgStroke, jitterFilter, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
-import { frameToAngle, thinMask, lineWidth, frameT, markupReady, cmFilter, layerCM, bgCM } from "./model.js";
+import { frameToAngle, thinMask, lineWidth, frameT, markupReady, cmFilter, layerCM, bgCM, blinkAll, colorMatrix } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
@@ -262,7 +262,7 @@ export class Editor {
         if (bg) {
           const pl = placement(bb, bg.w || 16, bg.h || 9, (FT0 && FT0.view) || pan.view);
           const blur = blurOf(pan, 1, bb);
-          const bcm = bgCM(pan);                             // colorimetrie et colorize du decor
+          const bcm = bgCM(pan, 0);                          // colorimetrie et colorize du decor (clignoteur du montage a sa 1re image)
           if (bcm) defs.insertAdjacentHTML("beforeend", cmFilter("bcm-" + g.id, bcm));
           const bgrp = grp;
           if (bcm) { grp = s("g", { filter: `url(#bcm-${g.id})` }); bgrp.append(grp); }
@@ -296,6 +296,8 @@ export class Editor {
         if (GR && GR.on) {
           const gg = s("g", { "pointer-events": "none", "data-ground": g.id });
           gg.innerHTML = groundSvg(GR, { x: bb.x0, y: bb.y0, w: bb.w, h: bb.h }, "gr-" + g.id, FT0 ? frameVis(pan.frame, bb) : undefined);
+          { const bk = blinkAll(pan, 0), gm = bk && colorMatrix(null, bk);            // clignoteur du montage : le sol aussi, a sa 1re image
+            if (gm) gg.innerHTML = cmFilter("grb-" + g.id, gm) + `<g filter="url(#grb-${g.id})">${gg.innerHTML}</g>`; }
           grp.append(gg);
         }
         const n2 = grp.childNodes.length;
@@ -358,7 +360,7 @@ export class Editor {
             gb.append(gi);
             if (fo) gw.insertAdjacentHTML("beforeend", opsSvg(fo.over, fattr));
             if (st.outline > 0) gv.append(s("path", { d: vf.body, fill: "none", stroke: "#111111", "stroke-width": st.outline, "pointer-events": "none" }));
-            const vcm = layerCM(l, true);                    // colorimetrie de l'element (teinte, saturation, luminosite)
+            const vcm = layerCM(l, true, blinkAll(pan, 0));                   // colorimetrie de l'element (teinte, saturation, luminosite)
             if (vcm) { defs.insertAdjacentHTML("beforeend", cmFilter("cm-" + g.id + "-" + l.id, vcm)); const gc = s("g", { filter: `url(#cm-${g.id}-${l.id})` }); gc.append(gv); grp.append(gc); }
             else grp.append(gv);
             this.exprLayer(grp, l, sp, box, defs, g.id);
@@ -369,7 +371,7 @@ export class Editor {
             x: box.x, y: box.y, width: box.w, height: box.h, preserveAspectRatio: "xMidYMax meet", "data-layer": l.id,
             "data-panel": g.id, transform: ((l.rz ? `rotate(${l.rz} ${box.cx} ${box.y + box.h / 2}) ` : "") + (l.flip ? `translate(${2 * box.cx} 0) scale(-1 1)` : "")) || null,
             filter: this.blur(defs, blurOf(pan, depthOf(pan, i), bb)), class: "layer" });
-          const cm = layerCM(l, false);
+          const cm = layerCM(l, false, blinkAll(pan, 0));
           if (cm) {                                          // colorize et colorimetrie : une matrice de couleur sur l'image
             const tid = "tn-" + g.id + "-" + l.id;
             defs.insertAdjacentHTML("beforeend", cmFilter(tid, cm));
