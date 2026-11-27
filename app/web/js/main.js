@@ -354,6 +354,42 @@ class App {
     this.commit("insert-case"); this.refresh();
     toast(added ? tt("Case insérée : la suite recule d'une case, et une page s'ajoute à la fin pour la dernière. Ctrl+Z pour revenir.") : tt("Case insérée : la suite recule d'une case. Ctrl+Z pour revenir."));
   }
+  // Reorganiser (mode de l'edition des cases) : le contenu de la case `from` va a la place de `to` dans la meme page, les cases
+  // entre les deux se decalent d'un cran (comme une liste qu'on reordonne). Le decoupage ne bouge pas ; le texte du cadre
+  // d'annotation sous chaque case, les decks et les calculs suivis suivent leur contenu.
+  movePanel(from, to) {
+    const P = this.project, pg = this.page();
+    if (from === to) return;
+    const ids = compute(pg.page, pg.layout).panels.slice().sort((a, b) => a.order - b.order).map((g) => g.id);
+    const i = ids.indexOf(from), j = ids.indexOf(to);
+    if (i < 0 || j < 0) return;
+    const span = ids.slice(Math.min(i, j), Math.max(i, j) + 1);
+    if (Object.values(this.pending || {}).some((p) => p.project === P.id && span.includes(p.pid)))
+      return toast(tt("Un calcul est en cours sur une de ces cases : attends qu'il soit fini pour les réorganiser."), "error");
+    const noteOf = (id) => (pg.notes || []).find((n) => n.under === id);
+    const C = ids.map((id) => ({ id, pan: pg.panels[id] || null, note: noteOf(id), text: (noteOf(id) || {}).text || "" }));
+    const order = C.slice(); order.splice(j, 0, order.splice(i, 1)[0]);
+    const map = {};                                        // ancienne case -> nouvelle case du meme contenu
+    ids.forEach((id, k) => {
+      const c = order[k];
+      map[c.id] = id;
+      if (c.pan) pg.panels[id] = c.pan; else delete pg.panels[id];
+    });
+    const geom = compute(pg.page, pg.layout);
+    ids.forEach((id, k) => {
+      const c = order[k], tn = C[k].note;
+      if (tn) tn.text = c.text;
+      else if (c.text.trim()) {                            // pas de cadre sous la case d'arrivee : on en pose un, comme celui d'origine
+        const g = geom.panels.find((q) => q.id === id), r = g && this.roomUnder(geom, pg.page, g);
+        (pg.notes = pg.notes || []).push(Object.assign({}, c.note, r || {}, { id: uid(), under: id, text: c.text }));
+      }
+    });
+    for (const d of P.decks || []) for (const c of d.clips || []) if (c.page === pg.id && map[c.panel]) c.panel = map[c.panel];
+    if (this.sel.panel && map[this.sel.panel]) this.sel = { panel: map[this.sel.panel] };
+    this.commit("reorganize"); this.refresh();
+    const g = geom.panels.find((q) => q.id === to);
+    toast(tt`Case déplacée en ${g ? g.order : j + 1}. Ctrl+Z pour revenir.`);
+  }
   restorePanel(pid) {
     const pg = this.page(), pan = pg.panels[pid];
     if (!pan || !Object.keys(pan).length) return toast(tt("Cette case est déjà vide."));
@@ -405,8 +441,11 @@ class App {
       h("div.row", h("button.mini", { on: { click: () => this.split("h") } }, tt("Couper ━")), h("button.mini", { on: { click: () => this.split("v") } }, tt("Couper ┃")),
         h("button.mini.danger", { on: { click: () => this.removePanel() } }, tt("Supprimer la case"))),
       h("button.mini.editcuts" + (this.editCuts ? ".on" : ""), { title: tt("Mode édition des cases : les traits entre les cases apparaissent au survol, on les glisse pour changer la taille des cases. Hors de ce mode, ils restent cachés."),
-        on: { click: () => { this.editCuts = !this.editCuts; localStorage.setItem("bw.editCuts", this.editCuts ? "1" : ""); this.editor.render(true); this.renderLeft(); } } }, this.editCuts ? tt("✓ Édition des cases") : tt("✂ Éditer les cases")),
+        on: { click: () => { this.editCuts = !this.editCuts; if (this.editCuts) this.reorg = false; localStorage.setItem("bw.editCuts", this.editCuts ? "1" : ""); this.editor.render(true); this.renderLeft(); } } }, this.editCuts ? tt("✓ Édition des cases") : tt("✂ Éditer les cases")),
       this.editCuts ? h("p.muted", tt("Glisse un trait pour le déplacer, un de ses bouts pour l'incliner (Maj : trait droit).")) : "",
+      h("button.mini.editcuts" + (this.reorg ? ".on" : ""), { title: tt("Mode réorganiser : on attrape une case à la main et on la pose à la place d'une autre ; les cases entre les deux se décalent d'un cran. Seul le contenu change de place, le découpage reste."),
+        on: { click: () => { this.reorg = !this.reorg; if (this.reorg && this.editCuts) { this.editCuts = false; localStorage.setItem("bw.editCuts", ""); } this.editor.render(true); this.renderLeft(); } } }, this.reorg ? tt("✓ Réorganiser") : tt("✋ Réorganiser")),
+      this.reorg ? h("p.muted", tt("Attrape une case et pose-la sur une autre : elle prend sa place, les autres se décalent.")) : "",
       h("h3", tt("Cadres de texte")),
       h("div.row.wrap", h("button.mini", { title: tt("Un cadre de texte posé sur la page, n'importe où : titre de page, annotation, indication. Double-clic pour écrire dedans."), on: { click: () => this.addNote() } }, tt("▭ Cadre de texte")),
         h("button.mini", { title: tt("Un cadre de texte sous chaque case, dans la place libre en dessous (storyboard annoté)"), on: { click: () => this.notesUnder() } }, tt("▤ Annotations sous les cases"))),

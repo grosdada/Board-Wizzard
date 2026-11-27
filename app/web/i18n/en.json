@@ -2354,7 +2354,13 @@
   "Cadre centré, zoom 1, sans inclinaison ni avancée": "Centred frame, zoom 1, no tilt or move-in",
   "Caméra au neutre": "Neutral camera",
   "La caméra bouge dans le montage : ces réglages valent pour la case seulement. « ⤓ 1re image → case » dans le montage les remet sur sa première image.": "The camera moves in the edit: these settings apply to the panel only. « ⤓ 1st frame → panel » in the edit sets them back to its first frame.",
-  "Animée dans le montage ⓘ": "Animated in the edit ⓘ"
+  "Animée dans le montage ⓘ": "Animated in the edit ⓘ",
+  "✋ Réorganiser": "✋ Reorganize",
+  "✓ Réorganiser": "✓ Reorganizing",
+  "Mode réorganiser : on attrape une case à la main et on la pose à la place d'une autre ; les cases entre les deux se décalent d'un cran. Seul le contenu change de place, le découpage reste.": "Reorganize mode: grab a panel with the hand and drop it in place of another; the panels in between shift by one. Only the content moves, the layout stays.",
+  "Attrape une case et pose-la sur une autre : elle prend sa place, les autres se décalent.": "Grab a panel and drop it on another: it takes its place, the others shift.",
+  "Un calcul est en cours sur une de ces cases : attends qu'il soit fini pour les réorganiser.": "A computation is running on one of these panels: wait until it is done to reorganize them.",
+  "Case déplacée en {0}. Ctrl+Z pour revenir.": "Panel moved to {0}. Ctrl+Z to undo."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

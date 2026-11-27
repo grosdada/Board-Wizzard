@@ -40,11 +40,12 @@ export class Editor {
     this.imgs = new Map();
     this.bubs = new Map();
     this.svg.addEventListener("pointerdown", (e) => this.down(e));
+    this.wrap.addEventListener("pointerdown", (e) => this.reorgDown(e), true);   // mode reorganiser : avant tout le reste
     // double-clic sur une case : elle prend toute la place de la feuille ; double-clic encore (ou Echap) : retour a la page
     this.host = host; this.focusId = null;
     this.back = h("button.mini.focus-back", { title: tt("Revenir à la page entière (Échap, ou double-clic)"), on: { click: () => this.focus(null) } }, tt("⤡ Page entière"));
     host.append(this.back);
-    this.svg.addEventListener("dblclick", (e) => { const g = this.panelAt(this.pagePt(e)); if (g) { e.preventDefault(); this.focus(this.focusId === g.id ? null : g.id); } });
+    this.svg.addEventListener("dblclick", (e) => { if (this.app.reorg) return; const g = this.panelAt(this.pagePt(e)); if (g) { e.preventDefault(); this.focus(this.focusId === g.id ? null : g.id); } });
     window.addEventListener("resize", () => this.applyFocus());
     window.addEventListener("pointermove", (e) => this.move(e));
     window.addEventListener("pointerup", (e) => this.up(e));
@@ -170,6 +171,43 @@ export class Editor {
     this.svg.append(el);
     this.drawPlays();
     this.pv.raf = requestAnimationFrame(tick);
+  }
+  // Mode reorganiser : on attrape une case (main fermee), une vignette la suit, la case visee s'encadre ; au lacher,
+  // app.movePanel la pose a cette place et decale les autres. Rien d'autre ne reagit dans ce mode (bulles, elements, traits).
+  reorgDown(e) {
+    const app = this.app;
+    if (!app.reorg) return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.button !== 0) return;
+    const g0 = this.panelAt(this.pagePt(e));
+    if (!g0) return;
+    const box = (g) => {                                   // boite ecran de la case
+      const m = this.svg.getScreenCTM(), b = g.bbox;
+      return { x: m.e + m.a * b.x0, y: m.f + m.d * b.y0, w: m.a * b.w, h: m.d * b.h };
+    };
+    const place = (el, r) => Object.assign(el.style, { left: r.x + "px", top: r.y + "px", width: r.w + "px", height: r.h + "px" });
+    const src = h("div.reorg-src"), tgt = h("div.reorg-tgt"), ghost = h("div.reorg-ghost", h("span", String(g0.order)));
+    place(src, box(g0)); tgt.style.display = "none";
+    const b0 = box(g0), k = Math.min(1, 160 / Math.max(b0.w, b0.h));
+    Object.assign(ghost.style, { width: b0.w * k + "px", height: b0.h * k + "px" });
+    document.body.append(src, tgt, ghost);
+    document.body.classList.add("reorg-grabbing");
+    let over = null;
+    const mv = (ev) => {
+      Object.assign(ghost.style, { left: ev.clientX + 18 + "px", top: ev.clientY + 18 + "px" });
+      over = this.panelAt(this.pagePt(ev));
+      if (over && over.id !== g0.id) { place(tgt, box(over)); tgt.style.display = ""; tgt.dataset.n = over.order; } else tgt.style.display = "none";
+    };
+    const end = (ev) => {
+      window.removeEventListener("pointermove", mv, true); window.removeEventListener("pointerup", end, true);
+      window.removeEventListener("pointercancel", end, true);
+      src.remove(); tgt.remove(); ghost.remove();
+      document.body.classList.remove("reorg-grabbing");
+      if (ev.type === "pointerup" && over && over.id !== g0.id) app.movePanel(g0.id, over.id);
+    };
+    window.addEventListener("pointermove", mv, true); window.addEventListener("pointerup", end, true);
+    window.addEventListener("pointercancel", end, true);
+    mv(e);
   }
   panelAt(pt) {
     if (!this.geom) return null;
@@ -391,6 +429,7 @@ export class Editor {
     }
     this.wrap.classList.toggle("drawing", !!app.markTool);
     this.wrap.classList.toggle("editcuts", !!app.editCuts);
+    this.wrap.classList.toggle("reorg", !!app.reorg);
     for (const key of [...this.imgs.keys()]) if (!this.used.has(key)) this.imgs.delete(key);
     this.applyFocus();
     if (!light) this.renderOverlay();

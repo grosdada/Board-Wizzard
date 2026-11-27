@@ -96,6 +96,14 @@ aside.right { border-left: 1px solid var(--line); padding: 0; display: flex; fle
 .cut-end { cursor: crosshair; }
 .cut:hover .cut-line, .cut:hover .cut-mid, .cut:hover .cut-end { opacity: 1; }
 .page-wrap:not(.editcuts) .cut { display: none; }          /* traits entre les cases : seulement en mode edition des cases */
+/* mode reorganiser : une grosse main (deux fois la main ordinaire), fermee quand on tient une case */
+.page-wrap.reorg, .page-wrap.reorg * { cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><text x='2' y='54' font-size='52'>%E2%9C%8B</text></svg>") 30 30, grab !important; }
+body.reorg-grabbing, body.reorg-grabbing * { cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><text x='2' y='54' font-size='52'>%E2%9C%8A</text></svg>") 30 30, grabbing !important; user-select: none; }
+.page-wrap.reorg .cut { display: none; }
+.reorg-src { position: fixed; pointer-events: none; z-index: 900; background: rgba(0, 0, 0, 0.35); outline: 3px dashed var(--accent); }
+.reorg-tgt { position: fixed; pointer-events: none; z-index: 901; outline: 4px solid var(--accent); background: rgba(80, 200, 180, 0.15); }
+.reorg-tgt::after { content: "→ " attr(data-n); position: absolute; left: 8px; top: 6px; font: 700 22px system-ui, sans-serif; color: #fff; background: var(--accent); padding: 2px 10px; border-radius: 6px; }
+.reorg-ghost { position: fixed; pointer-events: none; z-index: 902; background: rgba(30, 30, 30, 0.85); border: 2px solid var(--accent); border-radius: 4px; display: flex; align-items: center; justify-content: center; font: 700 28px system-ui, sans-serif; color: #fff; }
 .lh-box { fill: none; stroke: var(--accent); stroke-width: 3; stroke-dasharray: 14 9; pointer-events: none; vector-effect: non-scaling-stroke; }
 .lh-foot { fill: var(--accent); stroke: #0e1b19; stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
 .lh-stem { stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
