@@ -342,7 +342,7 @@ export function openMontage(app, pid, opt = {}) {
   const dof = pan.dof = Object.assign({ on: false, focus: 0.3, amount: 12 }, pan.dof);
   anim.tracks = anim.tracks || {};
   let t = 0, sel = "cam", selKey = null, playing = false, loop = true, auto = localStorage.getItem("bw.autokey") !== "0", raf = 0, last = 0, drag = null;
-  let recArmed = false, recAct = null, recRaf = 0, recBtn = null;      // Rec Action (voir recStart)
+  let recArmed = false, recAct = null, recRaf = 0, recBtn = null, recHeld = false, recIdle = 0;      // Rec Action (voir recStart) ; recHeld : bouton de la souris tenu
   const picked = new Set();                                // cles prises au lasso (ou Ctrl + clic) : elles bougent et s'effacent ensemble
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -1250,10 +1250,12 @@ export function openMontage(app, pid, opt = {}) {
   }
   function change(id, patch) {                             // un reglage bouge : cle automatique, ou valeur de base
     if (recArmed && !recAct && vdrag && vdrag.id === id && (layerOf(id) || nullOf(id))) recStart(id);   // Rec Action : le premier mouvement lance l'horloge
+    if (recArmed && !recAct && id === "cam" && sel === "cam") recStart(id);   // camera : glisser dans l'image, ses curseurs ou la molette
     if (recAct && recAct.id === id) {                       // en enregistrement : toujours une cle, a l'instant qui avance
       t = recNow();
       recAct.patch = Object.assign(recAct.patch || {}, patch);
       setKey(id, patch); recAct.keys.add(selKey);
+      if (id === "cam" && !recHeld) { clearTimeout(recIdle); recIdle = setTimeout(() => { if (recAct && !recHeld) recStop(); }, 450); }   // molette : arret quand elle se calme
       paint(); lanes(); syncProps(); return;
     }
     if (id === "bg" && !anim.bgAnim) pan.view = Object.assign({ zoom: 1, ox: 0, oy: 0 }, pan.view, patch);   // decor fixe : sa place, sans cle
@@ -2816,12 +2818,22 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   // temps reel : la tete de lecture avance depuis l'instant affiche, une cle tous les 1/12 s (meme souris immobile, pour
   // tenir la pose), jusqu'a ce que le bouton de la souris soit relache. Les anciennes cles de sa piste sur ce passage partent.
   const REC_STEP = 1 / 12;
-  recBtn = h("button.mini.mt-rec", { title: tt("Enregistrer une action : choisis un personnage (ou un null), arme ce bouton, puis fais le geste dans l'image (déplacer, tourner, pencher, taille). Le temps avance pendant le geste et chaque instant devient une clé, jusqu'à ce que tu relâches la souris. La voix et la lecture suivent."),
-    on: { click: () => { recArmed = !recArmed && !!(layerOf(sel) || nullOf(sel)); recSync(); } } }, tt("● Rec Action"));
+  // La camera aussi : arme avec la Camera choisie, le geste est un glisser dans l'image, un de ses curseurs, ou la molette
+  // (zoom, Alt : avancer) ; l'enregistrement s'arrete au lacher de la souris, ou quand la molette s'arrete.
+  const recOk = () => !!(layerOf(sel) || nullOf(sel) || sel === "cam");
+  recBtn = h("button.mini.mt-rec", { title: tt("Enregistrer une action : choisis un personnage, un null ou la caméra, arme ce bouton, puis fais le geste : dans l'image (déplacer, tourner, pencher, taille ; pour la caméra : glisser le cadre, la molette pour le zoom, Alt + molette pour avancer) ou avec ses curseurs. Le temps avance pendant le geste et chaque instant devient une clé, jusqu'à ce que tu relâches la souris. La voix et la lecture suivent."),
+    on: { click: () => { recArmed = !recArmed && recOk(); recSync(); } } }, tt("● Rec Action"));
+  const recDown = () => {                                  // montage ferme : on ne l'ecoute plus
+    if (!svg.isConnected) { window.removeEventListener("pointerdown", recDown, true); window.removeEventListener("pointerup", recUp, true); return; }
+    recHeld = true;
+  };
+  const recUp = () => { recHeld = false; if (recAct && recAct.id === "cam") recStop(); };
+  window.addEventListener("pointerdown", recDown, true);
+  window.addEventListener("pointerup", recUp, true);
   function recSync() {
     if (!recBtn) return;
-    if (recArmed && !layerOf(sel) && !nullOf(sel)) recArmed = false;
-    recBtn.disabled = !layerOf(sel) && !nullOf(sel) && !recArmed;
+    if (recArmed && !recOk()) recArmed = false;
+    recBtn.disabled = !recOk() && !recArmed;
     recBtn.classList.toggle("on", recArmed);
     recBtn.classList.toggle("live", !!recAct);
   }
@@ -2843,7 +2855,7 @@ Payant : 1 image GPT Image 2.5 sur fal, environ 0,02 $. La tâche passe en tête
   function recStop() {
     const r = recAct;
     if (!r) return;
-    t = recNow(); recAct = null; clearInterval(recRaf); voices(false);
+    t = recNow(); recAct = null; clearInterval(recRaf); clearTimeout(recIdle); voices(false);
     if (r.patch) { setKey(r.id, r.patch); r.keys.add(selKey); }   // la derniere pose, a l'instant du lacher
     const t1 = t, ks = keysOf(r.id);
     if (anim.tracks[r.id]) anim.tracks[r.id] = ks.filter((k) => r.keys.has(k) || k.t < r.t0 - 1e-6 || k.t > t1 + 1e-6);

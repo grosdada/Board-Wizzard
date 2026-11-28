@@ -2530,7 +2530,8 @@
   "Aucun décor dans « Intérieurs dessinés » pour servir de modèle.": "No set in “Intérieurs dessinés” to serve as a model.",
   "Le cadre, le zoom, les mouvements de caméra, la profondeur de champ": "The frame, zoom, camera moves, depth of field",
   "Forme du décor détachée : sa profondeur": "Detached background shape: its depth",
-  "null": "null"
+  "null": "null",
+  "Enregistrer une action : choisis un personnage, un null ou la caméra, arme ce bouton, puis fais le geste : dans l'image (déplacer, tourner, pencher, taille ; pour la caméra : glisser le cadre, la molette pour le zoom, Alt + molette pour avancer) ou avec ses curseurs. Le temps avance pendant le geste et chaque instant devient une clé, jusqu'à ce que tu relâches la souris. La voix et la lecture suivent.": "Record an action: pick a character, a null or the camera, arm this button, then make the gesture: in the image (move, turn, tilt, size; for the camera: drag the frame, wheel for zoom, Alt + wheel to push in) or with its sliders. Time runs during the gesture and every instant becomes a key, until you release the mouse. Voice and playback follow."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
