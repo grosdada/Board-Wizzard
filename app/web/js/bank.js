@@ -4,6 +4,7 @@ import { tt, tr } from "./i18n.js";
 import { h, get, post, put, del, upload, toast, modal } from "./api.js";
 import { openPortrait, portraitThumb } from "./portrait.js";
 import { openIdentikit } from "./identikit.js";
+import { openDecorRetouch } from "./decorlayers.js";
 import { sprite, preload, variantOf, AXES, nearestAxis, angleToFrame, frameToAngle } from "./model.js";
 
 const KINDS = [["character", tt("Personnages")], ["decor", tt("Décors")], ["asset", tt("Assets")], ["audio", tt("Audio")], ["case", tt("Cases")]];
@@ -864,7 +865,7 @@ export class Bank {
                 dragstart: (e) => { e.dataTransfer.setData("application/x-bw-item", JSON.stringify({ id, v: k })); } } },
           star, cross,
           h("img", { src: this.thumb(item, k), draggable: false, loading: "lazy" }), h("div.var-name", tr(vv.label)),
-          h("div.card-meta", vv.orbit ? h("span.b.ok", "↻") : h("span.b", tt("fixe")), busy ? h("span.b.busy", "⏳") : null)));
+          h("div.card-meta", vv.orbit ? h("span.b.ok", "↻") : h("span.b", tt("fixe")), vv.planes ? h("span.b", { title: tt("Version en calques : chaque calque se pose dans la case à sa propre profondeur") }, "☰ " + vv.planes.length) : null, busy ? h("span.b.busy", "⏳") : null)));
       }
       // actions sur la variante
       // retouches du detourage : bien en vue sous l'image
@@ -888,6 +889,11 @@ export class Bank {
           toast(tt("Orbite relancée avec une autre graine.")); app.pollSoon(); } } }, v.orbit ? tt("↻ Refaire l'orbite") : tt("↻ Générer l'orbite")),
         item.kind !== "decor" ? h("button.mini", { on: { click: async () => { await post(`bank/${id}/cut`, { variant: vid, target: target() }); app.pollSoon(); } } }, tt("✂ Refaire le détourage")) : null,
         vid !== "base" ? h("button.mini.danger", { on: { click: async () => { await del(`bank/${id}/variant/${vid}`); vid = "base"; await this.reload(); } } }, tt("Supprimer cette variante")) : null,
+        item.kind === "decor" ? h("button.mini", { title: (v.retouch ? tt("Rouvre l'atelier de dessin avec les calques de cette version ; l'enregistrement en fait une nouvelle version.")
+            : tt("Ouvre l'image affichée dans l'atelier de dessin, comme premier calque : gomme, pinceaux, lasso pour couper une partie et la coller dans un autre calque. L'enregistrement en fait une nouvelle version du décor, qui garde ses calques : glissée dans une case, le calque du bas fait le fond et chacun des autres devient un élément qu'on déplace et qu'on règle en profondeur.")) +
+            (v.orbit ? tt(" Décor 360 : seule l'image affichée est retouchée ; la version est une image fixe, sans orbite.") : ""),
+          on: { click: () => openDecorRetouch(app, { itemId: id, vid, f: frame, onSaved: (nv) => { vid = nv; frame = 0; build(true); } }) } },
+          v.retouch ? tt`🖌 Rouvrir les calques (${(v.planes || []).length}) ⓘ` : tt("🖌 Retoucher en calques ⓘ")) : null,
         item.drawn ? h("button.mini", { title: tt("Rouvre l'atelier de dessin avec le dessin de cet asset (formes, calques, images) pour le retoucher, et le temps réel ; à l'enregistrement, son image est remplacée"), on: { click: () => { m.close(); this.openId = null; app.drawAsset(item); } } }, tt("✏ Reprendre le dessin")) : null,
         item.kind === "character" && item.identikit ? h("button.mini", { title: tt("Rouvre l'atelier avec la composition de ce portrait-robot (éléments, places, miroirs, corps) ; à l'enregistrement : remplacer son image de base ou faire un nouveau personnage"), on: { click: () => { m.close(); this.openId = null; openIdentikit(this, { item }); } } }, tt("🧩 Éditer dans le portrait-robot")) : null,
         h("button.mini", { title: tt("Enregistre cet élément entier (poses, orbites, tracés) dans un fichier .bwpack à donner à quelqu'un"), on: { click: () => this.download(new URLSearchParams({ ids: id })) } }, tt("📦 Exporter")),

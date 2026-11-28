@@ -517,7 +517,7 @@ export function openMontage(app, pid, opt = {}) {
       o += `<g data-layer="${l.id}" style="cursor:grab">` +
         `<image href="${sp.url}" x="${f1(box.cx - iw / 2)}" y="${f1(y - th / 2 - ih - 2)}" width="${f1(iw)}" height="${f1(ih)}" opacity="${on ? 1 : 0.75}" data-layer="${l.id}"/>` +
         `<rect x="${f1(box.x)}" y="${f1(y - th / 2)}" width="${f1(Math.max(box.w, 14))}" height="${f1(th)}" rx="${f1(th / 3)}" fill="${on ? "#e2603a" : "#2f2d2a"}" stroke="#fff" stroke-width="1.5" data-layer="${l.id}"/>` +
-        `<text x="${f1(box.cx)}" y="${f1(y + th / 2 + fs * 0.9)}" font-size="${f1(fs * 0.8)}" fill="${on ? "#b8431f" : "#444"}" text-anchor="middle" data-layer="${l.id}">${esc(it.name)} · ${depthOf(pan, li).toFixed(2)}</text></g>`;
+        `<text x="${f1(box.cx)}" y="${f1(y + th / 2 + fs * 0.9)}" font-size="${f1(fs * 0.8)}" fill="${on ? "#b8431f" : "#444"}" text-anchor="middle" data-layer="${l.id}">${esc(String(l.v || "").includes("~") ? tr((variantOf(it, l.v) || {}).label || it.name) : it.name)} · ${depthOf(pan, li).toFixed(2)}</text></g>`;
     });
     for (const n of anim.nulls || []) {                    // les nulls : a leur place et a leur profondeur, a glisser comme les cartes
       const P = scene.nullWorld(n, t), x = P.x * W, y = yOf(nullD(n)), r = th * 0.55, col = sel === n.id ? "#ff8a1f" : "#e0457b";

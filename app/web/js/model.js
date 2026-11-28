@@ -8,6 +8,11 @@ export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const uid = () => Math.random().toString(36).slice(2, 8);
 
 export function variantOf(item, vid) {
+  if (item && item.variants && typeof vid === "string" && vid.includes("~")) {   // plan d'un decor retouche en calques : "<version>~<plan>"
+    const [a, k] = vid.split("~"), pl = item.variants[a] && (item.variants[a].planes || []).find((x) => x.id === k);
+    if (pl) return pl;
+    vid = a;
+  }
   return (item && item.variants && (item.variants[vid] || item.variants.base)) || null;
 }
 

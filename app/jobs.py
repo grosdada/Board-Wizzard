@@ -967,7 +967,8 @@ def _flat_white(src, dest, height=None):
 
 def _orbit_of(item, vid):
     """(dossier de l'orbite, orbite) de la variante, ou (None, None) : un personnage assemble prend celles de son corps."""
-    v = (item.get("variants") or {}).get(vid or "base") or (item.get("variants") or {}).get("base") or {}
+    vid = str(vid or "base").split("~")[0]                         # plan d'un decor en calques : sa version
+    v = (item.get("variants") or {}).get(vid) or (item.get("variants") or {}).get("base") or {}
     o = v.get("orbit") or {}
     if not o.get("n") or not o.get("dir"):
         return None, None, v
@@ -983,7 +984,7 @@ def _panel_refs(project, panel_id, tmp):
     chars, who, seen = [], [], set()
     for l in sorted(pan.get("layers") or [], key=lambda l: -(l.get("s") or 0)):
         key = (l.get("item"), l.get("v") or "base")
-        if not l.get("item") or key in seen or len(chars) >= 4:
+        if not l.get("item") or key in seen or len(chars) >= 4 or "~" in str(l.get("v") or ""):   # plan du decor : pas un personnage
             continue
         seen.add(key)
         try:

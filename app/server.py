@@ -663,6 +663,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(self._rebase(iid, body))
         if act == "drawnpose" and method == "POST":                 # retouche dessinee d'une image (atelier) : une pose de plus
             return self.send_json(self._drawn_pose(iid, body, q.get("name", ""), q.get("from", "")))
+        if act == "layered" and method == "POST":                   # decor retouche en calques (atelier) : une version de plus
+            return self.send_json(self._layered_version(iid, it, d))
         if act == "zones":                                          # zones suspectes d'une orbite (vides remplis a tort ?)
             return self.send_json(retouch.zones(iid, q.get("variant", "base")))
         if act == "punch" and method == "POST":                     # vider une zone remplie a tort (sous un bras)
@@ -1185,6 +1187,68 @@ class Handler(BaseHTTPRequestHandler):
             tmp.unlink(missing_ok=True)
         it = store.mutate_item(iid, lambda x: x["variants"][vid].update({"cut": rel, "cw": w, "ch": h, "t": int(time.time())}))
         return {"variant": vid, "item": store.resolve(it)}
+
+    def _layered_version(self, iid, it, d):
+        """Decor retouche dans l'atelier, en calques : une nouvelle variante (version) du decor. d = {name, from (variante
+        de depart), f (image de l'orbite de depart), draw (le document de l'atelier, pour le rouvrir), flat (PNG en data:
+        URL, l'image aplatie : vignette, ambiance), planes: [{id, name, png (data: URL), box: [x, y, w, h] en fractions de
+        l'image}]}. Le premier plan est le fond (image pleine) ; les autres, rognes sur ce qu'ils contiennent, se posent
+        dans les cases comme des elements, chacun a sa profondeur (calque l.v = "<version>~<id du plan>")."""
+        from PIL import Image
+        if it.get("kind") != "decor":
+            raise ApiError("seul un décor se retouche en calques")
+        planes = [p for p in (d.get("planes") or []) if isinstance(p, dict) and p.get("png")]
+        if not planes or not d.get("flat"):
+            raise ApiError("aucun calque à enregistrer")
+        if len(planes) > 24:
+            raise ApiError("24 calques au plus")
+        draw = d.get("draw") if isinstance(d.get("draw"), dict) else {}
+        if len(json.dumps(draw)) > 4 * 1024 * 1024:
+            raise ApiError("dessin trop lourd (images collées en entier dans le document ?)")
+
+        def png(u):
+            u = str(u or "")
+            if not u.startswith("data:image/") or "," not in u:
+                raise ApiError("image illisible")
+            im = Image.open(io.BytesIO(base64.b64decode(u.split(",", 1)[1])))
+            im.load()
+            return im.convert("RGBA")
+        name = str(d.get("name") or "").strip()[:60] or "Décor retouché"
+        src = str(d.get("from") or "")
+        flat, ims = png(d["flat"]), [png(p["png"]) for p in planes]
+        box = {}
+
+        def reserve(x):
+            vid = store.variant_id(x, name)
+            box["vid"] = vid
+            x["variants"][vid] = {"label": name, "pose": "", "ref": None, "cut": None, "orbit": None, "drawn": True,
+                                  "from": src if src in x["variants"] else ""}
+        store.mutate_item(iid, reserve)
+        vid = box["vid"]
+        base = store.item_dir(iid) / "v" / vid
+        base.mkdir(parents=True, exist_ok=True)
+        stamp = int(time.time())
+        fl = flat.copy()
+        bgc = Image.new("RGBA", fl.size, (255, 255, 255, 255))
+        bgc.alpha_composite(fl)
+        bgc.convert("RGB").save(base / "ref.png")
+        bgc.convert("RGB").save(base / "cut.webp", quality=92, method=4)
+        out, seen = [], set()
+        for k, (p, im) in enumerate(zip(planes, ims)):
+            pid = re.sub(r"[^A-Za-z0-9_-]", "", str(p.get("id") or "")) or "p%d" % k
+            while pid in seen:
+                pid += "x"
+            seen.add(pid)
+            rel = "v/%s/plan_%02d.webp" % (vid, k)
+            im.save(store.item_dir(iid) / rel, quality=92, method=4)
+            bx = [float(x) for x in (p.get("box") or [0, 0, 1, 1])][:4]
+            out.append({"id": pid, "label": str(p.get("name") or "Calque %d" % (k + 1))[:60], "cut": rel, "cw": im.width,
+                        "ch": im.height, "box": [round(x, 6) for x in bx], "t": stamp})
+        retouch = {"draw": draw, "f": int(d.get("f") or 0), "w": flat.width, "h": flat.height}
+        res = store.mutate_item(iid, lambda x: x["variants"][vid].update({
+            "ref": "v/%s/ref.png" % vid, "cut": "v/%s/cut.webp" % vid, "cw": flat.width, "ch": flat.height, "t": stamp,
+            "planes": out, "retouch": retouch}))
+        return {"variant": vid, "item": store.resolve(res)}
 
     def _compose(self, raw, nom):
         """Personnage entier : la tete envoyee par l'atelier sur le corps `nom` (bodydraw), fond blanc. Rend le PNG."""

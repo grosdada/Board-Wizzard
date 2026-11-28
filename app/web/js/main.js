@@ -10,6 +10,7 @@ import { MARKS, MARK_COLORS, newMark } from "./marks.js";
 import { swatch } from "./colors.js";
 import { exprName } from "./lipsync.js";
 import { openDrawEditor, drawImage } from "./draw.js";
+import { openDecorRetouch, poseDecorVersion, layoutPlanes, dropPlanes, isPlane, versionOf } from "./decorlayers.js";
 import { openMontage } from "./montage.js";
 import { photoDialog, openGenerations } from "./photo.js";
 import { openDeck, addClip } from "./deck.js";
@@ -525,7 +526,10 @@ class App {
     const item = this.bank.get(itemId), pan = this.findPanel(pid);
     if (!item || !pan) return;
     if (item.kind === "decor") {
-      pan.bg = { item: itemId, v: vid, f: 0 }; pan.view = { zoom: 1, ox: 0, oy: 0 }; pan.show = "layers";
+      dropPlanes(pan);                                     // les plans d'un decor en calques partent avec lui
+      if ((variantOf(item, vid) || {}).planes) poseDecorVersion(this, pid, itemId, versionOf(vid));
+      else { pan.bg = { item: itemId, v: vid, f: 0 }; pan.view = { zoom: 1, ox: 0, oy: 0 }; }
+      pan.show = "layers";
       this.select({ panel: pid });
     } else {
       const s = item.kind === "character" ? 0.8 : 0.35;
@@ -1008,7 +1012,7 @@ class App {
         o += `<g data-layer="${l.id}" style="cursor:grab">` +
           `<image href="${sp.url}" x="${f1(box.cx - iw / 2)}" y="${f1(y - th / 2 - ih - 2)}" width="${f1(iw)}" height="${f1(ih)}" opacity="${on ? 1 : 0.75}" data-layer="${l.id}"/>` +
           `<rect x="${f1(box.x)}" y="${f1(y - th / 2)}" width="${f1(Math.max(box.w, 14))}" height="${f1(th)}" rx="${f1(th / 3)}" fill="${on ? "#e2603a" : "#2f2d2a"}" stroke="#fff" stroke-width="1.5" data-layer="${l.id}"/>` +
-          `<text x="${f1(box.cx)}" y="${f1(y + th / 2 + fs * 0.9)}" font-size="${f1(fs * 0.8)}" fill="${on ? "#b8431f" : "#444"}" text-anchor="middle" data-layer="${l.id}">${esc(it.name)} · ${depthOf(pan, li).toFixed(2)}</text></g>`;
+          `<text x="${f1(box.cx)}" y="${f1(y + th / 2 + fs * 0.9)}" font-size="${f1(fs * 0.8)}" fill="${on ? "#b8431f" : "#444"}" text-anchor="middle" data-layer="${l.id}">${esc(isPlane(l) ? tr((variantOf(it, l.v) || {}).label || it.name) : it.name)} · ${depthOf(pan, li).toFixed(2)}</text></g>`;
       });
       o += `<g transform="translate(${W / 2} ${f1(yOf(-0.2))})"><rect x="${f1(-fs * 1.1)}" y="${f1(-fs * 0.5)}" width="${f1(fs * 2.2)}" height="${f1(fs * 1.3)}" rx="3" fill="#5b6472"/>` +
         tt`<text y="${f1(fs * 1.75)}" font-size="${f1(fs * 0.8)}" fill="#5b6472" text-anchor="middle">CAMÉRA</text></g>`;
@@ -1706,11 +1710,29 @@ class App {
     const bInd = bloc("ind", tt("✏ Indications et bulles"));
     bDec.append(h("div.row", h("span.muted", tt("Fond :")), h("span", bg ? (bg.item ? bg.item.name : tt("image importée")) : "aucun"),
       bg && bg.item ? h("button.mini", { title: tt("Montrer ce décor dans la banque"), on: { click: () => this.bankUI.reveal(bg.item.id) } }, "📍") : null,
-      bg ? h("button.mini", { on: { click: () => { delete pan.bg; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer")) : null));
+      bg ? h("button.mini", { on: { click: () => { delete pan.bg; dropPlanes(pan); this.commit("bg"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer")) : null));
     bDec.append(h("div.row", h("button.mini", { title: tt("Formes simples, tracés, gris en trame de points : un décor fait à la main en noir et blanc"), on: { click: () => this.drawBackground(this.sel.panel) } }, (pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond"))),
       pan.draw ? h("button.mini.danger", { on: { click: () => { delete pan.draw; this.commit("draw"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer le dessin")) : ""));
-    if (bg && bg.item && Object.keys(bg.item.variants).length > 1) bDec.append(h("label.row", tt("Ambiance"), h("select", { on: { change: (e) => { pan.bg.v = e.target.value; pan.bg.f = 0; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } },
-      Object.entries(bg.item.variants).map(([k, vv]) => h("option", { value: k, selected: k === (pan.bg.v || "base") }, tr(vv.label))))));
+    if (bg && bg.item && Object.keys(bg.item.variants).length > 1) bDec.append(h("label.row", tt("Ambiance"), h("select", { on: { change: (e) => {
+        if ((bg.item.variants[e.target.value] || {}).planes) poseDecorVersion(this, this.sel.panel, bg.item.id, e.target.value);   // version en calques : ses plans entrent dans la case
+        else { dropPlanes(pan); pan.bg.v = e.target.value; pan.bg.f = 0; }
+        this.commit("bg"); this.editor.render(); this.refreshInspector(); } } },
+      Object.entries(bg.item.variants).map(([k, vv]) => h("option", { value: k, selected: k === versionOf(pan.bg.v) }, tr(vv.label) + (vv.planes ? tt` · ${vv.planes.length} calques` : ""))))));
+    if (bg && bg.item) {                                   // retouche du decor en calques : une version de plus du decor
+      const pid = this.sel.panel, layered = isPlane({ v: pan.bg.v }), nPl = (pan.layers || []).filter(isPlane).length;
+      bDec.append(h("div.row.wrap",
+        h("button.mini", { title: layered ? tt("Rouvre l'atelier de dessin avec les calques de cette version du décor. L'enregistrement en fait une nouvelle version, posée ici à la place ; chaque calque garde sa profondeur.")
+            : tt("Ouvre l'image du décor dans l'atelier de dessin, comme premier calque : gomme, pinceaux, lasso pour couper une partie et la coller dans un autre calque. L'enregistrement en fait une version du décor (dans sa fiche) ; dans la case, le calque du bas fait le fond et chacun des autres devient un élément qu'on déplace et qu'on règle en profondeur (vue « Profondeur », parallaxe du montage).") +
+              (bg.orbit ? tt(" Décor 360 : seule l'image vue maintenant est retouchée ; la version est une image fixe, sans orbite.") : ""),
+          on: { click: () => openDecorRetouch(this, { itemId: bg.item.id, vid: pan.bg.v || "base", f: pan.bg.f || 0, onSaved: (ver) => {
+            const p2 = this.page().panels[pid];
+            if (!p2) return;
+            poseDecorVersion(this, pid, bg.item.id, ver); this.commit("bg"); this.editor.render(); this.refreshInspector();
+          } }) } }, layered ? tt("🖌 Rouvrir les calques du décor ⓘ") : tt("🖌 Retoucher le décor (calques) ⓘ")),
+        layered && nPl ? h("button.mini", { title: tt("Remet chaque calque du décor à sa place sur le fond (après un changement de zoom ou de cadrage du fond, ou un calque déplacé par erreur). Leur profondeur ne change pas."),
+          on: { click: () => { layoutPlanes(this, pid, true); this.commit("planes"); this.editor.render(); this.refreshInspector(); } } }, tt("⟲ Recaler les calques sur le fond")) : ""),
+        layered ? h("p.muted", tt`Version en calques : le fond, plus ${nPl} calque(s) posés dans la case comme des éléments (liste « Calques »). Le zoom et le cadrage du fond ne déplacent que le fond : « Recaler » remet les calques dessus.`) : "");
+    }
     if (bg && bg.orbit) bDec.append(range(tt("Axe du décor"), pan.bg.f || 0, 0, bg.n - 1, 1, (x) => { pan.bg.f = x; }, "bturn"));
     if (bg) {
       // cadrage du fond : zoom, puis position horizontale et verticale (-100 = bord gauche / haut, 100 = bord droit / bas)
