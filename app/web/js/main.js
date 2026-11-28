@@ -14,6 +14,7 @@ import { openMontage } from "./montage.js";
 import { photoDialog, openGenerations } from "./photo.js";
 import { openDeck, addClip } from "./deck.js";
 import { orbitPerspective } from "./orbitpersp.js";
+import { startInfoTips } from "./infotips.js";
 import { GROUND0, PATS, PLATE0, plateDefault, estimateHorizon, groundFor } from "./ground.js";
 import { sprite, layerSp, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox, pad3, imgReady } from "./model.js";
 
@@ -2199,4 +2200,5 @@ function menu(e, items) {
 
 const app = new App();
 window.app = app;
+startInfoTips();                                         // longues explications repliees derriere une icone ⓘ
 app.start().catch((e) => { console.error(e); toast(tt("Démarrage impossible : ") + e.message, "error", 20000); });

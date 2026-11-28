@@ -2487,7 +2487,8 @@
   "La caméra de la case : cadre, zoom, inclinaison, et « Avancer » qui entre dans la profondeur (le premier plan grossit plus vite que le décor). C'est la caméra du montage : « 1re image → case » la règle sur la première image, et le montage part de celle-ci quand sa caméra n'a pas de clé. La case la montre, l'impression et Integrate aussi. En dessous : le flou de profondeur.": "The panel's camera: frame, zoom, tilt, and \"Push in\" which moves into depth (the foreground grows faster than the background). It is the montage camera: \"1st frame → panel\" sets it from the first frame, and the montage starts from it when its camera has no key. The panel, printing and Integrate show it too. Below: depth blur.",
   "Le fond de la case : décor de la banque, image importée ou fond dessiné, son cadrage, son trait et ses couleurs.": "The panel's background: a bank set, an imported image or a drawn background, with its framing, line and colours.",
   "L'image finale calculée (Integrate, photo) et l'orbite 360° de toute la case.": "The computed final image (Integrate, photo) and the 360° orbit of the whole panel.",
-  "Le montage de la case (timeline, poses clés, caméra virtuelle) et le deck.": "The panel's montage (timeline, key poses, virtual camera) and the deck."
+  "Le montage de la case (timeline, poses clés, caméra virtuelle) et le deck.": "The panel's montage (timeline, key poses, virtual camera) and the deck.",
+  "Afficher l'explication": "Show the explanation"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
