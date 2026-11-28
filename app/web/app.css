@@ -741,3 +741,24 @@ svg.tracing, svg.tracing * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http:
 .mt-gbar { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; z-index: 3; background: #000a; padding: 5px 8px; border-radius: 8px; font-size: 12px; color: #dde; }
 .mt-gbar input[type=color] { width: 30px; height: 22px; padding: 0; border: 0; background: none; }
 .mt-gbar .mt-ghelp { color: #aab; font-size: 11.5px; }
+
+/* inspecteur de la case : blocs separes et depliables, chacun sa couleur (camera, decor, sol, rendu, animation...) */
+details.ibloc { --ib: 127, 127, 127; margin: 8px 0; border-radius: 8px; border: 1px solid rgba(var(--ib), 0.35); border-left: 3px solid rgba(var(--ib), 0.85); background: rgba(var(--ib), 0.07); }
+details.ibloc > summary { cursor: pointer; user-select: none; padding: 7px 10px; font-weight: 600; font-size: 13px; color: rgb(var(--ib)); list-style: none; display: flex; align-items: center; gap: 6px; }
+details.ibloc > summary::-webkit-details-marker { display: none; }
+details.ibloc > summary::before { content: "▸"; font-size: 11px; transition: transform 0.12s; opacity: 0.8; }
+details.ibloc[open] > summary::before { transform: rotate(90deg); }
+details.ibloc > summary:hover { background: rgba(var(--ib), 0.12); border-radius: 7px; }
+details.ibloc[open] > summary { border-bottom: 1px solid rgba(var(--ib), 0.25); }
+details.ibloc > :not(summary) { margin-left: 10px; margin-right: 10px; }
+details.ibloc[open] { padding-bottom: 8px; }
+details.ibloc > :nth-child(2) { margin-top: 8px; }
+details.ibloc h4 { margin-top: 10px; }
+.ibloc-sub { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+details.ib-cam { --ib: 110, 160, 235; }
+details.ib-dec { --ib: 120, 200, 120; }
+details.ib-sol { --ib: 215, 170, 95; }
+details.ib-rend { --ib: 185, 135, 230; }
+details.ib-anim { --ib: 230, 120, 120; }
+details.ib-ind { --ib: 150, 160, 160; }
+details.ib-calq { --ib: 120, 205, 195; }

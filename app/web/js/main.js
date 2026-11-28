@@ -1412,7 +1412,7 @@ class App {
   }
   oplayBtn() {
     const ui = this.oplayUI;
-    if (!ui || !ui.btn.isConnected) return;
+    if (!ui) return;
     const on = !!(this.oplay && this.oplay.pid === ui.pid);
     ui.btn.textContent = on ? "⏸" : "▶";
     ui.btn.classList.toggle("on", on);
@@ -1658,15 +1658,30 @@ class App {
     // ---- la case
     const g = this.geo(this.sel.panel), bg = background(pan, this.bank, this.project.id);
     const dof = pan.dof || (pan.dof = { on: false, focus: 0.3, amount: 12 });
-    box.append(h("h3", tt("Case ") + (g ? g.order : "")));
-    box.append(h("div.row", h("span.muted", tt("Fond :")), h("span", bg ? (bg.item ? bg.item.name : tt("image importée")) : "aucun"),
+    box.append(h("h3", tt("Case ") + (g ? g.order : "")), h("div.row", h("button.danger", { title: tt("Vide entièrement la case : décor, éléments, bulles, indications, fond dessiné, montage, rendus. Une alerte demande confirmation."), on: { click: () => this.restorePanel(this.sel.panel) } }, tt("🧹 Restore case"))));
+    // les reglages de la case en blocs separes et depliables, chacun sa couleur : camera, decor, sol, rendu et orbite,
+    // animation, indications et bulles, calques. Ouvert / ferme est garde d'une case a l'autre (et d'une visite a l'autre).
+    const folds = this.ifolds || (this.ifolds = (() => { try { return JSON.parse(localStorage.getItem("bw.ifolds") || "{}"); } catch (e) { return {}; } })());
+    const bloc = (key, label, tip) => {
+      const d = h("details.ibloc.ib-" + key, { open: folds[key] !== false, on: { toggle: (e) => { folds[key] = e.target.open; try { localStorage.setItem("bw.ifolds", JSON.stringify(folds)); } catch (err) { /* stockage plein */ } } } },
+        h("summary", tip ? { title: tip } : {}, label));
+      return d;
+    };
+    const bCam = bloc("cam", tt("🎥 Caméra"), tt("La caméra de la case : cadre, zoom, inclinaison, et « Avancer » qui entre dans la profondeur (le premier plan grossit plus vite que le décor). C'est la caméra du montage : « 1re image → case » la règle sur la première image, et le montage part de celle-ci quand sa caméra n'a pas de clé. La case la montre, l'impression et Integrate aussi. En dessous : le flou de profondeur."));
+    const bDec = bloc("dec", tt("🏞 Décor"), tt("Le fond de la case : décor de la banque, image importée ou fond dessiné, son cadrage, son trait et ses couleurs."));
+    const bSol = bloc("sol", tt("▱ Sol"), tt("Le sol de la case : une plaque posée sur le sol, vue en perspective, sous les personnages. Le décor est posé dessus : la plaque s'arrête au pied du décor, jamais par-dessus le mur. Mêmes réglages que dans le montage (piste Sol), où l'on tire la plaque à la main."));
+    const bRend = bloc("rend", tt("✦ Rendu et orbite"), tt("L'image finale calculée (Integrate, photo) et l'orbite 360° de toute la case."));
+    const bAnim = bloc("anim", tt("🎬 Animation"), tt("Le montage de la case (timeline, poses clés, caméra virtuelle) et le deck."));
+    const bInd = bloc("ind", tt("✏ Indications et bulles"));
+    const bCalq = bloc("calq", tt("☰ Calques (du fond vers l'avant)"));
+    bDec.append(h("div.row", h("span.muted", tt("Fond :")), h("span", bg ? (bg.item ? bg.item.name : tt("image importée")) : "aucun"),
       bg && bg.item ? h("button.mini", { title: tt("Montrer ce décor dans la banque"), on: { click: () => this.bankUI.reveal(bg.item.id) } }, "📍") : null,
       bg ? h("button.mini", { on: { click: () => { delete pan.bg; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer")) : null));
-    box.append(h("div.row", h("button.mini", { title: tt("Formes simples, tracés, gris en trame de points : un décor fait à la main en noir et blanc"), on: { click: () => this.drawBackground(this.sel.panel) } }, (pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond"))),
+    bDec.append(h("div.row", h("button.mini", { title: tt("Formes simples, tracés, gris en trame de points : un décor fait à la main en noir et blanc"), on: { click: () => this.drawBackground(this.sel.panel) } }, (pan.draw ? tt("✎ Modifier le fond dessiné") : tt("✎ Dessiner le fond"))),
       pan.draw ? h("button.mini.danger", { on: { click: () => { delete pan.draw; this.commit("draw"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer le dessin")) : ""));
-    if (bg && bg.item && Object.keys(bg.item.variants).length > 1) box.append(h("label.row", tt("Ambiance"), h("select", { on: { change: (e) => { pan.bg.v = e.target.value; pan.bg.f = 0; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } },
+    if (bg && bg.item && Object.keys(bg.item.variants).length > 1) bDec.append(h("label.row", tt("Ambiance"), h("select", { on: { change: (e) => { pan.bg.v = e.target.value; pan.bg.f = 0; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } },
       Object.entries(bg.item.variants).map(([k, vv]) => h("option", { value: k, selected: k === (pan.bg.v || "base") }, tr(vv.label))))));
-    if (bg && bg.orbit) box.append(range(tt("Axe du décor"), pan.bg.f || 0, 0, bg.n - 1, 1, (x) => { pan.bg.f = x; }, "bturn"));
+    if (bg && bg.orbit) bDec.append(range(tt("Axe du décor"), pan.bg.f || 0, 0, bg.n - 1, 1, (x) => { pan.bg.f = x; }, "bturn"));
     if (bg) {
       // cadrage du fond : zoom, puis position horizontale et verticale (-100 = bord gauche / haut, 100 = bord droit / bas)
       const travel = () => { const pl = placement(g.bbox, bg.w || 16, bg.h || 9, pan.view); return { pl, mx: (pl.w - g.bbox.w) / (2 * g.bbox.w), my: (pl.h - g.bbox.h) / (2 * g.bbox.h) }; };
@@ -1676,7 +1691,7 @@ class App {
       const ry = range(tt("Cadrage ↕"), pos("y"), -100, 100, 1, (x) => setPos("y", x), "pan");
       const sync = () => { for (const [r, a] of [[rx, "x"], [ry, "y"]]) { const t = travel(), free = (a === "x" ? t.mx : t.my) > 1e-4; r.querySelector("input").value = pos(a); r.querySelector("output").textContent = pos(a); r.querySelector("input").disabled = !free; r.classList.toggle("off", !free); } };
       this.syncPan = sync;
-      if (bg.vec) box.append(h("div", { title: tt("Trait à 0 = celui du dessin ; vers la gauche plus fin, jusqu'à effacer les traits les plus fins ; vers la droite plus épais.") }, range(tt("Trait du fond ⓘ"), pan.bglw || 0, -12, 6, 0.1, (x) => { pan.bglw = x; }, "bglw")),
+      if (bg.vec) bDec.append(h("div", { title: tt("Trait à 0 = celui du dessin ; vers la gauche plus fin, jusqu'à effacer les traits les plus fins ; vers la droite plus épais.") }, range(tt("Trait du fond ⓘ"), pan.bglw || 0, -12, 6, 0.1, (x) => { pan.bglw = x; }, "bglw")),
         h("div", { title: tt("Épaisseur aléatoire : par endroits le trait s'épaissit, ailleurs il s'amincit, comme tracé à la plume. 0 : régulier.") }, range(tt("Épaisseur aléatoire ⓘ"), pan.bglj || 0, 0, 10, 0.1, (x) => { if (x > 0) pan.bglj = x; else delete pan.bglj; }, "bglj")),
         h("div.row.colrow", { title: tt("Tout ce qui est noir dans le décor prend cette couleur.") }, h("span", tt("Couleur du trait")),
           swatch(pan.bgink || "#111111", (c) => { pan.bgink = c; this.editor.render(true); this.commitSoon("bgink"); }),
@@ -1685,18 +1700,18 @@ class App {
       {                                                    // colorize et colorimetrie du decor, comme pour un element
         const tn = pan.bgtint || {};
         const cb = h("input", { type: "checkbox", checked: !!tn.on, on: { change: (e) => { pan.bgtint = Object.assign({ c: "#e9b98f" }, pan.bgtint, { on: e.target.checked }); this.commit("bgtint"); this.editor.render(); } } });
-        box.append(h("div.row.colrow", { title: tt("Pose une couleur en produit sur tout le décor : le blanc prend la couleur, les traits et la peinture restent visibles.") },
+        bDec.append(h("div.row.colrow", { title: tt("Pose une couleur en produit sur tout le décor : le blanc prend la couleur, les traits et la peinture restent visibles.") },
           h("label.row.check", cb, tt("Colorize ⓘ")),
           swatch(tn.c || "#e9b98f", (c) => { pan.bgtint = { on: true, c }; cb.checked = true; this.editor.render(true); this.commitSoon("bgtint"); })),
           hslFold(() => pan.bghsl, (n) => { if (n) pan.bghsl = n; else delete pan.bghsl; }, "bghsl", tt("Teinte, saturation, luminosité et contraste du décor, comme dans Photoshop (Ctrl+U).")));
       }
-      box.append(range(tt("Zoom du fond"), (pan.view || {}).zoom || 1, 0.25, 6, 0.01, (x) => { const t0 = travel(), kx = t0.mx > 1e-4 ? t0.pl.ox / t0.mx : 0, ky = t0.my > 1e-4 ? t0.pl.oy / t0.my : 0; pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); const t1 = travel(); pan.view.ox = kx * t1.mx; pan.view.oy = ky * t1.my; sync(); }, "pan"),
+      bDec.append(range(tt("Zoom du fond"), (pan.view || {}).zoom || 1, 0.25, 6, 0.01, (x) => { const t0 = travel(), kx = t0.mx > 1e-4 ? t0.pl.ox / t0.mx : 0, ky = t0.my > 1e-4 ? t0.pl.oy / t0.my : 0; pan.view = Object.assign({ ox: 0, oy: 0 }, pan.view, { zoom: x }); const t1 = travel(); pan.view.ox = kx * t1.mx; pan.view.oy = ky * t1.my; sync(); }, "pan"),
         rx, ry, h("div.row", h("button.mini", { title: tt("Zoom 1, fond centré"), on: { click: () => { pan.view = { zoom: 1, ox: 0, oy: 0 }; this.commit("pan"); this.editor.render(); this.refreshInspector(); } } }, tt("Recentrer le fond")),
           h("span.muted", bg.orbit ? tt("Maj + glisser dans la case : recadrer") : tt("Glisser dans la case : recadrer"))));
       sync();
     } else this.syncPan = null;
-    box.append(h("button", { title: tt("Vue de dessus de la case : la caméra en bas, le décor en haut, chaque élément posé à sa profondeur. Glisser une carte : haut / bas = sa profondeur, gauche / droite = sa place. C'est la même position que dans le montage."), on: { click: () => this.depthDialog(this.sel.panel) } }, tt("⬒ Profondeur (vue de dessus)")),
-      h("button.danger", { title: tt("Vide entièrement la case : décor, éléments, bulles, indications, fond dessiné, montage, rendus. Une alerte demande confirmation."), on: { click: () => this.restorePanel(this.sel.panel) } }, tt("🧹 Restore case")));
+    bCam.append(h("button", { title: tt("Vue de dessus de la case : la caméra en bas, le décor en haut, chaque élément posé à sa profondeur. Glisser une carte : haut / bas = sa profondeur, gauche / droite = sa place. C'est la même position que dans le montage."), on: { click: () => this.depthDialog(this.sel.panel) } }, tt("⬒ Profondeur (vue de dessus)")));
+
     {                                                      // camera de la case (pan.frame) : la meme que celle du montage
       const fr = pan.frame || {}, camKeys = (pan.anim && pan.anim.tracks && pan.anim.tracks.cam) || [];
       const setF = (k, x) => {
@@ -1706,7 +1721,7 @@ class App {
         pan.frame = f;
         if (camKeys.length === 1) camKeys[0][k] = x;       // camera fixe du montage (une seule cle) : elle suit
       };
-      box.append(h("h4", { title: tt("La caméra de la case : cadre, zoom, inclinaison, et « Avancer » qui entre dans la profondeur (le premier plan grossit plus vite que le décor). C'est la caméra du montage : « 1re image → case » la règle sur la première image, et le montage part de celle-ci quand sa caméra n'a pas de clé. La case la montre, l'impression et Integrate aussi.") }, tt("🎥 Caméra ⓘ")),
+      bCam.append(
         range(tt("Cadre ↔"), fr.cx ?? 0.5, 0, 1, 0.005, (x) => setF("cx", x), "frame"),
         range(tt("Cadre ↕"), fr.cy ?? 0.5, 0, 1, 0.005, (x) => setF("cy", x), "frame"),
         range(tt("Zoom"), fr.z || 1, 0.4, 5, 0.01, (x) => setF("z", x), "frame"),
@@ -1721,33 +1736,33 @@ class App {
     {                                                      // sol de la case (pan.ground) : la plaque sous le decor, reglable depuis la page
       const g = this.geo(this.sel.panel), ratio = g ? g.bbox.h / g.bbox.w : 0.5625, gr = pan.ground;
       const re = (kind = "ground") => { this.commit(kind); this.editor.render(); this.refreshInspector(); };
-      box.append(h("h4", { title: tt("Le sol de la case : une plaque posée sur le sol, vue en perspective, sous les personnages. Le décor est posé dessus : la plaque s'arrête au pied du décor, jamais par-dessus le mur. Mêmes réglages que dans le montage (piste Sol), où l'on tire la plaque à la main.") }, tt("▱ Sol ⓘ")));
-      if (!gr) box.append(h("button.mini", { title: tt("Une plaque de sol en perspective, sous le décor"), on: { click: () => {
+      // le titre et son explication sont ceux du bloc « Sol »
+      if (!gr) bSol.append(h("button.mini", { title: tt("Une plaque de sol en perspective, sous le décor"), on: { click: () => {
         const n = Object.assign({}, GROUND0, { hz: estimateHorizon(pan) }); n.ext = plateDefault(n, ratio); pan.ground = n; re(); } } }, tt("▱ Créer la plaque de sol")));
       else {
         const full = gr.fill !== "none", wall = pan.bg ? groundFor(pan).wv : 0, yw = wall > 0 ? (gr.hz ?? 0.45) + 1 / (ratio * wall) : 0;
-        box.append(h("label.row.check", h("input", { type: "checkbox", checked: !!gr.on, on: { change: (e) => { gr.on = e.target.checked; re(); } } }), tt("Sol dans la case")),
+        bSol.append(h("label.row.check", h("input", { type: "checkbox", checked: !!gr.on, on: { change: (e) => { gr.on = e.target.checked; re(); } } }), tt("Sol dans la case")),
           h("label.row", tt("Motif"), h("select", { on: { change: (e) => { gr.pat = e.target.value; re(); } } }, Object.entries(PATS).map(([k, n]) => h("option", { value: k, selected: (gr.pat === "taches" ? "lavis" : gr.pat || "damier") === k }, n)))),
           range(tt("Taille du motif"), gr.sc ?? 0.5, 0.12, 2, 0.01, (x) => { gr.sc = x; }, "ground"),
           range(tt("Opacité"), gr.a ?? 0.22, 0.03, 1, 0.01, (x) => { gr.a = x; }, "ground"),
           h("div.row.colrow", tt("Couleur du motif"), swatch(gr.col || "#000000", (c) => { gr.col = c; this.editor.render(true); this.commitSoon("ground"); })),
           range(tt("Horizon"), gr.hz ?? 0.45, -0.5, 0.95, 0.005, (x) => { gr.hz = x; }, "ground"));
-        if (Array.isArray(gr.ext)) box.append(
+        if (Array.isArray(gr.ext)) bSol.append(
           h("div.row.colrow", h("label.row.check", { title: tt("La plaque est peinte d'une couleur pleine, sous le motif ; décoché : seulement le motif") },
             h("input", { type: "checkbox", checked: full, on: { change: (e) => { if (e.target.checked) delete gr.fill; else gr.fill = "none"; re(); } } }), tt("Plaque pleine")),
             full ? swatch(gr.fill && gr.fill !== "none" ? gr.fill : PLATE0, (c) => { gr.fill = c; this.editor.render(true); this.commitSoon("ground"); }) : ""));
-        if (wall > 0) box.append(
+        if (wall > 0) bSol.append(
           h("div", { title: tt("Pied du décor : la ligne (hauteur dans la case) où le mur du décor touche le sol. La plaque s'arrête là, le décor est posé dessus. « Auto » : le bord du fond de la plaque.") },
             range(tt("Pied du décor ⓘ"), +Math.min(1.6, yw).toFixed(3), +((gr.hz ?? 0.45) + 0.01).toFixed(3), 1.6, 0.005, (x) => { gr.wv = +(1 / (ratio * Math.max(0.002, x - (gr.hz ?? 0.45)))).toFixed(4); }, "ground"),
             gr.wv > 0 ? h("button.mini", { on: { click: () => { delete gr.wv; re(); } } }, tt("Pied auto")) : h("span.muted", tt("(auto)"))));
-        box.append(h("div.row.wrap",
+        bSol.append(h("div.row.wrap",
           Array.isArray(gr.ext) ? h("button.mini", { title: tt("Remet la plaque à sa taille de départ"), on: { click: () => { gr.ext = plateDefault(gr, ratio); delete gr.pm; re(); } } }, tt("↺ Plaque de départ"))
             : h("button.mini", { title: tt("Le sol devient une plaque, à tirer dans le montage"), on: { click: () => { gr.ext = plateDefault(gr, ratio); re(); } } }, tt("▱ Créer la plaque de sol")),
           Array.isArray(gr.ext) ? h("button.mini", { title: tt("Le sol redevient infini, jusqu'à l'horizon (ou jusqu'au pied du décor)"), on: { click: () => { delete gr.ext; delete gr.fill; delete gr.pm; re(); } } }, tt("Sol infini")) : "",
           h("button.mini.danger", { on: { click: () => { delete pan.ground; re(); } } }, tt("Retirer le sol"))));
       }
     }
-    box.append(h("h4", { title: tt("0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre).") }, tt("Profondeur de champ ⓘ")),
+    bCam.append(h("h4", { title: tt("0 = premier plan, 1 = décor. Chaque calque a sa profondeur (par défaut : son ordre).") }, tt("Profondeur de champ ⓘ")),
       h("label.row.check", h("input", { type: "checkbox", checked: dof.on, on: { change: (e) => { dof.on = e.target.checked; this.commit("dof"); this.editor.render(); } } }), tt("Flouter selon la profondeur")),
       (() => { const r = range(tt("Mise au point"), dof.focus, 0, 1, 0.01, (x) => { dof.focus = x; dof.on = true; }, "dof");
         r.append(h("button.mini.target" + (this.focusPick ? ".on" : ""), { title: tt("Cible : clique ensuite sur un personnage ou un élément de la case, la mise au point se fait sur lui (sur sa profondeur). Échap : annuler."), on: { click: (e) => { e.preventDefault(); this.setFocusPick(!this.focusPick); } } }, "🎯"));
@@ -1769,39 +1784,41 @@ class App {
       this.info = await get("info");
       toast(tt("Moteur d'Integrate enregistré : ") + (v ? v.replace(/^fal:/, "fal · ") : tt("automatique")) + "."); this.refreshInspector();
     });
-    box.append(h("h4", tt("Image finale")), h("label.row", tt("Rendu"), style), h("label.row", tt("Moteur"), this.noMachines() ? h("span.muted", tt("fal, avec ta clé")) : engine), extra,
+    bRend.append(h("label.row", tt("Rendu"), style), h("label.row", tt("Moteur"), this.noMachines() ? h("span.muted", tt("fal, avec ta clé")) : engine), extra,
       h("div.row", h("button.photo-go", { title: tt("La case rendue en photo : GPT Image 2.6 et Seedream 5.5 à comparer (fal, payant)"), on: { click: () => this.casePhoto() } }, tt("📷 Générer photo"))),
       h("div.row", h("button.primary", { title: tt("Une seule image, lumière et ombres unifiées"), on: { click: () => this.integrate(style.value, extra.value.trim()) } }, tt("✦ Integrate")),
         h("button", { title: tt("Orbite 360° de toute la case"), on: { click: () => this.panelOrbit() } }, tt("↻ Orbite de la case"))));
     if (pan.integrated || pan.orbit) {
       const modes = [["layers", tt("Calques")]]; if (pan.integrated) modes.push(["integrated", tt("Intégrée")]); if (pan.orbit) modes.push(["orbit", tt("Orbite")]);
       const oOn = pan.orbit && pan.show === "orbit";
-      box.append(h("div.row", h("span.muted", tt("Afficher :")), modes.map(([m, t]) => h("button.mini" + ((pan.show || "layers") === m ? ".on" : ""), { on: { click: () => this.setShow(m) } }, t)),
+      bRend.append(h("div.row", h("span.muted", tt("Afficher :")), modes.map(([m, t]) => h("button.mini" + ((pan.show || "layers") === m ? ".on" : ""), { on: { click: () => this.setShow(m) } }, t)),
         pan.orbit ? h("button.mini" + (oOn ? ".star" : ""), { disabled: !oOn, title: oOn ? tt("Remet les éléments de la case en place vus sous cet angle de l'orbite : même place, même taille, l'image de leur tournette qui correspond. Rien n'est calculé, sauf le décor si tu le demandes.") : tt("Affiche l'orbite et arrête-toi sur un angle"),
           on: { click: () => this.orbitPlace() } }, tt("↻ Recalculer la perspective")) : ""));
-      if ((pan.integrations || []).length > 1) box.append(h("div.versions", pan.integrations.map((f, i) => h("img" + (f === pan.integrated ? ".on" : ""), {
+      if ((pan.integrations || []).length > 1) bRend.append(h("div.versions", pan.integrations.map((f, i) => h("img" + (f === pan.integrated ? ".on" : ""), {
         src: `/projects/${this.project.id}/${f}`, title: tt("Version ") + (i + 1), on: { click: () => { pan.integrated = f; pan.show = "integrated"; this.commit("ver"); this.editor.render(); this.refreshInspector(); } } }))));
       if (pan.show === "orbit" && pan.orbit) {           // l'axe, et a cote lecture / pause : l'orbite tourne en boucle
         const pid = this.sel.panel, rg = range(tt("Axe de la scène"), pan.orbit.frame || 0, 0, pan.orbit.n - 1, 1, (x) => { if (this.oplay) this.orbitPlay(); pan.orbit.frame = x; }, "oturn");
         const btn = h("button.mini.oplay", { type: "button", on: { click: (e) => { e.preventDefault(); this.orbitPlay(pid); } } });
         rg.insertBefore(btn, rg.querySelector("input"));
         this.oplayUI = { pid, btn, inp: rg.querySelector("input"), out: rg.querySelector("output") };
-        box.append(rg);
+        bRend.append(rg);
         this.oplayBtn();
       }
     }
-    box.append(h("h4", tt("Animation")), h("div.row", h("button.mini", { title: tt("Timeline, poses clés, caméra virtuelle"), on: { click: () => openMontage(this, this.sel.panel) } }, pan.anim ? tt("🎬 Ouvrir le montage") : tt("🎬 Mode montage")),
+    bAnim.append(h("div.row", h("button.mini", { title: tt("Timeline, poses clés, caméra virtuelle"), on: { click: () => openMontage(this, this.sel.panel) } }, pan.anim ? tt("🎬 Ouvrir le montage") : tt("🎬 Mode montage")),
       pan.anim ? h("span.muted", tt`${pan.anim.dur} s · ${Object.values(pan.anim.tracks || {}).reduce((n, k) => n + k.length, 0)} clés`) : ""),
       h("div.row", h("button.mini", { title: tt("Ajoute cette case comme plan dans le deck de montage global"), on: { click: () => this.sendToDeck(this.sel.panel) } }, tt("▸ Envoyer dans le deck")),
         h("button.mini", { on: { click: () => openDeck(this) } }, tt("🎞 Ouvrir le deck")),
         h("button.mini", { title: tt("La case entière dans l'onglet Cases de la banque, à glisser dans d'autres cases"), on: { click: () => this.saveCase(this.sel.panel) } }, tt("💾 Enregistrer la case")),
         (() => { const d = this.decks().find((x) => x.id === this.project.deckCur) || this.decks()[0]; if (!d) return ""; const n = d.clips.filter((c) => c.panel === this.sel.panel && c.page === this.page().id).length; return h("span.muted", `« ${d.name} »` + (n ? tt` · déjà ${n} fois` : "")); })()));
-    box.append(h("h4", tt("Indications")), h("div.row.wrap", Object.entries(MARKS).map(([t, [label, ico]]) => h("button.mini" + (this.markTool === t ? ".on" : ""), { title: tt("Tracer dans une case : ") + label, on: { click: () => this.armMark(t) } }, `${ico} ${label}`))));
-    box.append(h("h4", tt("Bulles")), h("div.row", Object.entries(BUB).map(([t, [label]]) => h("button.mini", { on: { click: () => this.addBubble(t) } }, "+ " + label))));
-    if ((pan.layers || []).length) box.append(h("h4", tt("Calques (du fond vers l'avant)")), h("div.layers", pan.layers.map((x) => {
+    bInd.append(h("div.ibloc-sub", tt("Indications")), h("div.row.wrap", Object.entries(MARKS).map(([t, [label, ico]]) => h("button.mini" + (this.markTool === t ? ".on" : ""), { title: tt("Tracer dans une case : ") + label, on: { click: () => this.armMark(t) } }, `${ico} ${label}`))));
+    bInd.append(h("div.ibloc-sub", tt("Bulles")), h("div.row", Object.entries(BUB).map(([t, [label]]) => h("button.mini", { on: { click: () => this.addBubble(t) } }, "+ " + label))));
+    if ((pan.layers || []).length) bCalq.append(h("div.layers", pan.layers.map((x) => {
       const it = this.bank.get(x.item);
       return h("button.lrow", { on: { click: () => this.select({ panel: this.sel.panel, layer: x.id }) } }, it ? it.name : "?", h("span.muted", it ? tr(variantOf(it, x.v).label) : ""));
     })));
+    box.append(bCam, bDec, bSol, bRend, bAnim, bInd);
+    if ((pan.layers || []).length) box.append(bCalq);
   }
 
   // ---------------------------------------------------------------- rendus
