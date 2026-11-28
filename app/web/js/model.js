@@ -10,8 +10,8 @@ export const uid = () => Math.random().toString(36).slice(2, 8);
 export function variantOf(item, vid) {
   if (item && item.variants && typeof vid === "string" && vid.includes("~")) {   // plan d'un decor retouche en calques : "<version>~<plan>"
     const [a, k] = vid.split("~"), pl = item.variants[a] && (item.variants[a].planes || []).find((x) => x.id === k);
-    if (pl) return pl;
-    vid = a;
+    // version ou calque supprime : le plan ne dessine plus rien (le fond, lui, retombe sur la base : background)
+    return pl || { label: "—", missing: true };
   }
   return (item && item.variants && (item.variants[vid] || item.variants.base)) || null;
 }
@@ -19,7 +19,7 @@ export function variantOf(item, vid) {
 // image a afficher pour (element, variante, image de l'orbite) : orbite > detourage fixe > image d'origine
 export function sprite(item, vid, f) {
   const v = variantOf(item, vid);
-  if (!v) return null;
+  if (!v || v.missing) return null;
   const id = item.src || item.id;                           // personnage assemble : les images sont celles de son corps
   if (v.orbit && v.orbit.n) {
     const n = v.orbit.n, i = ((Math.round(f || 0) % n) + n) % n;
@@ -464,6 +464,6 @@ export function background(panel, bank, projectId) {
   if (bg.file) return { url: `/projects/${projectId}/${bg.file}`, w: bg.w, h: bg.h };
   const item = bank.get(bg.item);
   if (!item) return null;
-  const sp = sprite(item, bg.v || "base", bg.f || 0);
+  const sp = sprite(item, bg.v || "base", bg.f || 0) || (String(bg.v || "").includes("~") ? sprite(item, "base", 0) : null);   // version en calques supprimee : la base
   return sp && { url: sp.url, w: sp.w, h: sp.h, orbit: sp.orbit, n: sp.n, item, vec: sp.vec, i: sp.i };
 }

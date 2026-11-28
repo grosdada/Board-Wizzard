@@ -98,8 +98,9 @@ export async function openDecorRetouch(app, { itemId, vid = "base", f = 0, onSav
 }
 function h2(text) { const p = document.createElement("p"); p.className = "muted"; p.style.margin = "0"; p.textContent = text; return p; }
 
-// profondeur par defaut des plans (du calque juste au-dessus du fond vers celui du dessus) : derriere les personnages
-const defaultDepth = (k, n) => (n <= 1 ? 0.85 : 0.95 - 0.3 * (k - 1) / (n - 1));
+// profondeur par defaut des plans (du calque juste au-dessus du fond vers celui du dessus) : derriere tous les elements
+// deja poses (lo = juste au-dela du plus lointain), jusqu'a 0,98
+const defaultDepth = (k, n, lo) => { const a = Math.min(0.97, lo), b = 0.98; return n <= 1 ? (a + b) / 2 : b - (b - a) * (k - 1) / (n - 1); };
 
 /** Pose la version ver (en calques) du decor itemId dans la case pid : le fond, puis les plans en elements. Les plans
  *  deja poses gardent leur profondeur (meme calque de l'atelier d'une version a l'autre). */
@@ -127,14 +128,14 @@ export function layoutPlanes(app, pid, reset = true) {
   const old = new Map((pan.layers || []).filter(isPlane).map((l) => [l.v.split("~")[1], l]));
   const rest = (pan.layers || []).filter((l) => !isPlane(l));
   rest.forEach((x, i) => { if (x.d == null) x.d = +depthOf({ layers: rest }, i).toFixed(3); });   // les profondeurs implicites ne bougent pas
-  const ups = v.planes.slice(1), out = [];
+  const ups = v.planes.slice(1), out = [], lo = rest.length ? Math.max(...rest.map((x) => x.d)) + 0.03 : 0.65;
   ups.forEach((p, i) => {
     const [bx, by, bw, bh] = p.box || [0, 0, 1, 1], o = old.get(p.id);
     const pos = { x: f4((pl.x + (bx + bw / 2) * pl.w - bb.x0) / bb.w), y: f4((pl.y + (by + bh) * pl.h - bb.y0) / bb.h), s: f4(bh * pl.h / bb.h) };
     if (o && o.item === pan.bg.item && !reset && versionOf(o.v) === ver) { out.push(o); return; }   // deja posee : elle reste ou on l'a mise
     // nouvelle version : le plan reprend sa place sur le fond (il a pu bouger dans l'atelier), mais garde sa profondeur
     const l = Object.assign(o && o.item === pan.bg.item ? o : { id: uid(), f: 0 }, { item: pan.bg.item, v: ver + "~" + p.id }, pos,
-      { d: o && o.d != null ? o.d : +defaultDepth(i + 1, ups.length).toFixed(3) });
+      { d: o && o.d != null ? o.d : +defaultDepth(i + 1, ups.length, lo).toFixed(3) });
     if (reset) { delete l.flip; delete l.rz; }
     out.push(l);
   });
