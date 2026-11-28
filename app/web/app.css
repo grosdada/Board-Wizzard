@@ -769,3 +769,8 @@ details.ib-calq { --ib: 120, 205, 195; }
 .it-btn.alone { display: block; margin: 2px 0 4px; }
 .it-body { margin: 2px 0 6px; padding: 2px 0 2px 8px; border-left: 2px solid var(--accent); }
 .it-body > p.muted { margin: 3px 0; }
+details.ib-pose { --ib: 235, 125, 190; }
+details.ib-bub { --ib: 235, 210, 90; }
+details.ib-mark { --ib: 150, 160, 160; }
+details.ib-calq .lrow { width: 100%; margin: 2px 0; }
+details.ib-calq .lrow.on { border-color: rgb(var(--ib)); background: rgba(var(--ib), 0.18); }

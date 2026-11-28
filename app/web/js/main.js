@@ -1506,6 +1506,39 @@ class App {
   }
 
   // ---------------------------------------------------------------- inspecteur
+  // Un bloc de l'inspecteur : depliable, sa couleur (app.css .ib-<cle>), ouvert / ferme garde (et d'une visite a l'autre)
+  ibloc(key, label, tip) {
+    const folds = this.ifolds || (this.ifolds = (() => { try { return JSON.parse(localStorage.getItem("bw.ifolds") || "{}"); } catch (e) { return {}; } })());
+    return h("details.ibloc.ib-" + key, { open: folds[key] !== false, on: { toggle: (e) => { folds[key] = e.target.open; try { localStorage.setItem("bw.ifolds", JSON.stringify(folds)); } catch (err) { /* stockage plein */ } } } },
+      h("summary", tip ? { title: tip } : {}, ...[].concat(label)));
+  }
+  // Calques : tout ce qui est dans la case, du fond vers l'avant (decor, fond dessine, sol, elements, bulles, indications),
+  // toujours en tete de l'inspecteur, quel que soit ce qui est choisi : un clic passe de l'un a l'autre. Decor, fond dessine
+  // et sol ouvrent leur bloc dans les reglages de la case.
+  calqBloc(pan) {
+    const pid = this.sel.panel, g = this.geo(pid), bg = background(pan, this.bank, this.project.id), sel = this.sel;
+    const openBloc = (key) => {
+      this.ifolds = this.ifolds || {}; this.ifolds[key] = true;
+      try { localStorage.setItem("bw.ifolds", JSON.stringify(this.ifolds)); } catch (e) { /* stockage plein */ }
+      this.select({ panel: pid });
+      requestAnimationFrame(() => { const el = this.el.insp.querySelector("details.ib-" + key); if (el) { el.open = true; el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } });
+    };
+    const row = (on, label, sub, click, title) => h("button.lrow" + (on ? ".on" : ""), { title: title || "", on: { click } }, label, sub ? h("span.muted", sub) : "");
+    const none = !sel.layer && !sel.bubble && !sel.mark;
+    const rows = [row(none, tt("⚙ Case ") + (g ? g.order : ""), tt("réglages"), () => this.select({ panel: pid }), tt("Les réglages de la case : caméra, décor, sol, rendu, animation"))];
+    if (bg) rows.push(row(false, tt("🏞 Décor"), bg.item ? bg.item.name : tt("image importée"), () => openBloc("dec")));
+    if (pan.draw) rows.push(row(false, tt("✎ Fond dessiné"), "", () => openBloc("dec")));
+    if (pan.ground) rows.push(row(false, tt("▱ Sol"), pan.ground.on ? "" : tt("caché"), () => openBloc("sol")));
+    for (const x of pan.layers || []) {
+      const it = this.bank.get(x.item);
+      rows.push(row(sel.layer === x.id, (x.lock ? "🔒 " : "") + (it ? it.name : "?"), it ? tr(variantOf(it, x.v).label) : "", () => this.select({ panel: pid, layer: x.id })));
+    }
+    for (const b of pan.bubbles || []) rows.push(row(sel.bubble === b.id, "💬 " + ((b.text || "").trim().slice(0, 28) || tt("Bulle")), "", () => this.select({ panel: pid, bubble: b.id })));
+    for (const m of pan.marks || []) rows.push(row(sel.mark === m.id, "✏ " + (MARKS[m.type] ? MARKS[m.type][0] : m.type), "", () => this.select({ panel: pid, mark: m.id })));
+    const d = this.ibloc("calq", tt("☰ Calques (du fond vers l'avant)"), tt("Tout ce qui est dans la case, du fond vers l'avant. Un clic : le choisir et le régler."));
+    d.append(h("div.layers", rows));
+    return d;
+  }
   refreshInspector() {
     this.savePos();
     const box = this.el.insp; box.textContent = ""; this.syncLayer = null;
@@ -1548,26 +1581,27 @@ class App {
       // le trait est une version de l'illustration, jamais a sa place : l.ill montre l'illustration (les images de l'orbite) ;
       // pour un element qui n'est pas un dessin, l'illustration par defaut et le trait sur demande (l.tr)
       const sp = layerSp(sp0, l), trait = !!(sp && sp.vec);
-      box.append(h("h3", item ? item.name : tt("Élément retiré de la banque"), l.lock ? h("span", { title: tt("Verrouillé : clic droit dessus pour le déverrouiller") }, " 🔒") : ""));
-      if (sp0 && (sp0.vec || sp0.vecAlt)) box.append(h("div.axes", { title: tt("Le trait est une version de l'illustration, tracée pour être nette à tout zoom. L'illustration reste toujours là.") },
+      const bP = this.ibloc("pose", [item ? item.name : tt("Élément retiré de la banque"), l.lock ? h("span", { title: tt("Verrouillé : clic droit dessus pour le déverrouiller") }, " 🔒") : ""]);
+      box.append(this.calqBloc(pan), bP);
+      if (sp0 && (sp0.vec || sp0.vecAlt)) bP.append(h("div.axes", { title: tt("Le trait est une version de l'illustration, tracée pour être nette à tout zoom. L'illustration reste toujours là.") },
         [[true, tt("Illustration")], [false, tt("Trait")]].map(([ill, lab]) => h("button.mini" + (ill !== trait ? ".on" : ""), { on: { click: () => {
           if (ill) { if (sp0.vec) l.ill = 1; delete l.tr; } else { delete l.ill; if (sp0.vecAlt) l.tr = 1; }
           this.commit("ill"); this.editor.render(); this.refreshInspector(); } } }, lab))));
-      if (!item) { box.append(h("button.mini.danger", { on: { click: () => this.removeLayer(l) } }, tt("Supprimer le calque"))); return; }
-      box.append(h("label.row", tt("Pose"), h("select", { on: { change: (e) => this.setPose(l, e.target.value) } },
+      if (!item) { bP.append(h("button.mini.danger", { on: { click: () => this.removeLayer(l) } }, tt("Supprimer le calque"))); return; }
+      bP.append(h("label.row", tt("Pose"), h("select", { on: { change: (e) => this.setPose(l, e.target.value) } },
         Object.entries(item.variants).map(([k, vv]) => h("option", { value: k, selected: k === l.v }, (vv.orbit ? "↻ " : this.jobsFor(l.item, k) ? "⏳ " : "▫ ") + tr(vv.label))))));
       if (v && v.orbit) {
         const cur = nearestAxis(v.orbit, l.f || 0);
-        box.append(h("div.axes", AXES.map((a) => h("button.mini" + (a === cur ? ".on" : ""), { on: { click: () => this.setAxis(l, a) } }, tr(a)))),
+        bP.append(h("div.axes", AXES.map((a) => h("button.mini" + (a === cur ? ".on" : ""), { on: { click: () => this.setAxis(l, a) } }, tr(a)))),
           range(tt("Rotation"), sp.i, 0, sp.n - 1, 1, (x) => { l.f = x; }, "frame"));
-      } else box.append(h("p.muted", this.jobsFor(l.item, l.v) ? tt("Orbite en calcul : le personnage deviendra pivotable.") : tt("Pas d'orbite pour cette pose : image fixe.")));
+      } else bP.append(h("p.muted", this.jobsFor(l.item, l.v) ? tt("Orbite en calcul : le personnage deviendra pivotable.") : tt("Pas d'orbite pour cette pose : image fixe.")));
       const rs = range(tt("Taille"), l.s, 0.05, 12, 0.01, (x) => { l.s = x; }, "lscale");
       const rpx = range(tt("Position ↔"), l.x, -4, 5, 0.005, (x) => { l.x = x; }, "lmove"), rpy = range(tt("Position ↕"), l.y, -4, 8, 0.005, (x) => { l.y = x; }, "lmove");
       this.syncLayer = () => { for (const [r, v] of [[rs, l.s], [rpx, l.x], [rpy, l.y]]) { r.querySelector("input").value = v; r.querySelector("output").textContent = fmt(v); } };
       // dépliant : reste ouvert ou fermé d'un élément à l'autre
       const fold = (key, label, ...rows) => { this.folds = this.folds || { sh: true, gs: true, wig: false };
         return h("details.fold", { open: !!this.folds[key], on: { toggle: (e) => { this.folds[key] = e.target.open; } } }, h("summary", label), ...rows); };
-      if (sp && sp.vec) box.append(h("div", { title: tt("Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin, jusqu'à un filet.") }, range(tt("Trait ⓘ"), l.lw || 0, -12, 6, 0.1, (x) => { l.lw = x; }, "lw")),
+      if (sp && sp.vec) bP.append(h("div", { title: tt("Dessin en tracés : net à tout zoom. Trait à 0 = celui du dessin ; vers la droite plus épais, vers la gauche plus fin, jusqu'à un filet.") }, range(tt("Trait ⓘ"), l.lw || 0, -12, 6, 0.1, (x) => { l.lw = x; }, "lw")),
         h("div", { title: tt("Épaisseur aléatoire : par endroits le trait s'épaissit, ailleurs il s'amincit, comme tracé à la plume. 0 : régulier.") }, range(tt("Épaisseur aléatoire ⓘ"), l.lj || 0, 0, 10, 0.1, (x) => { if (x > 0) l.lj = x; else delete l.lj; }, "lj")),
         fold("wig", tt("Tremblé du trait"), range(tt("Tremblé"), l.hand || 0, 0, 10, 0.1, (x) => { l.hand = x; }, "hand"), range(tt("Ondulation"), l.wave ?? 4, 0.5, 12, 0.1, (x) => { l.wave = x; }, "hand")),
         h("div.row.colrow", { title: tt("Couleur unie du personnage (le blanc du dessin). L'ombre et le masque de la bouche suivent.") }, h("span", tt("Couleur")),
@@ -1579,19 +1613,19 @@ class App {
       if (sp && !sp.vec) {                                   // colorize : une couleur en produit dans la decoupe (le blanc la prend)
         const tn = l.tint || {};
         const cb = h("input", { type: "checkbox", checked: !!tn.on, on: { change: (e) => { l.tint = Object.assign({ c: "#e9b98f" }, l.tint, { on: e.target.checked }); this.commit("tint"); this.editor.render(); } } });
-        box.append(h("div.row.colrow", { title: tt("Pose une couleur en produit sur le personnage, dans sa découpe : le blanc prend la couleur, les traits et la peinture restent visibles. Les bouches du lip sync prennent la même couleur.") },
+        bP.append(h("div.row.colrow", { title: tt("Pose une couleur en produit sur le personnage, dans sa découpe : le blanc prend la couleur, les traits et la peinture restent visibles. Les bouches du lip sync prennent la même couleur.") },
           h("label.row.check", cb, tt("Colorize ⓘ")),
           swatch(tn.c || "#e9b98f", (c) => { l.tint = { on: true, c }; cb.checked = true; this.editor.render(true); this.commitSoon("tint"); })));
       }
-      if (sp0) box.append(hslFold(() => l.hsl, (n) => { if (n) l.hsl = n; else delete l.hsl; }, "hsl", tt("Teinte, saturation, luminosité et contraste de l'élément, comme dans Photoshop (Ctrl+U). Les bouches du lip sync suivent.")));
-      box.append(range(tt("Inclinaison"), l.rz || 0, -180, 180, 1, (x) => { l.rz = x; }, "rz"));
-      box.append(rs, rpx, rpy,
+      if (sp0) bP.append(hslFold(() => l.hsl, (n) => { if (n) l.hsl = n; else delete l.hsl; }, "hsl", tt("Teinte, saturation, luminosité et contraste de l'élément, comme dans Photoshop (Ctrl+U). Les bouches du lip sync suivent.")));
+      bP.append(range(tt("Inclinaison"), l.rz || 0, -180, 180, 1, (x) => { l.rz = x; }, "rz"));
+      bP.append(rs, rpx, rpy,
         range(tt("Profondeur"), depthOf(pan, i), 0, 1, 0.01, (x) => { l.d = x; }, "depth"));
       // ombre et ombre portee : en dernier, apres la profondeur
       if (sp && sp.vec) {
         const sh = l.sh || {}, put = (k, x) => { l.sh = Object.assign({ on: true, g: 0.72, w: 5, a: 135 }, l.sh, { [k]: x }); };
-        box.append(h("label.row.check", { title: tt("Un aplat gris posé sur le dessin, du côté opposé à la lumière. Sans calcul.") }, h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), tt("Ombre")));
-        if (sh.on) box.append(fold("sh", tt("Réglages de l'ombre"),
+        bP.append(h("label.row.check", { title: tt("Un aplat gris posé sur le dessin, du côté opposé à la lumière. Sans calcul.") }, h("input", { type: "checkbox", checked: !!sh.on, on: { change: (e) => { put("on", e.target.checked); this.commit("shade"); this.editor.render(); this.refreshInspector(); } } }), tt("Ombre")));
+        if (sh.on) bP.append(fold("sh", tt("Réglages de l'ombre"),
           h("label.row.check", { title: tt("L'ombre prend la couleur choisie pour le contour du dessin, au lieu d'assombrir la couleur du corps") }, h("input", { type: "checkbox", checked: !!sh.ink, on: { change: (e) => { put("ink", e.target.checked); this.editor.render(true); this.commit("shade"); } } }), tt("Cloner la couleur de contour")),
           range(tt("Gris"), sh.g ?? 0.72, 0.2, 0.95, 0.01, (x) => put("g", x), "shade"),
           range(tt("Largeur"), sh.w ?? 5, 0.5, 25, 0.1, (x) => put("w", x), "shade"),
@@ -1600,9 +1634,9 @@ class App {
       }
       {
         const gs = l.gs || {}, putg = (k, x) => { l.gs = Object.assign({ on: true, a: 0.35, w: 0.8 }, l.gs, { [k]: x }); };
-        box.append(h("div.row.wrap", h("label.row.check", { title: tt("Une tache sombre et floue sous l'élément, pour le poser au sol") }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); this.commit("cast"); this.editor.render(); this.refreshInspector(); } } }), tt("Ombre portée")),
+        bP.append(h("div.row.wrap", h("label.row.check", { title: tt("Une tache sombre et floue sous l'élément, pour le poser au sol") }, h("input", { type: "checkbox", checked: !!gs.on, on: { change: (e) => { putg("on", e.target.checked); this.commit("cast"); this.editor.render(); this.refreshInspector(); } } }), tt("Ombre portée")),
           gs.on ? h("label.row.check", { title: tt("Au mur : l'ombre se dresse à la verticale sur le côté, derrière le personnage, au lieu d'être couchée au sol. Mêmes réglages.") }, h("input", { type: "checkbox", checked: !!gs.wall, on: { change: (e) => { putg("wall", e.target.checked); this.commit("cast"); this.editor.render(); } } }), tt("Au mur")) : ""));
-        if (gs.on) box.append(fold("gs", tt("Réglages de l'ombre portée"),
+        if (gs.on) bP.append(fold("gs", tt("Réglages de l'ombre portée"),
           h("div.row.colrow", { title: tt("Couleur de l'ombre portée. « Cloner la couleur de contour », s'il est coché, l'emporte sur elle.") }, h("span", tt("Couleur")),
             swatch(gs.c || "#000000", (c) => { putg("c", c); this.editor.render(true); this.commitSoon("cast"); })),
           h("label.row.check", { title: tt("L'ombre prend la couleur choisie pour le contour du dessin, au lieu du noir") }, h("input", { type: "checkbox", checked: !!gs.ink, on: { change: (e) => { putg("ink", e.target.checked); this.editor.render(true); this.commit("cast"); } } }), tt("Cloner la couleur de contour")),
@@ -1614,7 +1648,7 @@ class App {
           h("div", { title: tt("Déforme le contour de l'ombre. 0 : ovale net. Tout à droite : une tache abstraite. Ondulation courte = bord déchiqueté, longue = grandes vagues. Forme : une autre tache, au hasard.") },
             range(tt("Tremblé ⓘ"), gs.hand || 0, 0, 10, 0.1, (x) => putg("hand", x), "cast"), range(tt("Ondulation"), gs.wave ?? 4, 0.5, 12, 0.1, (x) => putg("wave", x), "cast"), range(tt("Forme"), gs.seed || 0, 0, 40, 1, (x) => putg("seed", x), "cast"))));
       }
-      box.append(
+      bP.append(
         h("div.row", h("button.mini" + (l.flip ? ".on" : ""), { on: { click: () => { l.flip = !l.flip; this.commit("flip"); this.editor.render(); this.refreshInspector(); } } }, tt("⇋ Miroir")),
           h("button.mini", { on: { click: () => this.order(l, "up") } }, tt("Avancer")), h("button.mini", { on: { click: () => this.order(l, "down") } }, tt("Reculer")),
           h("button.mini", { on: { click: () => this.duplicate(l) } }, tt("Dupliquer")),
@@ -1627,7 +1661,7 @@ class App {
       const AB = window.AliveBubbles, upd = () => { this.editor.bubs.get(this.sel.panel)?.layout(); this.commitSoon("bub-" + b.id); };
       const sel = (label, key, opts) => h("label.row", label, h("select", { on: { change: (e) => { b[key] = e.target.value; this.editor.render(); this.commit("bub"); } } },
         opts.map(([v, t]) => h("option", { value: v, selected: (b[key] || opts[0][0]) === v }, t))));
-      box.append(h("h3", tt("Bulle")),
+      const bP = this.ibloc("bub", tt("💬 Bulle")); box.append(this.calqBloc(pan), bP); bP.append(
         h("textarea", { rows: 3, on: { input: (e) => { b.text = e.target.value; const it = this.editor.bubs.get(this.sel.panel)?.items.find((x) => x.b === b); if (it) it.txt.textContent = b.text; upd(); } } }, b.text || ""),
         sel(tt("Forme"), "type", Object.entries(BUB).map(([k, v]) => [k, v[0]])),
         sel(tt("Taille"), "size", [["S", tt("Petite")], ["M", tt("Moyenne")], ["L", tt("Grande")]]),
@@ -1640,7 +1674,7 @@ class App {
     const mk = this.mark();
     if (mk) {
       const redo = () => { this.editor.render(); this.commit("mark"); this.refreshInspector(); };
-      box.append(h("h3", tt("Indication · ") + MARKS[mk.type][0]),
+      const bP = this.ibloc("mark", tt("✏ Indication · ") + MARKS[mk.type][0]); box.append(this.calqBloc(pan), bP); bP.append(
         h("div.row.colrow", h("span", tt("Couleur")), swatch(mk.color || "#111111", (c) => { mk.color = c; this.editor.render(true); this.commitSoon("mark"); })),
         range(tt("Épaisseur"), mk.w || 1, 0.4, 4, 0.1, (x) => { mk.w = x; }, "mark"),
         h("label.row.check", h("input", { type: "checkbox", checked: mk.ol !== false, on: { change: (e) => { if (e.target.checked) delete mk.ol; else mk.ol = false; redo(); } } }), tt("Contour")),
@@ -1659,22 +1693,17 @@ class App {
     // ---- la case
     const g = this.geo(this.sel.panel), bg = background(pan, this.bank, this.project.id);
     const dof = pan.dof || (pan.dof = { on: false, focus: 0.3, amount: 12 });
-    box.append(h("h3", tt("Case ") + (g ? g.order : "")), h("div.row", h("button.danger", { title: tt("Vide entièrement la case : décor, éléments, bulles, indications, fond dessiné, montage, rendus. Une alerte demande confirmation."), on: { click: () => this.restorePanel(this.sel.panel) } }, tt("🧹 Restore case"))));
+    box.append(h("h3", tt("Case ") + (g ? g.order : "")), h("div.row", h("button.danger", { title: tt("Vide entièrement la case : décor, éléments, bulles, indications, fond dessiné, montage, rendus. Une alerte demande confirmation."), on: { click: () => this.restorePanel(this.sel.panel) } }, tt("🧹 Restore case")),
+      h("button.mini", { title: tt("La case entière dans l'onglet Cases de la banque, à glisser dans d'autres cases"), on: { click: () => this.saveCase(this.sel.panel) } }, tt("💾 Enregistrer la case"))));
     // les reglages de la case en blocs separes et depliables, chacun sa couleur : camera, decor, sol, rendu et orbite,
     // animation, indications et bulles, calques. Ouvert / ferme est garde d'une case a l'autre (et d'une visite a l'autre).
-    const folds = this.ifolds || (this.ifolds = (() => { try { return JSON.parse(localStorage.getItem("bw.ifolds") || "{}"); } catch (e) { return {}; } })());
-    const bloc = (key, label, tip) => {
-      const d = h("details.ibloc.ib-" + key, { open: folds[key] !== false, on: { toggle: (e) => { folds[key] = e.target.open; try { localStorage.setItem("bw.ifolds", JSON.stringify(folds)); } catch (err) { /* stockage plein */ } } } },
-        h("summary", tip ? { title: tip } : {}, label));
-      return d;
-    };
+    const bloc = (key, label, tip) => this.ibloc(key, label, tip);
     const bCam = bloc("cam", tt("🎥 Caméra"), tt("La caméra de la case : cadre, zoom, inclinaison, et « Avancer » qui entre dans la profondeur (le premier plan grossit plus vite que le décor). C'est la caméra du montage : « 1re image → case » la règle sur la première image, et le montage part de celle-ci quand sa caméra n'a pas de clé. La case la montre, l'impression et Integrate aussi. En dessous : le flou de profondeur."));
     const bDec = bloc("dec", tt("🏞 Décor"), tt("Le fond de la case : décor de la banque, image importée ou fond dessiné, son cadrage, son trait et ses couleurs."));
     const bSol = bloc("sol", tt("▱ Sol"), tt("Le sol de la case : une plaque posée sur le sol, vue en perspective, sous les personnages. Le décor est posé dessus : la plaque s'arrête au pied du décor, jamais par-dessus le mur. Mêmes réglages que dans le montage (piste Sol), où l'on tire la plaque à la main."));
     const bRend = bloc("rend", tt("✦ Rendu et orbite"), tt("L'image finale calculée (Integrate, photo) et l'orbite 360° de toute la case."));
     const bAnim = bloc("anim", tt("🎬 Animation"), tt("Le montage de la case (timeline, poses clés, caméra virtuelle) et le deck."));
     const bInd = bloc("ind", tt("✏ Indications et bulles"));
-    const bCalq = bloc("calq", tt("☰ Calques (du fond vers l'avant)"));
     bDec.append(h("div.row", h("span.muted", tt("Fond :")), h("span", bg ? (bg.item ? bg.item.name : tt("image importée")) : "aucun"),
       bg && bg.item ? h("button.mini", { title: tt("Montrer ce décor dans la banque"), on: { click: () => this.bankUI.reveal(bg.item.id) } }, "📍") : null,
       bg ? h("button.mini", { on: { click: () => { delete pan.bg; this.commit("bg"); this.editor.render(); this.refreshInspector(); } } }, tt("Retirer")) : null));
@@ -1810,16 +1839,10 @@ class App {
       pan.anim ? h("span.muted", tt`${pan.anim.dur} s · ${Object.values(pan.anim.tracks || {}).reduce((n, k) => n + k.length, 0)} clés`) : ""),
       h("div.row", h("button.mini", { title: tt("Ajoute cette case comme plan dans le deck de montage global"), on: { click: () => this.sendToDeck(this.sel.panel) } }, tt("▸ Envoyer dans le deck")),
         h("button.mini", { on: { click: () => openDeck(this) } }, tt("🎞 Ouvrir le deck")),
-        h("button.mini", { title: tt("La case entière dans l'onglet Cases de la banque, à glisser dans d'autres cases"), on: { click: () => this.saveCase(this.sel.panel) } }, tt("💾 Enregistrer la case")),
         (() => { const d = this.decks().find((x) => x.id === this.project.deckCur) || this.decks()[0]; if (!d) return ""; const n = d.clips.filter((c) => c.panel === this.sel.panel && c.page === this.page().id).length; return h("span.muted", `« ${d.name} »` + (n ? tt` · déjà ${n} fois` : "")); })()));
     bInd.append(h("div.ibloc-sub", tt("Indications")), h("div.row.wrap", Object.entries(MARKS).map(([t, [label, ico]]) => h("button.mini" + (this.markTool === t ? ".on" : ""), { title: tt("Tracer dans une case : ") + label, on: { click: () => this.armMark(t) } }, `${ico} ${label}`))));
     bInd.append(h("div.ibloc-sub", tt("Bulles")), h("div.row", Object.entries(BUB).map(([t, [label]]) => h("button.mini", { on: { click: () => this.addBubble(t) } }, "+ " + label))));
-    if ((pan.layers || []).length) bCalq.append(h("div.layers", pan.layers.map((x) => {
-      const it = this.bank.get(x.item);
-      return h("button.lrow", { on: { click: () => this.select({ panel: this.sel.panel, layer: x.id }) } }, it ? it.name : "?", h("span.muted", it ? tr(variantOf(it, x.v).label) : ""));
-    })));
-    box.append(bCam, bDec, bSol, bRend, bAnim, bInd);
-    if ((pan.layers || []).length) box.append(bCalq);
+    box.append(this.calqBloc(pan), bCam, bDec, bSol, bRend, bAnim, bInd);
   }
 
   // ---------------------------------------------------------------- rendus

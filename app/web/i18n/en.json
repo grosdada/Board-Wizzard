@@ -2488,7 +2488,14 @@
   "Le fond de la case : décor de la banque, image importée ou fond dessiné, son cadrage, son trait et ses couleurs.": "The panel's background: a bank set, an imported image or a drawn background, with its framing, line and colours.",
   "L'image finale calculée (Integrate, photo) et l'orbite 360° de toute la case.": "The computed final image (Integrate, photo) and the 360° orbit of the whole panel.",
   "Le montage de la case (timeline, poses clés, caméra virtuelle) et le deck.": "The panel's montage (timeline, key poses, virtual camera) and the deck.",
-  "Afficher l'explication": "Show the explanation"
+  "Afficher l'explication": "Show the explanation",
+  "💬 Bulle": "💬 Bubble",
+  "✏ Indication · ": "✏ Mark · ",
+  "⚙ Case ": "⚙ Panel ",
+  "Les réglages de la case : caméra, décor, sol, rendu, animation": "The panel settings: camera, background, ground, render, animation",
+  "✎ Fond dessiné": "✎ Drawn background",
+  "caché": "hidden",
+  "Tout ce qui est dans la case, du fond vers l'avant. Un clic : le choisir et le régler.": "Everything in the panel, back to front. Click: select it and adjust it."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
