@@ -2495,7 +2495,10 @@
   "Les réglages de la case : caméra, décor, sol, rendu, animation": "The panel settings: camera, background, ground, render, animation",
   "✎ Fond dessiné": "✎ Drawn background",
   "caché": "hidden",
-  "Tout ce qui est dans la case, du fond vers l'avant. Un clic : le choisir et le régler.": "Everything in the panel, back to front. Click: select it and adjust it."
+  "Tout ce qui est dans la case, du fond vers l'avant. Un clic : le choisir et le régler.": "Everything in the panel, back to front. Click: select it and adjust it.",
+  "Dessin lavis (comme les décors dessinés)": "Wash drawing (like the drawn sets)",
+  "Dessin lavis : quatre décors de « Intérieurs dessinés » servent de modèles de style (même trait, même lavis). Génération payante sur fal (GPT Image), puis l'orbite comme d'habitude.": "Wash drawing: four sets from “Intérieurs dessinés” serve as style models (same line, same wash). Paid generation on fal (GPT Image), then the orbit as usual.",
+  "Aucun décor dans « Intérieurs dessinés » pour servir de modèle.": "No set in “Intérieurs dessinés” to serve as a model."
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",

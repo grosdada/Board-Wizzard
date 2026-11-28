@@ -508,19 +508,51 @@ export class Bank {
       } }]);
   }
 
+  // Modeles de style du « Dessin lavis » : quatre decors dessines, d'abord ceux du dossier choisi s'il est sous « Interieurs
+  // dessines », completes au hasard par les autres ; chaque image reduite (1024 px) et envoyee en data:
+  async lavisRefs(folder) {
+    const all = [...this.app.bank.values()].filter((it) => it.kind === "decor" && it.style === "dessin" && /^Intérieurs dessinés/.test(it.folder || ""));
+    const mix = (a) => a.map((x) => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map((p) => p[1]);
+    const same = mix(all.filter((it) => it.folder === folder)), rest = mix(all.filter((it) => it.folder !== folder));
+    const out = [];
+    for (const it of same.concat(rest)) {
+      if (out.length >= 4) break;
+      const url = this.thumb(it, "base");
+      if (!url) continue;
+      try {
+        const im = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = url; });
+        const k = Math.min(1, 1024 / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement("canvas");
+        c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+        const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+        out.push(c.toDataURL("image/jpeg", 0.9));
+      } catch (e) { /* image introuvable : on passe a la suivante */ }
+    }
+    return out;
+  }
+
   generateDialog() {
     const kind = h("select", KINDS.map(([k, l]) => h("option", { value: k, selected: k === this.tab }, l)));
-    const style = h("select", STYLES.map(([k, l]) => h("option", { value: k }, l)));
+    // « Dessin lavis » : le style des decors dessines de la banque (« Interieurs dessines »), donne par quelques-uns d'entre
+    // eux en references de style (generation guidee, GPT Image sur fal) ; l'element est range comme un dessin
+    const style = h("select", STYLES.concat([["lavis", tt("Dessin lavis (comme les décors dessinés)")]]).map(([k, l]) => h("option", { value: k }, l)));
+    const lavisNote = h("p.muted", { style: { display: "none" } }, tt("Dessin lavis : quatre décors de « Intérieurs dessinés » servent de modèles de style (même trait, même lavis). Génération payante sur fal (GPT Image), puis l'orbite comme d'habitude."));
+    style.addEventListener("change", () => { lavisNote.style.display = style.value === "lavis" ? "" : "none"; });
     const name = h("input", { type: "text", placeholder: tt("Nom dans la banque") });
     const prompt = h("textarea", { rows: 4, placeholder: tt("Un marteau de charpentier usé, manche en bois…") });
     const orbit = h("input", { type: "checkbox", checked: true });
     const folder = this.folderInput(this.folder && this.folder !== "·" ? this.folder : "");
-    modal(tt("Générer un élément"), h("div.form", h("label.row", tt("Type"), kind), h("label.row", tt("Nom"), name), h("label.row", tt("Dossier"), folder), h("label.row", tt("Rendu"), style),
+    modal(tt("Générer un élément"), h("div.form", h("label.row", tt("Type"), kind), h("label.row", tt("Nom"), name), h("label.row", tt("Dossier"), folder), h("label.row", tt("Rendu"), style), lavisNote,
       h("label.col", tt("Description"), prompt), h("label.row.check", orbit, tt("Puis son orbite 360°"))),
       [{ label: tt("Annuler") }, { label: tt("Générer"), primary: true, click: async () => {
         if (!prompt.value.trim()) { toast(tt("Décris ce qu'il faut générer."), "error"); return false; }
+        let st = style.value, refs;
+        if (st === "lavis") {
+          refs = await this.lavisRefs(folder.querySelector("select").value);
+          if (!refs.length) { toast(tt("Aucun décor dans « Intérieurs dessinés » pour servir de modèle."), "error"); return false; }
+          st = "dessin";
+        }
         await post("bank/generate", { kind: kind.value, name: name.value.trim() || prompt.value.trim().slice(0, 30), prompt: prompt.value.trim(),
-                                      style: style.value, orbit: orbit.checked, target: target(), folder: folder.querySelector("select").value });
+                                      style: st, orbit: orbit.checked, target: target(), folder: folder.querySelector("select").value, ...(refs ? { refs } : {}) });
         toast(tt("Génération lancée : l'élément apparaîtra dans la banque.")); this.app.pollSoon();
       } }]);
   }
