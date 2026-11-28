@@ -1271,7 +1271,7 @@ export function openMontage(app, pid, opt = {}) {
   }
 
   // ------------------------------------------------------------------------------------------ reglages (droite)
-  const side = h("div.mt-side");
+  const side = h("div.mt-side"), mtFolds = {};
   let syncProps = () => {};
   const folds = { sh: true, gs: true, voice: true, mouth: true, lipt: false, lipm: false, tts: false, wig: false };
   const fold = (key, label, ...rows) => h("details.fold", { open: !!folds[key], on: { toggle: (e) => { folds[key] = e.target.open; } } }, h("summary", label), ...rows);
@@ -1324,13 +1324,6 @@ export function openMontage(app, pid, opt = {}) {
         h("p.muted", tt("Blanc = couleurs d'origine. Lecture pour voir le rythme."))) : "");
   }
   // en haut du panneau : de quoi choisir a tout moment la camera, le decor, le sol (sinon on ne sait pas ou les trouver)
-  function pickBar() {
-    const b = (id, label, title) => h("button.mini" + (sel === id ? ".on" : ""), { title, on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, label);
-    return h("div.row.wrap.mt-pick",
-      b("cam", tt("🎥 Caméra"), tt("Le cadre, le zoom, les mouvements de caméra")),
-      pan.bg ? b("bg", tt("🖼 Décor"), tt("Le décor de la case : glisser dans l'image pour le déplacer, molette pour sa taille")) : "",
-      pan.ground ? b("gr", tt("▱ Sol"), tt("Le sol de la case : glisser dans l'image pour déplacer la plaque, tirer ses ronds pour l'agrandir, la barre jaune règle l'horizon")) : "");
-  }
   /** Les reglages du sol (plaque, couleur, motif) ; dans la barre de Make Ground et dans le panneau du sol. */
   function groundCtl() {
     const gr = pan.ground, re = () => { hist.snap(); paint(); props(); };
@@ -1346,9 +1339,36 @@ export function openMontage(app, pid, opt = {}) {
       h("button.mini", { title: tt("Le sol redevient infini, jusqu'à l'horizon"), on: { click: () => { delete gr.ext; delete gr.fill; delete gr.pm; re(); } } }, tt("Sol infini")),
       h("button.mini.danger", { on: { click: () => { delete pan.ground; if (sel === "gr") sel = "cam"; hist.snap(); paint(); lanes(); props(); } } }, tt("Retirer le sol"))];
   }
+  // Calques du montage : tout ce qui se regle, du fond vers l'avant (camera, decor, formes detachees du decor, sol, nulls,
+  // elements), toujours en tete du panneau ; un clic le choisit. Comme le bloc « Calques » de l'inspecteur de la case.
+  function calqList() {
+    const row = (id, label, sub, title) => h("button.lrow" + (sel === id ? ".on" : ""), { title: title || "", on: { click: () => { sel = id; selKey = null; paint(); lanes(); props(); } } }, label, sub ? h("span.muted", sub) : "");
+    const bgIt = pan.bg && pan.bg.item && app.bank.get(pan.bg.item);
+    const rows = [row("cam", tt("🎥 Caméra"), "", tt("Le cadre, le zoom, les mouvements de caméra, la profondeur de champ"))];
+    if (pan.bg) rows.push(row("bg", tt("🏞 Décor"), bgIt ? bgIt.name : tt("image importée"), tt("Le décor de la case : glisser dans l'image pour le déplacer, molette pour sa taille")));
+    shapes().forEach((sh, i) => { if ((sh.d ?? 1) < 0.999) rows.push(row("s:" + sh.id, "◇ " + shapeName(sh, i), (sh.d ?? 1).toFixed(2), tt("Forme du décor détachée : sa profondeur"))); });
+    if (pan.ground) rows.push(row("gr", tt("▱ Sol"), pan.ground.on === false ? tt("caché") : "", tt("Le sol de la case : glisser dans l'image pour déplacer la plaque, tirer ses ronds pour l'agrandir, la barre jaune règle l'horizon")));
+    for (const n of anim.nulls || []) rows.push(row(n.id, "✛ " + n.name, tt("null")));
+    for (const l of pan.layers) { const it = itemOf(l); rows.push(row(l.id, (l.lock ? "🔒 " : "") + (it ? it.name : tt("Élément")), it ? tr(variantOf(it, l.v).label) : "")); }
+    const d = h("details.ibloc.ib-calq", { open: mtFolds.calq !== false, on: { toggle: (e) => { mtFolds.calq = e.target.open; } } },
+      h("summary", { title: tt("Tout ce qui est dans la case, du fond vers l'avant. Un clic : le choisir et le régler.") }, tt("☰ Calques (du fond vers l'avant)")), h("div.layers", rows));
+    return d;
+  }
+  // le reglage de ce qui est choisi, dans un bloc de sa couleur (camera bleu, decor vert, sol ocre, element rose, null gris) ;
+  // son premier titre devient le titre du bloc
   function props() {
+    propsIn();
+    const kind = sel === "gr" ? "sol" : sel === "bg" && pan.bg || shapeOf(sel) ? "dec" : nullOf(sel) ? "mark" : CAMS[sel] ? "cam" : "pose";
+    const nodes = [...side.children].slice(1);
+    if (!nodes.length) return;
+    const first = nodes[0].tagName === "H4" ? nodes.shift() : null;
+    const d = h("details.ibloc.ib-" + kind, { open: true }, h("summary", first ? { title: first.title || "" } : {}, ...(first ? [...first.childNodes] : [tt("Réglages")])));
+    side.append(d);
+    for (const n of nodes) d.append(n);
+  }
+  function propsIn() {
     side.textContent = "";
-    side.append(pickBar());
+    side.append(calqList());
     if (sel === "bg" && pan.bg) {                          // le decor : sa taille, sa place ; glisser dans l'image le deplace
       const rows = [];
       side.append(h("h4", tt("🖼 Décor")), decorBox(rows),
@@ -1407,7 +1427,7 @@ export function openMontage(app, pid, opt = {}) {
       return;
     }
     const isCam = !!CAMS[sel], l = isCam ? null : layerOf(sel);
-    if (!isCam && !l) { sel = "cam"; return props(); }
+    if (!isCam && !l) { sel = "cam"; return propsIn(); }
     const cur = () => (isCam ? camAt() : stateOf(l));
     const rows = [];
     const range = (label, k, min, max, step, fmt = (x) => (+x).toFixed(2), track = isCam ? "cam" : sel) => {
