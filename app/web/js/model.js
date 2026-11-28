@@ -303,6 +303,32 @@ export function markupReady(markup) {
   }
   return ok;
 }
+// Lecture sans flash blanc : remplacer tout le dessin (innerHTML) a chaque image recreait chaque <image>, decor compris,
+// et une <image> neuve reste vide le temps de se charger, meme depuis le cache : la case passait au blanc. Ici on garde
+// les noeuds en place et on ne change que ce qui differe d'une image a l'autre (une <image> dont l'adresse change garde
+// l'ancienne image jusqu'a ce que la nouvelle soit prete).
+const SVGNS = "http://www.w3.org/2000/svg";
+let morphTpl = null;
+export function morphSvg(el, markup) {
+  morphTpl = morphTpl || document.createElementNS(SVGNS, "svg");
+  morphTpl.innerHTML = markup;
+  morphKids(el, morphTpl);
+  morphTpl.textContent = "";
+}
+function morphKids(a, b) {
+  const an = a.childNodes, bn = Array.from(b.childNodes);
+  for (let i = 0; i < bn.length; i++) {
+    const x = an[i], y = bn[i];
+    if (!x) { a.appendChild(y); continue; }
+    if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { a.replaceChild(y, x); continue; }
+    if (x.nodeType === 1) {
+      for (const at of Array.from(x.attributes)) if (!y.hasAttributeNS(at.namespaceURI, at.localName)) x.removeAttributeNS(at.namespaceURI, at.localName);
+      for (const at of y.attributes) if (x.getAttributeNS(at.namespaceURI, at.localName) !== at.value) x.setAttributeNS(at.namespaceURI, at.name, at.value);
+      morphKids(x, y);
+    } else if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue;
+  }
+  while (an.length > bn.length) a.removeChild(a.lastChild);
+}
 export function preload(item, vid) {
   const key = item.id + "/" + vid + "/" + ((variantOf(item, vid) || {}).orbit || {}).dir;
   if (keep.has(key)) return keep.get(key);

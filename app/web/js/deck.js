@@ -4,6 +4,7 @@
 import { tt, tr } from "./i18n.js";
 import { h, modal, toast } from "./api.js";
 import { makeScene } from "./montage.js";
+import { markupReady, morphSvg } from "./model.js";
 import { W } from "./draw.js";
 import { compute } from "./geometry.js";
 
@@ -43,7 +44,8 @@ export function openDeck(app, deckId) {
     const [i, t] = locate(T), s = scenes[i];
     if (s.missing) { svg.setAttribute("viewBox", "0 0 1000 600"); svg.innerHTML = tt`<rect width="1000" height="600" fill="#1c1e1f"/><text x="500" y="300" text-anchor="middle" fill="#d6736b" font-size="26">Cette case n'existe plus</text>`; return; }
     svg.setAttribute("viewBox", `0 0 ${W} ${f1(s.H)}`);
-    svg.innerHTML = s.markup(s.in + t, null, paint);
+    const mk = s.markup(s.in + t, null, paint);
+    if (!(playing && !markupReady(mk) && svg.firstChild)) morphSvg(svg, mk);   // en lecture : image pas prete, la precedente reste ; noeuds gardes (pas de flash blanc)
   }
   function strip() {
     track.textContent = "";

@@ -9,7 +9,7 @@ import { markShape, markOutline, thin } from "./marks.js";
 import { vecFrame, layerSp, inkStroke, bgStroke, jitterFilter, shadeOf, shadeShapes, bodyFill, inkFill, wiggleFilter } from "./model.js";
 import { drawSvg, hasDraw, W as DRAW_W } from "./draw.js";
 import { faceFor, opsSvg } from "./face.js";
-import { frameToAngle, thinMask, lineWidth, frameT, markupReady, cmFilter, layerCM, bgCM, blinkAll, colorMatrix } from "./model.js";
+import { frameToAngle, thinMask, lineWidth, frameT, markupReady, morphSvg, cmFilter, layerCM, bgCM, blinkAll, colorMatrix } from "./model.js";
 import { sprite, preload, placement, layerBox, depthOf, blurOf, groundShadow, background, clamp, variantOf, pad3 } from "./model.js";
 import { handlesSvg, cornerStart, cornerFactor, cornerFeet } from "./handles.js";
 import { makeScene } from "./montage.js";
@@ -165,7 +165,7 @@ export class Editor {
       sync(t);
       if (!el.isConnected) this.svg.insertBefore(el, this.svg.querySelector(":scope > g.pv-play") || null);   // la planche a ete redessinee
       const mk = scene.markup(t, null, () => {});
-      if (markupReady(mk)) inner.innerHTML = mk;           // une image pas prete : on garde la precedente (plus de case blanche)
+      if (markupReady(mk)) morphSvg(inner, mk);            // une image pas prete : on garde la precedente ; noeuds gardes (pas de flash blanc)
       this.pv.raf = requestAnimationFrame(tick);
     };
     this.svg.append(el);
@@ -669,6 +669,7 @@ export class Editor {
     app.select({ panel: g.id });
     const pan = this.panel(g.id), show = pan.show || "layers";
     if (show === "orbit" && pan.orbit) {
+      if (app.oplay) app.orbitPlay();                      // tourner a la main arrete la lecture de l'orbite
       this.drag = { kind: "oturn", o: pan.orbit, sx: e.clientX, f: pan.orbit.frame || 0 };
     } else if (show === "layers") {
       const bg = background(pan, app.bank, app.project.id);

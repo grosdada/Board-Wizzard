@@ -14,7 +14,7 @@ import { flattenPanel } from "./flatten.js";
 import { MOUTHS, SETS, MODES, SIMPLE, PERSO, PERSO_NAME, TRACE, TRACE_NAME, usesTrace, traceMarkup, cardMarkup, cardGom, hasPerso, cardKey, mouthIcon, lipMarkup, analyse, locateMouth, cueAt, cueIndex, voiceSpan, voiceTime, segsOf, exprMarkup, exprGom, exprAt, exprName } from "./lipsync.js";
 import { swatch } from "./colors.js";
 import { groundSvg, groundFor, groundInFrame, frameVis, groundTile, groundMap, estimateHorizon, PATS, GROUND0, PLATE0, plateDefault, plateCorners, groundAt, plateGround, groundImg, toPlate, plateMap, composeGround } from "./ground.js";
-import { markupReady } from "./model.js";
+import { markupReady, morphSvg } from "./model.js";
 import { bgStroke, jitterFilter, sprite, layerSp, preload, placement, layerBox, background, vecFrame, mouthFrame, inkStroke, shadeOf, shadeShapes, clamp, variantOf, depthOf, groundShadow, AXES, frameToAngle, angleToFrame, bodyFill, inkFill, wiggleFilter, thinMask, lineWidth, cmFilter, layerCM, bgCM, blinkAll, colorMatrix, CAM_BACK, perspOf } from "./model.js";
 import { drawSvg, fxSvg, boxOf, W, PRIMS, PATHS, openDrawEditor } from "./draw.js";
 import { PRESETS } from "./presets.js";
@@ -454,7 +454,7 @@ export function openMontage(app, pid, opt = {}) {
     recSync();
     updMouthDot();
     const mk = isoView ? scene.markup(t, null, paint, (svg.getScreenCTM() || {}).a) : depthView ? topView() : v3 ? `<rect width="${W}" height="${f1(H)}" fill="#26292d"/>` : scene.markup(t, playing ? null : sel, paint, (svg.getScreenCTM() || {}).a);
-    if (!(playing && !markupReady(mk) && svg.firstChild)) svg.innerHTML = mk;   // en lecture, une image pas prete : on garde la precedente
+    if (!(playing && !markupReady(mk) && svg.firstChild)) morphSvg(svg, mk);    // en lecture, une image pas prete : on garde la precedente ; noeuds gardes (pas de flash blanc)
     boxDot();
     if (groundEdit() && !playing) groundOverlay();
     gbar.style.display = isoView ? "" : "none";

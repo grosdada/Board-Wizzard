@@ -15,7 +15,7 @@ import { photoDialog, openGenerations } from "./photo.js";
 import { openDeck, addClip } from "./deck.js";
 import { orbitPerspective } from "./orbitpersp.js";
 import { GROUND0, PATS, PLATE0, plateDefault, estimateHorizon, groundFor } from "./ground.js";
-import { sprite, layerSp, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox, pad3 } from "./model.js";
+import { sprite, layerSp, variantOf, AXES, angleToFrame, frameToAngle, nearestAxis, depthOf, clamp, uid, background, placement, layerBox, pad3, imgReady } from "./model.js";
 
 const FORMATS = [
   { id: "story", label: tt("Storyboard 16:10"), w: 2400, h: 1500 },
@@ -1376,6 +1376,48 @@ class App {
       choice),
       [{ label: tt("Annuler") }, { label: tt("↻ Lancer l'orbite ▾"), primary: true, click: (close) => { shut = close; choice.style.display = choice.style.display === "none" ? "" : "none"; if (choice.style.display !== "none") choice.scrollIntoView({ block: "nearest" }); return false; } }]).box.classList.add("wide");
   }
+  // Lecture de l'orbite de la case (inspecteur, a cote d'« Axe de la scène ») : elle tourne en boucle a 24 images/s, la
+  // vitesse du calcul. Une image pas encore chargee fait attendre au lieu de laisser la case blanche. Pause (ou un clic sur
+  // le curseur, ou tourner a la souris dans la case) : la case garde l'angle ou l'orbite s'est arretee.
+  orbitPlay(pid) {
+    const cur = this.oplay;
+    if (cur) { cancelAnimationFrame(cur.raf); this.oplay = null; this.commitSoon("oturn"); }
+    if (!pid || (cur && cur.pid === pid)) return this.oplayBtn();
+    const pan = this.page().panels[pid], o = pan && pan.orbit;
+    if (!o || pan.show !== "orbit") return this.oplayBtn();
+    const url = (f) => `/projects/${this.project.id}/${o.dir}/${pad3(f)}.webp`;
+    for (let f = 0; f < o.n; f++) imgReady(url(f));       // toutes les images de l'orbite se chargent des maintenant
+    const st = { pid, raf: 0, acc: 0, last: performance.now(), f: o.frame || 0 };
+    this.oplay = st;
+    const tick = (now) => {
+      if (this.oplay !== st) return;
+      const p = this.page().panels[pid];
+      if (!p || p.orbit !== o || p.show !== "orbit") return this.orbitPlay();
+      st.acc += Math.min(now - st.last, 200); st.last = now;
+      const step = Math.floor(st.acc * 24 / 1000);
+      if (step > 0) {
+        const f = (st.f + step) % o.n;
+        if (imgReady(url(f))) {                            // pas prete : on garde l'image en place et on attend
+          st.acc -= step * 1000 / 24; st.f = f; o.frame = f;
+          const im = this.editor.imgs.get("o:" + pid);
+          if (im && im.isConnected) im.setAttribute("href", url(f)); else this.editor.render(true);
+          const ui = this.oplayUI;
+          if (ui && ui.pid === pid && ui.inp.isConnected) { ui.inp.value = f; ui.out.textContent = String(f); }
+        } else st.acc = Math.min(st.acc, 1000 / 24);
+      }
+      st.raf = requestAnimationFrame(tick);
+    };
+    st.raf = requestAnimationFrame(tick);
+    this.oplayBtn();
+  }
+  oplayBtn() {
+    const ui = this.oplayUI;
+    if (!ui || !ui.btn.isConnected) return;
+    const on = !!(this.oplay && this.oplay.pid === ui.pid);
+    ui.btn.textContent = on ? "⏸" : "▶";
+    ui.btn.classList.toggle("on", on);
+    ui.btn.title = on ? tt("Pause : l'orbite s'arrête sur cet angle") : tt("Lecture : l'orbite tourne en boucle");
+  }
   // « Recalculer la perspective » depuis l'orbite de la case : les marionnettes de la case (pas une image calculee) se
   // calent sur l'angle ou l'orbite est arretee (orbitpersp.js, la meme reconstruction que la vue 3D du montage). Le calcul
   // part toujours de la case telle qu'avant le premier recalcul (pan.orbitBase) : recalculer deux fois ne tourne pas deux
@@ -1739,7 +1781,14 @@ class App {
           on: { click: () => this.orbitPlace() } }, tt("↻ Recalculer la perspective")) : ""));
       if ((pan.integrations || []).length > 1) box.append(h("div.versions", pan.integrations.map((f, i) => h("img" + (f === pan.integrated ? ".on" : ""), {
         src: `/projects/${this.project.id}/${f}`, title: tt("Version ") + (i + 1), on: { click: () => { pan.integrated = f; pan.show = "integrated"; this.commit("ver"); this.editor.render(); this.refreshInspector(); } } }))));
-      if (pan.show === "orbit" && pan.orbit) box.append(range(tt("Axe de la scène"), pan.orbit.frame || 0, 0, pan.orbit.n - 1, 1, (x) => { pan.orbit.frame = x; }, "oturn"));
+      if (pan.show === "orbit" && pan.orbit) {           // l'axe, et a cote lecture / pause : l'orbite tourne en boucle
+        const pid = this.sel.panel, rg = range(tt("Axe de la scène"), pan.orbit.frame || 0, 0, pan.orbit.n - 1, 1, (x) => { if (this.oplay) this.orbitPlay(); pan.orbit.frame = x; }, "oturn");
+        const btn = h("button.mini.oplay", { type: "button", on: { click: (e) => { e.preventDefault(); this.orbitPlay(pid); } } });
+        rg.insertBefore(btn, rg.querySelector("input"));
+        this.oplayUI = { pid, btn, inp: rg.querySelector("input"), out: rg.querySelector("output") };
+        box.append(rg);
+        this.oplayBtn();
+      }
     }
     box.append(h("h4", tt("Animation")), h("div.row", h("button.mini", { title: tt("Timeline, poses clés, caméra virtuelle"), on: { click: () => openMontage(this, this.sel.panel) } }, pan.anim ? tt("🎬 Ouvrir le montage") : tt("🎬 Mode montage")),
       pan.anim ? h("span.muted", tt`${pan.anim.dur} s · ${Object.values(pan.anim.tracks || {}).reduce((n, k) => n + k.length, 0)} clés`) : ""),

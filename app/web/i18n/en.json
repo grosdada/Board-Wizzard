@@ -2476,7 +2476,9 @@
   "✂ Couper": "✂ Cut",
   "✥ Déplacer / tourner": "✥ Move / rotate",
   "⧉ Copier": "⧉ Copy",
-  "📋 Coller": "📋 Paste"
+  "📋 Coller": "📋 Paste",
+  "Pause : l'orbite s'arrête sur cet angle": "Pause: the orbit stops at this angle",
+  "Lecture : l'orbite tourne en boucle": "Play: the orbit spins in a loop"
  },
  "server": {
   "version de bouche inconnue": "unknown mouth version",
